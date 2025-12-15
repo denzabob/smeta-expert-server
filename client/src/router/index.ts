@@ -4,10 +4,16 @@ import HomeView from '@/views/HomeView.vue'
 import MaterialsView from '@/views/MaterialsView.vue'
 import FittingsView from '@/views/FittingsView.vue'
 import SmetaEditorView from '@/views/SmetaEditorView.vue'
+import LoginView from '@/views/LoginView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    {
+      path: '/login',
+      name: 'login',
+      component: LoginView
+    },
     {
       path: '/',
       component: MainLayout,
