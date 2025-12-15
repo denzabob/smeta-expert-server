@@ -1,54 +1,28 @@
 <template>
-  <div class="main-layout">
-    <aside class="sidebar">
-      <nav>
-        <ul>
-          <li><router-link to="/">Главная</router-link></li>
-          <li><router-link to="/materials">Материалы</router-link></li>
-          <li><router-link to="/fittings">Фурнитура</router-link></li>
-          <li><router-link to="/smeta">Смета</router-link></li>
-        </ul>
-      </nav>
-    </aside>
-    <main class="content">
+  <v-navigation-drawer :width="240" permanent>
+    <v-list>
+      <v-list-item to="/" prepend-icon="mdi-home">Главная</v-list-item>
+      <v-list-item to="/materials" prepend-icon="mdi-layers">Материалы</v-list-item>
+      <v-list-item to="/fittings" prepend-icon="mdi-cogs">Фурнитура</v-list-item>
+      <v-list-item to="/smeta" prepend-icon="mdi-file-document">Смета</v-list-item>
+    </v-list>
+  </v-navigation-drawer>
+
+  <v-app-bar color="primary" dark>
+    <v-app-bar-title>СметаЭксперт Мебель</v-app-bar-title>
+  </v-app-bar>
+
+  <v-main>
+    <v-container fluid>
       <router-view />
-    </main>
-  </div>
+    </v-container>
+  </v-main>
 </template>
 
+<script setup lang="ts">
+// No script needed for this layout
+</script>
+
 <style scoped>
-.main-layout {
-  display: flex;
-  font-family: Arial, sans-serif;
-}
-
-.sidebar {
-  width: 200px;
-  background-color: #808080;
-  padding: 20px;
-}
-
-.sidebar nav ul {
-  list-style-type: none;
-  padding: 0;
-  margin: 0;
-}
-
-.sidebar nav ul li {
-  margin-bottom: 10px;
-}
-
-.sidebar nav ul li a {
-  text-decoration: none;
-  color: white;
-}
-
-.sidebar nav ul li a.router-link-exact-active {
-  font-weight: bold;
-}
-
-.content {
-  flex-grow: 1;
-  padding: 20px;
-}
+/* Scoped styles can be added here if needed */
 </style>
