@@ -19,8 +19,8 @@ class MaterialPriceHistory extends Model
     ];
 
     protected $casts = [
-        'changed_at' => 'datetime',
         'price_per_unit' => 'decimal:2',
+        'changed_at' => 'datetime',
     ];
 
     public function material()
@@ -28,5 +28,3 @@ class MaterialPriceHistory extends Model
         return $this->belongsTo(Material::class);
     }
 }
-
-

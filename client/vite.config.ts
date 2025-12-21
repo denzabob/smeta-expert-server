@@ -5,7 +5,6 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import vuetify from 'vite-plugin-vuetify'
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
@@ -13,11 +12,13 @@ export default defineConfig({
     vuetify({ autoImport: true }),
   ],
   server: {
+    port: 5173, // не обязательно, но явно
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8000', // ← ИСПРАВЛЕНО: 8000, а не 8080
         changeOrigin: true,
         secure: false,
+        rewrite: (path) => path.replace(/^\/api/, '/api'), // обычно не нужно, но на всякий
       },
     },
   },

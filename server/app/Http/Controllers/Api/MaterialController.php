@@ -6,15 +6,25 @@ use App\Http\Controllers\Controller;
 use App\Models\Material;
 use App\Models\MaterialPriceHistory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 
 class MaterialController extends Controller
 {
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $materials = Material::orderBy('name')->get();
+        $user = auth()->user();
+
+        $materials = Material::where(function ($query) use ($user) {
+            $query->whereNull('user_id') // общие материалы (парсерные или системные)
+            ->where('origin', 'parser'); // только парсерные
+        })
+            ->orWhere('user_id', $user->id) // личные материалы пользователя
+            ->orderBy('name')
+            ->get();
+
         return response()->json($materials);
     }
 
@@ -25,11 +35,20 @@ class MaterialController extends Controller
     {
         $validated = $this->validatePayload($request);
 
+        // Если origin = 'parser', user_id = NULL
+        if ($validated['origin'] === 'parser') {
+            $validated['user_id'] = null;
+        } else {
+            // Для 'user' — привязываем к текущему пользователю
+            $validated['user_id'] = auth()->id();
+        }
+
         $material = Material::create($validated);
 
+        // Создаем первую запись в истории
         MaterialPriceHistory::create([
             'material_id' => $material->id,
-            'version' => $material->version ?? 1,
+            'version' => 1,
             'price_per_unit' => $material->price_per_unit,
             'source_url' => $material->source_url,
             'screenshot_path' => $material->last_price_screenshot_path,
@@ -44,8 +63,7 @@ class MaterialController extends Controller
      */
     public function show(string $id)
     {
-        $material = $this->findOwnedOrShared($id);
-
+        $material = Material::findOrFail($id);
         return response()->json($material);
     }
 
@@ -56,6 +74,11 @@ class MaterialController extends Controller
     {
         $material = Material::findOrFail($id);
         $validated = $this->validatePayload($request);
+
+        // Проверка на принадлежность (если не парсерный)
+        if ($material->origin === 'user' && $material->user_id !== auth()->id()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
 
         $originalPrice = $material->price_per_unit;
 
@@ -87,6 +110,12 @@ class MaterialController extends Controller
     public function destroy(string $id)
     {
         $material = Material::findOrFail($id);
+
+        // Проверка на принадлежность
+        if ($material->origin === 'user' && $material->user_id !== auth()->id()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
         $material->delete();
 
         return response()->noContent();
@@ -105,10 +134,5 @@ class MaterialController extends Controller
             'is_active' => 'boolean',
             'last_price_screenshot_path' => 'nullable|string|max:2048',
         ]);
-    }
-
-    private function findOwnedOrShared(string $id): Material
-    {
-        return Material::findOrFail($id);
     }
 }

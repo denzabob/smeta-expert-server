@@ -69,11 +69,7 @@
         density="comfortable"
       >
         <template #item.supplier="{ item }">
-          <v-chip
-            size="small"
-            color="primary"
-            variant="tonal"
-          >
+          <v-chip size="small" color="primary" variant="tonal">
             {{ item.supplier || '—' }}
           </v-chip>
         </template>
@@ -122,32 +118,9 @@
             target="_blank"
             rel="noreferrer"
           >
-            {{ item.source_url }}
+            Ссылка
           </a>
           <span v-else class="text-medium-emphasis">—</span>
-        </template>
-
-        <template #item.actions="{ item }">
-          <v-btn
-            icon
-            size="small"
-            variant="text"
-            color="primary"
-            :disabled="item.sourceType === 'user'"
-            @click="openEditDialog(item)"
-          >
-            <v-icon icon="mdi-pencil" />
-          </v-btn>
-          <v-btn
-            icon
-            size="small"
-            variant="text"
-            color="secondary"
-            :disabled="item.sourceType === 'user'"
-            @click="openHistoryDialog(item)"
-          >
-            <v-icon icon="mdi-history" />
-          </v-btn>
         </template>
 
         <template #no-data>
@@ -164,6 +137,7 @@
       </v-data-table>
     </v-sheet>
 
+    <!-- Dialog: Create / Edit -->
     <v-dialog v-model="dialog" max-width="640" persistent>
       <v-card>
         <v-card-title class="d-flex align-center">
@@ -231,14 +205,8 @@
               </v-col>
               <v-col cols="12" md="6">
                 <v-text-field
-                  v-model="form.supplier"
-                  label="Поставщик"
-                />
-              </v-col>
-              <v-col cols="12" md="6">
-                <v-text-field
                   v-model="form.source_url"
-                  label="Ссылка на поставщика"
+                  label="Ссылка на товар"
                   placeholder="https://"
                   type="url"
                   :rules="[rules.url]"
@@ -246,11 +214,9 @@
               </v-col>
               <v-col cols="12" md="6">
                 <v-text-field
-                  v-model="form.screenshot_path"
-                  label="Скриншот страницы товара"
-                  placeholder="https://..."
-                  type="url"
-                  :rules="[rules.url]"
+                  v-model="form.last_price_screenshot_path"
+                  label="Скриншот"
+                  placeholder="URL или путь"
                 />
               </v-col>
               <v-col cols="12">
@@ -283,6 +249,7 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: History -->
     <v-dialog v-model="historyDialog" max-width="720">
       <v-card>
         <v-card-title class="d-flex align-center">
@@ -313,9 +280,9 @@
                 target="_blank"
                 rel="noreferrer"
               >
-                {{ item.source_url }}
+                Ссылка
               </a>
-              <span v-else class="text-medium-emphasis">—</span>
+              <span v-else>—</span>
             </template>
             <template #item.screenshot_path="{ item }">
               <a
@@ -326,11 +293,11 @@
               >
                 Скриншот
               </a>
-              <span v-else class="text-medium-emphasis">—</span>
+              <span v-else>—</span>
             </template>
             <template #no-data>
               <div class="text-center pa-4 text-medium-emphasis">
-                Нет записей истории цен для этого материала
+                Нет записей истории цен
               </div>
             </template>
           </v-data-table>
@@ -349,54 +316,54 @@ import { computed, onMounted, reactive, ref } from 'vue'
 
 type MaterialType = 'plate' | 'edge' | 'fitting'
 type MaterialUnit = 'м²' | 'м.п.' | 'шт'
-type SystemMaterial = {
+
+type Material = {
   id: number
+  user_id: number | null
+  origin: 'user' | 'parser'
   name: string
   article: string
   type: MaterialType
   unit: MaterialUnit
   price_per_unit: number
-  supplier?: string | null
-  source_url?: string | null
+  source_url: string | null
+  last_price_screenshot_path: string | null
   is_active: boolean
   version: number
-  screenshot_path?: string | null
 }
 
-type MaterialForm = Omit<SystemMaterial, 'id'> & { id?: number }
-
-type SelectOption<T> = { label: string; value: T }
+type MaterialForm = Omit<Material, 'id' | 'user_id'> & { id?: number }
 
 type PriceHistoryItem = {
   id: number
   version: number
   price_per_unit: number
-  source_url?: string | null
-  screenshot_path?: string | null
+  source_url: string | null
+  screenshot_path: string | null
   changed_at: string
 }
 
 const headers = [
   { title: 'Название / Артикул', key: 'name', width: '220px' },
-  { title: 'Поставщик', key: 'supplier', width: '160px' },
+  { title: 'Источник', key: 'supplier', width: '120px' },
   { title: 'Тип', key: 'type', width: '120px' },
-  { title: 'Ед.', key: 'unit', width: '80px', align: 'center' },
-  { title: 'Цена', key: 'price_per_unit', width: '110px', align: 'end' },
-  { title: 'Версия', key: 'version', width: '90px', align: 'center' },
+  { title: 'Ед.', key: 'unit', width: '80px', align: 'center' as const },
+  { title: 'Цена', key: 'price_per_unit', width: '110px', align: 'end' as const },
+  { title: 'Версия', key: 'version', width: '90px', align: 'center' as const },
   { title: 'Статус', key: 'is_active', width: '110px' },
   { title: 'Ссылка', key: 'source_url' },
   { title: '', key: 'actions', width: '70px', sortable: false },
-] as const
+]
 
 const historyHeaders = [
   { title: 'Версия', key: 'version', width: '90px', align: 'center' as const },
   { title: 'Цена', key: 'price_per_unit', width: '110px', align: 'end' as const },
-  { title: 'Источник', key: 'source_url' },
+  { title: 'Ссылка', key: 'source_url' },
   { title: 'Скриншот', key: 'screenshot_path', width: '120px' },
-  { title: 'Дата изменения', key: 'changed_at', width: '180px' },
-] as const
+  { title: 'Дата', key: 'changed_at', width: '180px' },
+]
 
-const typeOptions: SelectOption<MaterialType>[] = [
+const typeOptions = [
   { label: 'Плита', value: 'plate' },
   { label: 'Кромка', value: 'edge' },
   { label: 'Фурнитура', value: 'fitting' },
@@ -410,13 +377,7 @@ const typeLabels: Record<MaterialType, string> = {
   fitting: 'Фурнитура',
 }
 
-type MaterialRowSource = 'system' | 'user'
-
-type MaterialRow = SystemMaterial & {
-  sourceType: MaterialRowSource
-}
-
-const materials = ref<MaterialRow[]>([])
+const materials = ref<Material[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const dialog = ref(false)
@@ -429,16 +390,16 @@ const unitFilter = ref<MaterialUnit | null>(null)
 
 const form = reactive<MaterialForm>({
   id: undefined,
+  origin: 'user',
   name: '',
   article: '',
   type: 'plate',
   unit: 'м²',
   price_per_unit: 0,
-  supplier: '',
   source_url: '',
+  last_price_screenshot_path: '',
   is_active: true,
   version: 1,
-  screenshot_path: '',
 })
 
 const snackbar = reactive({
@@ -448,15 +409,20 @@ const snackbar = reactive({
 })
 
 const historyDialog = ref(false)
-const historyMaterial = ref<MaterialRow | null>(null)
+const historyMaterial = ref<Material | null>(null)
 const priceHistory = ref<PriceHistoryItem[]>([])
 
 const rules = {
-  required: (v: string | number | null | undefined) =>
-    (v !== undefined && v !== null && String(v).trim() !== '') || 'Обязательное поле',
+  required: (v: any) => !!v || 'Обязательное поле',
   nonNegative: (v: number) => v >= 0 || 'Не может быть отрицательной',
-  url: (v: string) =>
-    !v || /^https?:\/\/.+/i.test(v) || 'Укажите корректный URL (http/https)',
+  url: (v: string) => !v || /^https?:\/\//.test(v) || 'Должен начинаться с http:// или https://',
+}
+
+const getAuthToken = () => localStorage.getItem('auth_token')
+
+const authHeaders = () => {
+  const token = getAuthToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 const filteredMaterials = computed(() => {
@@ -473,51 +439,22 @@ const filteredMaterials = computed(() => {
 })
 
 const formatPrice = (value: number) =>
-  new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(
-    Number(value) || 0
-  )
-
-const getAuthToken = () => localStorage.getItem('auth_token') ?? ''
-
-const authHeaders = (): Record<string, string> => {
-  const token = getAuthToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
+  new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(value || 0)
 
 const fetchMaterials = async () => {
   loading.value = true
   try {
-    const [systemRes, userRes] = await Promise.all([
-      fetch('/api/system-materials', { credentials: 'include' }),
-      fetch('/api/user-materials', { headers: authHeaders(), credentials: 'include' }).catch(
-        () => null
-      ),
-    ])
-
-    if (!systemRes.ok) throw new Error('Не удалось загрузить системные материалы')
-
-    const systemData = (await systemRes.json()) as SystemMaterial[]
-    const userData =
-      userRes && userRes.ok ? ((await userRes.json()) as SystemMaterial[]) : ([] as SystemMaterial[])
-
-    const systemRows: MaterialRow[] = systemData.map((m) => ({
-      ...m,
-      is_active: Boolean(m.is_active),
-      version: m.version ?? 1,
-      sourceType: 'system',
-    }))
-
-    const userRows: MaterialRow[] = userData.map((m) => ({
-      ...m,
-      is_active: Boolean(m.is_active),
-      version: m.version ?? 1,
-      supplier: m.supplier || 'Пользователь',
-      sourceType: 'user',
-    }))
-
-    materials.value = [...systemRows, ...userRows]
+    const res = await fetch('/api/materials', {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+      credentials: 'include',
+    })
+    if (!res.ok) throw new Error('Не удалось загрузить материалы')
+    materials.value = await res.json()
   } catch (error) {
-    showMessage(error instanceof Error ? error.message : 'Ошибка загрузки', 'error')
+    console.error(error)
+    snackbar.message = 'Ошибка загрузки материалов'
+    snackbar.color = 'error'
+    snackbar.show = true
   } finally {
     loading.value = false
   }
@@ -525,17 +462,16 @@ const fetchMaterials = async () => {
 
 const resetForm = () => {
   form.id = undefined
+  form.origin = 'user'
   form.name = ''
   form.article = ''
   form.type = 'plate'
   form.unit = 'м²'
   form.price_per_unit = 0
-  form.supplier = ''
   form.source_url = ''
+  form.last_price_screenshot_path = ''
   form.is_active = true
   form.version = 1
-  form.screenshot_path = ''
-  formValid.value = false
 }
 
 const openCreateDialog = () => {
@@ -544,38 +480,23 @@ const openCreateDialog = () => {
   dialog.value = true
 }
 
-const openEditDialog = (item: SystemMaterial) => {
+const openEditDialog = (item: Material) => {
   editingId.value = item.id
-  form.id = item.id
-  form.name = item.name
-  form.article = item.article
-  form.type = item.type
-  form.unit = item.unit
-  form.price_per_unit = item.price_per_unit
-  form.supplier = item.supplier ?? ''
-  form.source_url = item.source_url ?? ''
-  form.is_active = item.is_active
-  form.version = item.version ?? 1
-  form.screenshot_path = item.screenshot_path ?? ''
+  Object.assign(form, { ...item })
   dialog.value = true
 }
 
-const openHistoryDialog = async (item: MaterialRow) => {
-  if (item.sourceType === 'user') return
+const openHistoryDialog = async (item: Material) => {
   historyMaterial.value = item
   historyDialog.value = true
-  priceHistory.value = []
   try {
-    const response = await fetch(`/api/system-materials/${item.id}/history`, {
+    const res = await fetch(`/api/materials/${item.id}/history`, {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
       credentials: 'include',
     })
-    if (!response.ok) {
-      throw new Error('Не удалось загрузить историю цен')
-    }
-    const data = (await response.json()) as PriceHistoryItem[]
-    priceHistory.value = data
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : 'Ошибка загрузки истории', 'error')
+    priceHistory.value = res.ok ? await res.json() : []
+  } catch (e) {
+    priceHistory.value = []
   }
 }
 
@@ -584,72 +505,39 @@ const closeDialog = () => {
 }
 
 const saveMaterial = async () => {
-  const { valid } = (await formRef.value?.validate()) ?? { valid: false }
+  const valid = (await formRef.value?.validate())?.valid ?? false
   if (!valid) return
 
   saving.value = true
   try {
-    const payload = {
-      name: form.name,
-      article: form.article,
-      type: form.type,
-      unit: form.unit,
-      price_per_unit: Number(form.price_per_unit),
-      supplier: form.supplier || null,
-      source_url: form.source_url || null,
-      is_active: form.is_active,
-      screenshot_path: form.screenshot_path || null,
-    }
+    const url = editingId.value ? `/api/materials/${editingId.value}` : '/api/materials'
+    const method = editingId.value ? 'PUT' : 'POST'
+    const payload = { ...form }
 
-    const isEdit = Boolean(editingId.value)
-    const url = isEdit
-      ? `/api/system-materials/${editingId.value}`
-      : '/api/system-materials'
-    const method = isEdit ? 'PUT' : 'POST'
-
-    const response = await fetch(url, {
+    const res = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getAuthToken()}`,
+      },
       credentials: 'include',
       body: JSON.stringify(payload),
     })
 
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}))
-      const message =
-        errorBody?.message || (isEdit ? 'Не удалось сохранить изменения' : 'Не удалось создать')
-      throw new Error(message)
-    }
+    if (!res.ok) throw new Error('Ошибка сохранения')
 
-    const saved = (await response.json()) as SystemMaterial
-
-    const savedRow: MaterialRow = {
-      ...saved,
-      is_active: Boolean(saved.is_active),
-      version: saved.version ?? 1,
-      sourceType: 'system',
-    }
-
-    if (isEdit) {
-      materials.value = materials.value.map((m) => (m.id === savedRow.id ? savedRow : m))
-      showMessage('Материал обновлён', 'success')
-    } else {
-      materials.value = [savedRow, ...materials.value]
-      showMessage('Материал создан', 'success')
-    }
-
+    await fetchMaterials()
     closeDialog()
+    snackbar.message = editingId.value ? 'Материал обновлён' : 'Материал создан'
+    snackbar.color = 'success'
+    snackbar.show = true
   } catch (error) {
-    showMessage(error instanceof Error ? error.message : 'Ошибка сохранения', 'error')
+    snackbar.message = 'Ошибка при сохранении'
+    snackbar.color = 'error'
+    snackbar.show = true
   } finally {
     saving.value = false
   }
-}
-
-const showMessage = (message: string, color: 'success' | 'error' | 'warning') => {
-  snackbar.message = message
-  snackbar.color = color
-  snackbar.show = true
 }
 
 onMounted(fetchMaterials)
