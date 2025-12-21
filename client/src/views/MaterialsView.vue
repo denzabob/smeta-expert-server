@@ -418,13 +418,6 @@ const rules = {
   url: (v: string) => !v || /^https?:\/\//.test(v) || 'Должен начинаться с http:// или https://',
 }
 
-const getAuthToken = () => localStorage.getItem('auth_token')
-
-const authHeaders = () => {
-  const token = getAuthToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
 const filteredMaterials = computed(() => {
   const term = search.value.trim().toLowerCase()
   return materials.value.filter((item) => {
@@ -445,7 +438,6 @@ const fetchMaterials = async () => {
   loading.value = true
   try {
     const res = await fetch('/api/materials', {
-      headers: { Authorization: `Bearer ${getAuthToken()}` },
       credentials: 'include',
     })
     if (!res.ok) throw new Error('Не удалось загрузить материалы')
@@ -491,7 +483,6 @@ const openHistoryDialog = async (item: Material) => {
   historyDialog.value = true
   try {
     const res = await fetch(`/api/materials/${item.id}/history`, {
-      headers: { Authorization: `Bearer ${getAuthToken()}` },
       credentials: 'include',
     })
     priceHistory.value = res.ok ? await res.json() : []
@@ -518,7 +509,6 @@ const saveMaterial = async () => {
       method,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${getAuthToken()}`,
       },
       credentials: 'include',
       body: JSON.stringify(payload),
