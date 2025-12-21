@@ -6,9 +6,14 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use App\Models\Material;
+use App\Models\MaterialPriceHistory;
 
 class MaterialController extends Controller
 {
+    /**
+     * Создаёт или обновляет материал, полученный от парсера.
+     * Работает без авторизации (публичный endpoint для фоновых задач).
+     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -18,7 +23,7 @@ class MaterialController extends Controller
             'unit' => 'required|in:м²,м.п.,шт',
             'price_per_unit' => 'required|numeric|min:0',
             'source_url' => 'required|url',
-            'screenshot_path' => 'nullable|string',
+            'screenshot_path' => 'nullable|string|max:512',
         ]);
 
         if ($validator->fails()) {
@@ -26,40 +31,61 @@ class MaterialController extends Controller
         }
 
         $data = $validator->validated();
-        $data['user_id'] = auth()->id();
-        $data['origin'] = 'user';
 
-        // Ищем существующий материал от парсера
+        // Парсерные материалы — всегда общедоступные
+        $data['user_id'] = null;
+        $data['origin'] = 'parser';
+        $data['is_active'] = true; // парсерные материалы всегда активны
+
+        // Ищем **существующий парсерный** материал по артикулу
         $material = Material::where('article', $data['article'])
             ->where('origin', 'parser')
             ->first();
 
-        if ($material && $material->price_per_unit != $data['price_per_unit']) {
-            // Обновляем цену
-            $material->price_per_unit = $data['price_per_unit'];
-            $material->screenshot_path = $data['screenshot_path'] ?? $material->screenshot_path;
-            $material->source_url = $data['source_url'] ?? $material->source_url;
-            $material->version += 1;
-            $material->save();
+        if ($material) {
+            // Если цена изменилась — обновляем
+            if ($material->price_per_unit != $data['price_per_unit']) {
+                $material->price_per_unit = $data['price_per_unit'];
+                $material->source_url = $data['source_url'];
+                $material->last_price_screenshot_path = $data['screenshot_path'];
+                $material->version += 1;
+                $material->save();
 
-            // Запись в историю
-            $material->priceHistories()->create([
-                'version' => $material->version,
+                // История изменений
+                MaterialPriceHistory::create([
+                    'material_id' => $material->id,
+                    'version' => $material->version,
+                    'price_per_unit' => $data['price_per_unit'],
+                    'source_url' => $data['source_url'],
+                    'screenshot_path' => $data['screenshot_path'],
+                    'changed_at' => now(),
+                ]);
+            }
+            // Если цена не изменилась — ничего не делаем
+        } else {
+            // Создаём новый парсерный материал
+            $material = Material::create([
+                'user_id' => null,
+                'origin' => 'parser',
+                'name' => $data['name'],
+                'article' => $data['article'],
+                'type' => $data['type'],
+                'unit' => $data['unit'],
                 'price_per_unit' => $data['price_per_unit'],
                 'source_url' => $data['source_url'],
-                'screenshot_path' => $data['screenshot_path'],
+                'last_price_screenshot_path' => $data['screenshot_path'],
+                'is_active' => true,
+                'version' => 1,
             ]);
 
-        } elseif (!$material) {
-            // Создаём новый
-            $material = Material::create($data);
-
-            // Первая запись в истории
-            $material->priceHistories()->create([
+            // Первая запись в историю
+            MaterialPriceHistory::create([
+                'material_id' => $material->id,
                 'version' => 1,
                 'price_per_unit' => $data['price_per_unit'],
                 'source_url' => $data['source_url'],
                 'screenshot_path' => $data['screenshot_path'],
+                'changed_at' => now(),
             ]);
         }
 
