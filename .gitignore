@@ -1,0 +1,9 @@
+ @"
+  node_modules/
+  chrome-extension/
+  vendor/
+  .env
+  server/.env
+  storage/logs/
+  server/storage/logs/
+  "@ | Add-Content .gitignore

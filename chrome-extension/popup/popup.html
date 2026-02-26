@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=480">
+  <title>Призма — Автосбор</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-title">
+        <span class="logo">◆</span> Призма
+      </div>
+      <div class="header-status" id="auth-status">
+        <span class="status-dot offline"></span>
+        <span id="status-text">Нет соединения</span>
+      </div>
+    </header>
+
+    <!-- Auth Section (shown when not authenticated) -->
+    <section id="section-auth" class="section hidden">
+      <h2>Подключение к Призме</h2>
+      <div class="form-group">
+        <label for="input-api-url">Адрес сервера</label>
+        <input type="url" id="input-api-url" placeholder="https://prismcore.ru/api" value="https://prismcore.ru/api">
+      </div>
+      <div class="form-group">
+        <label for="input-token">API Токен</label>
+        <input type="password" id="input-token" placeholder="Вставьте токен из приложения">
+        <small class="hint">Получите токен в настройках приложения ПРИЗМА</small>
+      </div>
+      <button id="btn-connect" class="btn btn-primary btn-full">Подключиться</button>
+
+      <div id="auth-error" class="error-text hidden"></div>
+    </section>
+
+    <!-- Main Section (shown when authenticated) -->
+    <section id="section-main" class="section hidden">
+
+      <!-- Page Info -->
+      <div class="page-info" id="page-info">
+        <div class="page-domain" id="page-domain">—</div>
+        <div class="page-url" id="page-url" title="">—</div>
+        <div id="page-loading-status" class="page-loading-status hidden">
+          <span class="loading-bar"></span>
+        </div>
+        <div class="template-status" id="template-status"></div>
+      </div>
+
+      <!-- Tab Navigation -->
+      <nav class="tabs">
+        <button class="tab active" data-tab="capture">Захват</button>
+        <button class="tab" data-tab="template">Шаблон</button>
+        <button class="tab" data-tab="settings">⚙</button>
+        <button class="tab" data-tab="about">About</button>
+      </nav>
+
+      <!-- Tab: Capture -->
+      <div class="tab-content active" id="tab-capture">
+
+        <!-- Schema.org auto-detect banner -->
+        <div id="schema-banner" class="schema-banner hidden">
+          <div class="schema-banner__header">
+            <span class="schema-banner__icon">🔍</span>
+            <span class="schema-banner__title">Schema.org обнаружена</span>
+            <button id="btn-schema-toggle" class="btn-schema-toggle">Показать</button>
+          </div>
+          <div id="schema-details" class="schema-details hidden">
+            <!-- Schema selector (if multiple schemas on page) -->
+            <div id="schema-selector" class="schema-selector hidden">
+              <label class="schema-selector-label">Схема:</label>
+              <select id="schema-select" class="schema-select"></select>
+            </div>
+            <!-- Schema fields table with mapping dropdowns -->
+            <div id="schema-fields-container" class="schema-fields-container"></div>
+            <div class="schema-actions">
+              <button id="btn-schema-apply" class="btn btn-primary btn-full">
+                Заполнить выбранные поля
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="capture-fields">
+          <div class="capture-field" data-field="title">
+            <div class="field-header">
+              <span class="field-label">Название</span>
+              <span class="field-required">*</span>
+              <button class="btn-capture" data-field="title">Выбрать</button>
+            </div>
+            <div class="field-value" id="val-title">Не выбрано</div>
+          </div>
+
+          <div class="capture-field" data-field="price">
+            <div class="field-header">
+              <span class="field-label">Цена</span>
+              <span class="field-required">*</span>
+              <button class="btn-capture" data-field="price">Выбрать</button>
+            </div>
+            <div class="field-value" id="val-price">Не выбрано</div>
+          </div>
+
+          <div class="capture-field" data-field="article">
+            <div class="field-header">
+              <span class="field-label">Артикул</span>
+              <button class="btn-capture" data-field="article">Выбрать</button>
+            </div>
+            <div class="field-value" id="val-article">Не выбрано</div>
+          </div>
+
+          <div class="capture-field" data-field="thickness">
+            <div class="field-header">
+              <span class="field-label">Толщина (мм)</span>
+              <span class="field-required">*</span>
+              <span class="field-source-badge hidden" id="badge-thickness"></span>
+              <button class="btn-capture" data-field="thickness">Выбрать</button>
+              <button class="btn-manual-toggle" data-field="thickness" title="Ввести вручную">✏️</button>
+            </div>
+            <div class="field-value" id="val-thickness">Не выбрано</div>
+            <div class="field-manual-row hidden" id="manual-row-thickness">
+              <input type="text" class="manual-input" id="manual-input-thickness" data-field="thickness" placeholder="напр. 16" inputmode="decimal">
+              <button class="btn-manual-ok" data-field="thickness" title="Применить">✓</button>
+              <button class="btn-manual-cancel" data-field="thickness" title="Отмена">✗</button>
+            </div>
+          </div>
+
+          <div class="capture-field" data-field="length">
+            <div class="field-header">
+              <span class="field-label">Длина (мм)</span>
+              <span class="field-required">*</span>
+              <span class="field-source-badge hidden" id="badge-length"></span>
+              <button class="btn-capture" data-field="length">Выбрать</button>
+              <button class="btn-manual-toggle" data-field="length" title="Ввести вручную">✏️</button>
+            </div>
+            <div class="field-value" id="val-length">Не выбрано</div>
+            <div class="field-manual-row hidden" id="manual-row-length">
+              <input type="text" class="manual-input" id="manual-input-length" data-field="length" placeholder="напр. 2750" inputmode="decimal">
+              <button class="btn-manual-ok" data-field="length" title="Применить">✓</button>
+              <button class="btn-manual-cancel" data-field="length" title="Отмена">✗</button>
+            </div>
+          </div>
+
+          <div class="capture-field" data-field="width">
+            <div class="field-header">
+              <span class="field-label">Ширина (мм)</span>
+              <span class="field-required">*</span>
+              <span class="field-source-badge hidden" id="badge-width"></span>
+              <button class="btn-capture" data-field="width">Выбрать</button>
+              <button class="btn-manual-toggle" data-field="width" title="Ввести вручную">✏️</button>
+            </div>
+            <div class="field-value" id="val-width">Не выбрано</div>
+            <div class="field-manual-row hidden" id="manual-row-width">
+              <input type="text" class="manual-input" id="manual-input-width" data-field="width" placeholder="напр. 1830" inputmode="decimal">
+              <button class="btn-manual-ok" data-field="width" title="Применить">✓</button>
+              <button class="btn-manual-cancel" data-field="width" title="Отмена">✗</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Validation Preview -->
+        <div id="validation-preview" class="validation-preview hidden">
+          <h3>Превью</h3>
+          <div id="preview-content"></div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button id="btn-validate" class="btn btn-secondary" disabled>Проверить</button>
+          <button id="btn-add-material" class="btn btn-primary" disabled>Добавить в Призму</button>
+        </div>
+
+        <div id="capture-result" class="result-message hidden"></div>
+
+        <button id="btn-clear" class="btn btn-link">Очистить все поля</button>
+      </div>
+
+      <!-- Tab: Template -->
+      <div class="tab-content" id="tab-template">
+        <div class="template-section">
+          <h3>Сохранить шаблон</h3>
+          <p class="hint">Сохранённые селекторы позволят автоматически извлекать данные при следующем посещении.</p>
+
+          <div class="form-group">
+            <label for="template-name">Имя шаблона</label>
+            <input type="text" id="template-name" placeholder="Ozon product page v1">
+          </div>
+
+          <div class="form-group">
+            <label>Применять для</label>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="url-scope" value="domain" checked>
+                Весь домен
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="url-scope" value="pattern">
+                Только URL-паттерн
+              </label>
+            </div>
+            <input type="text" id="url-pattern" class="hidden" placeholder="/product/ или regex">
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="template-default">
+              Шаблон по умолчанию для этого домена
+            </label>
+          </div>
+
+          <button id="btn-save-template" class="btn btn-primary btn-full" disabled>
+            Сохранить шаблон
+          </button>
+          <div id="template-save-result" class="result-message hidden"></div>
+        </div>
+
+        <hr>
+
+        <div class="template-section">
+          <h3>Существующие шаблоны</h3>
+          <div id="templates-list" class="templates-list">
+            <p class="hint">Загрузка...</p>
+          </div>
+        </div>
+
+        <hr>
+
+        <div class="template-section">
+          <h3>Автозаполнение</h3>
+          <p class="hint">Применить сохранённый шаблон к текущей странице.</p>
+          <button id="btn-apply-template" class="btn btn-secondary btn-full" disabled>
+            Применить шаблон
+          </button>
+          <div id="apply-result" class="result-message hidden"></div>
+        </div>
+      </div>
+
+      <!-- Tab: Settings -->
+      <div class="tab-content" id="tab-settings">
+        <div class="settings-section">
+          <h3>Подключение</h3>
+          <div class="info-row">
+            <span>Пользователь:</span>
+            <strong id="settings-user-name">—</strong>
+          </div>
+          <div class="info-row">
+            <span>Email:</span>
+            <strong id="settings-user-email">—</strong>
+          </div>
+          <div class="info-row">
+            <span>Регион:</span>
+            <strong id="settings-region">—</strong>
+          </div>
+          <div class="info-row">
+            <span>Сервер:</span>
+            <strong id="settings-server-url">—</strong>
+          </div>
+          <button id="btn-disconnect" class="btn btn-danger btn-full">Отключиться</button>
+        </div>
+      </div>
+
+      <!-- Tab: About -->
+      <div class="tab-content" id="tab-about">
+        <div class="settings-section">
+          <h3>О приложении</h3>
+          <p class="hint">
+            Профессиональная система расчета стоимости устранения дефектов ПРИЗМА
+          </p>
+          <a
+            href="https://prismcore.ru"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-secondary btn-full"
+            id="btn-open-prism-site"
+          >
+            Открыть prismcore.ru
+          </a>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

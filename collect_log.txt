@@ -1,0 +1,2 @@
+Starting URL collection for: skm_mebel
+Command: python3 /var/www/html/parser/collect_urls.py --supplier skm_mebel --hmac-secret ***

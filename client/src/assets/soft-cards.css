@@ -1,0 +1,32 @@
+.soft-page {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.soft-content-card {
+  border-radius: 12px;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.soft-data-card {
+  overflow: hidden;
+}
+
+.soft-data-table {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.soft-dialog-card {
+  border-radius: 12px;
+}
+
+:deep(.v-theme--dark) .soft-content-card {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:deep(.v-theme--dark) .soft-data-table {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}

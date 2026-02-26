@@ -1,0 +1,116 @@
+{
+  "name": "template",
+  "display_name": "Шаблон Поставщика",
+  "base_url": "https://example.com",
+  "adapter_class": "parser.suppliers.template_adapter.TemplateAdapter",
+  "enabled": false,
+  
+  "_comment": "Тип материала по умолчанию: plate (плита), edge (кромка), fitting (фурнитура)",
+  "default_type": "plate",
+  
+  "_comment": "Единица измерения: м² (квадратные метры), м.п. (погонные метры), шт (штуки)",
+  "default_unit": "м²",
+  
+  "_comment": "CSS/XPath селекторы для извлечения данных",
+  "selectors": {
+    "_comment": "Селектор элемента с артикулом",
+    "article": ".product-article",
+    
+    "_comment": "Селектор элемента с названием",
+    "name": "h1.product-name",
+    
+    "_comment": "Селектор meta-тега с ценой (приоритет)",
+    "price_meta": "meta[itemprop='price']",
+    
+    "_comment": "Селектор видимого элемента с ценой (fallback)",
+    "price_text": ".product-price",
+    
+    "_comment": "Селектор кнопки добавления в корзину",
+    "add_to_cart_button": "button.add-to-cart",
+    
+    "_comment": "Селектор для ожидания загрузки страницы",
+    "wait_for": "body",
+    
+    "_comment": "Селектор ссылок на товары в категории",
+    "category_products": ".product-item a",
+    
+    "_comment": "Селектор кнопки 'следующая страница' в пагинации",
+    "pagination_next": ".pagination .next"
+  },
+  
+  "_comment": "Задержки и таймауты (в миллисекундах)",
+  "delays": {
+    "between_requests": 1.5,
+    "page_load_timeout": 30000,
+    "element_timeout": 15000
+  },
+  
+  "_comment": "Использовать ли прокси (требует настройки прокси-сервера)",
+  "use_proxy": false,
+  
+  "_comment": "Список User-Agent для ротации",
+  "user_agents": [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  ],
+  
+  "_comment": "Настройки скриншотов",
+  "screenshot": {
+    "quality": 85,
+    "method": 6,
+    "full_page": false,
+    "format": "webp"
+  },
+  
+  "_comment": "Правила валидации данных",
+  "validation": {
+    "min_price": 0,
+    "max_price": 1000000,
+    "required_fields": ["article", "name", "price_per_unit"]
+  },
+  
+  "_comment": "Динамический сбор URL товаров из каталога (опционально)",
+  "collect_urls": false,
+  "catalog_base_url": "https://example.com/category/materials/",
+  "url_collection": {
+    "_comment": "CSS-селектор для ссылок на подкатегории (если есть иерархия)",
+    "subcategory_selector": ".subcategory-link",
+    
+    "_comment": "CSS-селектор для ссылок на продукты",
+    "product_selector": ".product-link",
+    
+    "_comment": "CSS-селектор кнопки 'следующая страница' или load-more",
+    "pagination_next_selector": ".pagination-next",
+    
+    "_comment": "Максимальная глубина обхода: 1 (только каталог), 2 (каталог + подкатегории)",
+    "max_depth": 2,
+    
+    "_comment": "Ключевые слова для фильтра (case-insensitive), опционально",
+    "filter_keywords": ["материал", "плита", "лдсп", "мдф"],
+    
+    "_comment": "Задержка между запросами (сек) для избежания блокировок",
+    "request_delay": 2.0,
+    
+    "_comment": "Таймаут загрузки страницы (сек)",
+    "timeout": 30,
+    
+    "_comment": "Максимальное количество собираемых URL (защита от перегрузки)",
+    "max_urls": 500,
+    
+    "_comment": "Поддержка infinite scroll (если сайт грузит товары при скролле)",
+    "infinite_scroll": false
+  },
+  
+  "_comment": "Периодический сбор URL (отделён от парсинга материалов)",
+  "url_collection_frequency": "daily",
+  "_comment_frequency": "Частота сбора: 'daily', 'weekly', 'monthly', 'yearly', или cron (e.g., '0 0 * * *')",
+  
+  "material_types": ["лдсп", "мдф", "хдф", "дсп", "фанера"],
+  "_comment_material_types": "Типы материалов для автоматической классификации собранных URL",
+  
+  "url_validation_timeout": 5,
+  "_comment_validation_timeout": "Таймаут для проверки доступности URL (секунды)",
+  
+  "max_invalid_retries": 3,
+  "_comment_max_invalid_retries": "Максимум попыток перед исключением битой ссылки"
+}

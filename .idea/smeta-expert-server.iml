@@ -8,6 +8,12 @@
       <sourceFolder url="file://$MODULE_DIR$/server/tests" isTestSource="true" packagePrefix="Tests\" />
       <sourceFolder url="file://$MODULE_DIR$/server/tests/Feature" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/server/tests/Unit" isTestSource="true" />
+      <excludeFolder url="file://$MODULE_DIR$/server/vendor/barryvdh/laravel-dompdf" />
+      <excludeFolder url="file://$MODULE_DIR$/server/vendor/dompdf/dompdf" />
+      <excludeFolder url="file://$MODULE_DIR$/server/vendor/dompdf/php-font-lib" />
+      <excludeFolder url="file://$MODULE_DIR$/server/vendor/dompdf/php-svg-lib" />
+      <excludeFolder url="file://$MODULE_DIR$/server/vendor/masterminds/html5" />
+      <excludeFolder url="file://$MODULE_DIR$/server/vendor/sabberworm/php-css-parser" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use App\Models\ProjectLaborWork;
+use App\Models\ProjectLaborWorkStep;
+use App\Observers\ProjectLaborWorkObserver;
+use App\Observers\ProjectLaborWorkStepObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -11,7 +15,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+
     }
 
     /**
@@ -19,6 +23,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        ProjectLaborWork::observe(ProjectLaborWorkObserver::class);
+        ProjectLaborWorkStep::observe(ProjectLaborWorkStepObserver::class);
     }
 }

@@ -1,0 +1,307 @@
+{
+  "observers_found": [
+    {
+      "class": "ProjectLaborWorkStepObserver",
+      "listens_to": "ProjectLaborWorkStep",
+      "file": "app/Observers/ProjectLaborWorkStepObserver.php",
+      "events": {
+        "created": {
+          "description": "Fires when a new step is created",
+          "handler": "created(ProjectLaborWorkStep $step)",
+          "actions": [
+            "Retrieves parent labor work via $step->laborWork",
+            "Calls $hoursCalculator->recalculateHours($work) to sync parent's total hours",
+            "Updates parent's hours_source and hours based on all steps",
+            "Recalculates cost if rate_per_hour is set"
+          ]
+        },
+        "updated": {
+          "description": "Fires when a step is updated",
+          "handler": "updated(ProjectLaborWorkStep $step)",
+          "actions": [
+            "Retrieves parent labor work via $step->laborWork",
+            "Calls $hoursCalculator->recalculateHours($work) to sync parent's total hours",
+            "Updates parent's hours based on new step values"
+          ]
+        },
+        "deleted": {
+          "description": "Fires when a step is deleted",
+          "handler": "deleted(ProjectLaborWorkStep $step)",
+          "actions": [
+            "Captures project_labor_work_id before relationship is broken",
+            "Fetches parent work directly from database using the ID",
+            "Calls $hoursCalculator->recalculateHours($work)",
+            "If no more steps exist, switches parent from 'from_steps' mode to 'manual' mode",
+            "Recalculates cost if rate_per_hour is set"
+          ],
+          "critical_note": "Must fetch work AFTER deletion to avoid null reference"
+        }
+      },
+      "registration": "AppServiceProvider->boot() line 27"
+    },
+    {
+      "class": "ProjectLaborWorkObserver",
+      "listens_to": "ProjectLaborWork",
+      "file": "app/Observers/ProjectLaborWorkObserver.php",
+      "events": {
+        "created": {
+          "description": "Fires when a new labor work is created",
+          "handler": "created(ProjectLaborWork $work)",
+          "actions": [
+            "Ensures hours_source field always has a value",
+            "If hours_source is empty, sets it to 'manual'",
+            "If hours_manual is empty, sets it to current hours value",
+            "Saves the work",
+            "If hours_source is explicitly set (not manual), calls initializeHours()"
+          ]
+        },
+        "updating": {
+          "description": "Fires before a labor work is updated",
+          "handler": "updating(ProjectLaborWork $work)",
+          "actions": [
+            "If hours_source is not set, defaults to 'manual'",
+            "If updating 'hours' field in manual mode, syncs hours_manual to match",
+            "Validates mode consistency"
+          ],
+          "note": "This is a modifying event (before save)"
+        },
+        "updated": {
+          "description": "Fires after a labor work is updated",
+          "handler": "updated(ProjectLaborWork $work)",
+          "actions": [
+            "If hours or rate_per_hour fields were changed, recalculates cost",
+            "Calls $hoursCalculator->recalculateCost($work)",
+            "Updates cost_total = hours * rate_per_hour"
+          ]
+        }
+      },
+      "registration": "AppServiceProvider->boot() line 26",
+      "key_methods": {
+        "isManualHours()": "Returns true if hours_source === 'manual'",
+        "isFromSteps()": "Returns true if hours_source === 'from_steps'",
+        "getEffectiveHours()": "Returns hours based on source (from steps sum or manual value)"
+      }
+    }
+  ],
+  "model_events_found": [
+    {
+      "model": "ProjectLaborWorkStep",
+      "event": "created",
+      "handler": "ProjectLaborWorkStepObserver::created()",
+      "file": "app/Observers/ProjectLaborWorkStepObserver.php",
+      "triggered_by": "ProjectLaborWorkStep::create() in controller"
+    },
+    {
+      "model": "ProjectLaborWorkStep",
+      "event": "updated",
+      "handler": "ProjectLaborWorkStepObserver::updated()",
+      "file": "app/Observers/ProjectLaborWorkStepObserver.php",
+      "triggered_by": "ProjectLaborWorkStep->update() in controller"
+    },
+    {
+      "model": "ProjectLaborWorkStep",
+      "event": "deleted",
+      "handler": "ProjectLaborWorkStepObserver::deleted()",
+      "file": "app/Observers/ProjectLaborWorkStepObserver.php",
+      "triggered_by": "ProjectLaborWorkStep->delete() in controller"
+    },
+    {
+      "model": "ProjectLaborWork",
+      "event": "created",
+      "handler": "ProjectLaborWorkObserver::created()",
+      "file": "app/Observers/ProjectLaborWorkObserver.php",
+      "triggered_by": "ProjectLaborWork::create() in ProjectLaborWorkController"
+    },
+    {
+      "model": "ProjectLaborWork",
+      "event": "updating",
+      "handler": "ProjectLaborWorkObserver::updating()",
+      "file": "app/Observers/ProjectLaborWorkObserver.php",
+      "triggered_by": "ProjectLaborWork->update() or save() before persistence"
+    },
+    {
+      "model": "ProjectLaborWork",
+      "event": "updated",
+      "handler": "ProjectLaborWorkObserver::updated()",
+      "file": "app/Observers/ProjectLaborWorkObserver.php",
+      "triggered_by": "ProjectLaborWork->update() or save() after persistence"
+    }
+  ],
+  "services_involved": [
+    {
+      "service": "LaborWorkHoursCalculator",
+      "file": "app/Services/LaborWorkHoursCalculator.php",
+      "key_methods": {
+        "recalculateHours(ProjectLaborWork $work)": {
+          "purpose": "Recalculates total hours based on all steps or manual value",
+          "logic": [
+            "1. If steps exist: hours = SUM(steps.hours), hours_source = 'from_steps'",
+            "2. If no steps: hours_source = 'manual', preserve hours_manual",
+            "3. If had 'from_steps' mode but no more steps: switch to 'manual'",
+            "4. Recalculate cost if rate_per_hour is set"
+          ]
+        },
+        "recalculateCost(ProjectLaborWork $work)": {
+          "purpose": "Recalculates cost based on hours and rate",
+          "formula": "cost_total = getEffectiveHours() * rate_per_hour"
+        },
+        "initializeHours(ProjectLaborWork $work)": {
+          "purpose": "Initializes hours mode when creating new work",
+          "logic": "Sets hours_source = 'manual' and syncs hours_manual"
+        }
+      }
+    }
+  ],
+  "controllers_involved": [
+    {
+      "controller": "ProjectLaborWorkStepController",
+      "file": "app/Http/Controllers/Api/ProjectLaborWorkStepController.php",
+      "actions": {
+        "store": {
+          "line": "58",
+          "operation": "Creates new step via ProjectLaborWorkStep::create()",
+          "triggers": "ProjectLaborWorkStepObserver::created()"
+        },
+        "update": {
+          "line": "101",
+          "operation": "Updates step via $step->update()",
+          "triggers": "ProjectLaborWorkStepObserver::updated()"
+        },
+        "destroy": {
+          "line": "112",
+          "operation": "Deletes step via $step->delete()",
+          "triggers": "ProjectLaborWorkStepObserver::deleted()",
+          "logs": "Logs step deletion with timing"
+        }
+      }
+    },
+    {
+      "controller": "ProjectLaborWorkController",
+      "file": "app/Http/Controllers/Api/ProjectLaborWorkController.php",
+      "actions": {
+        "store": {
+          "line": "65",
+          "operation": "Creates new work via ProjectLaborWork::create()",
+          "triggers": "ProjectLaborWorkObserver::created()",
+          "additional_logic": "Calls LaborWorkRateBinder::bindRate() if position_profile_id is set"
+        }
+      }
+    }
+  ],
+  "data_flow_on_step_creation": {
+    "event_sequence": [
+      "1. POST /api/projects/{id}/labor-works/{workId}/steps (ProjectLaborWorkStepController::store)",
+      "2. Validation of step data (title, basis, hours, sort_order, etc.)",
+      "3. ProjectLaborWorkStep::create($validated) is called",
+      "4. Eloquent fires 'created' event",
+      "5. ProjectLaborWorkStepObserver::created() is triggered",
+      "6. Observer retrieves $step->laborWork (parent work)",
+      "7. Observer calls LaborWorkHoursCalculator::recalculateHours($work)",
+      "8. Calculator sums all steps' hours and updates parent work",
+      "9. Calculator recalculates cost if rate_per_hour exists",
+      "10. Response returned with created step"
+    ],
+    "affected_entities": [
+      "ProjectLaborWorkStep (created)",
+      "ProjectLaborWork (hours, hours_source, cost_total updated)",
+      "Project (indirectly, via work's cost impact)"
+    ]
+  },
+  "data_flow_on_step_deletion": {
+    "event_sequence": [
+      "1. DELETE /api/projects/{id}/labor-works/{workId}/steps/{stepId} (ProjectLaborWorkStepController::destroy)",
+      "2. Authorization check",
+      "3. ProjectLaborWorkStep::delete() is called",
+      "4. Eloquent fires 'deleted' event",
+      "5. ProjectLaborWorkStepObserver::deleted() is triggered",
+      "6. Observer captures project_labor_work_id BEFORE relationship breaks",
+      "7. Observer fetches parent work directly from DB using captured ID",
+      "8. Observer calls LaborWorkHoursCalculator::recalculateHours($work)",
+      "9. Calculator checks if any steps remain",
+      "10. If no steps: switches hours_source from 'from_steps' to 'manual'",
+      "11. If steps exist: sums remaining steps' hours",
+      "12. Calculator recalculates cost",
+      "13. Response returned"
+    ],
+    "affected_entities": [
+      "ProjectLaborWorkStep (deleted)",
+      "ProjectLaborWork (hours, hours_source, cost_total updated)"
+    ]
+  },
+  "potential_issues": [
+    {
+      "issue": "CRITICAL: Observer must access work ID before deletion",
+      "location": "ProjectLaborWorkStepObserver::deleted()",
+      "risk": "If $step->laborWork is accessed AFTER deletion, foreign key cascade may break the relationship, returning null",
+      "current_implementation": "✓ SAFE - Uses $step->project_labor_work_id (stores ID before deletion)",
+      "recommendation": "Code is correct, but ensure no changes break this pattern"
+    },
+    {
+      "issue": "Mode switching on last step deletion",
+      "location": "LaborWorkHoursCalculator::recalculateHours()",
+      "behavior": "When last step is deleted, parent work switches from 'from_steps' to 'manual' mode",
+      "potential_problem": "Users might not expect mode change when deleting last step",
+      "affected_fields": "hours_source changes from 'from_steps' to 'manual', hours_manual gets populated"
+    },
+    {
+      "issue": "Orphaned ProjectLaborWorkStep records",
+      "location": "Database foreign key constraints",
+      "risk": "If project_labor_work_id foreign key has no constraint, steps could be orphaned",
+      "recommendation": "Verify database migration has ON DELETE CASCADE for foreign key"
+    },
+    {
+      "issue": "Duplicate recalculation on step updates",
+      "location": "ProjectLaborWorkStepObserver::updated()",
+      "observation": "Both 'updated' and 'updating' events in ProjectLaborWorkObserver could trigger multiple calculations",
+      "impact": "Performance: recalculateCost() may be called multiple times per update"
+    },
+    {
+      "issue": "Cost recalculation dependency",
+      "location": "LaborWorkHoursCalculator::recalculateCost()",
+      "risk": "Only recalculates if rate_per_hour is set; if rate changes separately, cost may not auto-update",
+      "recommendation": "Verify that ProjectLaborWork rate changes also trigger recalculation"
+    },
+    {
+      "issue": "Hours precision in calculations",
+      "location": "ProjectLaborWorkStep::$casts and LaborWorkHoursCalculator",
+      "observation": "Steps cast hours to 'decimal:2', cost_total to 'decimal:2'",
+      "potential_problem": "Rounding in sum calculations: SUM(hours) may differ from rounded(hours) individually"
+    },
+    {
+      "issue": "Rate binding on work creation",
+      "location": "ProjectLaborWorkController::store()",
+      "behavior": "LaborWorkRateBinder::bindRate() is called only if position_profile_id is set",
+      "consequence": "Works without profiles won't get automatic rate binding, cost_total remains null"
+    },
+    {
+      "issue": "Missing sort_order on step creation",
+      "location": "ProjectLaborWorkStepController::store()",
+      "behavior": "If sort_order not provided, sets to max(sort_order) + 1",
+      "potential_problem": "If steps are reordered via reorder() endpoint, new steps might have duplicate sort_order values"
+    }
+  ],
+  "files_checked": [
+    "app/Models/ProjectLaborWorkStep.php",
+    "app/Models/ProjectLaborWork.php",
+    "app/Models/Project.php",
+    "app/Observers/ProjectLaborWorkStepObserver.php",
+    "app/Observers/ProjectLaborWorkObserver.php",
+    "app/Providers/AppServiceProvider.php",
+    "app/Services/LaborWorkHoursCalculator.php",
+    "app/Http/Controllers/Api/ProjectLaborWorkStepController.php",
+    "app/Http/Controllers/Api/ProjectLaborWorkController.php",
+    "app/Http/Middleware/ (3 middleware files - none relevant to steps)"
+  ],
+  "summary": {
+    "total_observers": 2,
+    "total_model_events": 6,
+    "models_with_observers": 2,
+    "automatic_calculations": 3,
+    "critical_operations": [
+      "Step creation triggers parent hours recalculation",
+      "Step deletion triggers parent mode switching",
+      "Cost recalculation on hours or rate changes",
+      "Automatic rate binding on work creation"
+    ]
+  }
+}

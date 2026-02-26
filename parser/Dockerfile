@@ -1,5 +1,15 @@
 FROM python:3.11-slim
 
+# ==================== ANTI-LOOP NOTICE ====================
+# This container does NOT auto-start parsing.
+# Parser is started ONLY via explicit API request:
+#   POST /api/parsing/sessions
+# 
+# Container provides the parser runtime but does NOT execute
+# parsing on startup. Laravel queue worker dispatches jobs
+# that invoke the parser when needed.
+# ==========================================================
+
 WORKDIR /app
 
 RUN apt-get update && \
@@ -23,4 +33,6 @@ RUN python -m playwright install chromium
 
 COPY . .
 
-CMD ["python", "main.py"]
+# NO CMD that starts parsing - container is invoked by Laravel Job
+# Default CMD does nothing (keeps container ready for exec)
+CMD ["tail", "-f", "/dev/null"]
