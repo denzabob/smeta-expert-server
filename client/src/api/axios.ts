@@ -1,10 +1,14 @@
 import axios from 'axios';
 import type { Router } from 'vue-router'
 
-// Определяем базовый URL в зависимости от окружения
-// Используем VITE_API_URL из .env файлов
-// baseURL должна быть '/' и затем добавляются полные пути типа '/api/...'
-const baseURL = import.meta.env.VITE_API_URL || '/';
+// All repository API calls already use absolute '/api/...' paths.
+// Keep axios rooted at '/' so '/api' is not duplicated when VITE_API_URL='/api'.
+const configuredBaseURL = import.meta.env.VITE_API_URL || '/'
+const normalizedBaseURL =
+  configuredBaseURL === '/api' || configuredBaseURL === '/api/'
+    ? '/'
+    : configuredBaseURL
+const baseURL = normalizedBaseURL;
 
 console.log('[AXIOS] Initializing with baseURL:', baseURL);
 console.log('[AXIOS] Current origin:', window.location.origin);
