@@ -238,6 +238,7 @@
                   @click="openEditFromTable(item)"
                 />
                 <v-list-item
+                  v-if="canToggleLibrary(item)"
                   :prepend-icon="item.in_library ? 'mdi-bookmark-check' : 'mdi-bookmark-plus-outline'"
                   :title="item.in_library ? 'Убрать из библиотеки' : 'В библиотеку'"
                   @click="toggleLibrary(item)"
@@ -361,6 +362,7 @@ import PriceObservationDialog from '@/components/catalog/PriceObservationDialog.
 import PriceHistoryDialog from '@/components/catalog/PriceHistoryDialog.vue'
 import MaterialDetailDialog from '@/components/catalog/MaterialDetailDialog.vue'
 import MaterialEditDialog from '@/components/catalog/MaterialEditDialog.vue'
+import { updateCatalogMaterial } from '@/api/materialCatalog'
 import type { CatalogMaterial, CatalogMode, MaterialType, TrustLevel, MaterialDetail } from '@/api/materialCatalog'
 import { useAuthStore } from '@/stores/auth'
 
@@ -544,10 +546,11 @@ function openAddByUrl() {
 
 async function toggleLibrary(item: CatalogMaterial) {
   try {
-    await store.toggleLibrary(item.id, !item.in_library)
-    showSnack(item.in_library ? 'Добавлено в библиотеку' : 'Убрано из библиотеки')
-  } catch {
-    showSnack('Ошибка', 'error')
+    const willAdd = !item.in_library
+    await store.toggleLibrary(item.id, willAdd)
+    showSnack(willAdd ? 'Материал добавлен в библиотеку' : 'Материал убран из библиотеки')
+  } catch (error: any) {
+    showSnack(error.response?.data?.error || store.error || 'Не удалось обновить библиотеку', 'error')
   }
 }
 
@@ -578,9 +581,19 @@ async function doRefresh(item: CatalogMaterial) {
         currency: 'RUB',
       }
     }
-    showSnack(result.price_updated ? 'Цена обновлена' : 'Данные обновлены')
-  } catch {
-    showSnack('Ошибка обновления', 'error')
+
+    if (result?.success === false) {
+      showSnack(result.message || 'Не удалось обновить данные по ссылке', 'warning')
+      return
+    }
+
+    if (result?.price_updated) {
+      showSnack('Цена обновлена по ссылке')
+    } else {
+      showSnack('Ссылка проверена, но новая цена не найдена', 'warning')
+    }
+  } catch (error: any) {
+    showSnack(error.response?.data?.message || store.error || 'Ошибка обновления', 'error')
   } finally {
     refreshingId.value = null
   }
@@ -588,11 +601,11 @@ async function doRefresh(item: CatalogMaterial) {
 
 async function changeVisibility(item: CatalogMaterial, visibility: string) {
   try {
-    await api.put(`/api/materials/${item.id}`, { visibility })
+    await updateCatalogMaterial(item.id, { visibility })
     await reload()
-    showSnack('Видимость изменена')
-  } catch {
-    showSnack('Ошибка', 'error')
+    showSnack(visibility === 'public' ? 'Материал опубликован' : 'Видимость изменена')
+  } catch (error: any) {
+    showSnack(error.response?.data?.message || 'Не удалось изменить видимость материала', 'error')
   }
 }
 
@@ -608,6 +621,14 @@ async function recalcTrust(item: CatalogMaterial) {
 function isOwner(item: CatalogMaterial): boolean {
   const currentUserId = auth.user?.id
   return !!currentUserId && item.user_id === currentUserId
+}
+
+function canToggleLibrary(item: CatalogMaterial): boolean {
+  if (item.in_library) {
+    return true
+  }
+
+  return item.visibility !== 'private' || isOwner(item)
 }
 
 function onMaterialCreated() {

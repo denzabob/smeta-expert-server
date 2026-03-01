@@ -17,6 +17,7 @@
 /public/hot
 /public/storage
 /storage/app/price-lists/
+/storage/app/private/price-lists/
 /storage/*.key
 /storage/pail
 /vendor
