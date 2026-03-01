@@ -6,6 +6,7 @@
       @update:model-value="handleDrawerUpdate"
       location="right"
       :width="compactLayout ? '100vw' : 1200"
+      :scrim="compactLayout"
       temporary
       elevation="16"
       class="settings-drawer"
@@ -571,8 +572,8 @@ const emit = defineEmits<{
 
 // Get axios instance from parent app
 const axios = inject<AxiosInstance>('axios')
-const { mdAndDown } = useDisplay()
-const compactLayout = computed(() => mdAndDown.value)
+const { smAndDown } = useDisplay()
+const compactLayout = computed(() => smAndDown.value)
 
 // Local state
 const projectData = ref<Project>(JSON.parse(JSON.stringify(props.project)))
@@ -995,7 +996,7 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
-@media (max-width: 960px) {
+@media (max-width: 600px) {
   .settings-layout--mobile {
     flex-direction: column;
   }

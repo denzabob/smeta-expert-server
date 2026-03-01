@@ -205,10 +205,10 @@ const emit = defineEmits<{
   (e: 'logout'): void
 }>()
 
-const { mdAndDown } = useDisplay()
+const { smAndDown } = useDisplay()
 const authStore = useAuthStore()
 const notificationsStore = useNotificationsStore()
-const mobile = computed(() => mdAndDown.value)
+const mobile = computed(() => smAndDown.value)
 
 // Состояние
 const sidebarMode = ref<'wide' | 'rail'>('wide')

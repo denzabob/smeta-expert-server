@@ -41,9 +41,9 @@ import AccountSettingsDialog from './shell/AccountSettingsDialog.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
-const { mdAndDown } = useDisplay()
+const { smAndDown } = useDisplay()
 const theme = useTheme()
-const compactNav = computed(() => mdAndDown.value)
+const compactNav = computed(() => smAndDown.value)
 
 // Drawer state
 const drawerOpen = ref(true)

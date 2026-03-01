@@ -382,6 +382,7 @@
           v-model="positionDrawer"
           location="right"
           :width="compactLayout ? '100vw' : 420"
+          :scrim="compactLayout"
           temporary
           class="position-drawer-fixed"
           :class="{ 'position-drawer-fixed--compact': compactLayout }"
@@ -2641,8 +2642,8 @@ import ProjectSettingsDrawer from '@/components/ProjectSettingsDrawer.vue'
 import ImportPositionsDialog from '@/components/ImportPositionsDialog.vue'
 import RowHoverActions, { type RowAction } from '@/components/RowHoverActions.vue'
 
-const { mdAndDown } = useDisplay()
-const compactLayout = computed(() => mdAndDown.value)
+const { smAndDown } = useDisplay()
+const compactLayout = computed(() => smAndDown.value)
 
 // === Типы ===
 interface Project { 
@@ -7549,7 +7550,7 @@ onMounted(async () => {
   color: rgba(var(--v-theme-on-surface), 0.62);
 }
 
-@media (max-width: 960px) {
+@media (max-width: 600px) {
   .project-toolbar:deep(.v-toolbar__content) {
     height: auto !important;
     min-height: 56px;

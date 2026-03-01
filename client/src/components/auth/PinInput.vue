@@ -11,7 +11,11 @@
         maxlength="1"
         autocomplete="one-time-code"
         class="pin-digit"
-        :class="{ 'pin-digit--error': hasError, 'pin-digit--filled': digits[idx] !== '' }"
+        :class="{
+          'pin-digit--dark': isDarkTheme,
+          'pin-digit--error': hasError,
+          'pin-digit--filled': digits[idx] !== ''
+        }"
         :disabled="disabled"
         @input="onInput(idx)"
         @keydown="onKeydown($event, idx)"
@@ -23,7 +27,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue'
+import { computed, ref, watch, nextTick, onMounted } from 'vue'
+import { useTheme } from 'vuetify'
 
 const props = defineProps<{
   modelValue?: string
@@ -37,8 +42,10 @@ const emit = defineEmits<{
   (e: 'complete', pin: string): void
 }>()
 
+const theme = useTheme()
 const digits = ref<string[]>(['', '', '', ''])
 const inputRefs = ref<(HTMLInputElement | null)[]>([null, null, null, null])
+const isDarkTheme = computed(() => theme.global.current.value.dark)
 
 const setRef = (el: any, idx: number) => {
   inputRefs.value[idx] = el as HTMLInputElement
@@ -183,22 +190,24 @@ defineExpose({ clear, focus })
   letter-spacing: 0;
   border: 2px solid #cfd4dc;
   border-radius: 12px;
-  background: #eef1f4;
+  background-color: #dfe3e8;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
   color: #1f2937;
   caret-color: #42a5f5;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .pin-digit:focus {
   border-color: #42a5f5;
   box-shadow: 0 0 0 3px rgba(66, 165, 245, 0.25);
-  background: #f4f6f8;
+  background-color: #e7ebf0;
 }
 
 .pin-digit--filled {
   border-color: #9aa5b1;
-  background: #e3e8ee;
+  background-color: #cfd6de;
 }
 
 .pin-digit--error {
@@ -216,25 +225,25 @@ defineExpose({ clear, focus })
   cursor: not-allowed;
 }
 
-:global(.dialog-overlay--dark) .pin-digit,
-:global(.v-theme--dark) .pin-digit,
-:global(.v-theme--myThemeDark) .pin-digit {
+.pin-digit--dark {
   border-color: rgba(255, 255, 255, 0.28);
-  background: rgba(148, 163, 184, 0.18);
+  background-color: #565d68 !important;
   color: #e5e7eb;
+  box-shadow: inset 0 0 0 1000px #565d68;
+  -webkit-text-fill-color: #e5e7eb;
 }
 
-:global(.dialog-overlay--dark) .pin-digit--filled,
-:global(.v-theme--dark) .pin-digit--filled,
-:global(.v-theme--myThemeDark) .pin-digit--filled {
+.pin-digit--dark.pin-digit--filled {
   border-color: rgba(255, 255, 255, 0.45);
-  background: rgba(148, 163, 184, 0.26);
+  background-color: #6b7280 !important;
+  box-shadow: inset 0 0 0 1000px #6b7280;
 }
 
-:global(.dialog-overlay--dark) .pin-digit:focus,
-:global(.v-theme--dark) .pin-digit:focus,
-:global(.v-theme--myThemeDark) .pin-digit:focus {
-  background: rgba(148, 163, 184, 0.22);
+.pin-digit--dark:focus {
+  background-color: #616977 !important;
+  box-shadow:
+    inset 0 0 0 1000px #616977,
+    0 0 0 3px rgba(66, 165, 245, 0.25);
 }
 
 @keyframes shake {
