@@ -285,7 +285,7 @@
 
     <hr class="divider">
 
-    <a class="download-link" href="{{ url('/v/' . $publication->public_id . '/pdf') }}">Скачать зафиксированную версию документа (PDF)</a>
+    <a class="download-link" href="{{ $publicVerifyBaseUrl . '/v/' . $publication->public_id . '/pdf' }}">Скачать зафиксированную версию документа (PDF)</a>
 
     @if(!empty($priceSources))
       <hr class="divider">
