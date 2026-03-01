@@ -1,7 +1,7 @@
 <template>
-  <v-container class="pa-0">
+  <v-container class="pa-0 project-editor-page">
     <!-- Toolbar с кнопкой открытия настроек -->
-    <v-toolbar dark class="mb-4">
+    <v-toolbar dark class="mb-4 project-toolbar" :class="{ 'project-toolbar--compact': compactLayout }">
       <v-toolbar-title>
         Проект #{{ project.number }}
         <v-chip
@@ -381,9 +381,10 @@
         <v-navigation-drawer
           v-model="positionDrawer"
           location="right"
-          width="420"
+          :width="compactLayout ? '100vw' : 420"
           temporary
           class="position-drawer-fixed"
+          :class="{ 'position-drawer-fixed--compact': compactLayout }"
           :style="{
             position: 'fixed',
             top: 0,
@@ -2628,6 +2629,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, reactive, nextTick } from 'vue'
+import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/axios'
 import { finishedProductsApi } from '@/api/finishedProducts'
@@ -2638,6 +2640,9 @@ import ProfileRatesSection from '@/components/ProfileRatesSection.vue'
 import ProjectSettingsDrawer from '@/components/ProjectSettingsDrawer.vue'
 import ImportPositionsDialog from '@/components/ImportPositionsDialog.vue'
 import RowHoverActions, { type RowAction } from '@/components/RowHoverActions.vue'
+
+const { mdAndDown } = useDisplay()
+const compactLayout = computed(() => mdAndDown.value)
 
 // === Типы ===
 interface Project { 
@@ -7434,6 +7439,11 @@ onMounted(async () => {
   overflow-y: auto;
 }
 
+.project-editor-page {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 .drawer-quotes-table {
   font-size: 12px;
 }
@@ -7537,5 +7547,40 @@ onMounted(async () => {
   justify-content: center;
   font-size: 11px;
   color: rgba(var(--v-theme-on-surface), 0.62);
+}
+
+@media (max-width: 960px) {
+  .project-toolbar:deep(.v-toolbar__content) {
+    height: auto !important;
+    min-height: 56px;
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .project-toolbar--compact:deep(.v-toolbar-title) {
+    flex: 1 1 100%;
+    min-width: 0;
+    white-space: normal;
+    line-height: 1.25;
+    margin-inline-end: 0;
+  }
+
+  .project-toolbar--compact:deep(.v-spacer) {
+    display: none;
+  }
+
+  .project-toolbar--compact:deep(.v-btn) {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
+    margin: 0 !important;
+  }
+
+  .position-drawer-fixed--compact {
+    width: 100vw !important;
+    max-width: 100vw !important;
+  }
 }
 </style>

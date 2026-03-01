@@ -15,9 +15,9 @@
         />
       </div>
 
-      <v-row class="auth-content" align="center" justify="center">
-        <v-col cols="auto">
-          <v-card width="380">
+      <v-row class="auth-content ma-0" align="center" justify="center">
+        <v-col cols="12" sm="auto" class="auth-col">
+          <v-card class="login-card">
           <v-card-title class="text-h6">{{ cardTitle }}</v-card-title>
 
           <v-card-text class="auth-card-text">
@@ -242,7 +242,7 @@ const navigateAfterLogin = async () => {
 }
 
 .auth-card-text {
-  padding: 10px;
+  padding: 12px;
 }
 
 .login-page {
@@ -250,6 +250,7 @@ const navigateAfterLogin = async () => {
   min-height: 100vh;
   overflow: hidden;
   background-color: #121212;
+  padding: 16px 12px;
 }
 
 .login-prism-bg {
@@ -261,6 +262,17 @@ const navigateAfterLogin = async () => {
 .auth-content {
   position: relative;
   z-index: 1;
+  width: 100%;
+}
+
+.auth-col {
+  display: flex;
+  justify-content: center;
+}
+
+.login-card {
+  width: min(380px, calc(100vw - 24px));
+  max-width: 100%;
 }
 
 .auth-resolving {
@@ -270,5 +282,19 @@ const navigateAfterLogin = async () => {
   align-items: center;
   justify-content: center;
   text-align: center;
+}
+
+@media (max-width: 600px) {
+  .login-page {
+    padding: 12px 8px;
+  }
+
+  .auth-card-text {
+    padding: 8px;
+  }
+
+  .login-card {
+    width: min(100%, calc(100vw - 16px));
+  }
 }
 </style>

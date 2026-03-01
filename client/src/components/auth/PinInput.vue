@@ -183,7 +183,7 @@ defineExpose({ clear, focus })
   letter-spacing: 0;
   border: 2px solid #cfd4dc;
   border-radius: 12px;
-  background: #fff;
+  background: #eef1f4;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
   color: #1f2937;
@@ -193,12 +193,12 @@ defineExpose({ clear, focus })
 .pin-digit:focus {
   border-color: #42a5f5;
   box-shadow: 0 0 0 3px rgba(66, 165, 245, 0.25);
-  background: #fff;
+  background: #f4f6f8;
 }
 
 .pin-digit--filled {
   border-color: #9aa5b1;
-  background: #fff;
+  background: #e3e8ee;
 }
 
 .pin-digit--error {
@@ -216,15 +216,25 @@ defineExpose({ clear, focus })
   cursor: not-allowed;
 }
 
-:global(.dialog-overlay--dark) .pin-digit {
+:global(.dialog-overlay--dark) .pin-digit,
+:global(.v-theme--dark) .pin-digit,
+:global(.v-theme--myThemeDark) .pin-digit {
   border-color: rgba(255, 255, 255, 0.28);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(148, 163, 184, 0.18);
   color: #e5e7eb;
 }
 
-:global(.dialog-overlay--dark) .pin-digit--filled {
+:global(.dialog-overlay--dark) .pin-digit--filled,
+:global(.v-theme--dark) .pin-digit--filled,
+:global(.v-theme--myThemeDark) .pin-digit--filled {
   border-color: rgba(255, 255, 255, 0.45);
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(148, 163, 184, 0.26);
+}
+
+:global(.dialog-overlay--dark) .pin-digit:focus,
+:global(.v-theme--dark) .pin-digit:focus,
+:global(.v-theme--myThemeDark) .pin-digit:focus {
+  background: rgba(148, 163, 184, 0.22);
 }
 
 @keyframes shake {
@@ -233,5 +243,17 @@ defineExpose({ clear, focus })
   40% { transform: translateX(4px); }
   60% { transform: translateX(-3px); }
   80% { transform: translateX(3px); }
+}
+
+@media (max-width: 600px) {
+  .pin-fields {
+    gap: 8px;
+  }
+
+  .pin-digit {
+    width: min(56px, calc((100vw - 88px) / 4));
+    height: 56px;
+    font-size: 24px;
+  }
 }
 </style>

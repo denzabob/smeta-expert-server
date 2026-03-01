@@ -17,10 +17,10 @@ a {
   text-decoration: none;
 }
 
-/* Force Vuetify navigation drawer to be fixed */
-.v-navigation-drawer,
+/* Keep desktop drawers fixed, but do not override temporary mobile/tablet drawers. */
+.v-navigation-drawer:not(.v-navigation-drawer--temporary),
 .v-navigation-drawer--permanent,
-.v-navigation-drawer--left {
+.v-navigation-drawer--left:not(.v-navigation-drawer--temporary) {
   position: fixed !important;
   top: 0 !important;
   height: 100vh !important;
@@ -28,13 +28,7 @@ a {
   bottom: auto !important;
 }
 
-/* Ensure v-main doesn't affect drawer */
-.v-layout {
-  display: flex !important;
-  min-height: 100vh !important;
-}
-
-.v-layout > .v-navigation-drawer {
+.v-layout > .v-navigation-drawer:not(.v-navigation-drawer--temporary) {
   position: fixed !important;
   height: 100vh !important;
 }

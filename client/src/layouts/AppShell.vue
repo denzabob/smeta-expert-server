@@ -1,7 +1,7 @@
 <template>
   <v-app :class="appThemeClass">
     <!-- Mobile Header (только на мобильных) -->
-    <div v-if="mobile && !drawerOpen" class="mobile-header">
+    <div v-if="compactNav && !drawerOpen" class="mobile-header">
       <button class="mobile-menu-btn" @click="drawerOpen = true">
         <v-icon icon="mdi-menu" size="24" />
       </button>
@@ -16,7 +16,7 @@
     />
 
     <!-- Main content area -->
-    <v-main class="app-main" :class="{ 'app-main--mobile-header': mobile }">
+    <v-main class="app-main" :class="{ 'app-main--mobile-header': compactNav }">
       <!-- Page content -->
       <div class="page-content">
         <router-view />
@@ -41,8 +41,9 @@ import AccountSettingsDialog from './shell/AccountSettingsDialog.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
-const { mobile } = useDisplay()
+const { mdAndDown } = useDisplay()
 const theme = useTheme()
+const compactNav = computed(() => mdAndDown.value)
 
 // Drawer state
 const drawerOpen = ref(true)
@@ -93,8 +94,8 @@ async function handleLogout() {
 }
 
 // Responsive: на мобильных drawer закрыт по умолчанию
-watch(mobile, (isMobile) => {
-  drawerOpen.value = !isMobile
+watch(compactNav, (isCompact) => {
+  drawerOpen.value = !isCompact
 }, { immediate: true })
 
 onMounted(() => {

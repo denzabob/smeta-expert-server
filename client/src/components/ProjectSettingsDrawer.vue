@@ -5,11 +5,14 @@
       :model-value="modelValue"
       @update:model-value="handleDrawerUpdate"
       location="right"
-      width="1200"
+      :width="compactLayout ? '100vw' : 1200"
       temporary
       elevation="16"
       class="settings-drawer"
-      style="max-width: 95vw"
+      :style="{
+        maxWidth: compactLayout ? '100vw' : '95vw',
+        '--settings-drawer-content-width': compactLayout ? '100vw' : 'min(1200px, 95vw)'
+      }"
     >
       <v-card class="h-100 d-flex flex-column rounded-0">
         <!-- Header -->
@@ -48,7 +51,7 @@
         </v-card-title>
 
         <!-- Main content: sidebar + content layout -->
-        <div class="d-flex flex-grow-1 overflow-hidden">
+        <div class="d-flex flex-grow-1 overflow-hidden settings-layout" :class="{ 'settings-layout--mobile': compactLayout }">
           <!-- Left sidebar with navigation -->
           <div class="settings-sidebar">
             <v-list
@@ -495,7 +498,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, inject } from 'vue'
+import { ref, watch, computed, inject } from 'vue'
+import { useDisplay } from 'vuetify'
 import RichTextEditor from '@/components/notifications/RichTextEditor.vue'
 
 import type { AxiosInstance } from 'axios'
@@ -567,6 +571,8 @@ const emit = defineEmits<{
 
 // Get axios instance from parent app
 const axios = inject<AxiosInstance>('axios')
+const { mdAndDown } = useDisplay()
+const compactLayout = computed(() => mdAndDown.value)
 
 // Local state
 const projectData = ref<Project>(JSON.parse(JSON.stringify(props.project)))
@@ -921,8 +927,8 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
 <style scoped>
 /* Settings Drawer Styles */
 :deep(.settings-drawer .v-navigation-drawer__content) {
-  width: 80vw !important;
-  max-width: 1200px;
+  width: var(--settings-drawer-content-width, min(1200px, 95vw)) !important;
+  max-width: 100vw;
 }
 
 /* Sidebar + Content Layout */
@@ -987,6 +993,42 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
 
 .content-card {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+}
+
+@media (max-width: 960px) {
+  .settings-layout--mobile {
+    flex-direction: column;
+  }
+
+  .settings-layout--mobile .settings-sidebar {
+    width: 100%;
+    max-width: 100%;
+    max-height: 84px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .settings-layout--mobile :deep(.settings-sidebar .v-list) {
+    display: flex;
+    flex-wrap: nowrap;
+    min-width: max-content;
+  }
+
+  .settings-layout--mobile :deep(.settings-sidebar .v-list-item) {
+    min-width: max-content;
+    border-bottom: 3px solid transparent;
+  }
+
+  .settings-layout--mobile :deep(.settings-sidebar .v-list-item--active) {
+    border-right: 0;
+    border-bottom-color: rgb(var(--v-theme-primary));
+  }
+
+  .settings-content-scroll {
+    padding: 16px;
+  }
 }
 </style>
 
