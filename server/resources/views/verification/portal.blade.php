@@ -228,6 +228,9 @@
 </head>
 <body>
 <div class="page">
+    @php
+        $publicVerifyBaseUrl = rtrim((string) config('app.public_verify_base_url'), '/');
+    @endphp
 
     <div class="header">
         <h1>Проверка неизменности документа</h1>
@@ -312,7 +315,7 @@
                     <a href="{{ $src['source_url'] }}" style="color: #1d1d1f;">{{ \Illuminate\Support\Str::limit($src['source_url'], 40) }}</a>
                   @elseif(!empty($src['original_filename']))
                     @if(!empty($src['price_list_version_id']) && ($src['source_type'] ?? '') === 'file' && !empty($documentToken))
-                      <a href="{{ 'https://prismcore.ru/public/price-file/' . $src['price_list_version_id'] . '/' . $documentToken }}" style="color: #1d1d1f;">{{ $src['original_filename'] }}</a>
+                      <a href="{{ $publicVerifyBaseUrl . '/public/price-file/' . $src['price_list_version_id'] . '/' . $documentToken }}" style="color: #1d1d1f;">{{ $src['original_filename'] }}</a>
                     @else
                       {{ $src['original_filename'] }}
                     @endif
@@ -495,7 +498,7 @@
                       <a href="{{ $src['source_url'] }}" style="color: #1d1d1f;">{{ \Illuminate\Support\Str::limit($src['source_url'], 40) }}</a>
                     @elseif(!empty($src['original_filename']))
                       @if(!empty($src['price_list_version_id']) && ($src['source_type'] ?? '') === 'file' && !empty($documentToken))
-                        <a href="{{ 'https://prismcore.ru/public/price-file/' . $src['price_list_version_id'] . '/' . $documentToken }}" style="color: #1d1d1f;">{{ $src['original_filename'] }}</a>
+                        <a href="{{ $publicVerifyBaseUrl . '/public/price-file/' . $src['price_list_version_id'] . '/' . $documentToken }}" style="color: #1d1d1f;">{{ $src['original_filename'] }}</a>
                       @else
                         {{ $src['original_filename'] }}
                       @endif

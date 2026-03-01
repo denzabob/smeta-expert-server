@@ -36,7 +36,7 @@ class SmetaPdfController extends Controller
                 $q->where('project_id', $project->id)->where('status', 'published');
             })->where('is_active', true)->orderByDesc('created_at')->first();
 
-            $publicUrl = $publication ? "https://prismcore.ru/v/{$publication->public_id}" : null;
+            $publicUrl = $publication ? $this->makePublicVerificationUrl($publication->public_id) : null;
             $qrSvg = $publicUrl ? $this->makeQrSvg($publicUrl) : null;
 
             $pdf = Pdf::loadView('reports.smeta', [
@@ -103,5 +103,10 @@ class SmetaPdfController extends Controller
         }
 
         return 'data:image/svg+xml;base64,' . base64_encode($svg);
+    }
+
+    private function makePublicVerificationUrl(string $publicId): string
+    {
+        return rtrim((string) config('app.public_verify_base_url'), '/') . "/v/{$publicId}";
     }
 }

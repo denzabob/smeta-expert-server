@@ -186,7 +186,7 @@ class PublicVerificationController extends Controller
         $snapshot = $this->decodeSnapshot($revision->getRawOriginal('snapshot_json'));
 
         // Generate QR code with public verification URL
-        $qrUrl = "https://prismcore.ru/v/{$publicId}";
+        $qrUrl = $this->makePublicVerificationUrl($publicId);
         $qrSvg = $this->generateQrSvg($qrUrl);
 
         $pdf = Pdf::loadView('reports.smeta', [
@@ -252,5 +252,10 @@ class PublicVerificationController extends Controller
 
         $qrcode = new QRCode($options);
         return $qrcode->render($data);
+    }
+
+    private function makePublicVerificationUrl(string $publicId): string
+    {
+        return rtrim((string) config('app.public_verify_base_url'), '/') . "/v/{$publicId}";
     }
 }

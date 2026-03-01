@@ -503,7 +503,8 @@ a { color: inherit; text-decoration: underline; }
   <div class="container">
   @php
     $verificationCode = !empty($documentToken) ? (string)$documentToken : null;
-    $verificationUrl = $verificationCode ? ('https://prismcore.ru/v/' . $verificationCode) : null;
+    $publicVerifyBaseUrl = rtrim((string) config('app.public_verify_base_url'), '/');
+    $verificationUrl = $verificationCode ? ($publicVerifyBaseUrl . '/v/' . $verificationCode) : null;
   @endphp
 
   <div class="topbar-brand">
@@ -1058,11 +1059,11 @@ a { color: inherit; text-decoration: underline; }
                     @if(!empty($q['source_url']))
                       <a href="{{ $q['source_url'] }}">{{ \Illuminate\Support\Str::limit($q['source_url'], 40) }}</a>
                     @elseif(!empty($q['original_filename']))
-                      @if(!empty($q['price_list_version_id']) && ($q['source_type'] ?? '') === 'file' && !empty($documentToken))
-                        <a href="{{ 'https://prismcore.ru/public/price-file/' . $q['price_list_version_id'] . '/' . $documentToken }}">{{ $q['original_filename'] }}</a>
-                      @else
+                    @if(!empty($q['price_list_version_id']) && ($q['source_type'] ?? '') === 'file' && !empty($documentToken))
+                        <a href="{{ $publicVerifyBaseUrl . '/public/price-file/' . $q['price_list_version_id'] . '/' . $documentToken }}">{{ $q['original_filename'] }}</a>
+                    @else
                         {{ $q['original_filename'] }}
-                      @endif
+                    @endif
                     @else
                       —
                     @endif
@@ -1691,7 +1692,7 @@ a { color: inherit; text-decoration: underline; }
                     <a href="{{ $q['source_url'] }}">{{ \Illuminate\Support\Str::limit($q['source_url'], 40) }}</a>
                   @elseif(!empty($q['original_filename']))
                     @if(!empty($q['price_list_version_id']) && ($q['source_type'] ?? '') === 'file' && !empty($documentToken))
-                      <a href="{{ 'https://prismcore.ru/public/price-file/' . $q['price_list_version_id'] . '/' . $documentToken }}">{{ $q['original_filename'] }}</a>
+                      <a href="{{ $publicVerifyBaseUrl . '/public/price-file/' . $q['price_list_version_id'] . '/' . $documentToken }}">{{ $q['original_filename'] }}</a>
                     @else
                       {{ $q['original_filename'] }}
                     @endif

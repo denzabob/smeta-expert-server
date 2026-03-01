@@ -54,6 +54,8 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'public_verify_base_url' => rtrim(env('PUBLIC_VERIFY_BASE_URL', 'https://verify.prismcore.ru'), '/'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

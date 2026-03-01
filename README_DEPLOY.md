@@ -71,3 +71,5 @@ If a deploy step dirties `git status` on VPS, that step is wrong and must be mov
 - API: `/api/*`
 - Sanctum: `/sanctum/*`
 - Temporary compatibility shim: `/api/sanctum/* -> /sanctum/*` on host Nginx until all clients are fixed
+- Canonical public verification host: `https://verify.prismcore.ru`
+- Temporary legacy compatibility on `prismcore.ru`: proxy `/v/*` to the backend instead of the SPA

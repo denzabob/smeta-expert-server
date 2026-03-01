@@ -170,7 +170,7 @@ class ProjectRevisionController extends Controller
                 'revision' => $revision->fresh(),
                 'publication' => [
                     'public_id' => $publication->public_id,
-                    'public_url' => url("/v/{$publication->public_id}"),
+                    'public_url' => $this->makePublicVerificationUrl($publication->public_id),
                     'access_level' => $publication->access_level,
                     'is_active' => $publication->is_active,
                 ],
@@ -415,7 +415,7 @@ class ProjectRevisionController extends Controller
             $publication->save();
         }
 
-        return "https://prismcore.ru/v/{$publication->public_id}";
+        return $this->makePublicVerificationUrl($publication->public_id);
     }
 
     private function getDocumentTokenForRevision(ProjectRevision $revision): ?string
@@ -451,5 +451,10 @@ class ProjectRevisionController extends Controller
         }
 
         return 'data:image/svg+xml;base64,' . base64_encode($svg);
+    }
+
+    private function makePublicVerificationUrl(string $publicId): string
+    {
+        return rtrim((string) config('app.public_verify_base_url'), '/') . "/v/{$publicId}";
     }
 }
