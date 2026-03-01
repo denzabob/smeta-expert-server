@@ -70,7 +70,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import api from '@/api/axios'
+import api, { ensureCsrfCookie } from '@/api/axios'
 import { useAuthStore } from '@/stores/auth'
 
 const emit = defineEmits<{ (e: 'forgot'): void; (e: 'register'): void; (e: 'login-success', data: any): void }>()
@@ -110,7 +110,7 @@ const submit = async () => {
   errorMessage.value = ''
 
   try {
-    await api.get('/sanctum/csrf-cookie')
+    await ensureCsrfCookie()
 
     const response = await api.post('/api/login', {
       email: form.value.email,

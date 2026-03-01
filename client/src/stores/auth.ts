@@ -1,7 +1,7 @@
 // src/stores/auth.ts
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import api from '@/api/axios'  // твой Axios с withCredentials: true
+import api, { ensureCsrfCookie } from '@/api/axios'  // твой Axios с withCredentials: true
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<any>(null)
@@ -20,7 +20,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       // Убедимся, что CSRF токен инициализирован (может помочь при повторных проверках)
       try {
-        await api.get('/sanctum/csrf-cookie', { timeout: 2000 })
+        await ensureCsrfCookie(2000)
         console.log('[AUTH] CSRF token refreshed');
       } catch (e) {
         // Это не критично, может быть offline или уже есть токен

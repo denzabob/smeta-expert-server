@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+COMPOSE_FILES="-f docker-compose.yml -f docker-compose.prod.yml"
+
+git pull --ff-only
+
+docker compose $COMPOSE_FILES up -d --build
+
+docker compose $COMPOSE_FILES exec -T app php artisan migrate --force
+docker compose $COMPOSE_FILES exec -T app php artisan optimize:clear
+docker compose $COMPOSE_FILES exec -T app php artisan config:cache
+docker compose $COMPOSE_FILES exec -T app php artisan route:cache
+docker compose $COMPOSE_FILES exec -T app php artisan view:cache
+
+# Basic post-deploy check: the backend container must answer locally.
+docker compose $COMPOSE_FILES exec -T web sh -lc "wget -q -O /dev/null http://127.0.0.1/ && exit 0"

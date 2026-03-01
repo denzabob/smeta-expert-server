@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Simple build script to compile the Vue frontend
- * Run with: node scripts/build.js
+ * Local-only helper to compile the Vue frontend during development.
+ * This must not be used as a production deploy step on VPS.
  */
 
 const { spawn } = require('child_process');
@@ -10,7 +10,7 @@ const path = require('path');
 
 const clientDir = path.join(__dirname, '..', 'client');
 
-console.log('Building frontend...');
+console.log('Building frontend (local workstation only)...');
 console.log(`Working directory: ${clientDir}\n`);
 
 const build = spawn('npm', ['run', 'build-only'], {
@@ -22,9 +22,8 @@ const build = spawn('npm', ['run', 'build-only'], {
 build.on('close', (code) => {
   if (code === 0) {
     console.log('\n✓ Frontend built successfully!');
-    console.log('\nNext steps:');
-    console.log('1. Copy dist folder to nginx container:');
-    console.log('   docker cp client/dist/. smeta_web:/usr/share/nginx/html/');
+    console.log('\nDo not copy build artifacts into the VPS checkout.');
+    console.log('Deploy flow is: local changes -> git push -> VPS git pull --ff-only -> docker compose up -d --build.');
     process.exit(0);
   } else {
     console.error(`\n✗ Build failed with exit code ${code}`);

@@ -20,9 +20,22 @@ const api = axios.create({
   }
 });
 
+// Sanctum CSRF must always hit /sanctum/* directly and must not inherit /api baseURL.
+const csrfClient = axios.create({
+  withCredentials: true,
+  timeout: 5000,
+  headers: {
+    'Accept': 'application/json',
+  }
+});
+
+export function ensureCsrfCookie(timeout = 5000) {
+  return csrfClient.get('/sanctum/csrf-cookie', { timeout });
+}
+
 // Инициализируем CSRF токен при запуске
 console.log('[AXIOS] Initializing CSRF token...');
-api.get('/sanctum/csrf-cookie')
+ensureCsrfCookie()
   .then(() => {
     console.log('[AXIOS] ✅ CSRF token initialized successfully');
   })
@@ -98,7 +111,7 @@ export function setupAxiosInterceptors(options: AxiosAuthInterceptorOptions) {
       if (status === 419 && !config._csrfRetry) {
         config._csrfRetry = true
         try {
-          await api.get('/sanctum/csrf-cookie')
+          await ensureCsrfCookie()
           return api.request(config)
         } catch (csrfError) {
           try {

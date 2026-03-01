@@ -2,5 +2,17 @@ services:
   web:
     ports:
       - "127.0.0.1:8010:80"
+  spa:
+    build:
+      context: .
+      dockerfile: docker/spa/Dockerfile
+    container_name: smeta_spa
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8011:80"
+    depends_on:
+      - web
+    networks:
+      - smeta-network
   phpmyadmin:
     ports: []

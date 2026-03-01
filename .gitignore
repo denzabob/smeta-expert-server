@@ -1,4 +1,5 @@
 node_modules/
+client/dist/
 chrome-extension/
 vendor/
 .env

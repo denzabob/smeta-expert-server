@@ -1,4 +1,4 @@
-import api from '@/api/axios'
+import api, { ensureCsrfCookie } from '@/api/axios'
 
 export interface PinStatus {
   pin_enabled: boolean
@@ -30,7 +30,7 @@ export const pinApi = {
    * Вход по PIN (публичный, требует cookie tdid/tds)
    */
   async loginByPin(pin: string) {
-    await api.get('/sanctum/csrf-cookie')
+    await ensureCsrfCookie()
     const { data } = await api.post('/api/auth/pin/login', { pin })
     return data
   },
