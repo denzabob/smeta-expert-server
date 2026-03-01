@@ -2628,10 +2628,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, reactive, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/axios'
 import { finishedProductsApi } from '@/api/finishedProducts'
 import laborWorksApi, { type LaborWork } from '@/api/laborWorks'
+import { consumePrefetchedProject, setProjectsFlashMessage } from '@/router/projectAccess'
 import IosToggle from '@/components/IosToggle.vue'
 import ProfileRatesSection from '@/components/ProfileRatesSection.vue'
 import ProjectSettingsDrawer from '@/components/ProjectSettingsDrawer.vue'
@@ -2740,8 +2741,16 @@ interface DetailType { id: number; name: string; edge_processing: string }
 interface Material { id: number; name: string; type: 'plate' | 'edge' | 'facade'; origin: 'parser' | 'user'; price_per_unit?: number; length_mm?: number; width_mm?: number; thickness_mm?: number; unit?: string; updated_at?: string; metadata?: any }
 
 // === Состояния ===
+const router = useRouter()
 const route = useRoute()
 const projectId = route.params.id as string
+
+const isMissingProjectError = (error: any): boolean => error?.response?.status === 404
+
+const redirectToProjectsWithMissingMessage = () => {
+  setProjectsFlashMessage('Проект не существует')
+  void router.replace({ name: 'projects' })
+}
 
 const project = ref<Project>({
   id: 0,
@@ -4165,7 +4174,7 @@ const loadReferences = async () => {
   }
 }
 
-const fetchData = async () => {
+const fetchData = async (): Promise<boolean> => {
   try {
     suppressAutoSave.value = true
     isProjectLoaded.value = false
@@ -4173,7 +4182,8 @@ const fetchData = async () => {
     loadingStates.value.fittings = true
     loadingStates.value.expenses = true
     
-    project.value = (await api.get(`/api/projects/${projectId}`)).data
+    const prefetchedProject = consumePrefetchedProject(projectId)
+    project.value = prefetchedProject || (await api.get(`/api/projects/${projectId}`)).data
     const pr = (project.value as any).profileRates
     console.log('✅ Project loaded:', {
       id: project.value.id,
@@ -4281,9 +4291,16 @@ const fetchData = async () => {
       count: Array.isArray(finalPr) ? finalPr.length : 0,
       rates: finalPr ? (Array.isArray(finalPr) ? finalPr.map((r: any) => ({ id: r.id, is_locked: r.is_locked, method: r.calculation_method })) : []) : []
     })
+    return true
   } catch (error: any) {
     console.error('Ошибка загрузки данных проекта:', error)
+    if (isMissingProjectError(error)) {
+      redirectToProjectsWithMissingMessage()
+      return false
+    }
+
     showNotification(`Не удалось загрузить проект: ${error.response?.data?.message || error.message}`, 'error')
+    return false
   } finally {
     loadingStates.value.positions = false
     loadingStates.value.fittings = false
@@ -5365,6 +5382,9 @@ const fetchLatestRevision = async () => {
     }
   } catch (error: any) {
     console.error('❌ Failed to fetch latest revision:', error)
+    if (isMissingProjectError(error)) {
+      redirectToProjectsWithMissingMessage()
+    }
   }
 }
 
@@ -5386,6 +5406,11 @@ const fetchRevisions = async (page = revisionsPagination.page) => {
     }
   } catch (error: any) {
     console.error('❌ Failed to fetch revisions:', error)
+    if (isMissingProjectError(error)) {
+      redirectToProjectsWithMissingMessage()
+      return
+    }
+
     showNotification(`Ошибка загрузки ревизий: ${error.response?.data?.message || error.message}`, 'error')
   } finally {
     revisionsLoading.value = false
@@ -6885,7 +6910,11 @@ const openDetailTypesInNewTab = () => {
 
 onMounted(async () => {
   await loadReferences()
-  await fetchData()
+  const projectLoaded = await fetchData()
+  if (!projectLoaded) {
+    return
+  }
+
   await fetchLatestRevision()
   await fetchRevisions(1)
 })

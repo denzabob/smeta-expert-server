@@ -1,6 +1,8 @@
 // src/router/index.ts
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import api from '@/api/axios'
+import { setProjectsFlashMessage, storePrefetchedProject } from './projectAccess'
 
 import AppShell from '@/layouts/AppShell.vue'
 import ParserLayout from '@/layouts/ParserLayout.vue'
@@ -202,6 +204,26 @@ router.beforeEach(async (to, from, next) => {
 
     if (!isAdminUser()) {
       return next({ name: 'projects' })
+    }
+  }
+
+  if (to.name === 'ProjectEditorView') {
+    const rawProjectId = String(to.params.id ?? '').trim()
+    const projectId = Number(rawProjectId)
+
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      setProjectsFlashMessage('Проект не существует')
+      return next({ name: 'projects', replace: true })
+    }
+
+    try {
+      const { data } = await api.get(`/api/projects/${projectId}`)
+      storePrefetchedProject(projectId, data)
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        setProjectsFlashMessage('Проект не существует')
+        return next({ name: 'projects', replace: true })
+      }
     }
   }
 

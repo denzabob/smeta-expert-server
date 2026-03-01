@@ -46,6 +46,10 @@
       </v-data-table>
     </v-card>
 
+    <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000" location="bottom right">
+      {{ snackbar.message }}
+    </v-snackbar>
+
     <v-dialog v-model="deleteConfirmDialog" max-width="520">
       <v-card>
         <v-card-title>Подтверждение архивирования</v-card-title>
@@ -81,9 +85,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/api/axios'
+import { consumeProjectsFlashMessage } from '@/router/projectAccess'
 
 const router = useRouter()
 
@@ -95,6 +100,19 @@ const deleteConfirmDialog = ref(false)
 const deleteConfirmText = ref('')
 const deleteTarget = ref<any | null>(null)
 const DELETE_CONFIRM_PHRASE = 'УДАЛИТЬ'
+const snackbar = ref({
+  show: false,
+  message: '',
+  color: 'warning'
+})
+
+const showNotification = (message: string, color = 'warning') => {
+  snackbar.value = {
+    show: true,
+    message,
+    color
+  }
+}
 
 const headers = [
   { title: '№ дела', key: 'number' },
@@ -150,6 +168,13 @@ const fetchProjects = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const showQueuedNotification = () => {
+  const flash = consumeProjectsFlashMessage()
+  if (!flash) return
+
+  showNotification(flash.message, flash.color)
 }
 
 // Создание проекта с настройками по умолчанию → сразу в редактор
@@ -220,7 +245,10 @@ const confirmDeleteWithRevisions = async () => {
   closeDeleteConfirmDialog()
 }
 
-fetchProjects()
+onMounted(async () => {
+  await fetchProjects()
+  showQueuedNotification()
+})
 </script>
 
 <style scoped>

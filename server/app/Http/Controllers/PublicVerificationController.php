@@ -33,14 +33,15 @@ class PublicVerificationController extends Controller
         $revision = $publication->revision;
         $project = $revision->project;
         $snapshot = $this->decodeSnapshot($revision->getRawOriginal('snapshot_json'));
+        $snapshotProject = is_array($snapshot['project'] ?? null) ? $snapshot['project'] : [];
 
         $totals = $snapshot['totals'] ?? [];
 
         $document = [
             'title'           => 'Расчёт',
-            'project_number'  => $project->number ?? '—',
-            'address'         => $project->address ?? '—',
-            'expert_name'     => $project->expert_name ?? '—',
+            'project_number'  => $snapshotProject['number'] ?? $project->number ?? '—',
+            'address'         => $snapshotProject['address'] ?? $project->address ?? '—',
+            'expert_name'     => $snapshotProject['expert_name'] ?? $project->expert_name ?? '—',
             'created_at'      => $revision->created_at?->format('d.m.Y'),
             'locked_at'       => $revision->locked_at?->format('d.m.Y H:i:s') ?? $revision->created_at?->format('d.m.Y H:i:s'),
             'locked_at_tz'    => $revision->locked_at?->format('d.m.Y H:i:s (P)') ?? $revision->created_at?->format('d.m.Y H:i:s (P)'),

@@ -1,9 +1,20 @@
- @"
-  node_modules/
-  chrome-extension/
-  vendor/
-  .env
-  server/.env
-  storage/logs/
-  server/storage/logs/
-  "@ | Add-Content .gitignore
+node_modules/
+chrome-extension/
+vendor/
+.env
+server/.env
+storage/logs/
+server/storage/logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Database dumps / local databases
+*.sql
+*.sqlite*
