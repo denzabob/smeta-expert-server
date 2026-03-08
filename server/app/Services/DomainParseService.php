@@ -134,24 +134,11 @@ class DomainParseService
     }
 
     /**
-     * Resolve Node helper script path for both deployment layouts:
-     * 1) repo-root Laravel (base_path('server/scripts/...'))
-     * 2) server-subdir Laravel (base_path('scripts/...'))
+     * Resolve Node helper script path from repository root.
      */
     private function resolveNodeScriptPath(string $scriptName): string
     {
-        $candidates = [
-            base_path('server/scripts/' . $scriptName),
-            base_path('scripts/' . $scriptName),
-        ];
-
-        foreach ($candidates as $candidate) {
-            if (is_file($candidate)) {
-                return $candidate;
-            }
-        }
-
-        return $candidates[0];
+        return base_path('server/scripts/' . $scriptName);
     }
 
     /**
