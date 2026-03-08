@@ -29,43 +29,30 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo_mysql mbstring zip gd
 
-# Установка Python зависимостей для парсера
-RUN pip3 install --no-cache-dir --break-system-packages \
-    playwright \
-    requests \
-    aiohttp \
-    beautifulsoup4 \
-    lxml \
-    pillow
-
-# Установка браузеров Playwright и их системных зависимостей
-RUN playwright install chromium && \
-    playwright install-deps chromium
-
-# Установка Composer
+# Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Копируем конфигурационные файлы
+# Конфиги
 COPY docker/app/php-fpm.conf /usr/local/etc/php-fpm.d/zzz-custom.conf
 COPY docker/app/php.ini /usr/local/etc/php/conf.d/custom.ini
 
-# Копируем приложение
+# Приложение
 WORKDIR /var/www/html
 COPY server/ .
 
-# Устанавливаем зависимости
+# PHP зависимости
 RUN composer install --no-dev --optimize-autoloader
 
-# Устанавливаем браузер Playwright для Node.js (rev 1200, требуется scrape-page-pw.js)
-RUN node node_modules/playwright/cli.js install chromium
+# Playwright (Node)
+RUN npm install playwright
+RUN npx playwright install chromium
 
-# Генерируем ключ (если ещё не задан)
+# Laravel ключ
 RUN php artisan key:generate --ansi
 
 # Права
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html/storage \
-    && chmod -R 755 /var/www/html/bootstrap/cache
+    && chmod -R 755 storage bootstrap/cache
 
 EXPOSE 9000
 CMD ["php-fpm"]
