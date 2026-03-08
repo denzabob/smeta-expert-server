@@ -186,99 +186,9 @@
     width: '#D946EF',
   };
 
-  /**
-   * Sheet material name patterns — used to auto-detect unit as м²
-   * and to parse dimensions from the name.
-   */
-  const SHEET_MATERIAL_PATTERNS = /\b(ЛДСП|МДФ|ХДФ|ОСБ|ЛМДФ|OSB|ДВПО|ДСП|ДВП|ЛХДФ|ЛОСБ|HPL|CPL|ФСФ|ФК)\b/i;
-
-  /**
-   * Detect material type from name and URL.
-   * Returns: 'edge' | 'plate' | 'hardware'
-   */
-  function detectMaterialType(name, url) {
-    // Edge: name contains "Кромка" or URL contains "kromka"
-    if (name && /кромка/i.test(name)) return 'edge';
-    if (url && /kromka/i.test(url)) return 'edge';
-    // Plate: sheet material keywords
-    if (name && SHEET_MATERIAL_PATTERNS.test(name)) return 'plate';
-    // Default: hardware
-    return 'hardware';
-  }
-
-  /**
-   * Parse edge banding dimensions from name.
-   * Edge format: "19х0,4" or "19x0.4" (width_mm × thickness_mm).
-   * By DB convention: edge width → length field, edge thickness → width field.
-   *
-   * @returns {{ length?: number, width?: number }}
-   */
-  function parseEdgeDimensions(name) {
-    if (!name) return {};
-    // Pattern: WxT where W is 10-100 (edge width in mm), T is 0.1-10 (edge thickness)
-    const m = name.match(/(\d{1,3})\s*[xхXХ×*]\s*(\d{1,2}(?:[.,]\d+)?)/);
-    if (m) {
-      const w = parseInt(m[1]);
-      const t = parseFloat(m[2].replace(',', '.'));
-      if (w >= 10 && w <= 100 && t > 0 && t <= 10) {
-        return { length: w, width: t }; // edge width → length, edge thickness → width
-      }
-    }
-    return {};
-  }
-
-  /**
-   * Parse dimensions (length × width, thickness) from a material name.
-   * Examples:
-   *   "ЛДСП Кремовый 100 ГМ 2750*1830 16 мм КР" → { length: 2750, width: 1830, thickness: 16 }
-   *   "МДФ 2800х2070х16"  → { length: 2800, width: 2070, thickness: 16 }
-   *   "ДВПО 2745х1700х3.2 мм" → { length: 2745, width: 1700, thickness: 3 }
-   */
-  function parseDimensionsFromName(name) {
-    if (!name) return {};
-    const dims = {};
-
-    // Pattern 1: LxWxT (e.g. "2800х2070х16", "2750*1830*16")
-    const tripleMatch = name.match(/(\d{3,5})\s*[xхXХ×*]\s*(\d{3,5})\s*[xхXХ×*]\s*(\d{1,3}(?:[.,]\d+)?)/);
-    if (tripleMatch) {
-      dims.length = parseInt(tripleMatch[1]);
-      dims.width = parseInt(tripleMatch[2]);
-      dims.thickness = parseFloat(tripleMatch[3].replace(',', '.'));
-      return dims;
-    }
-
-    // Pattern 2: LxW + separate thickness (e.g. "2750*1830 16 мм")
-    const sizeMatch = name.match(/(\d{3,5})\s*[xхXХ×*]\s*(\d{3,5})/);
-    if (sizeMatch) {
-      dims.length = parseInt(sizeMatch[1]);
-      dims.width = parseInt(sizeMatch[2]);
-    }
-
-    // Pattern 3: standalone thickness (e.g. "16 мм", "16мм", "3.2 мм")
-    // Must NOT be part of the LxW pattern already matched
-    const thicknessPatterns = [
-      // "16 мм" or "16мм" — only if 1-3 digits + optional decimal
-      /(?:^|\s|[,;])(\d{1,3}(?:[.,]\d+)?)\s*мм\b/i,
-      // "толщина 16" or "толщ. 16"
-      /толщ\.?\s*[:=]?\s*(\d{1,3}(?:[.,]\d+)?)/i,
-    ];
-
-    if (!dims.thickness) {
-      for (const pattern of thicknessPatterns) {
-        const m = name.match(pattern);
-        if (m) {
-          const t = parseFloat(m[1].replace(',', '.'));
-          // Thickness typically 3–40 mm for sheet materials
-          if (t >= 2 && t <= 50) {
-            dims.thickness = t;
-            break;
-          }
-        }
-      }
-    }
-
-    return dims;
-  }
+  // Material type detection and dimension parsing are handled by the backend
+  // (MaterialTypeDetectionService + MaterialDimensionParser).
+  // The extension only collects raw data from the page.
 
   function startCapture(field) {
     captureMode = true;
@@ -762,33 +672,14 @@
       if (articleDetected.warning) warnings.push(articleDetected.warning);
     }
 
-    const materialType = detectMaterialType(result.title?.value || '', window.location.href);
-    const unit = materialType === 'edge' ? 'м.п.' : materialType === 'plate' ? 'м²' : 'шт';
-
-    const dims = materialType === 'edge'
-      ? parseEdgeDimensions(result.title?.value || '')
-      : parseDimensionsFromName(result.title?.value || '');
-
-    if (materialType === 'plate') {
-      if (dims.thickness) result.thickness = { value: String(dims.thickness), auto: true, selector: null };
-      if (dims.length) result.length = { value: String(dims.length), auto: true, selector: null };
-      if (dims.width) result.width = { value: String(dims.width), auto: true, selector: null };
-      if (!dims.length || !dims.width) warnings.push('Не удалось определить размеры автоматически.');
-    }
-
-    if (materialType === 'edge') {
-      if (dims.length) result.length = { value: String(dims.length), auto: true, selector: null };
-      if (dims.width) result.width = { value: String(dims.width), auto: true, selector: null };
-      if (!dims.length || !dims.width) warnings.push('Не удалось определить параметры кромки автоматически.');
-    }
+    // Material type detection and dimension parsing delegated to backend.
+    // The extension only collects raw title/price/article from the page.
 
     const uniqueWarnings = Array.from(new Set(warnings));
 
     return {
       fields: result,
       warnings: uniqueWarnings,
-      materialType,
-      unit,
       foundCount: Object.keys(result).length,
     };
   }

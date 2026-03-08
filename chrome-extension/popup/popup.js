@@ -227,11 +227,7 @@
     return !!capturedFields.title?.value && !!capturedFields.price?.value;
   }
 
-  function unitByMaterialType(type) {
-    if (type === 'plate') return 'м²';
-    if (type === 'edge') return 'м.п.';
-    return 'шт';
-  }
+  // Unit is determined by the backend (MaterialTypeDetectionService.unitForType)
 
   // ============================================================
   // Initialization
@@ -351,12 +347,7 @@
       }
 
       autoFillWarnings = Array.isArray(result.warnings) ? result.warnings : [];
-      if (result.materialType) {
-        detectedMaterialType = result.materialType;
-      }
-      if (result.unit) {
-        detectedMaterialUnit = result.unit;
-      }
+      // Material type and unit are determined by the backend via analyzeFieldsOnBackend()
 
       if (autoFillWarnings.length > 0) {
         showResult(captureResult, autoFillWarnings.join('\n'), 'error');
@@ -451,11 +442,7 @@
         await tryAutomaticFill();
       }
 
-      if (capturedFields.title?.value) {
-        autoParseDimensions(capturedFields.title.value);
-      } else {
-        refreshMaterialType();
-      }
+      await analyzeFieldsOnBackend();
 
       updateActionButtons();
       evaluateSimpleFlowStatus();
@@ -664,9 +651,9 @@
         lastSchemaMapping = null; // Manual capture overrides schema mapping
         updateFieldUI(field, value);
 
-        // Auto-parse dimensions from title
+        // Request type detection and dimension parsing from backend
         if (field === 'title' && value) {
-          autoParseDimensions(value);
+          analyzeFieldsOnBackend();
         }
 
         updateActionButtons();
@@ -676,10 +663,8 @@
   }
 
   // ============================================================
-  // Material type detection
+  // Material type detection — delegated to backend
   // ============================================================
-
-  const SHEET_MATERIAL_PATTERNS = /\b(ЛДСП|МДФ|ХДФ|ОСБ|ЛМДФ|OSB|ДВПО|ДСП|ДВП|ЛХДФ|ЛОСБ|HPL|CPL|ФСФ|ФК)\b/i;
 
   /** Current detected material type: 'plate' | 'edge' | 'hardware' */
   let detectedMaterialType = 'hardware';
@@ -689,18 +674,6 @@
     edge: 'Кромка',
     hardware: 'Фурнитура',
   };
-
-  /**
-   * Detect material type from name and current page URL.
-   * @returns {'plate'|'edge'|'hardware'}
-   */
-  function detectMaterialType(name) {
-    const url = pageInfo?.url || currentTab?.url || '';
-    if (name && /кромка/i.test(name)) return 'edge';
-    if (url && /kromka/i.test(url)) return 'edge';
-    if (name && SHEET_MATERIAL_PATTERNS.test(name)) return 'plate';
-    return 'hardware';
-  }
 
   /**
    * Update UI visibility of dimension fields based on material type.
@@ -775,100 +748,79 @@
     if (indicator) {
       const colors = { plate: '#4F46E5', edge: '#059669', hardware: '#D97706' };
       const icons = { plate: '📋', edge: '📏', hardware: '🔩' };
-      detectedMaterialUnit = unitByMaterialType(type);
       indicator.innerHTML = `<span style="color:${colors[type]}">${icons[type]} Тип: <strong>${TYPE_LABELS[type]}</strong> · Ед. изм.: <strong>${detectedMaterialUnit}</strong></span>`;
       indicator.style.display = '';
     }
   }
 
   /**
-   * Re-detect material type and update UI accordingly.
-   * Called after title changes or on initial load.
+   * Request material type detection and dimension parsing from the backend.
+   * Calls /api/chrome/validate to get type, unit, and auto-parsed dimensions.
+   * Updates UI with type indicator, dimension fields, and unit.
    */
-  function refreshMaterialType() {
-    const name = capturedFields.title?.value || '';
-    const newType = detectMaterialType(name);
-    if (newType !== detectedMaterialType) {
-      detectedMaterialType = newType;
-      updateDimensionFieldsVisibility(newType);
-      // Clear dimension fields that are no longer relevant
-      if (newType === 'hardware') {
-        ['thickness', 'length', 'width'].forEach(f => {
-          if (capturedFields[f]?.auto) {
-            delete capturedFields[f];
-            updateFieldUI(f, null);
-          }
-        });
-      } else if (newType === 'edge') {
-        if (capturedFields.thickness?.auto) {
-          delete capturedFields.thickness;
-          updateFieldUI('thickness', null);
-        }
+  async function analyzeFieldsOnBackend() {
+    const extracted = {};
+    const data_sources = {};
+    for (const [field, info] of Object.entries(capturedFields)) {
+      if (info?.value) {
+        extracted[field] = info.value;
+        data_sources[field] = getFieldSource(field) || 'manual';
       }
-    } else {
-      // Still refresh labels in case we didn't before
-      updateDimensionFieldsVisibility(newType);
     }
-  }
 
-  /**
-   * Auto-parse dimensions (length, width, thickness) from product name.
-   * Parsing strategy depends on detected material type.
-   * Only fills fields that are not already manually captured.
-   */
-  function autoParseDimensions(name) {
-    if (!name) return;
+    if (!extracted.title) {
+      // No title — reset to default
+      detectedMaterialType = 'hardware';
+      detectedMaterialUnit = 'шт';
+      updateDimensionFieldsVisibility('hardware');
+      return;
+    }
 
-    // Re-detect type first
-    const type = detectMaterialType(name);
-    detectedMaterialType = type;
-    updateDimensionFieldsVisibility(type);
+    try {
+      const result = await sendToBackground('VALIDATE_FIELDS', {
+        extracted,
+        data_sources,
+        url: pageInfo?.url || currentTab?.url || null,
+      });
 
-    const dims = {};
+      if (result.preview) {
+        const mType = result.preview.material_type || 'hardware';
+        const mUnit = result.preview.unit || 'шт';
 
-    if (type === 'edge') {
-      // Edge: parse WxT (edge_width x edge_thickness)
-      const m = name.match(/(\d{1,3})\s*[xхXХ×*]\s*(\d{1,2}(?:[.,]\d+)?)/);
-      if (m) {
-        const w = parseInt(m[1]);
-        const t = parseFloat(m[2].replace(',', '.'));
-        if (w >= 10 && w <= 100 && t > 0 && t <= 10) {
-          dims.length = String(w);   // edge width → length (DB convention)
-          dims.width = String(t);    // edge thickness → width (DB convention)
+        detectedMaterialType = mType;
+        detectedMaterialUnit = mUnit;
+        updateDimensionFieldsVisibility(mType);
+
+        // Fill auto-parsed dimensions from backend (only if not manually set or captured)
+        const dimFields = {
+          thickness: result.preview.thickness,
+          length: result.preview.length,
+          width: result.preview.width,
+        };
+        for (const [field, value] of Object.entries(dimFields)) {
+          if (value && !capturedFields[field]?.manual && !capturedFields[field]?.selector) {
+            capturedFields[field] = { value: String(value), auto: true, selector: null };
+            updateFieldUI(field, String(value));
+          }
         }
-      }
-    } else if (type === 'plate') {
-      // Plate: standard LxWxT parsing
-      const tripleMatch = name.match(/(\d{3,5})\s*[xхXХ×*]\s*(\d{3,5})\s*[xхXХ×*]\s*(\d{1,3}(?:[.,]\d+)?)/);
-      if (tripleMatch) {
-        dims.length = tripleMatch[1];
-        dims.width = tripleMatch[2];
-        dims.thickness = tripleMatch[3].replace(',', '.');
-      } else {
-        const sizeMatch = name.match(/(\d{3,5})\s*[xхXХ×*]\s*(\d{3,5})/);
-        if (sizeMatch) {
-          dims.length = sizeMatch[1];
-          dims.width = sizeMatch[2];
-        }
-        if (!dims.thickness) {
-          const thickMatch = name.match(/(?:^|\s|[,;])(\d{1,3}(?:[.,]\d+)?)\s*мм\b/i);
-          if (thickMatch) {
-            const t = parseFloat(thickMatch[1].replace(',', '.'));
-            if (t >= 2 && t <= 50) {
-              dims.thickness = String(t);
+
+        // Clear auto-parsed dimension fields that are no longer relevant for the new type
+        if (mType === 'hardware') {
+          ['thickness', 'length', 'width'].forEach(f => {
+            if (capturedFields[f]?.auto) {
+              delete capturedFields[f];
+              updateFieldUI(f, null);
             }
+          });
+        } else if (mType === 'edge') {
+          if (capturedFields.thickness?.auto) {
+            delete capturedFields.thickness;
+            updateFieldUI('thickness', null);
           }
         }
       }
-    }
-    // Hardware: no dimensions to parse
-
-    // Fill dimension fields only if not already manually set
-    for (const [field, value] of Object.entries(dims)) {
-      if (!capturedFields[field]?.value) {
-        capturedFields[field] = { value: String(value), selector: null, auto: true };
-        updateFieldUI(field, String(value));
-      }
+    } catch {
+      // Silently fail — user can still manually fill fields and use local UI
     }
 
     evaluateSimpleFlowStatus();
@@ -1115,8 +1067,10 @@
     captureResult.classList.add('hidden');
     autoFillWarnings = [];
     setAutoTemplateBanner('');
-    // Re-detect material type (from URL only, since title is cleared)
-    refreshMaterialType();
+    // Reset material type to default since all fields cleared
+    detectedMaterialType = 'hardware';
+    detectedMaterialUnit = 'шт';
+    updateDimensionFieldsVisibility('hardware');
     updateActionButtons();
     evaluateSimpleFlowStatus();
   }
@@ -1152,6 +1106,11 @@
       if (result.preview) {
         const mType = result.preview.material_type || detectedMaterialType;
         const mTypeLabel = result.preview.material_type_label || TYPE_LABELS[mType] || mType;
+
+        // Update local state from backend response (single source of truth)
+        detectedMaterialType = mType;
+        detectedMaterialUnit = result.preview.unit || detectedMaterialUnit;
+        updateDimensionFieldsVisibility(mType);
 
         const rows = [
           { label: 'Название', value: result.preview.title },
@@ -1525,12 +1484,8 @@
             capturedFields[field] = { ...info, template: markTemplateSource || !!info.template, schema: true, auto: true };
             updateFieldUI(field, info.value);
           }
-          // Auto-parse dimensions from title after schema apply
-          if (capturedFields.title?.value) {
-            autoParseDimensions(capturedFields.title.value);
-          }
-          updateActionButtons();
-          evaluateSimpleFlowStatus();
+          // Request type detection and dimension parsing from backend
+          await analyzeFieldsOnBackend();
           applied = true;
           if (!silent) {
             showResult(applyResult, `Правило применено: заполнено полей ${result.fieldCount}`, 'success');
@@ -1541,7 +1496,7 @@
             result = await sendToContent('APPLY_TEMPLATE', {
               selectors: currentTemplate.selectors,
             });
-            applied = applyTemplateResult(result, true, { silent, markTemplateSource });
+            applied = await applyTemplateResult(result, true, { silent, markTemplateSource });
           } else {
             if (!silent) {
               showResult(applyResult, result.error || 'Сохраненное правило сайта больше не подходит к этой странице', 'error');
@@ -1553,7 +1508,7 @@
         result = await sendToContent('APPLY_TEMPLATE', {
           selectors: currentTemplate.selectors,
         });
-        applied = applyTemplateResult(result, false, { silent, markTemplateSource });
+        applied = await applyTemplateResult(result, false, { silent, markTemplateSource });
       }
     } catch (err) {
       if (!silent) {
@@ -1567,7 +1522,7 @@
     return applied;
   }
 
-  function applyTemplateResult(result, isSchemaFallback, options = {}) {
+  async function applyTemplateResult(result, isSchemaFallback, options = {}) {
     const silent = !!options.silent;
     const markTemplateSource = !!options.markTemplateSource;
     let applied = false;
@@ -1602,10 +1557,8 @@
           applied = true;
         }
       }
-      // Auto-parse dimensions from title after template apply
-      if (capturedFields.title?.value) {
-        autoParseDimensions(capturedFields.title.value);
-      }
+      // Request type detection and dimension parsing from backend
+      await analyzeFieldsOnBackend();
     }
 
     updateActionButtons();
@@ -1828,10 +1781,8 @@
           capturedFields[field] = { ...info, schema: true };
           updateFieldUI(field, info.value);
         }
-        // Auto-parse dimensions from title after schema apply
-        if (capturedFields.title?.value) {
-          autoParseDimensions(capturedFields.title.value);
-        }
+        // Request type detection and dimension parsing from backend
+        await analyzeFieldsOnBackend();
         updateActionButtons();
         showResult(captureResult, `✓ Заполнено из Schema.org: ${result.fieldCount} полей`, 'success');
         setSimpleStatus('Часть полей заполнена автоматически из Schema.org. Проверьте результат.', 'warning');
