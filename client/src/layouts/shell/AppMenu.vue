@@ -131,8 +131,11 @@ const menuRef = ref<HTMLElement | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownStyle = ref<Record<string, string>>({})
 
-// Check if current user is admin (user_id === 1)
-const isAdmin = computed(() => authStore.user?.id === 1)
+// Check if current user is admin by role, with id=1 fallback for legacy accounts.
+const isAdmin = computed(() => {
+  const role = String((authStore.user as any)?.role ?? (authStore.user as any)?.user_role ?? '').toLowerCase()
+  return Number(authStore.user?.id) === 1 || role === 'admin' || role === 'superadmin'
+})
 
 // Theme detection
 const isDark = computed(() => theme.global.name.value === 'myThemeDark')

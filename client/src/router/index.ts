@@ -156,7 +156,10 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
 
-  const isAdminUser = () => Number(authStore.user?.id) === 1
+  const isAdminUser = () => {
+    const role = String((authStore.user as any)?.role ?? (authStore.user as any)?.user_role ?? '').toLowerCase()
+    return Number(authStore.user?.id) === 1 || role === 'admin' || role === 'superadmin'
+  }
 
   if (to.name === 'admin-login') {
     if (!authStore.authChecked) {

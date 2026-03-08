@@ -19,6 +19,7 @@
       <v-tab value="settings" prepend-icon="mdi-cog">Настройки</v-tab>
       <v-tab value="users" prepend-icon="mdi-account-group">Пользователи</v-tab>
       <v-tab value="notifications" prepend-icon="mdi-bell-outline">Уведомления</v-tab>
+      <v-tab value="system-logs" prepend-icon="mdi-text-box-search">System Logs</v-tab>
     </v-tabs>
 
     <v-window v-model="activeTab">
@@ -741,6 +742,10 @@
         <AdminNotificationsTab />
       </v-window-item>
 
+      <v-window-item value="system-logs">
+        <AdminSystemLogsTab />
+      </v-window-item>
+
       <v-window-item value="dimension-rules">
         <AdminMaterialDimensionRulesTab ref="rulesTabRef" />
       </v-window-item>
@@ -760,6 +765,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api/axios'
 import AdminNotificationsTab from '@/components/notifications/AdminNotificationsTab.vue'
+import AdminSystemLogsTab from '@/components/admin/AdminSystemLogsTab.vue'
 import AdminMaterialDimensionRulesTab from '@/components/admin/AdminMaterialDimensionRulesTab.vue'
 import AdminMaterialDimensionFailuresTab from '@/components/admin/AdminMaterialDimensionFailuresTab.vue'
 import AdminMaterialTypePatternsTab from '@/components/admin/AdminMaterialTypePatternsTab.vue'
@@ -775,6 +781,7 @@ type TabType =
   | 'settings'
   | 'users'
   | 'notifications'
+  | 'system-logs'
 
 const activeTab = ref<TabType>('llm')
 

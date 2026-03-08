@@ -127,7 +127,10 @@ const modelValue = computed({
 
 const sidebarWidth = computed(() => props.collapsed ? 72 : 240)
 
-const isAdminUser = computed(() => Number(authStore.user?.id) === 1)
+const isAdminUser = computed(() => {
+  const role = String((authStore.user as any)?.role ?? (authStore.user as any)?.user_role ?? '').toLowerCase()
+  return Number(authStore.user?.id) === 1 || role === 'admin' || role === 'superadmin'
+})
 
 const userName = computed(() => authStore.user?.name || 'Пользователь')
 const userEmail = computed(() => authStore.user?.email || '')

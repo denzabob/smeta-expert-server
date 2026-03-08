@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\AdminLLMStatsController;
 use App\Http\Controllers\Api\AdminMaterialDimensionParseFailureController;
 use App\Http\Controllers\Api\AdminMaterialDimensionRuleController;
 use App\Http\Controllers\Api\AdminMaterialTypePatternController;
+use App\Http\Controllers\Api\AdminSystemLogController;
 use App\Http\Controllers\Api\PinAuthController;
 use App\Http\Controllers\Api\AdminNotificationController;
 use App\Http\Controllers\Api\UserNotificationController;
@@ -412,6 +413,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('admin/notifications/{id}/cancel', [AdminNotificationController::class, 'cancel']);
     Route::get('admin/notifications/{id}/stats', [AdminNotificationController::class, 'stats']);
     Route::get('admin/users/search', [AdminNotificationController::class, 'searchUsers']);
+
+    // ========== Admin System Logs API ==========
+    Route::get('admin/system/logs', [AdminSystemLogController::class, 'index']);
+    Route::get('admin/system/logs/download', [AdminSystemLogController::class, 'download']);
 
     // ========== Admin Material Dimensions API ==========
     Route::post('admin/material-dimension-rules/preview', [AdminMaterialDimensionRuleController::class, 'preview']);

@@ -260,7 +260,10 @@ const baseNavItems = [
 
 const adminNavItem = { title: 'Админ панель', to: '/admin', icon: 'mdi-shield-account' }
 
-const isAdminUser = computed(() => Number(authStore.user?.id) === 1)
+const isAdminUser = computed(() => {
+  const role = String((authStore.user as any)?.role ?? (authStore.user as any)?.user_role ?? '').toLowerCase()
+  return Number(authStore.user?.id) === 1 || role === 'admin' || role === 'superadmin'
+})
 
 const navItems = computed(() => {
   return isAdminUser.value ? [...baseNavItems, adminNavItem] : baseNavItems
