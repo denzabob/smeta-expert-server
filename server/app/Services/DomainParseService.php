@@ -64,7 +64,7 @@ class DomainParseService
      */
     public function parseWithSelectors(string $url, array $selectors): array
     {
-        $scriptPath = base_path('scripts/scrape-with-selectors.js');
+        $scriptPath = $this->resolveNodeScriptPath('scrape-with-selectors.js');
 
         if (!file_exists($scriptPath)) {
             Log::error('DomainParseService: scrape-with-selectors.js not found', ['path' => $scriptPath]);
@@ -131,6 +131,27 @@ class DomainParseService
                 'message' => 'Ошибка парсинга: ' . $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Resolve Node helper script path for both deployment layouts:
+     * 1) repo-root Laravel (base_path('server/scripts/...'))
+     * 2) server-subdir Laravel (base_path('scripts/...'))
+     */
+    private function resolveNodeScriptPath(string $scriptName): string
+    {
+        $candidates = [
+            base_path('server/scripts/' . $scriptName),
+            base_path('scripts/' . $scriptName),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $candidates[0];
     }
 
     /**
