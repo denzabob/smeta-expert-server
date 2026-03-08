@@ -2993,7 +2993,19 @@ interface Fitting {
   note?: string | null
 }
 interface DetailType { id: number; name: string; edge_processing: string }
-interface Material { id: number; name: string; type: 'plate' | 'edge' | 'facade'; origin: 'parser' | 'user'; price_per_unit?: number; length_mm?: number; width_mm?: number; thickness_mm?: number; unit?: string; updated_at?: string; metadata?: any }
+interface Material {
+  id: number
+  name: string
+  type: 'plate' | 'edge' | 'facade' | 'hardware'
+  origin?: 'parser' | 'user' | 'import' | string
+  price_per_unit?: number
+  length_mm?: number
+  width_mm?: number
+  thickness_mm?: number
+  unit?: string
+  updated_at?: string
+  metadata?: any
+}
 
 // === Состояния ===
 const router = useRouter()
@@ -3701,6 +3713,9 @@ const detailTypes = ref<DetailType[]>([])
 const materials = ref<Material[]>([])
 const units = ref<string[]>([])
 const regions = ref<any[]>([])
+
+const MATERIALS_CACHE_TTL_MS = 25_000
+const selectableMaterialsCache = ref<{ expiresAt: number; data: Material[] } | null>(null)
 
 const materialsPlate = computed(() => materials.value.filter(m => m.type === 'plate'))
 const materialsEdge = computed(() => materials.value.filter(m => m.type === 'edge'))
@@ -4433,13 +4448,98 @@ const onPositionEdgeMaterialChange = (val: number | null) => {
   scheduleRecalc()
 }
 
+const normalizeMaterialOption = (raw: any): Material | null => {
+  if (!raw || !raw.id || !raw.name || !raw.type) return null
+  if (!['plate', 'edge', 'facade', 'hardware'].includes(raw.type)) return null
+
+  return {
+    id: Number(raw.id),
+    name: String(raw.name),
+    type: raw.type,
+    origin: (raw.origin || (raw.user_id ? 'user' : 'parser')) as Material['origin'],
+    price_per_unit: raw.price_per_unit != null ? Number(raw.price_per_unit) : undefined,
+    length_mm: raw.length_mm != null ? Number(raw.length_mm) : undefined,
+    width_mm: raw.width_mm != null ? Number(raw.width_mm) : undefined,
+    thickness_mm: raw.thickness_mm != null ? Number(raw.thickness_mm) : undefined,
+    unit: raw.unit || undefined,
+    updated_at: raw.updated_at || undefined,
+    metadata: raw.metadata || undefined,
+  }
+}
+
+const mergeMaterialOptions = (target: Map<number, Material>, rows: any[]) => {
+  for (const row of rows || []) {
+    const normalized = normalizeMaterialOption(row)
+    if (!normalized) continue
+    target.set(normalized.id, normalized)
+  }
+}
+
+const fetchCatalogModeMaterials = async (mode: 'library' | 'public' | 'curated'): Promise<any[]> => {
+  const allRows: any[] = []
+  let page = 1
+  let lastPage = 1
+
+  do {
+    const response = await api.get('/api/materials/catalog', {
+      params: {
+        mode,
+        per_page: 200,
+        page,
+      },
+    })
+
+    const rows = response?.data?.data
+    if (Array.isArray(rows)) {
+      allRows.push(...rows)
+    }
+
+    lastPage = Number(response?.data?.meta?.last_page || 1)
+    page += 1
+  } while (page <= lastPage)
+
+  return allRows
+}
+
+const loadSelectableMaterials = async (force = false): Promise<Material[]> => {
+  const now = Date.now()
+  if (!force && selectableMaterialsCache.value && selectableMaterialsCache.value.expiresAt > now) {
+    return selectableMaterialsCache.value.data
+  }
+
+  const byId = new Map<number, Material>()
+
+  // Legacy endpoint: own + parser materials.
+  const ownResponse = await api.get('/api/materials')
+  const ownRows = Array.isArray(ownResponse?.data) ? ownResponse.data : []
+  mergeMaterialOptions(byId, ownRows)
+
+  // Extend selector with library/public/curated catalog materials.
+  for (const mode of ['library', 'public', 'curated'] as const) {
+    try {
+      const rows = await fetchCatalogModeMaterials(mode)
+      mergeMaterialOptions(byId, rows)
+    } catch (error) {
+      console.warn(`Failed to load materials catalog mode: ${mode}`, error)
+    }
+  }
+
+  const merged = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+  selectableMaterialsCache.value = {
+    data: merged,
+    expiresAt: Date.now() + MATERIALS_CACHE_TTL_MS,
+  }
+
+  return merged
+}
+
 // === Загрузка данных ===
 const loadReferences = async () => {
   try {
     loadingStates.value.materials = true
     const [types, mats, ops, unitsList, regionsData, profiles] = await Promise.all([
       api.get('/api/detail-types').then(r => r.data),
-      api.get('/api/materials').then(r => r.data),
+      loadSelectableMaterials(),
       api.get('/api/operations').then(r => r.data),
       api.get('/api/units').then(r => r.data),
       api.get('/api/regions').then(r => r.data?.data || []),
@@ -4611,7 +4711,14 @@ const refreshAll = async () => {
 }
 
 // === Позиции ===
-const openPositionDialog = () => {
+const openPositionDialog = async () => {
+  // Refresh materials every time so newly added items are immediately selectable.
+  try {
+    materials.value = await loadSelectableMaterials()
+  } catch (error) {
+    console.warn('Failed to refresh selectable materials before opening position dialog', error)
+  }
+
   editingPosition.value = false
   dialogDimensionCalc.value = { width: emptyDimensionCalcState(), length: emptyDimensionCalcState() }
   positionFormModel.value = {

@@ -15,9 +15,12 @@ use App\Services\MaterialDeduplicationService;
 use App\Services\MaterialParseService;
 use App\Services\TrustScoreService;
 use App\Services\UrlNormalizer;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class MaterialCatalogController extends Controller
 {
@@ -530,10 +533,45 @@ class MaterialCatalogController extends Controller
             $validated['thickness'] = $validated['thickness_mm'] ? round($validated['thickness_mm'], 2) : null;
         }
 
-        $material->update($validated);
+        // DB constraint safety: waste_factor cannot be NULL on some environments.
+        if (array_key_exists('waste_factor', $validated)) {
+            $validated['waste_factor'] = $validated['waste_factor'] === null
+                ? (float) ($material->waste_factor ?? 1.0)
+                : (float) $validated['waste_factor'];
+        } elseif (($validated['type'] ?? $material->type) === Material::TYPE_PLATE && $material->waste_factor === null) {
+            // Keep plate materials valid even in legacy inconsistent records.
+            $validated['waste_factor'] = 1.0;
+        }
 
-        // Recalculate trust after data change
-        $this->trustScoreService->recalculate($material);
+        // Keep compatibility with environments where not all catalog migrations are applied.
+        $validated = $this->filterUpdatableMaterialAttributes($validated);
+
+        if (($validated['visibility'] ?? null) === Material::VISIBILITY_CURATED
+            && !$this->materialVisibilitySupportsCurated()) {
+            // Graceful fallback for legacy enum('private','public') schemas.
+            $validated['visibility'] = Material::VISIBILITY_PUBLIC;
+        }
+
+        try {
+            $material->update($validated);
+
+            // Recalculate trust only if corresponding columns exist.
+            if (Schema::hasColumn('materials', 'trust_score') && Schema::hasColumn('materials', 'trust_level')) {
+                $this->trustScoreService->recalculate($material);
+            }
+        } catch (QueryException $e) {
+            Log::error('MaterialCatalog.updateMaterial failed', [
+                'material_id' => $id,
+                'user_id' => $user->id,
+                'payload_keys' => array_keys($validated),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Не удалось сохранить материал из-за несовместимости схемы БД.',
+                'message' => 'Проверьте, что на сервере применены миграции каталога материалов.',
+            ], 422);
+        }
 
         return response()->json([
             'message' => 'Материал обновлён',
@@ -683,6 +721,53 @@ class MaterialCatalogController extends Controller
             MaterialPriceHistory::SOURCE_PRICE_LIST => 80,
             default => 100,
         };
+    }
+
+    /**
+     * Remove attributes that are absent in the current materials table schema.
+     */
+    private function filterUpdatableMaterialAttributes(array $attributes): array
+    {
+        if (empty($attributes)) {
+            return [];
+        }
+
+        $columns = array_flip(Schema::getColumnListing('materials'));
+
+        return array_filter(
+            $attributes,
+            static fn($_value, $key) => isset($columns[$key]),
+            ARRAY_FILTER_USE_BOTH
+        );
+    }
+
+    /**
+     * Detect whether materials.visibility enum supports the curated value.
+     */
+    private function materialVisibilitySupportsCurated(): bool
+    {
+        if (!Schema::hasColumn('materials', 'visibility')) {
+            return false;
+        }
+
+        try {
+            $column = DB::selectOne("SHOW COLUMNS FROM `materials` LIKE 'visibility'");
+            $type = mb_strtolower((string) ($column->Type ?? ''));
+
+            if ($type === '') {
+                // If type cannot be detected, do not block updates.
+                return true;
+            }
+
+            return str_contains($type, "'curated'");
+        } catch (\Throwable $e) {
+            Log::warning('Unable to inspect materials.visibility enum', [
+                'error' => $e->getMessage(),
+            ]);
+
+            // Non-MySQL or restricted SHOW COLUMNS permissions.
+            return true;
+        }
     }
 
     // ========================================================================

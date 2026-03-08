@@ -18,6 +18,8 @@
   let isAdvancedMode = false;
   let autoFillWarnings = [];
   let templateAutoApplied = false;
+  let analyzeTimer = null;
+  const ANALYZE_DEBOUNCE_MS = 400;
 
   // ============================================================
   // DOM refs
@@ -225,6 +227,17 @@
 
   function hasCoreFields() {
     return !!capturedFields.title?.value && !!capturedFields.price?.value;
+  }
+
+  function scheduleAnalyze() {
+    if (analyzeTimer) {
+      clearTimeout(analyzeTimer);
+    }
+
+    analyzeTimer = setTimeout(() => {
+      analyzeTimer = null;
+      analyzeFieldsOnBackend().catch(() => {});
+    }, ANALYZE_DEBOUNCE_MS);
   }
 
   // Unit is determined by the backend (MaterialTypeDetectionService.unitForType)
@@ -442,7 +455,7 @@
         await tryAutomaticFill();
       }
 
-      await analyzeFieldsOnBackend();
+      scheduleAnalyze();
 
       updateActionButtons();
       evaluateSimpleFlowStatus();
@@ -653,7 +666,7 @@
 
         // Request type detection and dimension parsing from backend
         if (field === 'title' && value) {
-          analyzeFieldsOnBackend();
+          scheduleAnalyze();
         }
 
         updateActionButtons();
@@ -1485,7 +1498,7 @@
             updateFieldUI(field, info.value);
           }
           // Request type detection and dimension parsing from backend
-          await analyzeFieldsOnBackend();
+          scheduleAnalyze();
           applied = true;
           if (!silent) {
             showResult(applyResult, `Правило применено: заполнено полей ${result.fieldCount}`, 'success');
@@ -1558,7 +1571,7 @@
         }
       }
       // Request type detection and dimension parsing from backend
-      await analyzeFieldsOnBackend();
+      scheduleAnalyze();
     }
 
     updateActionButtons();
@@ -1782,7 +1795,7 @@
           updateFieldUI(field, info.value);
         }
         // Request type detection and dimension parsing from backend
-        await analyzeFieldsOnBackend();
+        scheduleAnalyze();
         updateActionButtons();
         showResult(captureResult, `✓ Заполнено из Schema.org: ${result.fieldCount} полей`, 'success');
         setSimpleStatus('Часть полей заполнена автоматически из Schema.org. Проверьте результат.', 'warning');
