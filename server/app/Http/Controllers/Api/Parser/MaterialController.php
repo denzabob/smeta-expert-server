@@ -8,9 +8,13 @@ use Illuminate\Support\Facades\Validator;
 use App\Models\Material;
 use App\Models\MaterialPriceHistory;
 use Carbon\Carbon;
+use App\Services\UrlNormalizer;
 
 class MaterialController extends Controller
 {
+    public function __construct(
+        private UrlNormalizer $urlNormalizer
+    ) {}
     /**
      * Создаёт или обновляет материал, полученный от парсера.
      * Работает без авторизации (публичный endpoint для фоновых задач).
@@ -146,8 +150,11 @@ class MaterialController extends Controller
                     'valid_from' => $parseDate,
                     'valid_to' => null,
                     'price_per_unit' => $incomingPrice,
-                    'source_url' => $data['source_url'],
+                    'source_url' => $this->urlNormalizer->normalize($data['source_url']),
+                    'raw_source_url' => $data['source_url'],
+                    'normalized_source_url' => $this->urlNormalizer->normalize($data['source_url']),
                     'screenshot_path' => $screenshotPath,
+                    'true_score' => 100,
                 ]);
                 
                 return response()->json([
@@ -221,8 +228,11 @@ class MaterialController extends Controller
                 'valid_from' => $parseDate,
                 'valid_to' => null,
                 'price_per_unit' => $data['price_per_unit'],
-                'source_url' => $data['source_url'],
+                'source_url' => $this->urlNormalizer->normalize($data['source_url']),
+                'raw_source_url' => $data['source_url'],
+                'normalized_source_url' => $this->urlNormalizer->normalize($data['source_url']),
                 'screenshot_path' => $data['screenshot_path'] ?? null,
+                'true_score' => 100,
             ]);
             
             return response()->json([
@@ -377,8 +387,11 @@ class MaterialController extends Controller
                     'valid_from' => $parseDate,
                     'valid_to' => null,
                     'price_per_unit' => $incomingPrice,
-                    'source_url' => $data['source_url'],
+                    'source_url' => $this->urlNormalizer->normalize($data['source_url']),
+                    'raw_source_url' => $data['source_url'],
+                    'normalized_source_url' => $this->urlNormalizer->normalize($data['source_url']),
                     'screenshot_path' => $data['screenshot_path'] ?? null,
+                    'true_score' => 100,
                 ]);
                 
                 return [
@@ -429,8 +442,11 @@ class MaterialController extends Controller
                 'valid_from' => $parseDate,
                 'valid_to' => null,
                 'price_per_unit' => $data['price_per_unit'],
-                'source_url' => $data['source_url'],
+                'source_url' => $this->urlNormalizer->normalize($data['source_url']),
+                'raw_source_url' => $data['source_url'],
+                'normalized_source_url' => $this->urlNormalizer->normalize($data['source_url']),
                 'screenshot_path' => $data['screenshot_path'] ?? null,
+                'true_score' => 100,
             ]);
             
             return [

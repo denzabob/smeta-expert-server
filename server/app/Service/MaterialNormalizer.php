@@ -2,12 +2,21 @@
 
 namespace App\Service;
 
+use App\Services\MaterialDimensionParser;
+
 /**
  * Сервис нормализации материалов
  * Извлекает размеры листа из названия/характеристик и определяет класс товара
  */
 class MaterialNormalizer
 {
+    private MaterialDimensionParser $dimensionParser;
+
+    public function __construct(?MaterialDimensionParser $dimensionParser = null)
+    {
+        $this->dimensionParser = $dimensionParser ?? app(MaterialDimensionParser::class);
+    }
+
     /**
      * Классы товаров
      */
@@ -30,17 +39,20 @@ class MaterialNormalizer
             'normalized_type' => $this->determineClass($material),
         ];
 
-        // Парсим размеры из названия или характеристик
-        $dimensions = $this->extractDimensions(
-            $material['name'] ?? '',
-            $material['characteristics'] ?? ''
+        $text = trim(($material['name'] ?? '') . ' ' . ($material['characteristics'] ?? ''));
+        $materialType = $material['type'] ?? null;
+
+        $parsed = $this->dimensionParser->parse(
+            rawText: $text,
+            materialType: $materialType,
+            source: 'materials_normalize_command',
+            options: ['log_failed' => true]
         );
 
-        if ($dimensions) {
-            // Для ЛДСП и подобных обычно порядок: L x W x T (длина х ширина х толщина)
-            $result['length_mm'] = $dimensions[0] ?? null;      // L
-            $result['width_mm'] = $dimensions[1] ?? null;       // W
-            $result['thickness_mm'] = $dimensions[2] ?? null;   // T
+        if ($parsed->success) {
+            $result['length_mm'] = $parsed->lengthMm !== null ? (int) round($parsed->lengthMm) : null;
+            $result['width_mm'] = $parsed->widthMm !== null ? (int) round($parsed->widthMm) : null;
+            $result['thickness_mm'] = $parsed->thicknessMm;
         }
 
         return $result;
@@ -54,7 +66,7 @@ class MaterialNormalizer
      */
     private function determineClass(array $material): string
     {
-        $text = strtolower($material['name'] ?? '' . ' ' . $material['characteristics'] ?? '');
+        $text = strtolower(($material['name'] ?? '') . ' ' . ($material['characteristics'] ?? ''));
 
         // Ключевые слова для определения класса
         $plateKeywords = ['лдсп', 'мдф', 'шпон', 'пластик', 'ламинат', 'фанера', 'лист', 'плита', 'доска'];
@@ -73,64 +85,6 @@ class MaterialNormalizer
         }
 
         return self::CLASS_OTHER;
-    }
-
-    /**
-     * Извлекает размеры из текста (название или характеристики)
-     * Ищет паттерны вроде: 2800х2070х16 мм, 2800*2070*16, 2800 х 2070 х 16 и т.д.
-     * 
-     * @param string $name
-     * @param string $characteristics
-     * @return array|null [L, W, T] в миллиметрах или null
-     */
-    public function extractDimensions(string $name, string $characteristics): ?array
-    {
-        $text = $name . ' ' . $characteristics;
-
-        // Нормализуем разделители: ×, *, x на х (кириллицу)
-        $text = preg_replace('/[×*xX]/u', 'х', $text);
-
-        // Ищем паттерн: число х число х число (с опциональными пробелами и единицами)
-        // Вариант 1: число х число х число мм (например: 2800 х 2070 х 16 мм)
-        $pattern = '/(\d+)\s*х\s*(\d+)\s*х\s*(\d+)\s*мм/u';
-        
-        if (preg_match($pattern, $text, $matches)) {
-            return [
-                (int)$matches[1],  // L
-                (int)$matches[2],  // W
-                (int)$matches[3],  // T
-            ];
-        }
-
-        // Вариант 2: число х число х число (без мм, например: 2800х2070х16)
-        $pattern2 = '/(\d+)\s*х\s*(\d+)\s*х\s*(\d+)(?:\s|$)/u';
-        if (preg_match($pattern2, $text, $matches)) {
-            // Проверяем что это не часть большего числа
-            $fullMatch = $matches[0];
-            if (preg_match('/[а-яёa-z]/iu', substr($fullMatch, -1))) {
-                // Если после числа буква (не пробел/конец), это не размер
-                goto tryTwoDimensions;
-            }
-            return [
-                (int)$matches[1],  // L
-                (int)$matches[2],  // W
-                (int)$matches[3],  // T
-            ];
-        }
-
-        tryTwoDimensions:
-        // Вариант 3: число х число (если не нашли трёхмерный паттерн)
-        // Паттерн: число х число (без третьего измерения или после мм)
-        $pattern3 = '/(\d+)\s*х\s*(\d+)(?:\s*х|\s+мм|$)/u';
-        if (preg_match($pattern3, $text, $matches)) {
-            return [
-                (int)$matches[1],  // L
-                (int)$matches[2],  // W
-                null,              // T
-            ];
-        }
-
-        return null;
     }
 
     /**

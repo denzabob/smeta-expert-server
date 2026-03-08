@@ -14,15 +14,18 @@ class MaterialParseService
     protected TrustScoreService $trustScoreService;
     protected MaterialDeduplicationService $dedupService;
     protected DomainParseService $domainParseService;
+    protected UrlNormalizer $urlNormalizer;
 
     public function __construct(
         TrustScoreService $trustScoreService,
         MaterialDeduplicationService $dedupService,
-        DomainParseService $domainParseService
+        DomainParseService $domainParseService,
+        UrlNormalizer $urlNormalizer
     ) {
         $this->trustScoreService = $trustScoreService;
         $this->dedupService = $dedupService;
         $this->domainParseService = $domainParseService;
+        $this->urlNormalizer = $urlNormalizer;
     }
 
     /**
@@ -247,17 +250,23 @@ class MaterialParseService
         ]));
 
         // Create first price observation
+        $rawUrl = $observationData['source_url'] ?? $material->source_url;
+        $normalizedUrl = $this->urlNormalizer->normalize($rawUrl);
+
         MaterialPriceHistory::create([
             'material_id' => $material->id,
             'version' => 1,
             'price_per_unit' => $observationData['price_per_unit'] ?? $material->price_per_unit,
-            'source_url' => $observationData['source_url'] ?? $material->source_url,
+            'source_url' => $normalizedUrl,
+            'raw_source_url' => $rawUrl,
+            'normalized_source_url' => $normalizedUrl,
             'valid_from' => now()->toDateString(),
             'observed_at' => now(),
             'region_id' => $observationData['region_id'] ?? null,
             'source_type' => $observationData['source_type'] ?? 'manual',
             'parse_session_id' => $parseSessionId,
             'is_verified' => ($observationData['source_type'] ?? 'manual') !== 'manual' ? 1 : 0,
+            'true_score' => $this->resolveTrueScore((string) ($observationData['source_type'] ?? 'manual')),
             'currency' => $observationData['currency'] ?? 'RUB',
             'screenshot_path' => $observationData['screenshot_path'] ?? null,
             'snapshot_path' => $observationData['snapshot_path'] ?? null,
@@ -314,17 +323,21 @@ class MaterialParseService
 
             // Create new observation if price found
             if ($data['price_per_unit']) {
+                $normalizedUrl = $this->urlNormalizer->normalize($url);
                 MaterialPriceHistory::create([
                     'material_id' => $material->id,
                     'version' => $material->version,
                     'price_per_unit' => $data['price_per_unit'],
-                    'source_url' => $url,
+                    'source_url' => $normalizedUrl,
+                    'raw_source_url' => $url,
+                    'normalized_source_url' => $normalizedUrl,
                     'valid_from' => now()->toDateString(),
                     'observed_at' => now(),
                     'region_id' => $regionId,
                     'source_type' => 'web',
                     'parse_session_id' => $result['parse_session_id'],
                     'is_verified' => 1,
+                    'true_score' => 100,
                     'currency' => 'RUB',
                 ]);
 
@@ -407,6 +420,17 @@ class MaterialParseService
             'facade' => 'шт',
             'hardware' => 'шт',
             default => 'шт',
+        };
+    }
+
+    private function resolveTrueScore(string $sourceType): int
+    {
+        return match ($sourceType) {
+            MaterialPriceHistory::SOURCE_MANUAL => 0,
+            MaterialPriceHistory::SOURCE_WEB => 100,
+            MaterialPriceHistory::SOURCE_CHROME_EXT => 80,
+            MaterialPriceHistory::SOURCE_PRICE_LIST => 80,
+            default => 100,
         };
     }
 }

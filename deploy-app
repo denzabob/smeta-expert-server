@@ -7,6 +7,11 @@ git pull --ff-only
 
 docker compose $COMPOSE_FILES up -d --build
 
+# Ensure Playwright browser binaries are present in runtime containers.
+# Without this step screenshot fallback may fail after image rebuilds.
+docker compose $COMPOSE_FILES exec -T worker sh -lc "cd /var/www/html && node node_modules/playwright/cli.js install chromium"
+docker compose $COMPOSE_FILES exec -T app sh -lc "cd /var/www/html && node node_modules/playwright/cli.js install chromium"
+
 docker compose $COMPOSE_FILES exec -T app php artisan migrate --force
 docker compose $COMPOSE_FILES exec -T app php artisan optimize:clear
 docker compose $COMPOSE_FILES exec -T app php artisan config:cache

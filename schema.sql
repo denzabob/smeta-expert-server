@@ -40,7 +40,7 @@ CREATE TABLE `ai_logs` (
   KEY `ai_logs_error_type_created_at_index` (`error_type`,`created_at`),
   KEY `ai_logs_user_id_created_at_index` (`user_id`,`created_at`),
   KEY `ai_logs_user_id_provider_name_created_at_index` (`user_id`,`provider_name`,`created_at`)
-) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `app_settings`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -75,6 +75,32 @@ CREATE TABLE `cache_locks` (
   `expiration` int(11) NOT NULL,
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `chrome_ext_logs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `chrome_ext_logs` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) unsigned NOT NULL,
+  `url` varchar(2048) NOT NULL,
+  `domain` varchar(255) NOT NULL,
+  `action` enum('capture','save_template','extract','error') NOT NULL,
+  `status` enum('success','partial','failed') NOT NULL,
+  `extracted_fields` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`extracted_fields`)),
+  `errors` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`errors`)),
+  `template_id` bigint(20) unsigned DEFAULT NULL,
+  `material_id` bigint(20) unsigned DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `chrome_ext_logs_template_id_foreign` (`template_id`),
+  KEY `chrome_ext_logs_material_id_foreign` (`material_id`),
+  KEY `chrome_ext_logs_user_id_created_at_index` (`user_id`,`created_at`),
+  KEY `chrome_ext_logs_domain_created_at_index` (`domain`,`created_at`),
+  CONSTRAINT `chrome_ext_logs_material_id_foreign` FOREIGN KEY (`material_id`) REFERENCES `materials` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `chrome_ext_logs_template_id_foreign` FOREIGN KEY (`template_id`) REFERENCES `parser_supplier_collect_profiles` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `chrome_ext_logs_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=31 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `detail_type_operations`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -291,18 +317,31 @@ DROP TABLE IF EXISTS `material_price_histories`;
 CREATE TABLE `material_price_histories` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `material_id` bigint(20) unsigned NOT NULL,
+  `region_id` bigint(20) unsigned DEFAULT NULL,
+  `observed_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `source_type` enum('web','manual','price_list','chrome_ext') NOT NULL DEFAULT 'manual',
+  `parse_session_id` bigint(20) unsigned DEFAULT NULL,
+  `snapshot_path` varchar(255) DEFAULT NULL,
+  `is_verified` tinyint(4) NOT NULL DEFAULT 0,
+  `currency` varchar(3) NOT NULL DEFAULT 'RUB',
+  `availability` varchar(50) DEFAULT NULL,
   `valid_from` date NOT NULL,
   `valid_to` date DEFAULT NULL,
   `version` int(10) unsigned NOT NULL,
   `price_per_unit` decimal(8,2) NOT NULL,
-  `source_url` varchar(255) DEFAULT NULL,
+  `source_url` text DEFAULT NULL,
   `screenshot_path` varchar(255) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `material_price_histories_material_id_foreign` (`material_id`),
-  CONSTRAINT `material_price_histories_material_id_foreign` FOREIGN KEY (`material_id`) REFERENCES `materials` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=1051 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `material_price_histories_region_id_foreign` (`region_id`),
+  KEY `material_price_histories_parse_session_id_foreign` (`parse_session_id`),
+  KEY `mph_material_region_observed_idx` (`material_id`,`region_id`,`observed_at`),
+  KEY `mph_material_observed_idx` (`material_id`,`observed_at`),
+  CONSTRAINT `material_price_histories_material_id_foreign` FOREIGN KEY (`material_id`) REFERENCES `materials` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `material_price_histories_parse_session_id_foreign` FOREIGN KEY (`parse_session_id`) REFERENCES `parsing_sessions` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `material_price_histories_region_id_foreign` FOREIGN KEY (`region_id`) REFERENCES `regions` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=1085 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `material_prices`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -344,7 +383,7 @@ CREATE TABLE `materials` (
   `name` varchar(255) NOT NULL,
   `search_name` varchar(255) DEFAULT NULL COMMENT 'Нормализованное имя для поиска (lowercase, без спецсимволов)',
   `article` varchar(255) NOT NULL,
-  `type` enum('plate','edge','facade') NOT NULL DEFAULT 'plate',
+  `type` enum('plate','edge','facade','hardware') NOT NULL DEFAULT 'plate',
   `material_tag` varchar(50) DEFAULT NULL COMMENT 'ldsp, mdf, pvc',
   `thickness` decimal(5,2) DEFAULT NULL,
   `waste_factor` decimal(3,2) NOT NULL DEFAULT 1.00,
@@ -353,11 +392,22 @@ CREATE TABLE `materials` (
   `length_mm` int(11) DEFAULT NULL COMMENT 'Длина листа в мм',
   `width_mm` int(11) DEFAULT NULL COMMENT 'Ширина листа в мм',
   `thickness_mm` int(11) DEFAULT NULL COMMENT 'Толщина листа в мм',
-  `source_url` varchar(255) DEFAULT NULL,
+  `source_url` text DEFAULT NULL,
   `last_price_screenshot_path` varchar(255) DEFAULT NULL,
   `availability_status` varchar(50) DEFAULT NULL,
   `price_checked_at` timestamp NULL DEFAULT NULL COMMENT 'Момент последней успешной проверки цены парсером',
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `visibility` enum('private','public','curated') NOT NULL DEFAULT 'private',
+  `curator_user_id` bigint(20) unsigned DEFAULT NULL,
+  `published_at` timestamp NULL DEFAULT NULL,
+  `curated_at` timestamp NULL DEFAULT NULL,
+  `trust_score` smallint(5) unsigned NOT NULL DEFAULT 0,
+  `trust_level` enum('unverified','partial','verified') NOT NULL DEFAULT 'unverified',
+  `data_origin` enum('manual','url_parse','price_list','chrome_ext') NOT NULL DEFAULT 'manual',
+  `last_parsed_at` timestamp NULL DEFAULT NULL,
+  `last_parse_status` enum('ok','failed','blocked','unsupported') DEFAULT NULL,
+  `last_parse_error` varchar(255) DEFAULT NULL,
+  `region_id` bigint(20) unsigned DEFAULT NULL,
   `version` int(10) unsigned NOT NULL DEFAULT 1,
   `operation_ids` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`operation_ids`)),
   `metadata` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`metadata`)),
@@ -376,8 +426,13 @@ CREATE TABLE `materials` (
   KEY `materials_user_id_foreign` (`user_id`),
   KEY `materials_search_name_index` (`search_name`),
   KEY `materials_facade_strict_match_idx` (`type`,`facade_base_type`,`facade_thickness_mm`,`facade_covering`,`facade_cover_type`,`facade_class`),
+  KEY `materials_curator_user_id_foreign` (`curator_user_id`),
+  KEY `materials_region_visibility_idx` (`region_id`,`visibility`,`type`),
+  KEY `materials_visibility_type_idx` (`visibility`,`type`),
+  CONSTRAINT `materials_curator_user_id_foreign` FOREIGN KEY (`curator_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `materials_region_id_foreign` FOREIGN KEY (`region_id`) REFERENCES `regions` (`id`) ON DELETE SET NULL,
   CONSTRAINT `materials_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=689 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=701 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `migrations`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -387,7 +442,7 @@ CREATE TABLE `migrations` (
   `migration` varchar(255) NOT NULL,
   `batch` int(11) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=144 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=150 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `notifications`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -536,15 +591,26 @@ DROP TABLE IF EXISTS `parser_supplier_collect_profiles`;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `parser_supplier_collect_profiles` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) unsigned DEFAULT NULL,
   `supplier_name` varchar(255) NOT NULL,
   `name` varchar(255) NOT NULL,
   `config_override` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(`config_override`)),
+  `url_patterns` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`url_patterns`)),
+  `selectors` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`selectors`)),
+  `extraction_rules` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`extraction_rules`)),
+  `validation_rules` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`validation_rules`)),
+  `test_case` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`test_case`)),
   `is_default` tinyint(1) NOT NULL DEFAULT 0,
+  `source` varchar(20) NOT NULL DEFAULT 'system',
+  `version` int(10) unsigned NOT NULL DEFAULT 1,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `parser_supplier_collect_profiles_supplier_name_index` (`supplier_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `parser_supplier_collect_profiles_supplier_name_index` (`supplier_name`),
+  KEY `parser_supplier_collect_profiles_user_id_foreign` (`user_id`),
+  KEY `pscp_supplier_user_idx` (`supplier_name`,`user_id`),
+  CONSTRAINT `parser_supplier_collect_profiles_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `parser_supplier_configs`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -573,7 +639,7 @@ CREATE TABLE `parsing_logs` (
   PRIMARY KEY (`id`),
   KEY `parsing_logs_session_id_foreign` (`session_id`),
   CONSTRAINT `parsing_logs_session_id_foreign` FOREIGN KEY (`session_id`) REFERENCES `parsing_sessions` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2213 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2243 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `parsing_sessions`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -624,7 +690,7 @@ CREATE TABLE `parsing_sessions` (
   UNIQUE KEY `parsing_sessions_session_run_id_unique` (`session_run_id`),
   KEY `idx_lifecycle_supplier` (`lifecycle_status`,`supplier_name`),
   KEY `idx_session_run_id` (`session_run_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=139 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=169 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `password_reset_tokens`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -654,7 +720,7 @@ CREATE TABLE `personal_access_tokens` (
   UNIQUE KEY `personal_access_tokens_token_unique` (`token`),
   KEY `personal_access_tokens_tokenable_type_tokenable_id_index` (`tokenable_type`,`tokenable_id`),
   KEY `personal_access_tokens_expires_at_index` (`expires_at`)
-) ENGINE=InnoDB AUTO_INCREMENT=24 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `position_profiles`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -831,7 +897,7 @@ CREATE TABLE `project_labor_works` (
   CONSTRAINT `project_labor_works_position_profile_id_foreign` FOREIGN KEY (`position_profile_id`) REFERENCES `position_profiles` (`id`) ON DELETE SET NULL,
   CONSTRAINT `project_labor_works_project_id_foreign` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE,
   CONSTRAINT `project_labor_works_project_profile_rate_id_foreign` FOREIGN KEY (`project_profile_rate_id`) REFERENCES `project_profile_rates` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=48 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=49 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `project_manual_operations`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -955,7 +1021,7 @@ CREATE TABLE `project_positions` (
   CONSTRAINT `project_positions_material_id_foreign` FOREIGN KEY (`material_id`) REFERENCES `materials` (`id`) ON DELETE SET NULL,
   CONSTRAINT `project_positions_material_price_id_foreign` FOREIGN KEY (`material_price_id`) REFERENCES `material_prices` (`id`) ON DELETE SET NULL,
   CONSTRAINT `project_positions_project_id_foreign` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=170 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=175 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `project_price_list_versions`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -1088,7 +1154,7 @@ CREATE TABLE `projects` (
   CONSTRAINT `projects_normohour_profile_id_foreign` FOREIGN KEY (`normohour_profile_id`) REFERENCES `position_profiles` (`id`) ON DELETE SET NULL,
   CONSTRAINT `projects_region_id_foreign` FOREIGN KEY (`region_id`) REFERENCES `regions` (`id`) ON DELETE SET NULL,
   CONSTRAINT `projects_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `regions`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -1333,6 +1399,29 @@ CREATE TABLE `units` (
   CONSTRAINT `units_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `user_material_library`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_material_library` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) unsigned NOT NULL,
+  `material_id` bigint(20) unsigned NOT NULL,
+  `pinned` tinyint(4) NOT NULL DEFAULT 0,
+  `preferred_region_id` bigint(20) unsigned DEFAULT NULL,
+  `preferred_price_source_url` varchar(255) DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uml_user_material_unique` (`user_id`,`material_id`),
+  KEY `user_material_library_material_id_foreign` (`material_id`),
+  KEY `user_material_library_preferred_region_id_foreign` (`preferred_region_id`),
+  KEY `uml_user_pinned_idx` (`user_id`,`pinned`),
+  CONSTRAINT `user_material_library_material_id_foreign` FOREIGN KEY (`material_id`) REFERENCES `materials` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `user_material_library_preferred_region_id_foreign` FOREIGN KEY (`preferred_region_id`) REFERENCES `regions` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `user_material_library_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `user_notifications`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
@@ -1439,7 +1528,7 @@ CREATE TABLE `work_presets` (
   KEY `work_presets_normalized_title_index` (`normalized_title`),
   KEY `work_presets_context_hash_index` (`context_hash`),
   KEY `work_presets_fingerprint_index` (`fingerprint`)
-) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 

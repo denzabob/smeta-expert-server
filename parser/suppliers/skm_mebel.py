@@ -156,7 +156,7 @@ class SkmMebelAdapter(SupplierAdapter):
         # === TIMING: page.goto ===
         t_start = time_module.perf_counter()
         try:
-            page.goto(url, timeout=10000, wait_until='domcontentloaded')
+            page.goto(url, timeout=25000, wait_until='domcontentloaded')
         except Exception as e:
             self._record_error('GOTO_TIMEOUT')
             raise RuntimeError(f"Failed to load page {url}: {e}")
@@ -393,8 +393,46 @@ class SkmMebelAdapter(SupplierAdapter):
         # Возвращаем None вместо исключения — API обработает это корректно
         return price
     
+    def _handle_route_with_images(self, route):
+        """Route handler that allows supplier images but blocks trackers/third-party heavy resources."""
+        url = route.request.url.lower()
+        resource_type = route.request.resource_type
+
+        # Always allow anything from the supplier's own domain
+        if 'skm-mebel.ru' in url:
+            self._requests_allowed += 1
+            route.continue_()
+            return
+
+        # Block trackers and third-party non-essential resources
+        tracker_patterns = [
+            '.woff', '.woff2', '.ttf', '.eot', '.otf',
+            '.mp4', '.webm', '.ogg', '.mp3', '.wav',
+            'google-analytics', 'googletagmanager', 'yandex', 'metrika',
+            'facebook', 'vk.com/rtrg', 'mc.yandex', 'top-fwz1',
+            '/tracker', '/analytics', '/pixel', 'jivosite', 'carrotquest',
+            'counters', 'beacon', 'collect',
+        ]
+        for pattern in tracker_patterns:
+            if pattern in url:
+                self._requests_blocked += 1
+                route.abort()
+                return
+
+        # Block third-party fonts and media
+        if resource_type in ('font', 'media'):
+            self._requests_blocked += 1
+            route.abort()
+            return
+
+        self._requests_allowed += 1
+        route.continue_()
+
     def _take_screenshot(self, page: Page, url: str) -> str:
-        """Создаёт скриншот страницы и возвращает путь к файлу."""
+        """Создаёт скриншот страницы и возвращает путь к файлу.
+        Перед снимком временно разрешает загрузку изображений с домена поставщика,
+        чтобы на скриншоте было видно фото товара.
+        """
         url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
         date_str = datetime.now().strftime("%Y-%m-%d")
         timestamp = datetime.now().strftime("%H%M%S")
@@ -406,23 +444,41 @@ class SkmMebelAdapter(SupplierAdapter):
         dir_path.mkdir(parents=True, exist_ok=True)
 
         temp_png = dir_path / f"{filename_base}.png"
-        webp_path = dir_path / f"{filename_base}.webp"
+        jpg_path = dir_path / f"{filename_base}.jpg"
 
         try:
+            # Переключаем route-handler на вариант разрешающий изображения
+            # чтобы фото товара загрузилось перед снимком
+            self._context.unroute("**/*", self._handle_route)
+            self._context.route("**/*", self._handle_route_with_images)
+            try:
+                # Перезагружаем страницу чтобы изображения загрузились
+                page.reload(wait_until='domcontentloaded', timeout=15000)
+                page.wait_for_load_state('networkidle', timeout=8000)
+            except Exception:
+                pass  # timeout на networkidle не критично
             page.screenshot(path=str(temp_png), full_page=False, timeout=10000)
         except Exception as e:
             raise RuntimeError(f"Failed to take screenshot: {e}")
+        finally:
+            # Восстанавливаем блокирующий handler
+            try:
+                self._context.unroute("**/*", self._handle_route_with_images)
+            except Exception:
+                pass
+            self._context.route("**/*", self._handle_route)
 
         try:
             with Image.open(temp_png) as img:
-                img.save(webp_path, "WEBP", quality=85, method=6)
+                rgb = img.convert("RGB")
+                rgb.save(jpg_path, "JPEG", quality=85, optimize=True)
             temp_png.unlink(missing_ok=True)
         except Exception as e:
             temp_png.unlink(missing_ok=True)
-            raise RuntimeError(f"Failed to convert screenshot to WebP: {e}")
+            raise RuntimeError(f"Failed to convert screenshot to JPEG: {e}")
 
         # Возвращаем путь относительно public/storage
-        return f"screenshots/{self.supplier_name}/{date_str}/{filename_base}.webp"
+        return f"screenshots/{self.supplier_name}/{date_str}/{filename_base}.jpg"
     # ===== Методы для сбора URL (collect_urls) =====
     
     def _goto_page(self, url: str, timeout: int):

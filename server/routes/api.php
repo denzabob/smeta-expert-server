@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\ProjectOperationController;
 use App\Http\Controllers\Api\ProjectManualOperationController;
 use App\Http\Controllers\Api\ParsingController;
 use App\Http\Controllers\Api\Internal\ParserCallbackController;
+use App\Http\Controllers\Api\Internal\ParserScreenshotController;
 use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\SupplierHealthController;
 use App\Http\Controllers\Api\AnalyticsController;
@@ -31,10 +32,14 @@ use App\Http\Controllers\Api\PositionProfileController;
 use App\Http\Controllers\Api\RegionController;
 use App\Http\Controllers\Api\UserSettingsController;
 use App\Http\Controllers\Api\ProjectRevisionController;
+use App\Http\Controllers\Api\RevisionRunController;
 use App\Http\Controllers\Api\ProjectProfileRateController;
 use App\Http\Controllers\Api\WorkDecomposeController;
 use App\Http\Controllers\Api\AdminLLMController;
 use App\Http\Controllers\Api\AdminLLMStatsController;
+use App\Http\Controllers\Api\AdminMaterialDimensionParseFailureController;
+use App\Http\Controllers\Api\AdminMaterialDimensionRuleController;
+use App\Http\Controllers\Api\AdminMaterialTypePatternController;
 use App\Http\Controllers\Api\PinAuthController;
 use App\Http\Controllers\Api\AdminNotificationController;
 use App\Http\Controllers\Api\UserNotificationController;
@@ -73,6 +78,7 @@ Route::post('materials/fetch', [MaterialController::class, 'fetchByUrl']);
 // Internal callback endpoint для Python parser
 Route::middleware(InternalOnlyMiddleware::class)->group(function () {
     Route::post('/internal/parser/callback', [ParserCallbackController::class, 'handle']);
+    Route::post('/internal/parser/screenshot', [ParserScreenshotController::class, 'handle']);
     
     // URL Collection endpoints (HMAC protected)
     Route::post('/parsing/save-urls', [UrlCollectionController::class, 'saveUrls']);
@@ -107,6 +113,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('chrome/templates/{id}', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'getTemplate']);
         Route::post('chrome/templates', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'saveTemplate']);
         Route::delete('chrome/templates/{id}', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'deleteTemplate']);
+        Route::patch('chrome/templates/{id}/visibility', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'updateTemplateVisibility']);
+        Route::patch('chrome/templates/{id}/status', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'updateTemplateStatus']);
         Route::post('chrome/extract', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'extract']);
         Route::post('chrome/find-template', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'findTemplate']);
         Route::post('chrome/validate', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'validateFields']);
@@ -269,9 +277,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('projects/{project}/revisions', [ProjectRevisionController::class, 'index']);
     Route::get('projects/{project}/revisions/{number}', [ProjectRevisionController::class, 'show']);
     Route::get('projects/{project}/revisions/{number}/pdf', [ProjectRevisionController::class, 'pdf']);
+    Route::get('projects/{project}/revisions/{number}/price-justification.pdf', [ProjectRevisionController::class, 'priceJustificationPdf']);
     Route::post('projects/{project}/revisions/{number}/publish', [ProjectRevisionController::class, 'publish']);
     Route::post('projects/{project}/revisions/{number}/unpublish', [ProjectRevisionController::class, 'unpublish']);
     Route::post('projects/{project}/revisions/{number}/lock', [ProjectRevisionController::class, 'lock']);
+    Route::post('projects/{project}/revisions/run', [RevisionRunController::class, 'start']);
+    Route::get('projects/{project}/revisions/run/{runId}', [RevisionRunController::class, 'show']);
+    Route::post('projects/{project}/revisions/run/{runId}/retry', [RevisionRunController::class, 'retry']);
+    Route::post('revisions/run/{runId}/items/{itemId}/manual', [RevisionRunController::class, 'manual']);
+    Route::post('projects/{project}/revisions/run/{runId}/finalize', [RevisionRunController::class, 'finalize']);
     
     // ========== Position Import API ==========
     // Upload file and create import session
@@ -398,6 +412,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('admin/notifications/{id}/cancel', [AdminNotificationController::class, 'cancel']);
     Route::get('admin/notifications/{id}/stats', [AdminNotificationController::class, 'stats']);
     Route::get('admin/users/search', [AdminNotificationController::class, 'searchUsers']);
+
+    // ========== Admin Material Dimensions API ==========
+    Route::post('admin/material-dimension-rules/preview', [AdminMaterialDimensionRuleController::class, 'preview']);
+    Route::apiResource('admin/material-dimension-rules', AdminMaterialDimensionRuleController::class);
+    Route::get('admin/material-dimension-failures', [AdminMaterialDimensionParseFailureController::class, 'index']);
+    Route::get('admin/material-dimension-failures/{materialDimensionParseFailure}', [AdminMaterialDimensionParseFailureController::class, 'show']);
+    Route::patch('admin/material-dimension-failures/{materialDimensionParseFailure}', [AdminMaterialDimensionParseFailureController::class, 'update']);
+
+    // ========== Admin Material Type Patterns API ==========
+    Route::post('admin/material-type-patterns/preview', [AdminMaterialTypePatternController::class, 'preview']);
+    Route::apiResource('admin/material-type-patterns', AdminMaterialTypePatternController::class);
     
     // ========== Suppliers & Price Lists API ==========
     Route::apiResource('suppliers', \App\Http\Controllers\Api\SupplierController::class);

@@ -18,6 +18,8 @@ class ParserSupplierCollectProfile extends Model
         'validation_rules',
         'test_case',
         'source',
+        'visibility',
+        'status',
         'version',
     ];
 
@@ -62,6 +64,11 @@ class ParserSupplierCollectProfile extends Model
     public function scopeChromeExt($query)
     {
         return $query->where('source', 'chrome_ext');
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'active');
     }
 
     /**

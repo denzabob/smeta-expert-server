@@ -13,6 +13,11 @@
   let currentTemplate = null;
   let capturedFields = {};
   let userInfo = null;
+  let domainTemplates = [];
+  let detectedMaterialUnit = 'шт';
+  let isAdvancedMode = false;
+  let autoFillWarnings = [];
+  let templateAutoApplied = false;
 
   // ============================================================
   // DOM refs
@@ -25,7 +30,6 @@
   const sectionMain = $('#section-main');
 
   // Auth
-  const inputApiUrl = $('#input-api-url');
   const inputToken = $('#input-token');
   const btnConnect = $('#btn-connect');
   const authError = $('#auth-error');
@@ -38,6 +42,12 @@
   const pageUrl = $('#page-url');
   const templateStatus = $('#template-status');
   const pageLoadingStatus = $('#page-loading-status');
+  const simpleStatus = $('#simple-status');
+  const autoTemplateBanner = $('#auto-template-banner');
+  const btnAdvancedToggle = $('#btn-advanced-toggle');
+  const firstRunHelper = $('#first-run-helper');
+  const btnDismissOnboarding = $('#btn-dismiss-onboarding');
+  const btnSuggestTemplate = $('#btn-suggest-template');
 
   // Capture
   const btnValidate = $('#btn-validate');
@@ -79,10 +89,11 @@
   const settingsUserName = $('#settings-user-name');
   const settingsUserEmail = $('#settings-user-email');
   const settingsRegion = $('#settings-region');
-  const settingsServerUrl = $('#settings-server-url');
   const btnDisconnect = $('#btn-disconnect');
   const btnOpenPrismSite = $('#btn-open-prism-site');
-  const DEFAULT_API_URL = 'https://prismcore.ru/api';
+  const DEFAULT_API_URL = 'https://app.prismcore.ru/api';
+  const ONBOARDING_KEY = 'prizm_onboarding_seen_v1';
+  const SUCCESS_COUNTER_KEY = 'prizm_success_counter_by_domain_v1';
 
   // ============================================================
   // Helpers
@@ -140,6 +151,88 @@
     return str.length > len ? str.substring(0, len) + '…' : str;
   }
 
+  function setSimpleStatus(message, tone = 'info') {
+    if (!simpleStatus) return;
+    simpleStatus.textContent = message;
+    simpleStatus.classList.remove('status-success', 'status-warning', 'status-error');
+    if (tone === 'success') simpleStatus.classList.add('status-success');
+    if (tone === 'warning') simpleStatus.classList.add('status-warning');
+    if (tone === 'error') simpleStatus.classList.add('status-error');
+  }
+
+  function setAutoTemplateBanner(message = '') {
+    if (!autoTemplateBanner) return;
+    if (!message) {
+      autoTemplateBanner.classList.add('hidden');
+      autoTemplateBanner.textContent = '';
+      return;
+    }
+    autoTemplateBanner.textContent = message;
+    autoTemplateBanner.classList.remove('hidden');
+  }
+
+  function setAdvancedMode(enabled) {
+    isAdvancedMode = !!enabled;
+    sectionMain.classList.toggle('advanced-mode', isAdvancedMode);
+    if (btnAdvancedToggle) {
+      btnAdvancedToggle.textContent = isAdvancedMode ? 'Скрыть расширенный режим' : 'Расширенный режим';
+    }
+    if (!isAdvancedMode) {
+      switchTab('capture');
+    }
+  }
+
+  function getSourceLabel(field) {
+    const info = capturedFields[field];
+    if (!info?.value) {
+      return { text: 'Не удалось определить автоматически', tone: 'status-check' };
+    }
+    if (info.template) {
+      return { text: 'Использован сохраненный шаблон', tone: 'status-template' };
+    }
+    if (info.manual) {
+      return { text: 'Введено вручную', tone: 'status-manual' };
+    }
+    if (info.selector && !info.auto && !info.schema) {
+      return { text: 'Выбрано вручную на странице', tone: 'status-manual' };
+    }
+    if (info.schema) {
+      return { text: 'Найдено автоматически', tone: 'status-ok' };
+    }
+    if (info.auto) {
+      return { text: 'Найдено автоматически', tone: 'status-ok' };
+    }
+    return { text: 'Нужно проверить', tone: 'status-check' };
+  }
+
+  async function maybeShowOnboarding() {
+    const saved = await chrome.storage.local.get(ONBOARDING_KEY);
+    if (saved?.[ONBOARDING_KEY]) {
+      firstRunHelper?.classList.add('hidden');
+      return;
+    }
+    firstRunHelper?.classList.remove('hidden');
+  }
+
+  async function dismissOnboarding() {
+    firstRunHelper?.classList.add('hidden');
+    await chrome.storage.local.set({ [ONBOARDING_KEY]: true });
+  }
+
+  function hasAnyCapturedValue() {
+    return Object.values(capturedFields).some((item) => !!item?.value);
+  }
+
+  function hasCoreFields() {
+    return !!capturedFields.title?.value && !!capturedFields.price?.value;
+  }
+
+  function unitByMaterialType(type) {
+    if (type === 'plate') return 'м²';
+    if (type === 'edge') return 'м.п.';
+    return 'шт';
+  }
+
   // ============================================================
   // Initialization
   // ============================================================
@@ -147,6 +240,7 @@
   async function init() {
     // Очищаем бейдж при открытии попапа
     chrome.action.setBadgeText({ text: '' });
+    setAdvancedMode(false);
 
     // Get current tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -183,8 +277,6 @@
         }
       }
     } else {
-      // Pre-fill API URL from config
-      inputApiUrl.value = config.baseUrl || DEFAULT_API_URL;
       showAuthUI();
     }
 
@@ -203,6 +295,8 @@
     sectionMain.classList.remove('hidden');
     statusDot.className = 'status-dot online';
     statusText.textContent = me.user?.name || 'Подключено';
+    setSimpleStatus('Откройте карточку товара. Мы попробуем заполнить поля автоматически.');
+    maybeShowOnboarding().catch(() => {});
 
     // Settings
     settingsUserName.textContent = me.user?.name || '—';
@@ -210,13 +304,77 @@
     settingsRegion.textContent = me.region_id ? `ID: ${me.region_id}` : 'Не задан';
   }
 
+  function applyDetectedFields(fields, options = {}) {
+    const markTemplate = !!options.markTemplate;
+    const allowOverride = !!options.allowOverride;
+    for (const [field, info] of Object.entries(fields || {})) {
+      if (!info?.value) continue;
+      if (!allowOverride && capturedFields[field]?.value) continue;
+      capturedFields[field] = {
+        ...capturedFields[field],
+        ...info,
+        value: info.value,
+        template: markTemplate || !!info.template,
+      };
+      updateFieldUI(field, info.value);
+    }
+  }
+
+  function evaluateSimpleFlowStatus() {
+    if (hasCoreFields()) {
+      if (autoFillWarnings.length > 0) {
+        setSimpleStatus('Поля найдены, но есть неоднозначности. Проверьте перед добавлением.', 'warning');
+      } else {
+        setSimpleStatus('Основные поля найдены. Нажмите "Проверить", затем "Добавить материал".', 'success');
+      }
+      return;
+    }
+
+    const missing = [];
+    if (!capturedFields.title?.value) missing.push('название');
+    if (!capturedFields.price?.value) missing.push('цена');
+    if (missing.length > 0) {
+      setSimpleStatus(`Не удалось определить: ${missing.join(', ')}. Выберите поля вручную на странице.`, 'warning');
+      return;
+    }
+
+    setSimpleStatus('Проверьте значения и при необходимости поправьте вручную.', 'warning');
+  }
+
+  async function tryAutomaticFill() {
+    try {
+      const result = await sendToContent('AUTO_DETECT_FIELDS');
+      if (!result) return;
+
+      if (result.fields) {
+        applyDetectedFields(result.fields, { markTemplate: false });
+      }
+
+      autoFillWarnings = Array.isArray(result.warnings) ? result.warnings : [];
+      if (result.materialType) {
+        detectedMaterialType = result.materialType;
+      }
+      if (result.unit) {
+        detectedMaterialUnit = result.unit;
+      }
+
+      if (autoFillWarnings.length > 0) {
+        showResult(captureResult, autoFillWarnings.join('\n'), 'error');
+      }
+    } catch {
+      setSimpleStatus('Не удалось выполнить автозаполнение. Можно выбрать поля вручную.', 'warning');
+    }
+  }
+
   async function loadPageInfo() {
-    // Show loading state immediately
     pageDomain.innerHTML = '<span class="loading-dots">Загрузка</span>';
     pageUrl.textContent = '';
+    setSimpleStatus('Проверяем страницу и автоматически ищем поля...');
+    setAutoTemplateBanner('');
+    templateAutoApplied = false;
+    autoFillWarnings = [];
     if (pageLoadingStatus) pageLoadingStatus.classList.remove('hidden');
 
-    // Wait for content script to be ready (page may still be loading)
     let contentReady = false;
     let retries = 0;
     while (!contentReady && retries < 5) {
@@ -226,8 +384,8 @@
       } catch {
         retries++;
         if (retries < 5) {
-          pageDomain.innerHTML = `<span class="loading-dots">Страница загружается</span>`;
-          await new Promise(r => setTimeout(r, 800));
+          pageDomain.innerHTML = '<span class="loading-dots">Страница загружается</span>';
+          await new Promise((r) => setTimeout(r, 800));
         }
       }
     }
@@ -236,7 +394,8 @@
       pageDomain.textContent = 'Страница не отвечает';
       pageUrl.textContent = currentTab?.url || '—';
       if (pageLoadingStatus) pageLoadingStatus.classList.add('hidden');
-      templateStatus.innerHTML = '<span class="no-template">Перезагрузите страницу</span>';
+      templateStatus.innerHTML = '<span class="no-template">Перезагрузите страницу и попробуйте снова</span>';
+      setSimpleStatus('Не удалось подключиться к странице. Обновите страницу и откройте расширение снова.', 'error');
       return;
     }
 
@@ -247,127 +406,121 @@
       pageUrl.title = pageInfo.url;
       if (pageLoadingStatus) pageLoadingStatus.classList.add('hidden');
 
-      // Check for existing template
       let templateFound = false;
       try {
         const result = await sendToBackground('FIND_TEMPLATE', { url: pageInfo.url });
         if (result.has_template) {
           currentTemplate = result.template;
           templateFound = true;
-          templateStatus.innerHTML = '<span class="has-template">✓ Шаблон найден: ' +
-            truncate(currentTemplate.name, 30) + '</span>';
+          templateStatus.innerHTML = '<span class="has-template">Есть сохраненное правило сайта: ' + truncate(currentTemplate.name, 30) + '</span>';
           btnApplyTemplate.disabled = false;
           templateName.value = currentTemplate.name;
         } else {
-          templateStatus.innerHTML = '<span class="no-template">Нет шаблона для этого сайта</span>';
+          templateStatus.innerHTML = '<span class="no-template">Сохраненного правила для сайта нет</span>';
           btnApplyTemplate.disabled = true;
         }
       } catch {
-        templateStatus.innerHTML = '<span class="no-template">Нет шаблона</span>';
+        templateStatus.innerHTML = '<span class="no-template">Не удалось проверить сохраненные правила сайта</span>';
       }
 
-      // Load existing captured data + restore schema mapping
       const captured = await sendToContent('GET_CAPTURED_DATA');
       if (captured?.capturedData) {
         capturedFields = captured.capturedData;
         for (const [field, info] of Object.entries(capturedFields)) {
           updateFieldUI(field, info.value);
         }
-        // Auto-parse dimensions from restored title (also detects material type)
-        if (capturedFields.title?.value) {
-          autoParseDimensions(capturedFields.title.value);
-        } else {
-          // No title yet — detect type from URL only
-          refreshMaterialType();
-        }
-        updateActionButtons();
       } else {
-        // No captured data — detect type from URL
-        refreshMaterialType();
+        capturedFields = {};
       }
-      // Restore schema mapping if was previously set
+
       if (captured?.schemaMapping) {
         lastSchemaMapping = captured.schemaMapping;
       }
 
-      // Detect Schema.org data (with loading indicator)
-      schemaBanner.classList.remove('hidden');
-      schemaBanner.innerHTML = `
-        <div class="schema-banner__header">
-          <span class="schema-banner__icon">🔍</span>
-          <span class="schema-banner__title schema-searching">Schema.org поиск<span class="dots-anim"></span></span>
-        </div>`;
-
-      try {
-        schemaData = await sendToContent('DETECT_SCHEMA', {}, 5000);
-        // Restore the banner HTML after detection
-        schemaBanner.innerHTML = `
-          <div class="schema-banner__header">
-            <span class="schema-banner__icon">🔍</span>
-            <span class="schema-banner__title">Schema.org обнаружена</span>
-            <button id="btn-schema-toggle" class="btn-schema-toggle">Показать</button>
-          </div>
-          <div id="schema-details" class="schema-details hidden">
-            <div id="schema-selector" class="schema-selector hidden">
-              <label class="schema-selector-label">Схема:</label>
-              <select id="schema-select" class="schema-select"></select>
-            </div>
-            <div id="schema-fields-container" class="schema-fields-container"></div>
-            <div class="schema-actions">
-              <button id="btn-schema-apply" class="btn btn-primary btn-full">Заполнить выбранные поля</button>
-            </div>
-          </div>`;
-        // Re-bind DOM refs that were replaced
-        rebindSchemaRefs();
-
-        if (schemaData?.found) {
-          showSchemaBanner(schemaData);
-
-          // If template has schema_mapping, pre-select dropdowns
-          const savedMapping = currentTemplate?.extraction_rules?.schema_mapping;
-          if (savedMapping?.mapping) {
-            const schemaIdx = savedMapping.schemaIndex || 0;
-            if (schemaRefs.select) schemaRefs.select.value = String(schemaIdx);
-            renderSchemaFields(schemaIdx);
-            // Pre-select dropdown values from saved mapping
-            for (const [captureField, schemaPath] of Object.entries(savedMapping.mapping)) {
-              const sel = schemaRefs.container.querySelector(`.schema-map-select[data-path="${schemaPath}"]`);
-              if (sel) sel.value = captureField;
-            }
-            templateStatus.innerHTML = '<span class="has-template">✓ Schema.org шаблон: ' +
-              truncate(currentTemplate.name, 25) + '</span>';
-          }
-        } else {
-          // No schema found
-          schemaBanner.classList.add('hidden');
+      if (!hasAnyCapturedValue() && templateFound) {
+        templateStatus.innerHTML = '<span class="has-template">Применяем сохраненное правило сайта...</span>';
+        const applied = await handleApplyTemplate({ silent: true, markTemplateSource: true });
+        templateAutoApplied = !!applied;
+        if (templateAutoApplied) {
+          setAutoTemplateBanner('Данные заполнены по сохраненному правилу сайта. Проверьте результат перед добавлением.');
+          templateStatus.innerHTML = '<span class="has-template">Данные заполнены по сохраненному правилу сайта</span>';
         }
-      } catch {
-        // Schema detection failed or timed out
+      }
+
+      if (!hasCoreFields()) {
+        await tryAutomaticFill();
+      }
+
+      if (capturedFields.title?.value) {
+        autoParseDimensions(capturedFields.title.value);
+      } else {
+        refreshMaterialType();
+      }
+
+      updateActionButtons();
+      evaluateSimpleFlowStatus();
+
+      if (isAdvancedMode) {
+        await loadSchemaDataForAdvanced();
+      } else {
         schemaBanner.classList.add('hidden');
       }
 
-      // Auto-apply template if fields are empty and template exists
-      const hasData = Object.keys(capturedFields).some(f => capturedFields[f]?.value);
-      if (templateFound && !hasData) {
-        try {
-          templateStatus.innerHTML = '<span class="has-template">⏳ Автоприменение шаблона…</span>';
-          await handleApplyTemplate();
-          templateStatus.innerHTML = '<span class="has-template">✓ Шаблон применён: ' +
-            truncate(currentTemplate.name, 25) + '</span>';
-        } catch { /* auto-apply is best-effort */ }
-      }
-
-      // Load templates list
       await loadTemplatesList();
-
-      // Update settings
-      const config = await sendToBackground('GET_CONFIG');
-      settingsServerUrl.textContent = config.baseUrl || '—';
-
-    } catch (err) {
+    } catch {
       pageDomain.textContent = 'Не удалось получить данные';
       pageUrl.textContent = currentTab?.url || '—';
       if (pageLoadingStatus) pageLoadingStatus.classList.add('hidden');
+      setSimpleStatus('Не удалось прочитать страницу. Попробуйте обновить ее и открыть расширение снова.', 'error');
+    }
+  }
+
+  /** Re-bind schema DOM refs after innerHTML replacement */
+  async function loadSchemaDataForAdvanced() {
+    schemaBanner.classList.remove('hidden');
+    schemaBanner.innerHTML = `
+      <div class="schema-banner__header">
+        <span class="schema-banner__icon">🔍</span>
+        <span class="schema-banner__title schema-searching">Schema.org поиск<span class="dots-anim"></span></span>
+      </div>`;
+
+    try {
+      schemaData = await sendToContent('DETECT_SCHEMA', {}, 5000);
+      schemaBanner.innerHTML = `
+        <div class="schema-banner__header">
+          <span class="schema-banner__icon">🔍</span>
+          <span class="schema-banner__title">Schema.org обнаружена</span>
+          <button id="btn-schema-toggle" class="btn-schema-toggle">Показать</button>
+        </div>
+        <div id="schema-details" class="schema-details hidden">
+          <div id="schema-selector" class="schema-selector hidden">
+            <label class="schema-selector-label">Схема:</label>
+            <select id="schema-select" class="schema-select"></select>
+          </div>
+          <div id="schema-fields-container" class="schema-fields-container"></div>
+          <div class="schema-actions">
+            <button id="btn-schema-apply" class="btn btn-primary btn-full">Заполнить выбранные поля</button>
+          </div>
+        </div>`;
+      rebindSchemaRefs();
+
+      if (schemaData?.found) {
+        showSchemaBanner(schemaData);
+        const savedMapping = currentTemplate?.extraction_rules?.schema_mapping;
+        if (savedMapping?.mapping) {
+          const schemaIdx = savedMapping.schemaIndex || 0;
+          if (schemaRefs.select) schemaRefs.select.value = String(schemaIdx);
+          renderSchemaFields(schemaIdx);
+          for (const [captureField, schemaPath] of Object.entries(savedMapping.mapping)) {
+            const sel = schemaRefs.container.querySelector(`.schema-map-select[data-path="${schemaPath}"]`);
+            if (sel) sel.value = captureField;
+          }
+        }
+      } else {
+        schemaBanner.classList.add('hidden');
+      }
+    } catch {
+      schemaBanner.classList.add('hidden');
     }
   }
 
@@ -410,6 +563,26 @@
       tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
 
+    btnAdvancedToggle?.addEventListener('click', () => {
+      setAdvancedMode(!isAdvancedMode);
+      if (!isAdvancedMode) {
+        evaluateSimpleFlowStatus();
+      } else {
+        loadSchemaDataForAdvanced().catch(() => {});
+      }
+    });
+
+    btnDismissOnboarding?.addEventListener('click', () => {
+      dismissOnboarding().catch(() => {});
+    });
+
+    btnSuggestTemplate?.addEventListener('click', () => {
+      setAdvancedMode(true);
+      switchTab('template');
+      templateName.value = `${pageInfo?.domain || 'site'} быстрый шаблон`;
+      templateName.focus();
+    });
+
     // Capture buttons
     $$('.btn-capture').forEach(btn => {
       btn.addEventListener('click', () => startFieldCapture(btn.dataset.field));
@@ -427,7 +600,7 @@
     btnAddMaterial.addEventListener('click', handleAddMaterial);
     btnClear.addEventListener('click', handleClear);
     btnSaveTemplate.addEventListener('click', handleSaveTemplate);
-    btnApplyTemplate.addEventListener('click', handleApplyTemplate);
+    btnApplyTemplate.addEventListener('click', () => handleApplyTemplate());
     btnDisconnect.addEventListener('click', handleDisconnect);
     btnOpenPrismSite?.addEventListener('click', (e) => {
       e.preventDefault();
@@ -497,6 +670,7 @@
         }
 
         updateActionButtons();
+        evaluateSimpleFlowStatus();
       }
     });
   }
@@ -601,7 +775,8 @@
     if (indicator) {
       const colors = { plate: '#4F46E5', edge: '#059669', hardware: '#D97706' };
       const icons = { plate: '📋', edge: '📏', hardware: '🔩' };
-      indicator.innerHTML = `<span style="color:${colors[type]}">${icons[type]} Тип: <strong>${TYPE_LABELS[type]}</strong></span>`;
+      detectedMaterialUnit = unitByMaterialType(type);
+      indicator.innerHTML = `<span style="color:${colors[type]}">${icons[type]} Тип: <strong>${TYPE_LABELS[type]}</strong> · Ед. изм.: <strong>${detectedMaterialUnit}</strong></span>`;
       indicator.style.display = '';
     }
   }
@@ -695,6 +870,8 @@
         updateFieldUI(field, String(value));
       }
     }
+
+    evaluateSimpleFlowStatus();
   }
 
   /**
@@ -720,6 +897,7 @@
     if (row) row.classList.add('hidden');
     input.value = '';
     updateActionButtons();
+    evaluateSimpleFlowStatus();
   }
 
   // ============================================================
@@ -727,6 +905,9 @@
   // ============================================================
 
   function switchTab(tabName) {
+    if (!isAdvancedMode && tabName !== 'capture') {
+      setAdvancedMode(true);
+    }
     $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
     $$('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === `tab-${tabName}`));
   }
@@ -736,11 +917,10 @@
   // ============================================================
 
   async function handleConnect() {
-    const baseUrl = (inputApiUrl.value.trim() || DEFAULT_API_URL).replace(/\/+$/, '');
     const token = inputToken.value.trim();
 
-    if (!baseUrl || !token) {
-      authError.textContent = 'Заполните адрес сервера и токен';
+    if (!token) {
+      authError.textContent = 'Введите API-токен';
       authError.classList.remove('hidden');
       return;
     }
@@ -750,7 +930,7 @@
     authError.classList.add('hidden');
 
     try {
-      await sendToBackground('CONFIGURE', { baseUrl, token });
+      await sendToBackground('CONFIGURE', { token });
       const me = await sendToBackground('GET_ME');
       userInfo = me;
       chrome.storage.local.set({ cachedUser: me });
@@ -766,7 +946,7 @@
   }
 
   async function handleDisconnect() {
-    await sendToBackground('CONFIGURE', { baseUrl: DEFAULT_API_URL, token: '' });
+    await sendToBackground('CONFIGURE', { token: '' });
     await chrome.storage.local.remove('cachedUser');
     userInfo = null;
     showAuthUI();
@@ -828,6 +1008,7 @@
     const valEl = $(`#val-${field}`);
     const fieldEl = $(`.capture-field[data-field="${field}"]`);
     const badgeEl = $(`#badge-${field}`);
+    const statusEl = $(`#status-${field}`);
     const manualRow = $(`#manual-row-${field}`);
     const manualToggle = $(`.btn-manual-toggle[data-field="${field}"]`);
 
@@ -841,6 +1022,12 @@
       fieldEl?.classList.remove('captured');
     }
 
+    const sourceMeta = getSourceLabel(field);
+    if (statusEl) {
+      statusEl.textContent = sourceMeta.text;
+      statusEl.className = `field-status ${sourceMeta.tone}`;
+    }
+
     // Source badge + lock logic for dimension fields
     const dimFields = ['thickness', 'length', 'width'];
     if (dimFields.includes(field) && badgeEl) {
@@ -851,19 +1038,19 @@
         fieldEl?.classList.remove('source-locked');
 
         if (source === 'auto') {
-          badgeEl.textContent = '🔒 авто';
+          badgeEl.textContent = info.template ? 'Шаблон' : 'Авто';
           badgeEl.classList.add('badge-auto');
           fieldEl?.classList.add('source-locked');
         } else if (source === 'capture') {
-          badgeEl.textContent = '🔒 захват';
+          badgeEl.textContent = 'Выбрано';
           badgeEl.classList.add('badge-capture');
           fieldEl?.classList.add('source-locked');
         } else if (source === 'schema') {
-          badgeEl.textContent = '🔒 schema';
+          badgeEl.textContent = 'Авто';
           badgeEl.classList.add('badge-auto');
           fieldEl?.classList.add('source-locked');
         } else if (source === 'manual') {
-          badgeEl.textContent = '✏️ вручную';
+          badgeEl.textContent = 'Вручную';
           badgeEl.classList.add('badge-manual');
         }
 
@@ -888,6 +1075,7 @@
     const info = capturedFields[field];
     if (!info?.value) return null;
     if (info.manual) return 'manual';
+    if (info.template) return 'auto';
     if (info.auto) return 'auto';
     if (info.schema) return 'schema';
     if (info.selector) return 'capture';
@@ -897,14 +1085,15 @@
   function updateActionButtons() {
     const hasTitle = !!capturedFields.title?.value;
     const hasPrice = !!capturedFields.price?.value;
-    const hasAny = Object.keys(capturedFields).length > 0;
+    const hasAny = hasAnyCapturedValue();
 
     btnValidate.disabled = !hasAny;
     btnAddMaterial.disabled = !(hasTitle && hasPrice);
 
     // Enable template save if at least one selector captured
     const hasSelectors = Object.values(capturedFields).some(f => f.selector);
-    btnSaveTemplate.disabled = !hasSelectors;
+    btnSaveTemplate.disabled = !(hasSelectors || !!lastSchemaMapping);
+    updateTemplateSuggestionVisibility().catch(() => {});
   }
 
   async function handleClear() {
@@ -924,9 +1113,12 @@
     $$('.manual-input').forEach(input => { input.value = ''; });
     validationPreview.classList.add('hidden');
     captureResult.classList.add('hidden');
+    autoFillWarnings = [];
+    setAutoTemplateBanner('');
     // Re-detect material type (from URL only, since title is cleared)
     refreshMaterialType();
     updateActionButtons();
+    evaluateSimpleFlowStatus();
   }
 
   // ============================================================
@@ -955,6 +1147,7 @@
       validationPreview.classList.toggle('has-errors', !result.valid);
 
       let html = '';
+      const warnings = [];
 
       if (result.preview) {
         const mType = result.preview.material_type || detectedMaterialType;
@@ -987,19 +1180,38 @@
           html += `<div class="preview-row"><span class="label">${row.label}:</span><span class="value">${row.value}</span></div>`;
         });
 
-        html += `<div class="preview-row"><span class="label">Доверие:</span><span class="value">${result.trust?.trust_level || '—'}</span></div>`;
+        if (isAdvancedMode) {
+          html += `<div class="preview-row"><span class="label">Техническая оценка:</span><span class="value">${result.trust?.trust_level || '—'}</span></div>`;
+        }
+
+        if (!result.preview.title) warnings.push('Не удалось определить название.');
+        if (result.preview.price == null) warnings.push('Не удалось определить цену.');
+        if (mType !== 'hardware' && !result.preview.length && !result.preview.width) {
+          warnings.push('Не удалось определить размеры автоматически.');
+        }
       }
 
       if (result.errors?.length) {
         result.errors.forEach(e => {
-          html += `<div class="preview-error">⚠ ${e}</div>`;
+          warnings.push(e);
         });
+      }
+
+      if (warnings.length > 0) {
+        html += '<div class="preview-row"><span class="label">Что требует проверки:</span><span class="value">Проверьте поля ниже</span></div>';
+        warnings.forEach((warning) => {
+          html += `<div class="preview-error">⚠ ${warning}</div>`;
+        });
+        setSimpleStatus('Проверка завершена: есть поля, требующие внимания.', 'warning');
+      } else {
+        setSimpleStatus('Проверка завершена: можно добавлять материал.', 'success');
       }
 
       previewContent.innerHTML = html;
 
     } catch (err) {
-      showResult(captureResult, 'Ошибка валидации: ' + err.message, 'error');
+      showResult(captureResult, 'Не удалось выполнить проверку: ' + err.message, 'error');
+      setSimpleStatus('Проверка не выполнена. Проверьте подключение и попробуйте еще раз.', 'error');
     } finally {
       btnValidate.disabled = false;
       btnValidate.textContent = 'Проверить';
@@ -1037,17 +1249,21 @@
 
       if (result.success) {
         const msg = result.is_new
-          ? `✓ Материал создан (ID: ${result.material?.id})\n📋 Доступен в разделе «Материалы» → «Каталог материалов»`
-          : `✓ Материал обновлён (дедуп: ${result.dedup_match})`;
+          ? 'Материал успешно добавлен в Призму.'
+          : 'Найден похожий материал. Карточка обновлена.';
         showResult(captureResult, msg, 'success');
+        setSimpleStatus('Материал сохранен. Можно переходить к следующей карточке.', 'success');
+        await bumpSuccessCounterForDomain();
       } else {
-        showResult(captureResult, '✗ ' + (result.message || 'Ошибка'), 'error');
+        showResult(captureResult, result.message || 'Не удалось добавить материал.', 'error');
+        setSimpleStatus('Не удалось добавить материал. Проверьте обязательные поля.', 'error');
       }
     } catch (err) {
-      showResult(captureResult, 'Ошибка: ' + err.message, 'error');
+      showResult(captureResult, 'Не удалось добавить материал: ' + err.message, 'error');
+      setSimpleStatus('Ошибка добавления. Проверьте данные и повторите.', 'error');
     } finally {
       btnAddMaterial.disabled = false;
-      btnAddMaterial.textContent = 'Добавить в Призму';
+      btnAddMaterial.textContent = 'Добавить материал';
       updateActionButtons();
     }
   }
@@ -1055,6 +1271,98 @@
   // ============================================================
   // Templates
   // ============================================================
+
+  async function bumpSuccessCounterForDomain() {
+    const domain = pageInfo?.domain;
+    if (!domain) return;
+
+    const saved = await chrome.storage.local.get(SUCCESS_COUNTER_KEY);
+    const counters = saved?.[SUCCESS_COUNTER_KEY] || {};
+    counters[domain] = (counters[domain] || 0) + 1;
+    await chrome.storage.local.set({ [SUCCESS_COUNTER_KEY]: counters });
+    await updateTemplateSuggestionVisibility();
+  }
+
+  async function updateTemplateSuggestionVisibility() {
+    if (!btnSuggestTemplate || !pageInfo?.domain) return;
+    btnSuggestTemplate.classList.add('hidden');
+
+    if (currentTemplate || domainTemplates.length > 0) {
+      return;
+    }
+
+    const hasReusableRule = Object.values(capturedFields).some((item) => item?.selector) || !!lastSchemaMapping;
+    if (!hasReusableRule) {
+      return;
+    }
+
+    const saved = await chrome.storage.local.get(SUCCESS_COUNTER_KEY);
+    const counters = saved?.[SUCCESS_COUNTER_KEY] || {};
+    const successCount = counters[pageInfo.domain] || 0;
+
+    if (successCount >= 3) {
+      btnSuggestTemplate.classList.remove('hidden');
+    }
+  }
+
+  function selectorFragility(selector) {
+    if (!selector) return false;
+    return /:nth-child|:nth-of-type|>\s*[^>]+>\s*[^>]+>/i.test(selector);
+  }
+
+  function templateSimilarityScore(selectorsA, selectorsB) {
+    const keys = ['title', 'price', 'article', 'thickness', 'length', 'width'];
+    let compared = 0;
+    let same = 0;
+    keys.forEach((key) => {
+      if (!selectorsA[key] || !selectorsB[key]) return;
+      compared++;
+      if (selectorsA[key] === selectorsB[key]) same++;
+    });
+    if (compared === 0) return 0;
+    return same / compared;
+  }
+
+  function evaluateTemplatePayloadQuality(payload) {
+    const blocking = [];
+    const warnings = [];
+    const selectors = payload.selectors || {};
+
+    if (!payload.schema_mapping && Object.keys(selectors).length < 2) {
+      blocking.push('Слишком мало захваченных полей для надежного шаблона.');
+    }
+
+    if (!payload.schema_mapping && (!selectors.title || !selectors.price)) {
+      blocking.push('Для шаблона нужны хотя бы поля "Название" и "Цена".');
+    }
+
+    if (!payload.test_case?.title || !payload.test_case?.price) {
+      blocking.push('Перед сохранением заполните название и цену на текущей странице.');
+    }
+
+    const fragileFields = Object.entries(selectors)
+      .filter(([, selector]) => selectorFragility(selector))
+      .map(([field]) => field);
+    if (fragileFields.length > 0) {
+      warnings.push(`Некоторые селекторы выглядят хрупкими (${fragileFields.join(', ')}).`);
+    }
+
+    warnings.push('Шаблон протестирован только на текущей странице. Проверьте еще 1-2 карточки после сохранения.');
+
+    const similar = domainTemplates.find((tpl) => templateSimilarityScore(selectors, tpl.selectors || {}) >= 0.7);
+    if (similar) {
+      warnings.push(`Похожий шаблон уже существует: "${similar.name}".`);
+    }
+
+    if (payload.is_default) {
+      const existingDefault = domainTemplates.find((tpl) => tpl.is_default && tpl.id !== currentTemplate?.id);
+      if (existingDefault) {
+        warnings.push(`На домене уже есть шаблон по умолчанию: "${existingDefault.name}".`);
+      }
+    }
+
+    return { blocking, warnings };
+  }
 
   async function handleSaveTemplate() {
     const name = templateName.value.trim();
@@ -1108,12 +1416,29 @@
         payload.schema_mapping = lastSchemaMapping;
       }
 
+      const quality = evaluateTemplatePayloadQuality(payload);
+      if (quality.blocking.length > 0) {
+        showResult(templateSaveResult, quality.blocking.join('\n'), 'error');
+        return;
+      }
+
+      if (quality.warnings.length > 0) {
+        const proceed = confirm(
+          `Перед сохранением обратите внимание:\n\n- ${quality.warnings.join('\n- ')}\n\nСохранить шаблон все равно?`
+        );
+        if (!proceed) {
+          showResult(templateSaveResult, 'Сохранение шаблона отменено. Скорректируйте поля и повторите.', 'error');
+          return;
+        }
+      }
+
       const result = await sendToBackground('SAVE_TEMPLATE', payload);
 
       currentTemplate = result.template;
       showResult(templateSaveResult, result.message || 'Шаблон сохранён', 'success');
-      templateStatus.innerHTML = '<span class="has-template">✓ Шаблон: ' + truncate(name, 30) + '</span>';
+      templateStatus.innerHTML = '<span class="has-template">Сохраненное правило сайта обновлено</span>';
       btnApplyTemplate.disabled = false;
+      btnSuggestTemplate?.classList.add('hidden');
 
       await loadTemplatesList();
     } catch (err) {
@@ -1133,9 +1458,11 @@
     try {
       const result = await sendToBackground('LIST_TEMPLATES', { domain: pageInfo.domain });
       const templates = result.templates || [];
+      domainTemplates = templates;
 
       if (templates.length === 0) {
         templatesList.innerHTML = '<p class="hint">Нет шаблонов для ' + pageInfo.domain + '</p>';
+        await updateTemplateSuggestionVisibility();
         return;
       }
 
@@ -1161,22 +1488,27 @@
         btn.addEventListener('click', () => deleteTemplate(parseInt(btn.dataset.id)));
       });
 
+      await updateTemplateSuggestionVisibility();
+
     } catch (err) {
       templatesList.innerHTML = '<p class="hint">Ошибка загрузки: ' + err.message + '</p>';
     }
   }
 
-  async function handleApplyTemplate() {
+  async function handleApplyTemplate(options = {}) {
+    const silent = !!options.silent;
+    const markTemplateSource = !!options.markTemplateSource;
     // Check if template has schema_mapping (stored in extraction_rules)
     const schemaMapping = currentTemplate?.extraction_rules?.schema_mapping;
 
     if (!schemaMapping && !currentTemplate?.selectors) {
-      showResult(applyResult, 'У шаблона нет селекторов', 'error');
-      return;
+      if (!silent) showResult(applyResult, 'У сохраненного правила нет данных для применения', 'error');
+      return false;
     }
 
     btnApplyTemplate.disabled = true;
     btnApplyTemplate.innerHTML = '<span class="spinner"></span>';
+    let applied = false;
 
     try {
       let result;
@@ -1190,7 +1522,7 @@
 
         if (result.applied && result.fields) {
           for (const [field, info] of Object.entries(result.fields)) {
-            capturedFields[field] = info;
+            capturedFields[field] = { ...info, template: markTemplateSource || !!info.template, schema: true, auto: true };
             updateFieldUI(field, info.value);
           }
           // Auto-parse dimensions from title after schema apply
@@ -1198,16 +1530,22 @@
             autoParseDimensions(capturedFields.title.value);
           }
           updateActionButtons();
-          showResult(applyResult, `✓ Schema.org шаблон применён: ${result.fieldCount} полей`, 'success');
+          evaluateSimpleFlowStatus();
+          applied = true;
+          if (!silent) {
+            showResult(applyResult, `Правило применено: заполнено полей ${result.fieldCount}`, 'success');
+          }
         } else {
           // Schema not found on page — try CSS selectors as fallback
           if (currentTemplate?.selectors && Object.keys(currentTemplate.selectors).length > 0) {
             result = await sendToContent('APPLY_TEMPLATE', {
               selectors: currentTemplate.selectors,
             });
-            applyTemplateResult(result, true);
+            applied = applyTemplateResult(result, true, { silent, markTemplateSource });
           } else {
-            showResult(applyResult, result.error || 'Schema.org данные не найдены на странице', 'error');
+            if (!silent) {
+              showResult(applyResult, result.error || 'Сохраненное правило сайта больше не подходит к этой странице', 'error');
+            }
           }
         }
       } else {
@@ -1215,27 +1553,38 @@
         result = await sendToContent('APPLY_TEMPLATE', {
           selectors: currentTemplate.selectors,
         });
-        applyTemplateResult(result, false);
+        applied = applyTemplateResult(result, false, { silent, markTemplateSource });
       }
     } catch (err) {
-      showResult(applyResult, 'Ошибка: ' + err.message, 'error');
+      if (!silent) {
+        showResult(applyResult, 'Не удалось применить сохраненное правило: ' + err.message, 'error');
+      }
     } finally {
       btnApplyTemplate.disabled = false;
       btnApplyTemplate.textContent = 'Применить шаблон';
     }
+
+    return applied;
   }
 
-  function applyTemplateResult(result, isSchemaFallback) {
+  function applyTemplateResult(result, isSchemaFallback, options = {}) {
+    const silent = !!options.silent;
+    const markTemplateSource = !!options.markTemplateSource;
+    let applied = false;
+
     if (result.errors?.length > 0) {
-      const prefix = isSchemaFallback ? '⚠ Schema не найдена, используются CSS-селекторы.\n' : '';
-      showResult(applyResult,
-        prefix + '⚠ Некоторые селекторы не сработали:\n' + result.errors.join('\n'),
-        'error'
-      );
-      if (result.errors.some(e => e.includes('не нашёл'))) {
-        applyResult.innerHTML += '<br><small>Сайт изменился? Создайте новую версию шаблона на вкладке "Захват".</small>';
+      if (!silent) {
+        const prefix = isSchemaFallback ? 'Schema.org данные не найдены, пробуем селекторы.\n' : '';
+        showResult(applyResult,
+          prefix + 'Некоторые поля не удалось заполнить по сохраненному правилу:\n' + result.errors.join('\n'),
+          'error'
+        );
+        if (result.errors.some(e => e.includes('не наш'))) {
+          applyResult.innerHTML += '<br><small>Сайт мог измениться. Создайте обновленное правило в расширенном режиме.</small>';
+        }
       }
-    } else {
+      setSimpleStatus('Сохраненное правило сайта сработало частично. Проверьте поля вручную.', 'warning');
+    } else if (!silent) {
       const msg = isSchemaFallback ? '✓ Шаблон применён (CSS-селекторы, Schema не найдена)' : '✓ Шаблон применён';
       showResult(applyResult, msg, 'success');
     }
@@ -1243,8 +1592,14 @@
     if (result.fields) {
       for (const [field, info] of Object.entries(result.fields)) {
         if (info.found && info.value) {
-          capturedFields[field] = { value: info.value, selector: info.selector };
+          capturedFields[field] = {
+            value: info.value,
+            selector: info.selector,
+            template: markTemplateSource || true,
+            auto: true,
+          };
           updateFieldUI(field, info.value);
+          applied = true;
         }
       }
       // Auto-parse dimensions from title after template apply
@@ -1254,17 +1609,17 @@
     }
 
     updateActionButtons();
+    evaluateSimpleFlowStatus();
+    return applied;
   }
 
   async function applyTemplateById(id) {
     try {
-      const result = await sendToBackground('FIND_TEMPLATE', { url: pageInfo.url });
-      // Find by id in list
       const listResult = await sendToBackground('LIST_TEMPLATES', { domain: pageInfo.domain });
       const template = (listResult.templates || []).find(t => t.id === id);
       if (template) {
         currentTemplate = template;
-        await handleApplyTemplate();
+        await handleApplyTemplate({ markTemplateSource: true });
       }
     } catch (err) {
       showResult(applyResult, 'Ошибка: ' + err.message, 'error');
@@ -1479,11 +1834,14 @@
         }
         updateActionButtons();
         showResult(captureResult, `✓ Заполнено из Schema.org: ${result.fieldCount} полей`, 'success');
+        setSimpleStatus('Часть полей заполнена автоматически из Schema.org. Проверьте результат.', 'warning');
       } else {
         showResult(captureResult, result.error || 'Не удалось извлечь данные', 'error');
+        setSimpleStatus('Schema.org на этой странице не помогла. Можно выбрать поля вручную.', 'warning');
       }
     } catch (err) {
       showResult(captureResult, 'Ошибка: ' + err.message, 'error');
+      setSimpleStatus('Не удалось применить Schema.org сопоставление.', 'error');
     } finally {
       if (schemaRefs.apply) schemaRefs.apply.disabled = false;
       if (schemaRefs.apply) schemaRefs.apply.textContent = 'Заполнить выбранные поля';

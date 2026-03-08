@@ -354,6 +354,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useMaterialCatalogStore } from '@/stores/materialCatalog'
 import api from '@/api/axios'
 import TrustBadge from '@/components/catalog/TrustBadge.vue'
@@ -363,11 +364,20 @@ import PriceHistoryDialog from '@/components/catalog/PriceHistoryDialog.vue'
 import MaterialDetailDialog from '@/components/catalog/MaterialDetailDialog.vue'
 import MaterialEditDialog from '@/components/catalog/MaterialEditDialog.vue'
 import { updateCatalogMaterial } from '@/api/materialCatalog'
-import type { CatalogMaterial, CatalogMode, MaterialType, TrustLevel, MaterialDetail } from '@/api/materialCatalog'
+import type {
+  CatalogMaterial,
+  CatalogMode,
+  MaterialDetail,
+  MaterialType,
+  MaterialVisibility,
+  TrustLevel,
+} from '@/api/materialCatalog'
 import { useAuthStore } from '@/stores/auth'
 
 const store = useMaterialCatalogStore()
 const auth = useAuthStore()
+const route = useRoute()
+const router = useRouter()
 
 // ===== Local state =====
 const searchInput = ref('')
@@ -599,7 +609,7 @@ async function doRefresh(item: CatalogMaterial) {
   }
 }
 
-async function changeVisibility(item: CatalogMaterial, visibility: string) {
+async function changeVisibility(item: CatalogMaterial, visibility: MaterialVisibility) {
   try {
     await updateCatalogMaterial(item.id, { visibility })
     await reload()
@@ -648,6 +658,25 @@ function onPriceAdded() {
 function openDetail(item: CatalogMaterial) {
   selectedMaterialId.value = item.id
   showDetailDialog.value = true
+}
+
+async function openMaterialFromQuery() {
+  const rawId = route.query.material_id
+  const materialId = Number(Array.isArray(rawId) ? rawId[0] : rawId)
+
+  if (!Number.isFinite(materialId) || materialId <= 0) {
+    return
+  }
+
+  selectedMaterialId.value = materialId
+  showDetailDialog.value = true
+
+  const query = { ...route.query }
+  delete query.material_id
+
+  await router.replace({
+    query,
+  })
 }
 
 async function openEditFromTable(item: CatalogMaterial) {
@@ -763,6 +792,7 @@ async function loadUserSettings() {
 onMounted(async () => {
   await Promise.all([loadRegions(), loadUserSettings()])
   await reload()
+  await openMaterialFromQuery()
 })
 
 // Watch search debounce
@@ -779,4 +809,11 @@ watch(searchInput, (val) => {
 watch(recentDaysFilter, () => {
   reload()
 })
+
+watch(
+  () => route.query.material_id,
+  async () => {
+    await openMaterialFromQuery()
+  }
+)
 </script>

@@ -386,6 +386,70 @@ class ProjectRevisionController extends Controller
         return $pdf->download($filename);
     }
 
+    /**
+     * Отдельный PDF "Обоснование цен" по snapshot ревизии.
+     */
+    public function priceJustificationPdf(Project $project, int $number)
+    {
+        $this->authorize('view', $project);
+
+        $revision = $project->revisions()
+            ->where('number', $number)
+            ->firstOrFail();
+
+        if ($revision->status === 'stale') {
+            return response()->json([
+                'error' => 'Ревизия устарела и недоступна для PDF',
+            ], 403);
+        }
+
+        $snapshotRaw = $revision->getRawOriginal('snapshot_json');
+        $snapshot = is_string($snapshotRaw)
+            ? (json_decode($snapshotRaw, true) ?: [])
+            : (is_array($snapshotRaw) ? $snapshotRaw : []);
+
+        $justifications = is_array($snapshot['price_justifications'] ?? null)
+            ? $snapshot['price_justifications']
+            : [];
+
+        $rows = collect($justifications)->map(function (array $j) {
+            $materialId = $j['material_id'] ?? null;
+
+            return [
+                'project_position_id' => $j['project_position_id'] ?? null,
+                'material_id' => $materialId,
+                'name' => $j['name'] ?? ('Материал #' . ($materialId ?: '—')),
+                'article' => $j['article'] ?? null,
+                'unit' => $j['unit'] ?? null,
+                'material_type' => $j['material_type'] ?? null,
+                'price_per_unit' => $j['price_per_unit'] ?? null,
+                'currency' => $j['currency'] ?? 'RUB',
+                'source_url' => $j['source_url'] ?? null,
+                'observed_at' => $j['observed_at'] ?? null,
+                'screenshot_path' => $j['screenshot_path'] ?? null,
+                'true_score' => $j['true_score'] ?? null,
+                'source_type' => $j['source_type'] ?? null,
+            ];
+        })->values()->all();
+
+        $pdf = Pdf::loadView('reports.price_justification', [
+            'project' => $project,
+            'revision' => $revision,
+            'rows' => $rows,
+        ])
+            ->setPaper('a4')
+            ->setOption('isHtml5ParserEnabled', true)
+            ->setOption('isPhpEnabled', false)
+            ->setOption('defaultFont', 'DejaVu Sans')
+            ->setOption('fontDir', config('dompdf.font_dir'))
+            ->setOption('fontCache', config('dompdf.font_cache_dir'));
+
+        $rawFilename = "price_justification_{$project->number}_rev_{$revision->number}.pdf";
+        $filename = preg_replace('#[\\/:*?"<>|]#', '_', $rawFilename);
+
+        return $pdf->download($filename);
+    }
+
     private function generatePublicId(): string
     {
         do {

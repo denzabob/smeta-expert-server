@@ -168,6 +168,8 @@ class ChromeExtensionController extends Controller
             'schema_mapping' => 'nullable|array',
             'schema_mapping.schemaIndex' => 'nullable|integer',
             'schema_mapping.mapping' => 'nullable|array',
+            'visibility' => 'nullable|in:private,public',
+            'status' => 'nullable|in:active,disabled',
         ];
 
         $validated = $request->validate($rules);
@@ -192,6 +194,14 @@ class ChromeExtensionController extends Controller
             isDefault: (bool) ($validated['is_default'] ?? false),
         );
 
+        if (!empty($validated['visibility'])) {
+            $template->visibility = $validated['visibility'];
+        }
+        if (!empty($validated['status'])) {
+            $template->status = $validated['status'];
+        }
+        $template->save();
+
         return response()->json([
             'template' => $template,
             'message' => 'Шаблон сохранён (версия ' . $template->version . ')',
@@ -215,8 +225,13 @@ class ChromeExtensionController extends Controller
 
         $templates = ParserSupplierCollectProfile::where('supplier_name', $domain)
             ->where('source', 'chrome_ext')
+            ->where('status', 'active')
             ->where(function ($q) use ($user) {
-                $q->where('user_id', $user->id)->orWhereNull('user_id');
+                $q->where('user_id', $user->id)
+                    ->orWhere(function ($q2) {
+                        $q2->where('visibility', 'public');
+                    })
+                    ->orWhereNull('user_id');
             })
             ->orderByDesc('is_default')
             ->orderByDesc('version')
@@ -270,6 +285,48 @@ class ChromeExtensionController extends Controller
         $template->delete();
 
         return response()->json(['success' => true, 'message' => 'Шаблон удалён']);
+    }
+
+    public function updateTemplateVisibility(int $id, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'visibility' => 'required|in:private,public',
+        ]);
+
+        $template = ParserSupplierCollectProfile::where('id', $id)
+            ->where('source', 'chrome_ext')
+            ->where('user_id', $request->user()->id)
+            ->first();
+
+        if (!$template) {
+            return response()->json(['message' => 'Шаблон не найден'], 404);
+        }
+
+        $template->visibility = $validated['visibility'];
+        $template->save();
+
+        return response()->json(['success' => true, 'template' => $template]);
+    }
+
+    public function updateTemplateStatus(int $id, Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:active,disabled',
+        ]);
+
+        $template = ParserSupplierCollectProfile::where('id', $id)
+            ->where('source', 'chrome_ext')
+            ->where('user_id', $request->user()->id)
+            ->first();
+
+        if (!$template) {
+            return response()->json(['message' => 'Шаблон не найден'], 404);
+        }
+
+        $template->status = $validated['status'];
+        $template->save();
+
+        return response()->json(['success' => true, 'template' => $template]);
     }
 
     /**
@@ -332,6 +389,7 @@ class ChromeExtensionController extends Controller
             'observation' => $result['observation'],
             'is_new' => $result['is_new'],
             'dedup_match' => $result['dedup_match'],
+            'type_resolution' => $result['type_resolution'] ?? null,
             'errors' => $result['errors'],
             'status' => $result['status'],
             'message' => $result['is_new']
@@ -387,43 +445,40 @@ class ChromeExtensionController extends Controller
         $dataSources = $validated['data_sources'] ?? [];
         $sourceUrl = $validated['url'] ?? null;
 
-        $errors = $this->service->validateExtractedFields($validated['extracted'], $sourceUrl);
-        $trustInfo = $this->service->determineTrustLevel($validated['extracted'], $errors, $dataSources, $sourceUrl);
-
         $title = trim($validated['extracted']['title'] ?? '');
-        $materialType = $title ? ChromeExtractService::detectMaterialType($title, $sourceUrl) : 'hardware';
-        $unit = match ($materialType) {
-            'edge' => 'м.п.',
-            'plate' => 'м²',
-            default => 'шт',
-        };
+        $typeResolution = $this->service->resolveMaterialType(
+            title: $title,
+            url: $sourceUrl,
+            source: 'chrome_ext_validate_preview'
+        );
+        $materialType = $typeResolution['resolved_type'];
+        $resolvedDimensions = $this->service->resolveDimensions(
+            title: $title,
+            materialType: $materialType,
+            extractedFields: $validated['extracted'],
+            source: 'chrome_ext_validate_preview',
+            logFailed: false
+        );
 
-        // Resolve dimensions based on material type
-        $thickness = null;
-        $length = null;
-        $width = null;
+        $errors = $this->service->validateExtractedFields(
+            $validated['extracted'],
+            $sourceUrl,
+            $resolvedDimensions,
+            $typeResolution
+        );
+        $trustInfo = $this->service->determineTrustLevel(
+            $validated['extracted'],
+            $errors,
+            $dataSources,
+            $sourceUrl,
+            $resolvedDimensions,
+            $typeResolution
+        );
+        $unit = ChromeExtractService::unitForMaterialType($materialType);
 
-        if ($materialType === 'edge') {
-            $parsedEdge = ChromeExtractService::parseEdgeDimensionsFromName($title);
-            $length = !empty($validated['extracted']['length'])
-                ? (int) $validated['extracted']['length']
-                : ($parsedEdge['length_mm'] ?? null);
-            $width = !empty($validated['extracted']['width'])
-                ? round((float) str_replace(',', '.', $validated['extracted']['width'] ?? ''), 2)
-                : ($parsedEdge['width_mm'] ?? null);
-        } elseif ($materialType === 'plate') {
-            $parsedDims = $title ? ChromeExtractService::parseDimensionsFromName($title) : [];
-            $thickness = !empty($validated['extracted']['thickness'])
-                ? (int) round((float) str_replace(',', '.', $validated['extracted']['thickness']))
-                : ($parsedDims['thickness_mm'] ?? null);
-            $length = !empty($validated['extracted']['length'])
-                ? (int) $validated['extracted']['length']
-                : ($parsedDims['length_mm'] ?? null);
-            $width = !empty($validated['extracted']['width'])
-                ? (int) $validated['extracted']['width']
-                : ($parsedDims['width_mm'] ?? null);
-        }
-        // Hardware: no dimensions in preview
+        $thickness = $resolvedDimensions['thickness_mm'];
+        $length = $resolvedDimensions['length_mm'];
+        $width = $resolvedDimensions['width_mm'];
 
         // Type labels for preview
         $typeLabels = [
@@ -452,6 +507,7 @@ class ChromeExtensionController extends Controller
             'errors' => $errors,
             'trust' => $trustInfo,
             'preview' => $preview,
+            'type_resolution' => $typeResolution,
         ]);
     }
 }

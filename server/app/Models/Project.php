@@ -102,6 +102,11 @@ class Project extends Model
         return $this->hasMany(ProjectRevision::class)->orderByDesc('number');
     }
 
+    public function revisionRuns()
+    {
+        return $this->hasMany(RevisionRun::class)->latest('id');
+    }
+
     public function latestRevision()
     {
         return $this->hasOne(ProjectRevision::class)->latestOfMany('number');

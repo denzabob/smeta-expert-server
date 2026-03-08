@@ -56,6 +56,9 @@ COPY server/ .
 # Устанавливаем зависимости
 RUN composer install --no-dev --optimize-autoloader
 
+# Устанавливаем браузер Playwright для Node.js (rev 1200, требуется scrape-page-pw.js)
+RUN node node_modules/playwright/cli.js install chromium
+
 # Генерируем ключ (если ещё не задан)
 RUN php artisan key:generate --ansi
 

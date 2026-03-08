@@ -165,6 +165,7 @@ class DomainParseService
     protected function findProfile(string $domain, ?int $userId = null): ?ParserSupplierCollectProfile
     {
         $baseQuery = ParserSupplierCollectProfile::forDomain($domain)
+            ->where('status', 'active')
             ->whereNotNull('selectors');
 
         if ($userId) {
@@ -174,7 +175,9 @@ class DomainParseService
             // Inside each group prefer default + latest version.
             return (clone $baseQuery)
                 ->where(function ($q) use ($userId) {
-                    $q->where('user_id', $userId)->orWhereNull('user_id');
+                    $q->where('user_id', $userId)
+                        ->orWhere('visibility', 'public')
+                        ->orWhereNull('user_id');
                 })
                 ->orderByRaw('CASE WHEN user_id = ? THEN 0 ELSE 1 END', [$userId])
                 ->orderByDesc('is_default')

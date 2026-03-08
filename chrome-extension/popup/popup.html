@@ -24,10 +24,6 @@
     <section id="section-auth" class="section hidden">
       <h2>Подключение к Призме</h2>
       <div class="form-group">
-        <label for="input-api-url">Адрес сервера</label>
-        <input type="url" id="input-api-url" placeholder="https://prismcore.ru/api" value="https://prismcore.ru/api">
-      </div>
-      <div class="form-group">
         <label for="input-token">API Токен</label>
         <input type="password" id="input-token" placeholder="Вставьте токен из приложения">
         <small class="hint">Получите токен в настройках приложения ПРИЗМА</small>
@@ -50,8 +46,25 @@
         <div class="template-status" id="template-status"></div>
       </div>
 
-      <!-- Tab Navigation -->
-      <nav class="tabs">
+      <div id="first-run-helper" class="first-run-helper hidden">
+        <div class="first-run-title">Как начать за 3 шага</div>
+        <ol class="first-run-steps">
+          <li>Откройте страницу товара поставщика.</li>
+          <li>Откройте расширение и проверьте найденные поля.</li>
+          <li>Нажмите "Проверить", затем "Добавить материал".</li>
+        </ol>
+        <button id="btn-dismiss-onboarding" class="btn btn-secondary btn-full">Понятно</button>
+      </div>
+
+      <div class="mode-toolbar">
+        <div id="simple-status" class="simple-status">Автоматически ищем поля на странице...</div>
+        <button id="btn-advanced-toggle" class="btn btn-secondary">Расширенный режим</button>
+      </div>
+
+      <div id="auto-template-banner" class="auto-template-banner hidden"></div>
+
+      <!-- Tab Navigation (advanced mode only) -->
+      <nav class="tabs advanced-only" id="advanced-tabs">
         <button class="tab active" data-tab="capture">Захват</button>
         <button class="tab" data-tab="template">Шаблон</button>
         <button class="tab" data-tab="settings">⚙</button>
@@ -62,7 +75,7 @@
       <div class="tab-content active" id="tab-capture">
 
         <!-- Schema.org auto-detect banner -->
-        <div id="schema-banner" class="schema-banner hidden">
+        <div id="schema-banner" class="schema-banner advanced-only hidden">
           <div class="schema-banner__header">
             <span class="schema-banner__icon">🔍</span>
             <span class="schema-banner__title">Schema.org обнаружена</span>
@@ -89,26 +102,29 @@
             <div class="field-header">
               <span class="field-label">Название</span>
               <span class="field-required">*</span>
-              <button class="btn-capture" data-field="title">Выбрать</button>
+              <button class="btn-capture" data-field="title">Выбрать на странице</button>
             </div>
             <div class="field-value" id="val-title">Не выбрано</div>
+            <div class="field-status" id="status-title">Нужно проверить</div>
           </div>
 
           <div class="capture-field" data-field="price">
             <div class="field-header">
               <span class="field-label">Цена</span>
               <span class="field-required">*</span>
-              <button class="btn-capture" data-field="price">Выбрать</button>
+              <button class="btn-capture" data-field="price">Выбрать на странице</button>
             </div>
             <div class="field-value" id="val-price">Не выбрано</div>
+            <div class="field-status" id="status-price">Нужно проверить</div>
           </div>
 
           <div class="capture-field" data-field="article">
             <div class="field-header">
               <span class="field-label">Артикул</span>
-              <button class="btn-capture" data-field="article">Выбрать</button>
+              <button class="btn-capture" data-field="article">Выбрать на странице</button>
             </div>
             <div class="field-value" id="val-article">Не выбрано</div>
+            <div class="field-status" id="status-article">Нужно проверить</div>
           </div>
 
           <div class="capture-field" data-field="thickness">
@@ -116,10 +132,11 @@
               <span class="field-label">Толщина (мм)</span>
               <span class="field-required">*</span>
               <span class="field-source-badge hidden" id="badge-thickness"></span>
-              <button class="btn-capture" data-field="thickness">Выбрать</button>
+              <button class="btn-capture" data-field="thickness">Выбрать на странице</button>
               <button class="btn-manual-toggle" data-field="thickness" title="Ввести вручную">✏️</button>
             </div>
             <div class="field-value" id="val-thickness">Не выбрано</div>
+            <div class="field-status" id="status-thickness">Нужно проверить</div>
             <div class="field-manual-row hidden" id="manual-row-thickness">
               <input type="text" class="manual-input" id="manual-input-thickness" data-field="thickness" placeholder="напр. 16" inputmode="decimal">
               <button class="btn-manual-ok" data-field="thickness" title="Применить">✓</button>
@@ -132,10 +149,11 @@
               <span class="field-label">Длина (мм)</span>
               <span class="field-required">*</span>
               <span class="field-source-badge hidden" id="badge-length"></span>
-              <button class="btn-capture" data-field="length">Выбрать</button>
+              <button class="btn-capture" data-field="length">Выбрать на странице</button>
               <button class="btn-manual-toggle" data-field="length" title="Ввести вручную">✏️</button>
             </div>
             <div class="field-value" id="val-length">Не выбрано</div>
+            <div class="field-status" id="status-length">Нужно проверить</div>
             <div class="field-manual-row hidden" id="manual-row-length">
               <input type="text" class="manual-input" id="manual-input-length" data-field="length" placeholder="напр. 2750" inputmode="decimal">
               <button class="btn-manual-ok" data-field="length" title="Применить">✓</button>
@@ -148,10 +166,11 @@
               <span class="field-label">Ширина (мм)</span>
               <span class="field-required">*</span>
               <span class="field-source-badge hidden" id="badge-width"></span>
-              <button class="btn-capture" data-field="width">Выбрать</button>
+              <button class="btn-capture" data-field="width">Выбрать на странице</button>
               <button class="btn-manual-toggle" data-field="width" title="Ввести вручную">✏️</button>
             </div>
             <div class="field-value" id="val-width">Не выбрано</div>
+            <div class="field-status" id="status-width">Нужно проверить</div>
             <div class="field-manual-row hidden" id="manual-row-width">
               <input type="text" class="manual-input" id="manual-input-width" data-field="width" placeholder="напр. 1830" inputmode="decimal">
               <button class="btn-manual-ok" data-field="width" title="Применить">✓</button>
@@ -169,16 +188,20 @@
         <!-- Action Buttons -->
         <div class="action-buttons">
           <button id="btn-validate" class="btn btn-secondary" disabled>Проверить</button>
-          <button id="btn-add-material" class="btn btn-primary" disabled>Добавить в Призму</button>
+          <button id="btn-add-material" class="btn btn-primary" disabled>Добавить материал</button>
         </div>
 
         <div id="capture-result" class="result-message hidden"></div>
+
+        <button id="btn-suggest-template" class="btn btn-secondary btn-full hidden">
+          Запомнить правила для этого сайта
+        </button>
 
         <button id="btn-clear" class="btn btn-link">Очистить все поля</button>
       </div>
 
       <!-- Tab: Template -->
-      <div class="tab-content" id="tab-template">
+      <div class="tab-content advanced-only" id="tab-template">
         <div class="template-section">
           <h3>Сохранить шаблон</h3>
           <p class="hint">Сохранённые селекторы позволят автоматически извлекать данные при следующем посещении.</p>
@@ -238,7 +261,7 @@
       </div>
 
       <!-- Tab: Settings -->
-      <div class="tab-content" id="tab-settings">
+      <div class="tab-content advanced-only" id="tab-settings">
         <div class="settings-section">
           <h3>Подключение</h3>
           <div class="info-row">
@@ -253,16 +276,12 @@
             <span>Регион:</span>
             <strong id="settings-region">—</strong>
           </div>
-          <div class="info-row">
-            <span>Сервер:</span>
-            <strong id="settings-server-url">—</strong>
-          </div>
           <button id="btn-disconnect" class="btn btn-danger btn-full">Отключиться</button>
         </div>
       </div>
 
       <!-- Tab: About -->
-      <div class="tab-content" id="tab-about">
+      <div class="tab-content advanced-only" id="tab-about">
         <div class="settings-section">
           <h3>О приложении</h3>
           <p class="hint">

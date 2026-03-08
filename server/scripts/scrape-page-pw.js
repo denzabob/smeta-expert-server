@@ -8,11 +8,14 @@
  */
 
 import { chromium } from 'playwright';
+import { writeFileSync, unlinkSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 async function scrapePage(url) {
   let browser;
   try {
-    // Запускаем браузер Chromium (уже установлен через Playwright)
+    // Запускаем браузер Chromium
     browser = await chromium.launch({
       headless: true,
       args: [
@@ -23,35 +26,56 @@ async function scrapePage(url) {
       ],
     });
 
-    const page = await browser.newPage();
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    });
 
-    // Переходим на страницу с таймаутом
+    const page = await context.newPage();
+
+    // Блокируем ресурсы которые не нужны для парсинга (аналогично SkmMebelAdapter)
+    await page.route('**/*', (route) => {
+      const type = route.request().resourceType();
+      if (['image', 'media', 'font'].includes(type)) {
+        return route.abort();
+      }
+      const reqUrl = route.request().url();
+      const trackers = [
+        'mc.yandex.ru', 'metrika', 'google-analytics', 'googletagmanager',
+        'facebook.net', 'amplitude', 'hotjar', 'bitrix24',
+      ];
+      if (trackers.some(t => reqUrl.includes(t))) {
+        return route.abort();
+      }
+      return route.continue();
+    });
+
+    // Переходим на страницу
     try {
       await page.goto(url, {
-        waitUntil: 'networkidle',
-        timeout: 30000,
+        waitUntil: 'domcontentloaded',
+        timeout: 25000,
       });
     } catch (navigationError) {
-      // Если timeout - это может быть нормально, содержимое может быть загружено
-      console.error('Navigation timeout or error:', navigationError.message);
+      // Если timeout — содержимое может быть уже загружено
     }
 
-    // Ждем немного чтобы убедиться что все скрипты загружены
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(1500);
 
     // Получаем полный HTML страницы
     const html = await page.content();
 
-    // Закрываем браузер
     await browser.close();
 
-    // Выводим результат в JSON формате
-    console.log(JSON.stringify({
+    // Пишем HTML во временный файл чтобы обойти лимит pipe buffer (64KB)
+    const tmpFile = join(tmpdir(), `pw_${Date.now()}_${Math.random().toString(36).slice(2)}.html`);
+    writeFileSync(tmpFile, html, 'utf8');
+
+    process.stdout.write(JSON.stringify({
       success: true,
-      html: html,
+      html_path: tmpFile,
       url: url,
       timestamp: new Date().toISOString(),
-    }));
+    }) + '\n');
 
     process.exit(0);
   } catch (error) {

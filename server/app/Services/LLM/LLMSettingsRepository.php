@@ -227,7 +227,7 @@ class LLMSettingsRepository
     private function getEnvFallback(string $providerName): array
     {
         $defaults = [
-            'api_key' => config("services.{$providerName}.key", ''),
+            'api_key' => (string) (config("services.{$providerName}.key") ?? ''),
             'base_url' => config("services.{$providerName}.base_url", ProviderRegistry::getDefaultBaseUrl($providerName)),
             'model' => config("services.{$providerName}.model", ProviderRegistry::getDefaultModel($providerName)),
             'temperature' => (float) config("services.{$providerName}.temperature", 0.2),

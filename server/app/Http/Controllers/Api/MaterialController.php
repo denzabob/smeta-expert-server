@@ -9,9 +9,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Services\UrlNormalizer;
+use App\Services\MaterialDimensionParser;
 
 class MaterialController extends Controller
 {
+    public function __construct(
+        private UrlNormalizer $urlNormalizer,
+        private MaterialDimensionParser $dimensionParser
+    ) {}
     /**
      * Display a listing of the resource.
      */
@@ -152,9 +158,9 @@ class MaterialController extends Controller
                 $validated['user_id'] = auth()->id();
             }
 
-            // Для type=plate: автопарсинг размеров из названия если не указаны
+            // Centralized dimension parsing for plate materials.
             if ($validated['type'] === 'plate') {
-                $this->ensurePlateDimensions($validated);
+                $this->applyPlateDimensions($validated, 'materials_store');
             }
 
             $material = Material::create($validated);
@@ -164,9 +170,12 @@ class MaterialController extends Controller
                 'material_id' => $material->id,
                 'version' => 1,
                 'price_per_unit' => $material->price_per_unit,
-                'source_url' => $material->source_url,
+                'source_url' => $this->urlNormalizer->normalize($material->source_url),
+                'raw_source_url' => $material->source_url,
+                'normalized_source_url' => $this->urlNormalizer->normalize($material->source_url),
                 'screenshot_path' => $material->last_price_screenshot_path,
                 'valid_from' => now()->toDateString(),
+                'true_score' => 0,
             ]);
 
             Log::info('materials.store success', ['material_id' => $material->id, 'user_id' => $user->id]);
@@ -206,9 +215,9 @@ class MaterialController extends Controller
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        // Для type=plate: автопарсинг размеров из названия если не указаны
+        // Centralized dimension parsing for plate materials.
         if ($validated['type'] === 'plate') {
-            $this->ensurePlateDimensions($validated);
+            $this->applyPlateDimensions($validated, 'materials_update');
         }
 
         $originalPrice = $material->price_per_unit;
@@ -226,9 +235,12 @@ class MaterialController extends Controller
                 'material_id' => $material->id,
                 'version' => $material->version,
                 'price_per_unit' => $material->price_per_unit,
-                'source_url' => $material->source_url,
+                'source_url' => $this->urlNormalizer->normalize($material->source_url),
+                'raw_source_url' => $material->source_url,
+                'normalized_source_url' => $this->urlNormalizer->normalize($material->source_url),
                 'screenshot_path' => $material->last_price_screenshot_path,
                 'valid_from' => now()->toDateString(),
+                'true_score' => 0,
             ]);
         }
 
@@ -300,87 +312,53 @@ class MaterialController extends Controller
         ]);
     }
 
-    /**
-     * Проверяет что для type=plate присутствуют размеры листа
-     * Если размеры не указаны - пытается распарсить из названия
-     * Если не получилось - выбрасывает ValidationException
-     */
-    private function ensurePlateDimensions(array &$validated): void
+    private function applyPlateDimensions(array &$validated, string $source): void
     {
-        $hasLengthWidth = !empty($validated['length_mm']) && !empty($validated['width_mm']);
-        
-        if ($hasLengthWidth) {
-            // Размеры уже есть - всё хорошо
-            return;
+        $manualLength = isset($validated['length_mm']) ? (float) $validated['length_mm'] : null;
+        $manualWidth = isset($validated['width_mm']) ? (float) $validated['width_mm'] : null;
+        $manualThickness = isset($validated['thickness_mm']) ? (float) $validated['thickness_mm'] : null;
+
+        $parsed = $this->dimensionParser->parse(
+            rawText: $validated['name'],
+            materialType: 'plate',
+            source: $source,
+            options: ['log_failed' => true]
+        );
+
+        $resolved = $this->dimensionParser->mergeWithManual(
+            parsed: $parsed,
+            manualLengthMm: $manualLength,
+            manualWidthMm: $manualWidth,
+            manualThicknessMm: $manualThickness,
+            requireLengthWidth: true
+        );
+
+        if ($resolved->lengthMm !== null) {
+            $validated['length_mm'] = (int) round($resolved->lengthMm);
+        }
+        if ($resolved->widthMm !== null) {
+            $validated['width_mm'] = (int) round($resolved->widthMm);
+        }
+        if ($resolved->thicknessMm !== null && !isset($validated['thickness_mm'])) {
+            $validated['thickness_mm'] = round($resolved->thicknessMm, 2);
         }
 
-        // Пытаемся распарсить из названия
-        $dimensions = $this->extractDimensionsFromText($validated['name']);
-        
-        if ($dimensions && isset($dimensions[0]) && isset($dimensions[1])) {
-            $validated['length_mm'] = $dimensions[0];
-            $validated['width_mm'] = $dimensions[1];
-            if (isset($dimensions[2])) {
-                $validated['thickness_mm'] = $dimensions[2];
-            }
-            Log::info('materials.auto_parsed_dimensions', [
+        if (!$resolved->hasLengthWidth()) {
+            Log::warning('materials.plate_dimensions_not_found', [
                 'name' => $validated['name'],
-                'length' => $dimensions[0],
-                'width' => $dimensions[1],
-                'thickness' => $dimensions[2] ?? null,
+                'parse_result' => $resolved->toArray(),
             ]);
-            return;
+
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'dimensions' => 'Для плитных материалов требуются размеры листа. ' .
+                    'Не удалось определить размеры из названия. Укажите длину и ширину листа в мм.',
+            ]);
         }
 
-        // Не удалось распарсить
-        Log::warning('materials.plate_dimensions_not_found', [
+        Log::info('materials.dimensions_resolved', [
             'name' => $validated['name'],
+            'parse_result' => $resolved->toArray(),
         ]);
-
-        throw \Illuminate\Validation\ValidationException::withMessages([
-            'dimensions' => 'Для плитных материалов требуются размеры листа. ' .
-                           'Не удалось определить размеры из названия. ' .
-                           'Укажите длину и ширину листа в мм.',
-        ]);
-    }
-
-    /**
-     * Извлекает размеры [L, W, T] из текста
-     * Поддерживает форматы: "2800х2070х16", "2800 х 2070 х 16 мм", "2800*2070*16"
-     */
-    private function extractDimensionsFromText(string $text): ?array
-    {
-        // Нормализуем разделители: ×, *, x, X → х (кириллица)
-        $text = preg_replace('/[×*xX]/u', 'х', $text);
-
-        // Паттерн 1: число х число х число мм
-        if (preg_match('/(\d+)\s*х\s*(\d+)\s*х\s*(\d+)\s*мм/u', $text, $matches)) {
-            return [
-                (int)$matches[1],  // L
-                (int)$matches[2],  // W
-                (int)$matches[3],  // T
-            ];
-        }
-
-        // Паттерн 2: число х число х число (без мм)
-        if (preg_match('/(\d+)\s*х\s*(\d+)\s*х\s*(\d+)(?:\s|$)/u', $text, $matches)) {
-            return [
-                (int)$matches[1],  // L
-                (int)$matches[2],  // W
-                (int)$matches[3],  // T
-            ];
-        }
-
-        // Паттерн 3: число х число (если нет третьего)
-        if (preg_match('/(\d+)\s*х\s*(\d+)/u', $text, $matches)) {
-            return [
-                (int)$matches[1],  // L
-                (int)$matches[2],  // W
-                null,              // T
-            ];
-        }
-
-        return null;
     }
 
     private function normalizeUrl(string $url): string
@@ -956,7 +934,9 @@ class MaterialController extends Controller
                 [
                     'NODE_ENV' => 'production',
                     'PLAYWRIGHT_BROWSERS_PATH' => '/root/.cache/ms-playwright',
+                    'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD' => '1',
                     'HOME' => '/root',
+                    'PATH' => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
                 ]
             );
 
@@ -986,7 +966,20 @@ class MaterialController extends Controller
                 ];
             }
 
-            $result = json_decode($output, true);
+            $result = json_decode(trim($output), true);
+
+            if ($result === null) {
+                Log::warning('Puppeteer JSON decode failed', [
+                    'json_error' => json_last_error_msg(),
+                    'output_length' => strlen($output),
+                    'url' => $url,
+                ]);
+                return [
+                    'success' => false,
+                    'error' => 'JSON decode failed: ' . json_last_error_msg(),
+                    'html' => null,
+                ];
+            }
 
             if (!isset($result['success']) || !$result['success']) {
                 Log::warning('Puppeteer returned error', [
@@ -1000,9 +993,20 @@ class MaterialController extends Controller
                 ];
             }
 
+            // HTML пишется в tmp-файл чтобы обойти pipe buffer limit (64KB)
+            $html = '';
+            if (!empty($result['html_path']) && file_exists($result['html_path'])) {
+                $html = file_get_contents($result['html_path']);
+                @unlink($result['html_path']);
+            } elseif (!empty($result['html_b64'])) {
+                $html = base64_decode($result['html_b64'], true) ?: '';
+            } elseif (!empty($result['html'])) {
+                $html = $result['html'];
+            }
+
             return [
                 'success' => true,
-                'html' => $result['html'],
+                'html' => $html,
             ];
         } catch (\Throwable $e) {
             Log::error('Puppeteer fetch exception', [

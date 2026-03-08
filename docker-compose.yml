@@ -9,6 +9,7 @@ services:
       - ./server:/var/www/html
       - ./parser:/var/www/html/parser
       - ./storage/app/public:/var/www/html/storage/app/public
+      - playwright_browsers:/root/.cache/ms-playwright
     networks:
       - smeta-network
 
@@ -16,6 +17,8 @@ services:
     image: nginx:alpine
     container_name: smeta_web
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:80"
     volumes:
       - ./server:/var/www/html
       - ./docker/app/nginx.conf:/etc/nginx/conf.d/default.conf
@@ -60,6 +63,7 @@ services:
       - ./server:/var/www/html
       - ./parser:/var/www/html/parser
       - ./storage/app/public:/var/www/html/storage/app/public
+      - playwright_browsers:/root/.cache/ms-playwright
     working_dir: /var/www/html
     command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
     depends_on:
@@ -70,8 +74,8 @@ services:
 
 volumes:
   smeta_db_data:
+  playwright_browsers:
 
 networks:
   smeta-network:
     driver: bridge
-

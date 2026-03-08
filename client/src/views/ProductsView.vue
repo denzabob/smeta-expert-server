@@ -10,7 +10,7 @@
     </v-sheet>
 
     <v-sheet class="pa-4">
-      <FacadeProductsModule :show-header="false" />
+      <FacadeProductsModule :show-header="true" />
     </v-sheet>
   </v-container>
 </template>

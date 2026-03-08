@@ -7,11 +7,18 @@ use App\Models\Material;
 use App\Models\MaterialPriceHistory;
 use App\Models\ParserSupplierCollectProfile;
 use App\Models\UserMaterialLibrary;
+use App\Services\MaterialTypes\MaterialTypeDetectionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ChromeExtractService
 {
+    public function __construct(
+        private readonly MaterialDimensionParser $dimensionParser,
+        private readonly MaterialTypeDetectionService $materialTypeDetection
+    ) {
+    }
+
     /**
      * UTM and tracking query parameters to strip from URLs.
      */
@@ -45,8 +52,6 @@ class ChromeExtractService
         if (!empty($parsed['port'])) $clean .= ':' . $parsed['port'];
         $clean .= $parsed['path'] ?? '/';
         if (!empty($parsed['query'])) $clean .= '?' . $parsed['query'];
-        if (!empty($parsed['fragment'])) $clean .= '#' . $parsed['fragment'];
-
         return mb_substr($clean, 0, 2048);
     }
 
@@ -89,152 +94,94 @@ class ChromeExtractService
 
     public const VALID_UNITS = ['м²', 'м.п.', 'шт'];
 
-    /**
-     * Sheet material name patterns — unit is always м² for these.
-     */
-    public const SHEET_MATERIAL_PATTERNS = [
-        'ЛДСП', 'МДФ', 'ХДФ', 'ОСБ', 'ЛМДФ', 'OSB', 'ДВПО',
-        'ДСП', 'ДВП', 'ЛХДФ', 'ЛОСБ', 'HPL', 'CPL', 'ФСФ', 'ФК',
-    ];
-
-    /**
-     * Edge material name patterns — type = 'edge', unit = 'м.п.'
-     */
-    public const EDGE_NAME_PATTERNS = ['кромка', 'Кромка', 'КРОМКА'];
-
-    /**
-     * Edge material URL patterns (case-insensitive).
-     */
-    public const EDGE_URL_PATTERNS = ['kromka'];
-
-    /**
-     * Detect if material name indicates a sheet material.
-     */
-    public static function isSheetMaterial(string $name): bool
-    {
-        foreach (self::SHEET_MATERIAL_PATTERNS as $pattern) {
-            if (mb_stripos($name, $pattern) !== false) {
-                return true;
-            }
-        }
-        return false;
+    public function resolveMaterialType(
+        string $title,
+        ?string $url = null,
+        ?string $source = null,
+        ?string $existingType = null
+    ): array {
+        return $this->materialTypeDetection->resolve(
+            title: $title,
+            url: $url,
+            source: $source,
+            existingType: $existingType
+        );
     }
 
-    /**
-     * Detect if material is an edge banding by name or URL.
-     */
-    public static function isEdgeMaterial(string $name, ?string $url = null): bool
+    public static function unitForMaterialType(string $materialType): string
     {
-        // Check name
-        if (mb_stripos($name, 'кромка') !== false) {
-            return true;
-        }
-        // Check URL
-        if ($url && stripos($url, 'kromka') !== false) {
-            return true;
-        }
-        return false;
+        return MaterialTypeDetectionService::unitForType($materialType);
     }
 
-    /**
-     * Detect material type from name and URL.
-     *
-     * Priority:
-     *  1. Edge — name contains "Кромка" or URL contains "kromka"
-     *  2. Plate — name contains sheet material keywords (ЛДСП, МДФ, etc.)
-     *  3. Hardware — fallback (фурнитура)
-     *
-     * @return string 'plate'|'edge'|'hardware'
-     */
-    public static function detectMaterialType(string $name, ?string $url = null): string
-    {
-        if (self::isEdgeMaterial($name, $url)) {
-            return 'edge';
+    public function resolveDimensions(
+        string $title,
+        string $materialType,
+        array $extractedFields = [],
+        ?string $source = null,
+        bool $logFailed = false
+    ): array {
+        if ($materialType === 'hardware') {
+            return [
+                'length_mm' => null,
+                'width_mm' => null,
+                'thickness_mm' => null,
+                'parse_result' => null,
+            ];
         }
-        if (self::isSheetMaterial($name)) {
-            return 'plate';
+
+        $manualLength = $this->toNullableFloat($extractedFields['length'] ?? null);
+        $manualWidth = $this->toNullableFloat($extractedFields['width'] ?? null);
+        $manualThickness = $this->toNullableFloat($extractedFields['thickness'] ?? null);
+
+        $parsed = $this->dimensionParser->parse(
+            rawText: $title,
+            materialType: $materialType,
+            source: $source ?? 'chrome_ext',
+            options: ['log_failed' => $logFailed]
+        );
+
+        $resolved = $this->dimensionParser->mergeWithManual(
+            parsed: $parsed,
+            manualLengthMm: $manualLength,
+            manualWidthMm: $manualWidth,
+            manualThicknessMm: $materialType === 'plate' ? $manualThickness : null,
+            requireLengthWidth: in_array($materialType, ['plate', 'edge'], true)
+        );
+
+        if ($materialType === 'edge') {
+            return [
+                'length_mm' => $resolved->lengthMm !== null ? (int) round($resolved->lengthMm) : null,
+                'width_mm' => $resolved->widthMm !== null ? round($resolved->widthMm, 2) : null,
+                'thickness_mm' => null,
+                'parse_result' => $resolved,
+            ];
         }
-        return 'hardware';
+
+        return [
+            'length_mm' => $resolved->lengthMm !== null ? (int) round($resolved->lengthMm) : null,
+            'width_mm' => $resolved->widthMm !== null ? (int) round($resolved->widthMm) : null,
+            'thickness_mm' => $resolved->thicknessMm !== null ? round($resolved->thicknessMm, 2) : null,
+            'parse_result' => $resolved,
+        ];
     }
 
-    /**
-     * Auto-detect unit from material type.
-     * plate → м², edge → м.п., hardware → шт
-     */
-    public static function detectUnit(string $name, ?string $url = null): string
+    private function toNullableFloat(mixed $value): ?float
     {
-        $type = self::detectMaterialType($name, $url);
-        return match ($type) {
-            'edge' => 'м.п.',
-            'plate' => 'м²',
-            default => 'шт',
-        };
-    }
-
-    /**
-     * Parse edge banding dimensions from name.
-     * Edge format: "19х0,4" or "19x0.4" (width_mm × thickness_mm).
-     * By convention: width → length_mm, thickness → width_mm in DB.
-     *
-     * Examples:
-     *   "Кромка ПВХ 19х0,4 мм" → [length_mm => 19, width_mm => 0.4]
-     *   "Кромка 22x2" → [length_mm => 22, width_mm => 2]
-     *   "kromka_pvkh_belaya_shagren_finnplast_2201_19kh0_4" (from URL context)
-     */
-    public static function parseEdgeDimensionsFromName(string $name): array
-    {
-        $dims = ['length_mm' => null, 'width_mm' => null];
-
-        // Pattern: WxT where W is 10-60 (edge width in mm), T is 0.1-5 (edge thickness in mm)
-        // e.g. "19х0,4", "22x2", "44x1", "19х0.45"
-        if (preg_match('/(\d{1,3})\s*[xхXХ×*]\s*(\d{1,2}(?:[.,]\d+)?)/u', $name, $m)) {
-            $w = (float) $m[1];
-            $t = (float) str_replace(',', '.', $m[2]);
-            // Validate sensible edge dimensions
-            if ($w >= 10 && $w <= 100 && $t > 0 && $t <= 10) {
-                $dims['length_mm'] = (int) $w;      // edge width → length_mm (DB convention)
-                $dims['width_mm'] = round($t, 2);   // edge thickness → width_mm (DB convention)
-            }
+        if ($value === null) {
+            return null;
         }
 
-        return $dims;
-    }
-
-    /**
-     * Parse dimensions (length × width, thickness) from material name.
-     * Examples:
-     *   "ЛДСП Кремовый 100 ГМ 2750*1830 16 мм КР" → [2750, 1830, 16]
-     *   "МДФ 2800х2070х16" → [2800, 2070, 16]
-     */
-    public static function parseDimensionsFromName(string $name): array
-    {
-        $dims = ['length_mm' => null, 'width_mm' => null, 'thickness_mm' => null];
-
-        // LxWxT (e.g. "2800х2070х16", "2750*1830*16")
-        if (preg_match('/(\d{3,5})\s*[xхXХ×*]\s*(\d{3,5})\s*[xхXХ×*]\s*(\d{1,3}(?:[.,]\d+)?)/u', $name, $m)) {
-            $dims['length_mm'] = (int) $m[1];
-            $dims['width_mm'] = (int) $m[2];
-            $dims['thickness_mm'] = (int) round((float) str_replace(',', '.', $m[3]));
-            return $dims;
+        $clean = trim((string) $value);
+        if ($clean === '') {
+            return null;
         }
 
-        // LxW (e.g. "2750*1830")
-        if (preg_match('/(\d{3,5})\s*[xхXХ×*]\s*(\d{3,5})/u', $name, $m)) {
-            $dims['length_mm'] = (int) $m[1];
-            $dims['width_mm'] = (int) $m[2];
+        $clean = str_replace(',', '.', $clean);
+        if (!is_numeric($clean)) {
+            return null;
         }
 
-        // Standalone thickness: "16 мм", "3.2 мм"
-        if ($dims['thickness_mm'] === null) {
-            if (preg_match('/(?:^|\s|[,;])(\d{1,3}(?:[.,]\d+)?)\s*мм\b/ui', $name, $m)) {
-                $t = (float) str_replace(',', '.', $m[1]);
-                if ($t >= 2 && $t <= 50) {
-                    $dims['thickness_mm'] = (int) round($t);
-                }
-            }
-        }
-
-        return $dims;
+        return (float) $clean;
     }
 
     /**
@@ -324,6 +271,12 @@ class ChromeExtractService
         // Try user-specific templates first, then system defaults
         $query = ParserSupplierCollectProfile::where('supplier_name', $domain)
             ->where('source', 'chrome_ext')
+            ->where('status', 'active')
+            ->where(function ($q) use ($userId) {
+                $q->where('user_id', $userId)
+                    ->orWhere('visibility', 'public')
+                    ->orWhereNull('user_id');
+            })
             ->orderByRaw('CASE WHEN user_id = ? THEN 0 ELSE 1 END', [$userId ?? 0])
             ->orderByDesc('is_default')
             ->orderByDesc('version');
@@ -369,7 +322,12 @@ class ChromeExtractService
      * @param array $fields Extracted fields (title, price, article, thickness, length, width)
      * @param string|null $url Source URL (used for edge detection)
      */
-    public function validateExtractedFields(array $fields, ?string $url = null): array
+    public function validateExtractedFields(
+        array $fields,
+        ?string $url = null,
+        ?array $resolvedDimensions = null,
+        ?array $typeResolution = null
+    ): array
     {
         $errors = [];
 
@@ -388,16 +346,18 @@ class ChromeExtractService
             $errors[] = 'Цена обязательна';
         }
 
-        // Determine material type
         $title = trim($fields['title'] ?? '');
-        $materialType = $title ? self::detectMaterialType($title, $url) : 'hardware';
+        $typeResolution = $typeResolution
+            ?? $this->resolveMaterialType($title, $url, 'chrome_ext_validate');
+        $materialType = $typeResolution['resolved_type'] ?? Material::TYPE_HARDWARE;
 
-        if ($materialType === 'plate') {
-            // Plate: dimensions required
-            $parsedDims = $title ? self::parseDimensionsFromName($title) : [];
-            $hasThickness = !empty($fields['thickness']) || !empty($parsedDims['thickness_mm']);
-            $hasLength = !empty($fields['length']) || !empty($parsedDims['length_mm']);
-            $hasWidth = !empty($fields['width']) || !empty($parsedDims['width_mm']);
+        $resolvedDimensions = $resolvedDimensions
+            ?? $this->resolveDimensions($title, $materialType, $fields, 'chrome_ext_validate', false);
+
+        if ($materialType === Material::TYPE_PLATE) {
+            $hasThickness = $resolvedDimensions['thickness_mm'] !== null;
+            $hasLength = $resolvedDimensions['length_mm'] !== null;
+            $hasWidth = $resolvedDimensions['width_mm'] !== null;
 
             if (!$hasThickness) {
                 $errors[] = 'Толщина не указана и не распознана из названия';
@@ -416,7 +376,14 @@ class ChromeExtractService
      *
      * @param string|null $url Source URL (used for edge/hardware type detection)
      */
-    public function determineTrustLevel(array $fields, array $errors, array $dataSources = [], ?string $url = null): array
+    public function determineTrustLevel(
+        array $fields,
+        array $errors,
+        array $dataSources = [],
+        ?string $url = null,
+        ?array $resolvedDimensions = null,
+        ?array $typeResolution = null
+    ): array
     {
         if (!empty($errors)) {
             return [
@@ -430,24 +397,25 @@ class ChromeExtractService
         $hasArticle = !empty($fields['article']);
 
         $title = trim($fields['title'] ?? '');
-        $materialType = $title ? self::detectMaterialType($title, $url) : 'hardware';
+        $typeResolution = $typeResolution
+            ?? $this->resolveMaterialType($title, $url, 'chrome_ext_validate');
+        $materialType = $typeResolution['resolved_type'] ?? Material::TYPE_HARDWARE;
+        $resolvedDimensions = $resolvedDimensions
+            ?? $this->resolveDimensions($title, $materialType, $fields, 'chrome_ext_validate', false);
 
         // For hardware: dimensions are not needed for trust
         // For edge: only edge dims (length, width) matter
         // For plate: all 3 dims needed
         $hasDims = false;
-        if ($materialType === 'hardware') {
-            // Hardware doesn't need dimensions — treat as if dims are present
-            $hasDims = true;
-        } elseif ($materialType === 'edge') {
-            $parsedEdge = self::parseEdgeDimensionsFromName($title);
-            $hasDims = (!empty($fields['length']) || !empty($parsedEdge['length_mm']))
-                && (!empty($fields['width']) || !empty($parsedEdge['width_mm']));
+        if ($materialType === Material::TYPE_EDGE) {
+            $hasDims = $resolvedDimensions['length_mm'] !== null && $resolvedDimensions['width_mm'] !== null;
+        } elseif ($materialType === Material::TYPE_PLATE) {
+            $hasDims = $resolvedDimensions['thickness_mm'] !== null
+                && $resolvedDimensions['length_mm'] !== null
+                && $resolvedDimensions['width_mm'] !== null;
         } else {
-            $parsedDims = self::parseDimensionsFromName($title);
-            $hasDims = (!empty($fields['thickness']) || !empty($parsedDims['thickness_mm']))
-                && (!empty($fields['length']) || !empty($parsedDims['length_mm']))
-                && (!empty($fields['width']) || !empty($parsedDims['width_mm']));
+            // Hardware/facade/fitting-like types don't require dimensions for trust baseline.
+            $hasDims = true;
         }
 
         // Check if any dimension was manually entered (not from auto/capture/schema)
@@ -505,56 +473,43 @@ class ChromeExtractService
         array $dataSources = []
     ): array {
         $domain = self::extractDomain($url);
-        $errors = $this->validateExtractedFields($extractedFields, $url);
-        $trustInfo = $this->determineTrustLevel($extractedFields, $errors, $dataSources, $url);
-
-        // Parse values
         $title = trim($extractedFields['title'] ?? '');
+        $typeResolution = $this->resolveMaterialType($title, $url, 'chrome_ext_create');
+        $materialType = $typeResolution['resolved_type'] ?? Material::TYPE_HARDWARE;
+        $resolvedDimensions = $this->resolveDimensions(
+            title: $title,
+            materialType: $materialType,
+            extractedFields: $extractedFields,
+            source: 'chrome_ext_create',
+            logFailed: true
+        );
+
+        $errors = $this->validateExtractedFields($extractedFields, $url, $resolvedDimensions, $typeResolution);
+        $trustInfo = $this->determineTrustLevel($extractedFields, $errors, $dataSources, $url, $resolvedDimensions, $typeResolution);
+
         $article = trim($extractedFields['article'] ?? '');
         $price = self::parsePrice($extractedFields['price'] ?? null);
         $currency = self::parseCurrency($extractedFields['price'] ?? null);
 
-        // Detect material type and unit
-        $materialType = self::detectMaterialType($title, $url);
-        $unit = match ($materialType) {
-            'edge' => 'м.п.',
-            'plate' => 'м²',
-            default => 'шт',
-        };
+        $unit = self::unitForMaterialType($materialType);
 
-        // Parse dimensions based on material type
-        if ($materialType === 'edge') {
-            // Edge: parse edge-specific dimensions (WxT where W→length_mm, T→width_mm by convention)
-            $parsedEdge = self::parseEdgeDimensionsFromName($title);
-            // For edge, use extracted fields if provided, else parsed from name
-            $lengthMm = !empty($extractedFields['length'])
-                ? (int) $extractedFields['length']
-                : ($parsedEdge['length_mm'] ?? null);
-            $edgeThickness = !empty($extractedFields['width'])
-                ? (float) str_replace(',', '.', $extractedFields['width'])
-                : ($parsedEdge['width_mm'] ?? null);
-            // width_mm is int — store rounded value; also store precise value in `thickness` (decimal)
+        if ($materialType === Material::TYPE_EDGE) {
+            $lengthMm = $resolvedDimensions['length_mm'];
+            $edgeThickness = $resolvedDimensions['width_mm'];
             $widthMm = $edgeThickness !== null ? max(1, (int) round($edgeThickness)) : null;
-            $thicknessMm = null; // Not used for edges
+            $thicknessMm = null;
             $thicknessDecimal = $edgeThickness !== null ? round($edgeThickness, 2) : null;
-        } elseif ($materialType === 'hardware') {
-            // Hardware: no dimensions
+        } elseif ($materialType === Material::TYPE_HARDWARE) {
             $thicknessMm = null;
             $lengthMm = null;
             $widthMm = null;
             $thicknessDecimal = null;
         } else {
-            // Plate: use extracted fields first, fallback to name parsing
-            $parsedDims = self::parseDimensionsFromName($title);
-            $thicknessMm = !empty($extractedFields['thickness'])
-                ? (int) round((float) str_replace(',', '.', $extractedFields['thickness']))
-                : ($parsedDims['thickness_mm'] ?? null);
-            $lengthMm = !empty($extractedFields['length'])
-                ? (int) $extractedFields['length']
-                : ($parsedDims['length_mm'] ?? null);
-            $widthMm = !empty($extractedFields['width'])
-                ? (int) $extractedFields['width']
-                : ($parsedDims['width_mm'] ?? null);
+            $thicknessMm = $resolvedDimensions['thickness_mm'] !== null
+                ? (int) round((float) $resolvedDimensions['thickness_mm'])
+                : null;
+            $lengthMm = $resolvedDimensions['length_mm'];
+            $widthMm = $resolvedDimensions['width_mm'];
             $thicknessDecimal = $thicknessMm ? round($thicknessMm, 2) : null;
         }
 
@@ -585,16 +540,30 @@ class ChromeExtractService
             $userId, $url, $normalizedUrl, $cleanedUrl, $domain, $title, $article, $unit, $price, $currency,
             $thicknessMm, $lengthMm, $widthMm, $thicknessDecimal, $materialType,
             $regionId, $templateId, $trustInfo, $extractedFields, $errors, $dataSources,
-            $candidates, &$isNew, &$dedupMatch
+            $candidates, $typeResolution, &$isNew, &$dedupMatch
         ) {
             // Check for high-confidence match
             $highMatch = $candidates->where('confidence', 'high')->first();
+            $effectiveTypeResolution = $typeResolution;
 
             if ($highMatch) {
                 // Update existing material
                 $material = $highMatch['material'];
                 $isNew = false;
                 $dedupMatch = $highMatch['reason'];
+
+                $existingType = trim((string) ($material->type ?? ''));
+                $resolvedTypeForRecord = $materialType;
+                $resolvedUnitForRecord = $unit;
+
+                if ($existingType !== '' && $existingType !== $materialType) {
+                    $effectiveTypeResolution = $this->resolveMaterialType($title, $url, 'chrome_ext_update', $existingType);
+                    $resolvedTypeForRecord = $existingType;
+                    $resolvedUnitForRecord = $material->unit ?: self::unitForMaterialType($existingType);
+                } elseif ($existingType !== '') {
+                    $resolvedTypeForRecord = $existingType;
+                    $resolvedUnitForRecord = $material->unit ?: self::unitForMaterialType($existingType);
+                }
 
                 // Update fields if they improve the record
                 if ($article && !$material->article) {
@@ -616,22 +585,32 @@ class ChromeExtractService
                     $material->width_mm = $widthMm;
                 }
 
-                $material->unit = $unit;
+                if ($material->type === null || trim((string) $material->type) === '') {
+                    $material->type = $resolvedTypeForRecord;
+                }
+
+                $material->unit = $resolvedUnitForRecord;
                 $material->price_per_unit = $price;
                 $material->price_checked_at = now();
                 $material->last_parsed_at = now();
                 $material->last_parse_status = Material::PARSE_OK;
                 $material->data_origin = Material::ORIGIN_CHROME_EXT;
 
-                // Store data_sources in metadata
+                $meta = is_array($material->metadata) ? $material->metadata : [];
                 if (!empty($dataSources)) {
-                    $meta = $material->metadata ?? [];
                     $meta['field_sources'] = $dataSources;
-                    $material->metadata = $meta;
                 }
+                $meta['material_type_resolution'] = $effectiveTypeResolution;
+                $material->metadata = $meta;
 
                 $material->save();
             } else {
+                $meta = [];
+                if (!empty($dataSources)) {
+                    $meta['field_sources'] = $dataSources;
+                }
+                $meta['material_type_resolution'] = $effectiveTypeResolution;
+
                 // Create new material
                 $material = Material::create([
                     'user_id' => $userId,
@@ -656,7 +635,7 @@ class ChromeExtractService
                     'region_id' => $regionId,
                     'visibility' => Material::VISIBILITY_PRIVATE,
                     'price_checked_at' => now(),
-                    'metadata' => !empty($dataSources) ? ['field_sources' => $dataSources] : null,
+                    'metadata' => $meta,
                 ]);
             }
 
@@ -667,10 +646,13 @@ class ChromeExtractService
                 'valid_from' => now()->toDateString(),
                 'price_per_unit' => $price,
                 'source_url' => $cleanedUrl ?: $url,
+                'raw_source_url' => $url,
+                'normalized_source_url' => $cleanedUrl ?: $normalizedUrl ?: $url,
                 'region_id' => $regionId,
                 'observed_at' => now(),
                 'source_type' => MaterialPriceHistory::SOURCE_CHROME_EXT,
                 'is_verified' => $trustInfo['is_verified'],
+                'true_score' => 80,
                 'currency' => $currency,
             ]);
 
@@ -691,6 +673,7 @@ class ChromeExtractService
                 'dedup_match' => $dedupMatch,
                 'errors' => $errors,
                 'status' => $status,
+                'type_resolution' => $effectiveTypeResolution,
             ];
         });
     }
@@ -755,6 +738,8 @@ class ChromeExtractService
             'config_override' => $this->buildConfigOverride($selectors, $urlPatterns, $extractionRules),
             'is_default' => $isDefault,
             'source' => 'chrome_ext',
+            'visibility' => 'private',
+            'status' => 'active',
             'version' => 1,
         ]);
 

@@ -14,6 +14,7 @@ use App\Services\DomainParseService;
 use App\Services\MaterialDeduplicationService;
 use App\Services\MaterialParseService;
 use App\Services\TrustScoreService;
+use App\Services\UrlNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -24,17 +25,20 @@ class MaterialCatalogController extends Controller
     protected TrustScoreService $trustScoreService;
     protected MaterialDeduplicationService $dedupService;
     protected DomainParseService $domainParseService;
+    protected UrlNormalizer $urlNormalizer;
 
     public function __construct(
         MaterialParseService $parseService,
         TrustScoreService $trustScoreService,
         MaterialDeduplicationService $dedupService,
-        DomainParseService $domainParseService
+        DomainParseService $domainParseService,
+        UrlNormalizer $urlNormalizer
     ) {
         $this->parseService = $parseService;
         $this->trustScoreService = $trustScoreService;
         $this->dedupService = $dedupService;
         $this->domainParseService = $domainParseService;
+        $this->urlNormalizer = $urlNormalizer;
     }
 
     // ========================================================================
@@ -637,12 +641,15 @@ class MaterialCatalogController extends Controller
             'material_id' => $material->id,
             'version' => $material->version,
             'price_per_unit' => $validated['price_per_unit'],
-            'source_url' => $validated['source_url'],
+            'source_url' => $this->urlNormalizer->normalize($validated['source_url']),
+            'raw_source_url' => $validated['source_url'],
+            'normalized_source_url' => $this->urlNormalizer->normalize($validated['source_url']),
             'valid_from' => now()->toDateString(),
             'observed_at' => now(),
             'region_id' => $regionId,
             'source_type' => $validated['source_type'] ?? 'manual',
             'is_verified' => ($validated['source_type'] ?? 'manual') !== 'manual' ? 1 : 0,
+            'true_score' => $this->resolveTrueScore((string) ($validated['source_type'] ?? 'manual')),
             'currency' => $validated['currency'] ?? 'RUB',
             'availability' => $validated['availability'] ?? null,
             'screenshot_path' => $validated['screenshot_path'] ?? null,
@@ -665,6 +672,17 @@ class MaterialCatalogController extends Controller
         ]);
 
         return response()->json($observation, 201);
+    }
+
+    private function resolveTrueScore(string $sourceType): int
+    {
+        return match ($sourceType) {
+            MaterialPriceHistory::SOURCE_MANUAL => 0,
+            MaterialPriceHistory::SOURCE_WEB => 100,
+            MaterialPriceHistory::SOURCE_CHROME_EXT => 80,
+            MaterialPriceHistory::SOURCE_PRICE_LIST => 80,
+            default => 100,
+        };
     }
 
     // ========================================================================

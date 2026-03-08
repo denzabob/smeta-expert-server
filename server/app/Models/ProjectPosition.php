@@ -56,6 +56,7 @@ class ProjectPosition extends Model
         'price_sources_count',
         'price_min',
         'price_max',
+        'requires_price_justification',
     ];
 
     protected $casts = [
@@ -68,6 +69,7 @@ class ProjectPosition extends Model
         'price_sources_count' => 'integer',
         'price_min' => 'decimal:2',
         'price_max' => 'decimal:2',
+        'requires_price_justification' => 'boolean',
     ];
 
     protected $appends = ['calculated_area_m2', 'calculated_total'];

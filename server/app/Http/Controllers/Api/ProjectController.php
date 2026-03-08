@@ -75,7 +75,7 @@ class ProjectController extends Controller
             'normohour_date' => 'nullable|date',
             'normohour_method' => 'nullable|in:market_vacancies,commercial_proposals,contractor_estimate,other',
             'normohour_justification' => 'nullable|string|max:5000',
-        ]);
+        ], $this->projectValidationMessages());
 
         // Получить пользовательские настройки (или создать если нет)
         $userSettings = Auth::user()->settings()->firstOrCreate(['user_id' => Auth::id()]);
@@ -177,10 +177,69 @@ class ProjectController extends Controller
             'normohour_date' => 'nullable|date',
             'normohour_method' => 'nullable|in:market_vacancies,commercial_proposals,contractor_estimate,other',
             'normohour_justification' => 'nullable|string|max:5000',
-        ]);
+        ], $this->projectValidationMessages());
 
         $project->update($validated);
         return $project;
+    }
+
+    private function projectValidationMessages(): array
+    {
+        return [
+            'number.required' => 'Укажите номер дела.',
+            'number.max' => 'Номер дела не должен превышать 255 символов.',
+
+            'expert_name.required' => 'Укажите ФИО эксперта.',
+            'expert_name.max' => 'ФИО эксперта не должно превышать 255 символов.',
+
+            'address.required' => 'Укажите адрес объекта.',
+            'address.max' => 'Адрес объекта не должен превышать 255 символов.',
+
+            'region_id.exists' => 'Выбранный регион не найден.',
+
+            'waste_coefficient.required' => 'Укажите коэффициент обрезков.',
+            'waste_coefficient.numeric' => 'Коэффициент обрезков должен быть числом.',
+            'waste_coefficient.min' => 'Коэффициент обрезков не может быть меньше 1.',
+
+            'repair_coefficient.required' => 'Укажите ремонтный коэффициент.',
+            'repair_coefficient.numeric' => 'Ремонтный коэффициент должен быть числом.',
+            'repair_coefficient.min' => 'Ремонтный коэффициент не может быть меньше 1.',
+
+            'waste_plate_coefficient.numeric' => 'Коэффициент для плитных материалов должен быть числом.',
+            'waste_plate_coefficient.min' => 'Коэффициент для плитных материалов не может быть меньше 1.',
+
+            'waste_edge_coefficient.numeric' => 'Коэффициент для кромки должен быть числом.',
+            'waste_edge_coefficient.min' => 'Коэффициент для кромки не может быть меньше 1.',
+
+            'waste_operations_coefficient.numeric' => 'Коэффициент для операций должен быть числом.',
+            'waste_operations_coefficient.min' => 'Коэффициент для операций не может быть меньше 1.',
+
+            'default_plate_material_id.exists' => 'Выбранный плитный материал не найден.',
+            'default_edge_material_id.exists' => 'Выбранный кромочный материал не найден.',
+
+            'text_blocks.array' => 'Справочные блоки переданы в неверном формате.',
+            'text_blocks.*.title.max' => 'Заголовок справочного блока не должен превышать 255 символов.',
+            'text_blocks.*.text.max' => 'Текст справочного блока не должен превышать 10000 символов.',
+
+            'waste_plate_description.array' => 'Описание для плитных материалов передано в неверном формате.',
+            'waste_plate_description.title.max' => 'Заголовок описания для плитных материалов не должен превышать 255 символов.',
+            'waste_plate_description.text.max' => 'Описание для плитных материалов не должно превышать 3000 символов.',
+
+            'waste_edge_description.array' => 'Описание для кромки передано в неверном формате.',
+            'waste_edge_description.title.max' => 'Заголовок описания для кромки не должен превышать 255 символов.',
+            'waste_edge_description.text.max' => 'Описание для кромки не должно превышать 3000 символов.',
+
+            'waste_operations_description.array' => 'Описание для операций передано в неверном формате.',
+            'waste_operations_description.title.max' => 'Заголовок описания для операций не должен превышать 255 символов.',
+            'waste_operations_description.text.max' => 'Описание для операций не должно превышать 3000 символов.',
+
+            'normohour_rate.numeric' => 'Ставка нормо-часа должна быть числом.',
+            'normohour_rate.min' => 'Ставка нормо-часа не может быть отрицательной.',
+            'normohour_region.max' => 'Название региона для нормо-часа не должно превышать 255 символов.',
+            'normohour_date.date' => 'Дата для нормо-часа указана в неверном формате.',
+            'normohour_method.in' => 'Выбран неверный метод расчёта нормо-часа.',
+            'normohour_justification.max' => 'Обоснование нормо-часа не должно превышать 5000 символов.',
+        ];
     }
 
     public function destroy(Request $request, Project $project)

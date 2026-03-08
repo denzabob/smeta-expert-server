@@ -43,9 +43,9 @@ class MistralProvider implements LLMProviderInterface
         ?int $timeout = null,
         ?LLMJsonParser $jsonParser = null
     ) {
-        $this->apiKey = $apiKey ?? config('services.mistral.key', '');
-        $this->baseUrl = $baseUrl ?? config('services.mistral.base_url', self::DEFAULT_BASE_URL);
-        $this->model = $model ?? config('services.mistral.model', self::DEFAULT_MODEL);
+        $this->apiKey = (string) ($apiKey ?? config('services.mistral.key') ?? '');
+        $this->baseUrl = (string) ($baseUrl ?? config('services.mistral.base_url') ?? self::DEFAULT_BASE_URL);
+        $this->model = (string) ($model ?? config('services.mistral.model') ?? self::DEFAULT_MODEL);
         $this->temperature = $temperature ?? (float) config('services.mistral.temperature', 0.2);
         $this->maxTokens = $maxTokens ?? (int) config('services.mistral.max_tokens', 4096);
         $this->timeout = $timeout ?? self::DEFAULT_TIMEOUT;

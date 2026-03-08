@@ -28,12 +28,15 @@ class SnapshotService
      * @param int $userId ID пользователя, создающего ревизию
      * @return ProjectRevision Созданная ревизия
      */
-    public function createSnapshot(Project $project, int $userId): ProjectRevision
+    public function createSnapshot(Project $project, int $userId, array $extraSnapshot = []): ProjectRevision
     {
-        return DB::transaction(function () use ($project, $userId) {
+        return DB::transaction(function () use ($project, $userId, $extraSnapshot) {
             // 1. Получить полный отчёт через единый источник истины
             $reportDto = $this->reportService->buildReport($project);
             $snapshot = $reportDto->toArray();
+            if (!empty($extraSnapshot)) {
+                $snapshot = array_replace_recursive($snapshot, $extraSnapshot);
+            }
 
             // 2. Канонизировать JSON (рекурсивная сортировка ключей)
             $canonicalJson = $this->canonicalizeJson($snapshot);

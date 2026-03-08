@@ -31,4 +31,16 @@ return [
         // Compression for snapshot JSON (none, gzip)
         'compression' => env('SMETA_SNAPSHOT_COMPRESSION', 'none'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Evidence Pipeline
+    |--------------------------------------------------------------------------
+    |
+    | Feature flags for staged rollout of the price evidence pipeline.
+    |
+    */
+    'evidence' => [
+        'pipeline_v2' => env('EVIDENCE_PIPELINE_V2', false),
+    ],
 ];

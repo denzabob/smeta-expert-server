@@ -610,6 +610,189 @@
     return { fields: result, errors };
   }
 
+  function getMetaContent(selector, attribute = 'content') {
+    const el = document.querySelector(selector);
+    if (!el) return '';
+    return (el.getAttribute(attribute) || '').trim();
+  }
+
+  function getFirstTextFromSelectors(selectors) {
+    for (const selector of selectors) {
+      try {
+        const el = document.querySelector(selector);
+        if (!el) continue;
+        const text = extractText(el);
+        if (text && text.length >= 2) {
+          return { value: text, selector };
+        }
+      } catch {
+        // ignore selector errors in heuristic mode
+      }
+    }
+    return { value: '', selector: null };
+  }
+
+  function cleanupTitle(raw) {
+    if (!raw) return '';
+    const title = raw.replace(/\s+/g, ' ').trim();
+    if (title.length < 3) return '';
+    // Remove common browser-title suffixes: "Product - Store"
+    const split = title.split(/\s+[\-|·|•]\s+/);
+    return split[0] || title;
+  }
+
+  function findArticleFromDom() {
+    const schemaSku = getMetaContent('[itemprop="sku"][content]') || getMetaContent('[itemprop="mpn"][content]');
+    if (schemaSku) {
+      return { value: schemaSku, selector: '[itemprop="sku"]', warning: null };
+    }
+
+    const candidates = [];
+    const elements = document.querySelectorAll('body *');
+    for (const el of elements) {
+      if (candidates.length >= 4) break;
+      const text = (extractText(el) || '').replace(/\s+/g, ' ').trim();
+      if (!text || text.length > 120) continue;
+      const match = text.match(/(?:артикул|sku|код(?:\s+товара)?)\s*[:№]?\s*([A-Za-zА-Яа-я0-9\-_./]{2,})/i);
+      if (match && match[1]) {
+        candidates.push(match[1]);
+      }
+    }
+
+    const unique = Array.from(new Set(candidates));
+    if (unique.length === 1) {
+      return { value: unique[0], selector: null, warning: null };
+    }
+    if (unique.length > 1) {
+      return { value: '', selector: null, warning: 'Найдено несколько вариантов артикула, выберите нужный вручную.' };
+    }
+    return { value: '', selector: null, warning: null };
+  }
+
+  function findPriceFromDom() {
+    const strongMeta =
+      getMetaContent('meta[property="product:price:amount"]') ||
+      getMetaContent('meta[itemprop="price"]', 'content') ||
+      getMetaContent('[itemprop="price"][content]');
+
+    if (strongMeta) {
+      const normalized = normalizePrice(strongMeta);
+      if (normalized && !isNaN(parseFloat(normalized))) {
+        return { value: normalized, selector: 'meta:price', warning: null };
+      }
+    }
+
+    const selectors = [
+      '[itemprop="price"]',
+      '[data-price]',
+      '.price',
+      '.product-price',
+      '.card-price',
+      '[class*="price"]',
+      '[id*="price"]',
+    ];
+
+    const values = [];
+    selectors.forEach((selector) => {
+      document.querySelectorAll(selector).forEach((el) => {
+        const raw = extractText(el);
+        const normalized = normalizePrice(raw);
+        const num = parseFloat(normalized);
+        if (!isNaN(num) && num > 0) {
+          values.push(normalized);
+        }
+      });
+    });
+
+    const unique = Array.from(new Set(values));
+    if (unique.length === 1) {
+      return { value: unique[0], selector: 'dom:price', warning: null };
+    }
+    if (unique.length > 1) {
+      return { value: '', selector: null, warning: 'Найдено несколько похожих цен, проверьте нужную.' };
+    }
+
+    return { value: '', selector: null, warning: 'Не удалось определить цену на странице.' };
+  }
+
+  function autoDetectFields() {
+    const warnings = [];
+    const result = {};
+
+    const schema = extractSchemaData();
+    const schemaFields = schema?.found ? (schema.schemas?.[0]?.fields || []) : [];
+    const schemaByPath = Object.fromEntries(schemaFields.map((f) => [f.path, f.value]));
+
+    const titleCandidate =
+      schemaByPath.name ||
+      getMetaContent('meta[property="og:title"]') ||
+      getFirstTextFromSelectors(['h1[itemprop="name"]', '[itemprop="name"]', 'h1', '.product-title', '.card-title']).value ||
+      document.title;
+    const title = cleanupTitle(titleCandidate);
+    if (title) {
+      result.title = { value: title, auto: true, schema: !!schemaByPath.name, selector: null };
+    } else {
+      warnings.push('Не удалось определить название автоматически.');
+    }
+
+    const priceFromSchema = schemaByPath['offers.price'] || schemaByPath['offers.lowPrice'] || schemaByPath.price;
+    if (priceFromSchema) {
+      const normalized = normalizePrice(String(priceFromSchema));
+      const asNumber = parseFloat(normalized);
+      if (!isNaN(asNumber) && asNumber > 0) {
+        result.price = { value: normalized, auto: true, schema: true, selector: null };
+      }
+    }
+    if (!result.price) {
+      const priceDetected = findPriceFromDom();
+      if (priceDetected.value) {
+        result.price = { value: priceDetected.value, auto: true, selector: priceDetected.selector };
+      }
+      if (priceDetected.warning) warnings.push(priceDetected.warning);
+    }
+
+    const articleFromSchema = schemaByPath.sku || schemaByPath.mpn;
+    if (articleFromSchema) {
+      result.article = { value: String(articleFromSchema), auto: true, schema: true, selector: null };
+    } else {
+      const articleDetected = findArticleFromDom();
+      if (articleDetected.value) {
+        result.article = { value: articleDetected.value, auto: true, selector: articleDetected.selector };
+      }
+      if (articleDetected.warning) warnings.push(articleDetected.warning);
+    }
+
+    const materialType = detectMaterialType(result.title?.value || '', window.location.href);
+    const unit = materialType === 'edge' ? 'м.п.' : materialType === 'plate' ? 'м²' : 'шт';
+
+    const dims = materialType === 'edge'
+      ? parseEdgeDimensions(result.title?.value || '')
+      : parseDimensionsFromName(result.title?.value || '');
+
+    if (materialType === 'plate') {
+      if (dims.thickness) result.thickness = { value: String(dims.thickness), auto: true, selector: null };
+      if (dims.length) result.length = { value: String(dims.length), auto: true, selector: null };
+      if (dims.width) result.width = { value: String(dims.width), auto: true, selector: null };
+      if (!dims.length || !dims.width) warnings.push('Не удалось определить размеры автоматически.');
+    }
+
+    if (materialType === 'edge') {
+      if (dims.length) result.length = { value: String(dims.length), auto: true, selector: null };
+      if (dims.width) result.width = { value: String(dims.width), auto: true, selector: null };
+      if (!dims.length || !dims.width) warnings.push('Не удалось определить параметры кромки автоматически.');
+    }
+
+    const uniqueWarnings = Array.from(new Set(warnings));
+
+    return {
+      fields: result,
+      warnings: uniqueWarnings,
+      materialType,
+      unit,
+      foundCount: Object.keys(result).length,
+    };
+  }
+
   // ============================================================
   // Schema.org / JSON-LD / Microdata extraction
   // ============================================================
@@ -882,6 +1065,20 @@
           domain: window.location.hostname.replace(/^www\./, ''),
         });
         break;
+
+      case 'AUTO_DETECT_FIELDS': {
+        const detected = autoDetectFields();
+        for (const [field, info] of Object.entries(detected.fields || {})) {
+          capturedData[field] = {
+            value: info.value,
+            selector: info.selector || null,
+            auto: true,
+            schema: !!info.schema,
+          };
+        }
+        sendResponse(detected);
+        break;
+      }
 
       case 'APPLY_TEMPLATE':
         const result = applyTemplate(data.selectors);

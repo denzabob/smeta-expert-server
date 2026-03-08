@@ -13,6 +13,9 @@
       <v-tab value="llm" prepend-icon="mdi-robot">LLM Провайдеры</v-tab>
       <v-tab value="llm-prompts" prepend-icon="mdi-text-box-edit">Промпты</v-tab>
       <v-tab value="llm-stats" prepend-icon="mdi-chart-line">LLM Статистика</v-tab>
+      <v-tab value="dimension-rules" prepend-icon="mdi-ruler-square-compass">Правила размеров</v-tab>
+      <v-tab value="dimension-failures" prepend-icon="mdi-alert-outline">Неразобранные размеры</v-tab>
+      <v-tab value="type-patterns" prepend-icon="mdi-shape-plus">Паттерны типа материала</v-tab>
       <v-tab value="settings" prepend-icon="mdi-cog">Настройки</v-tab>
       <v-tab value="users" prepend-icon="mdi-account-group">Пользователи</v-tab>
       <v-tab value="notifications" prepend-icon="mdi-bell-outline">Уведомления</v-tab>
@@ -737,6 +740,18 @@
       <v-window-item value="notifications">
         <AdminNotificationsTab />
       </v-window-item>
+
+      <v-window-item value="dimension-rules">
+        <AdminMaterialDimensionRulesTab ref="rulesTabRef" />
+      </v-window-item>
+
+      <v-window-item value="dimension-failures">
+        <AdminMaterialDimensionFailuresTab @create-rule="handleCreateRuleFromFailure" />
+      </v-window-item>
+
+      <v-window-item value="type-patterns">
+        <AdminMaterialTypePatternsTab />
+      </v-window-item>
     </v-window>
   </v-container>
 </template>
@@ -745,10 +760,38 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api/axios'
 import AdminNotificationsTab from '@/components/notifications/AdminNotificationsTab.vue'
+import AdminMaterialDimensionRulesTab from '@/components/admin/AdminMaterialDimensionRulesTab.vue'
+import AdminMaterialDimensionFailuresTab from '@/components/admin/AdminMaterialDimensionFailuresTab.vue'
+import AdminMaterialTypePatternsTab from '@/components/admin/AdminMaterialTypePatternsTab.vue'
+import type { MaterialDimensionRulePreset } from '@/api/materialDimensions'
 
-type TabType = 'llm' | 'llm-prompts' | 'llm-stats' | 'settings' | 'users' | 'notifications'
+type TabType =
+  | 'llm'
+  | 'llm-prompts'
+  | 'llm-stats'
+  | 'dimension-rules'
+  | 'dimension-failures'
+  | 'type-patterns'
+  | 'settings'
+  | 'users'
+  | 'notifications'
 
 const activeTab = ref<TabType>('llm')
+
+type RulesTabExpose = {
+  openCreateWithPreset: (preset?: MaterialDimensionRulePreset) => void
+}
+
+const rulesTabRef = ref<RulesTabExpose | null>(null)
+
+function handleCreateRuleFromFailure(preset: MaterialDimensionRulePreset) {
+  activeTab.value = 'dimension-rules'
+
+  // Wait for the rules tab to render before opening prefilled dialog.
+  setTimeout(() => {
+    rulesTabRef.value?.openCreateWithPreset(preset)
+  }, 0)
+}
 
 // ==================== LLM Settings State ====================
 const llmLoading = ref(false)

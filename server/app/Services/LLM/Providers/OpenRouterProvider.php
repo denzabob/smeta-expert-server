@@ -43,9 +43,9 @@ class OpenRouterProvider implements LLMProviderInterface
         ?int $timeout = null,
         ?LLMJsonParser $jsonParser = null
     ) {
-        $this->apiKey = $apiKey ?? config('services.openrouter.key', '');
-        $this->baseUrl = $baseUrl ?? config('services.openrouter.base_url', self::DEFAULT_BASE_URL);
-        $this->model = $model ?? config('services.openrouter.model', self::DEFAULT_MODEL);
+        $this->apiKey = (string) ($apiKey ?? config('services.openrouter.key') ?? '');
+        $this->baseUrl = (string) ($baseUrl ?? config('services.openrouter.base_url') ?? self::DEFAULT_BASE_URL);
+        $this->model = (string) ($model ?? config('services.openrouter.model') ?? self::DEFAULT_MODEL);
         $this->temperature = $temperature ?? (float) config('services.openrouter.temperature', 0.2);
         $this->maxTokens = $maxTokens ?? (int) config('services.openrouter.max_tokens', 4096);
         $this->timeout = $timeout ?? self::DEFAULT_TIMEOUT;

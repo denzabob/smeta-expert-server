@@ -55,6 +55,7 @@ class ProjectPositionController extends Controller
             'finish_name' => 'nullable|string|max:255',
             'price_per_m2' => 'nullable|numeric|min:0',
             'price_method' => ['nullable', Rule::in(ProjectPosition::PRICE_METHODS)],
+            'requires_price_justification' => 'nullable|boolean',
             'quote_material_price_ids' => 'nullable|array|max:10',
             'quote_material_price_ids.*' => 'integer|exists:material_prices,id',
             'quote_mismatch_flags' => 'nullable|array',

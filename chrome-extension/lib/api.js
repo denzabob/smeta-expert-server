@@ -4,27 +4,43 @@
  */
 class PrizmAPI {
   constructor() {
-    this.defaultBaseUrl = 'https://prismcore.ru/api';
+    this.defaultBaseUrl = 'https://app.prismcore.ru/api';
     this.baseUrl = '';
     this.token = null;
     this._ready = this._init();
   }
 
   async _init() {
-    const data = await chrome.storage.local.get(['apiBaseUrl', 'authToken']);
-    this.baseUrl = data.apiBaseUrl || this.defaultBaseUrl;
+    const data = await chrome.storage.local.get(['apiBaseUrl', 'apiBaseUrlOverride', 'authToken']);
+    const overrideBaseUrl = (data.apiBaseUrlOverride || '').replace(/\/+$/, '');
+    const storedBaseUrl = (data.apiBaseUrl || '').replace(/\/+$/, '');
+    const effectiveStoredBaseUrl = this.isLegacyLocalUrl(storedBaseUrl) ? '' : storedBaseUrl;
+    this.baseUrl = overrideBaseUrl ? this.resolveBaseUrl(overrideBaseUrl) : this.resolveBaseUrl(effectiveStoredBaseUrl);
     this.token = data.authToken || null;
+
+    if (this.baseUrl !== storedBaseUrl && this.baseUrl === this.defaultBaseUrl) {
+      await chrome.storage.local.set({ apiBaseUrl: this.baseUrl });
+    }
   }
 
   async ready() {
     await this._ready;
   }
 
+  isLegacyLocalUrl(url) {
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/api)?$/i.test(url);
+  }
+
+  resolveBaseUrl(url) {
+    const normalizedUrl = (url || '').replace(/\/+$/, '');
+    return normalizedUrl || this.defaultBaseUrl;
+  }
+
   /**
    * Save API configuration.
    */
   async configure(baseUrl, token) {
-    this.baseUrl = (baseUrl || this.defaultBaseUrl).replace(/\/+$/, '');
+    this.baseUrl = this.resolveBaseUrl(baseUrl);
     this.token = token;
     await chrome.storage.local.set({
       apiBaseUrl: this.baseUrl,

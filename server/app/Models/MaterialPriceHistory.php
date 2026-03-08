@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MaterialPriceHistory extends Model
 {
@@ -30,8 +31,15 @@ class MaterialPriceHistory extends Model
         'parse_session_id',
         'snapshot_path',
         'is_verified',
+        'true_score',
         'currency',
         'availability',
+        'raw_source_url',
+        'normalized_source_url',
+        'evidence_artifact_id',
+        'evidence_mode',
+        'is_auto_verified',
+        'validation_confidence',
     ];
 
     protected $casts = [
@@ -40,21 +48,29 @@ class MaterialPriceHistory extends Model
         'valid_to' => 'date',
         'observed_at' => 'datetime',
         'is_verified' => 'boolean',
+        'is_auto_verified' => 'boolean',
+        'true_score' => 'integer',
+        'validation_confidence' => 'integer',
     ];
 
-    public function material()
+    public function material(): BelongsTo
     {
         return $this->belongsTo(Material::class);
     }
 
-    public function region()
+    public function region(): BelongsTo
     {
         return $this->belongsTo(Region::class);
     }
 
-    public function parseSession()
+    public function parseSession(): BelongsTo
     {
         return $this->belongsTo(ParsingSession::class, 'parse_session_id');
+    }
+
+    public function evidenceArtifact(): BelongsTo
+    {
+        return $this->belongsTo(EvidenceArtifact::class, 'evidence_artifact_id');
     }
 
     // --- Scopes ---

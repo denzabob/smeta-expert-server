@@ -30,14 +30,14 @@
       <v-btn
         size="small"
         color="primary"
-        prepend-icon="mdi-camera"
+        prepend-icon="mdi-shield-check"
         :loading="snapshotLoading"
         :disabled="snapshotLoading"
         @click="createSnapshot"
         class="mr-2"
-        title="Зафиксировать текущее состояние проекта"
+        title="Запустить строгую ревизию с обоснованием цен"
       >
-        Snapshot
+        Ревизия (strict)
       </v-btn>
       <v-btn
         size="small"
@@ -1272,6 +1272,194 @@
           <span v-else>нет</span>
         </v-card-subtitle>
 
+        <v-card
+          v-if="activeRevisionRun"
+          variant="flat"
+          class="mb-4 border"
+          style="border-color: rgba(var(--v-border-color), var(--v-border-opacity)) !important;"
+        >
+          <v-card-title class="d-flex align-center flex-wrap ga-2">
+            <span>Сессия ревизии #{{ activeRevisionRun.id }}</span>
+            <v-chip size="small" :color="getRunStatusColor(activeRevisionRun.status)" variant="tonal">
+              <v-progress-circular
+                v-if="activeRevisionRun.status === 'IN_PROGRESS' || activeRevisionRun.status === 'PENDING'"
+                indeterminate
+                size="12"
+                width="2"
+                class="mr-1"
+              />
+              {{ formatRunStatus(activeRevisionRun.status) }}
+            </v-chip>
+            <v-chip size="small" variant="outlined">
+              OK: {{ activeRevisionRun.ok_items || 0 }} / {{ activeRevisionRun.total_items || 0 }}
+            </v-chip>
+            <v-chip v-if="(activeRevisionRun.failed_items || 0) > 0" size="small" variant="outlined" color="warning">
+              Проблемных: {{ activeRevisionRun.failed_items || 0 }}
+            </v-chip>
+            <v-spacer />
+            <v-btn
+              v-if="activeRevisionRun.status !== 'IN_PROGRESS' && activeRevisionRun.status !== 'PENDING'"
+              size="small"
+              variant="outlined"
+              prepend-icon="mdi-refresh"
+              :loading="revisionRunLoading"
+              @click="refreshRevisionRun"
+            >
+              Обновить статус
+            </v-btn>
+            <v-btn
+              size="small"
+              color="warning"
+              variant="outlined"
+              prepend-icon="mdi-reload"
+              :loading="revisionRunRetryLoading"
+              :disabled="!canRetryRevisionRun"
+              @click="retryRevisionRun"
+            >
+              Retry
+            </v-btn>
+            <v-btn
+              size="small"
+              color="success"
+              prepend-icon="mdi-check-bold"
+              :loading="revisionRunFinalizeLoading"
+              :disabled="!canFinalizeRevisionRun"
+              @click="finalizeRevisionRun"
+            >
+              Finalize
+            </v-btn>
+          </v-card-title>
+          <v-card-text class="pt-0">
+            <!-- Progress bar while processing -->
+            <v-progress-linear
+              v-if="activeRevisionRun.status === 'IN_PROGRESS' || activeRevisionRun.status === 'PENDING'"
+              :model-value="activeRevisionRun.total_items > 0 ? Math.round(((activeRevisionRun.ok_items || 0) + (activeRevisionRun.failed_items || 0)) / activeRevisionRun.total_items * 100) : 0"
+              color="primary"
+              height="6"
+              rounded
+              class="mb-3"
+              striped
+            >
+              <template #default="{ value }">
+                <span class="text-caption">{{ value }}%</span>
+              </template>
+            </v-progress-linear>
+
+            <v-alert
+              v-if="activeRevisionRun.status === 'IN_PROGRESS' || activeRevisionRun.status === 'PENDING'"
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mb-3"
+              :icon="false"
+            >
+              <div class="d-flex align-center ga-2">
+                <v-progress-circular indeterminate size="16" width="2" color="info" />
+                <span>Идёт сбор данных: обработано {{ (activeRevisionRun.ok_items || 0) + (activeRevisionRun.failed_items || 0) }} из {{ activeRevisionRun.total_items || 0 }} позиций</span>
+              </div>
+            </v-alert>
+
+            <v-alert
+              v-if="activeRevisionRun.status === 'NEEDS_MANUAL'"
+              type="warning"
+              variant="tonal"
+              density="compact"
+              class="mb-3"
+            >
+              Есть позиции без подтверждения цены. Закройте их вручную или запустите Retry.
+            </v-alert>
+
+            <v-table density="compact">
+              <thead>
+                <tr>
+                  <th style="width:40px">№</th>
+                  <th>Материал</th>
+                  <th>Статус</th>
+                  <th>Сообщение</th>
+                  <th>Источник</th>
+                  <th>Карточка</th>
+                  <th class="text-right">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(runItem, idx) in revisionRunItems" :key="runItem.id">
+                  <td class="text-medium-emphasis text-caption">{{ idx + 1 }}</td>
+                  <td>{{ getRevisionRunItemName(runItem) }}</td>
+                  <td>
+                    <div v-if="runItem.status === 'PENDING'" class="d-flex align-center ga-1">
+                      <v-progress-circular indeterminate size="14" width="2" color="primary" />
+                      <span class="text-caption text-medium-emphasis">обработка...</span>
+                    </div>
+                    <v-chip v-else size="x-small" :color="getRunItemStatusColor(runItem.status)" variant="tonal">
+                      {{ formatRunItemStatus(runItem.status) }}
+                    </v-chip>
+                  </td>
+                  <td>{{ runItem.message || '—' }}</td>
+                  <td>
+                    <a
+                      v-if="runItem.source_url"
+                      :href="runItem.source_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      ссылка
+                    </a>
+                    <span v-else>—</span>
+                  </td>
+                  <td>
+                    <a
+                      v-if="runItem.material_id"
+                      :href="getMaterialCatalogLink(runItem.material_id)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      материал
+                    </a>
+                    <span v-else>—</span>
+                  </td>
+                  <td class="text-right">
+                    <v-btn
+                      size="x-small"
+                      color="primary"
+                      variant="text"
+                      prepend-icon="mdi-pencil"
+                      :disabled="runItem.status === 'OK'"
+                      @click="openManualCloseDialog(runItem)"
+                    >
+                      Ручное закрытие
+                    </v-btn>
+                  </td>
+                </tr>
+                <tr v-if="revisionRunItems.length === 0">
+                  <td colspan="7" class="text-center py-4 text-medium-emphasis">
+                    Нет позиций, требующих обоснования.
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+
+            <div v-if="revisionRunPdfLinks" class="mt-3 d-flex align-center flex-wrap ga-2">
+              <v-chip size="small" color="success" variant="tonal">Ревизия создана</v-chip>
+              <v-btn
+                size="small"
+                variant="outlined"
+                prepend-icon="mdi-file-pdf-box"
+                @click="openPdfLink(revisionRunPdfLinks.smeta)"
+              >
+                Сметный PDF
+              </v-btn>
+              <v-btn
+                size="small"
+                variant="outlined"
+                prepend-icon="mdi-file-document-outline"
+                @click="openPdfLink(revisionRunPdfLinks.price_justification)"
+              >
+                PDF обоснований
+              </v-btn>
+            </div>
+          </v-card-text>
+        </v-card>
+
         <v-skeleton-loader v-if="revisionsLoading" type="table" />
         <v-data-table
           v-else
@@ -1312,6 +1500,14 @@
                 title="PDF"
                 :disabled="item.status === 'stale'"
                 @click="downloadRevisionPdf(item)"
+              />
+              <v-btn
+                size="x-small"
+                variant="text"
+                icon="mdi-file-document-outline"
+                title="PDF обоснований цен"
+                :disabled="item.status === 'stale'"
+                @click="downloadPriceJustificationPdf(item)"
               />
               <v-btn
                 size="x-small"
@@ -1392,6 +1588,58 @@
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="revisionDialog = false">Закрыть</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="manualCloseDialog" max-width="640">
+      <v-card>
+        <v-card-title>Ручное закрытие позиции</v-card-title>
+        <v-card-text>
+          <div class="text-body-2 mb-3">
+            Позиция: <strong>{{ manualCloseItem ? getRevisionRunItemName(manualCloseItem) : '—' }}</strong>
+          </div>
+          <v-text-field
+            v-model.number="manualCloseForm.price_per_unit"
+            type="number"
+            min="0.01"
+            step="0.01"
+            label="Цена за единицу"
+            variant="outlined"
+            density="compact"
+            class="mb-2"
+          />
+          <v-text-field
+            v-model="manualCloseForm.currency"
+            label="Валюта"
+            variant="outlined"
+            density="compact"
+            class="mb-2"
+          />
+          <v-text-field
+            v-model="manualCloseForm.source_url"
+            label="Source URL (опционально)"
+            variant="outlined"
+            density="compact"
+            class="mb-2"
+          />
+          <v-file-input
+            v-model="manualCloseForm.screenshot_file"
+            accept="image/*"
+            label="Скриншот (обязательно)"
+            variant="outlined"
+            density="compact"
+            prepend-icon="mdi-camera"
+            show-size
+            class="mb-2"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="manualCloseLoading" @click="manualCloseDialog = false">Отмена</v-btn>
+          <v-btn color="primary" :loading="manualCloseLoading" @click="submitManualClose">
+            Сохранить
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -2629,12 +2877,13 @@
 
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, reactive, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch, reactive, nextTick } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/axios'
 import { finishedProductsApi } from '@/api/finishedProducts'
 import laborWorksApi, { type LaborWork } from '@/api/laborWorks'
+import { revisionRunApi, type RevisionRun, type RevisionRunItem } from '@/api/revisionRun'
 import { consumePrefetchedProject, setProjectsFlashMessage } from '@/router/projectAccess'
 import IosToggle from '@/components/IosToggle.vue'
 import ProfileRatesSection from '@/components/ProfileRatesSection.vue'
@@ -3780,6 +4029,36 @@ const revisionDialog = ref(false)
 const selectedRevision = ref<any | null>(null)
 const selectedRevisionSnapshot = ref('')
 const hasRevisions = computed(() => Boolean(latestRevision.value) || revisions.value.length > 0)
+const activeRevisionRun = ref<RevisionRun | null>(null)
+const revisionRunItems = ref<RevisionRunItem[]>([])
+const revisionRunLoading = ref(false)
+const revisionRunRetryLoading = ref(false)
+const revisionRunFinalizeLoading = ref(false)
+const revisionRunPdfLinks = ref<{ smeta: string; price_justification: string } | null>(null)
+const revisionRunPollTimer = ref<number | null>(null)
+const lastKnownRunStatus = ref<string | null>(null)
+const manualCloseDialog = ref(false)
+const manualCloseLoading = ref(false)
+const manualCloseItem = ref<RevisionRunItem | null>(null)
+const manualCloseForm = reactive<{
+  price_per_unit: number
+  currency: string
+  source_url: string
+  screenshot_file: File[] | File | null
+}>({
+  price_per_unit: 0,
+  currency: 'RUB',
+  source_url: '',
+  screenshot_file: null,
+})
+const canRetryRevisionRun = computed(() => {
+  if (!activeRevisionRun.value) return false
+  return (activeRevisionRun.value.failed_items || 0) > 0 || activeRevisionRun.value.status === 'NEEDS_MANUAL'
+})
+const canFinalizeRevisionRun = computed(() => {
+  if (!activeRevisionRun.value) return false
+  return activeRevisionRun.value.status === 'READY'
+})
 const normohourSourceDialog = ref(false) // ← диалог для редактирования источника нормо-часа
 
 const editingPosition = ref(false)
@@ -4319,7 +4598,10 @@ const fetchData = async (): Promise<boolean> => {
 const refreshAll = async () => {
   refreshing.value = true
   try {
-    await Promise.all([loadReferences(), fetchData()])
+    await Promise.all([loadReferences(), fetchData(), fetchLatestRevision(), fetchRevisions(1)])
+    if (activeRevisionRun.value) {
+      await refreshRevisionRun(true)
+    }
   } catch (e) {
     console.error('Refresh failed', e)
     showNotification('Не удалось обновить данные', 'error')
@@ -5196,11 +5478,15 @@ const updateProject = async () => {
       console.log('⚠️ Server response empty, reloading from server...')
       await fetchData()
     }
-  } catch (error: any) {
-    console.error('❌ Error saving project:', error)
-    showNotification(`Ошибка сохранения: ${error.response?.data?.message || error.message}`, 'error')
+    } catch (error: any) {
+      console.error('❌ Error saving project:', error)
+      const validationErrors = error.response?.data?.errors
+      const message = validationErrors
+        ? Object.values(validationErrors).flat().join('; ')
+        : error.response?.data?.message || error.message
+      showNotification(`Ошибка сохранения: ${message}`, 'error')
+    }
   }
-}
 
 // === Управление источниками нормо-часов ===
 const loadNormohourSources = async () => {
@@ -5357,24 +5643,223 @@ const generatePdf = async () => {
   }
 }
 
+const getStoredRevisionRunId = (): number | null => {
+  const raw = localStorage.getItem(`project:${projectId}:activeRevisionRunId`)
+  if (!raw) return null
+  const num = Number(raw)
+  return Number.isFinite(num) && num > 0 ? num : null
+}
+
+const setStoredRevisionRunId = (runId: number | null) => {
+  const key = `project:${projectId}:activeRevisionRunId`
+  if (!runId) {
+    localStorage.removeItem(key)
+    return
+  }
+  localStorage.setItem(key, String(runId))
+}
+
+const formatRunStatus = (status?: string) => {
+  switch (status) {
+    case 'PENDING':
+      return 'в очереди'
+    case 'IN_PROGRESS':
+      return 'выполняется'
+    case 'NEEDS_MANUAL':
+      return 'требуется ручное закрытие'
+    case 'READY':
+      return 'готово к финализации'
+    case 'FINALIZED':
+      return 'финализировано'
+    case 'FAILED':
+      return 'ошибка'
+    default:
+      return status || '—'
+  }
+}
+
+const getRunStatusColor = (status?: string) => {
+  switch (status) {
+    case 'PENDING':
+      return 'grey'
+    case 'IN_PROGRESS':
+      return 'primary'
+    case 'NEEDS_MANUAL':
+      return 'warning'
+    case 'READY':
+      return 'success'
+    case 'FINALIZED':
+      return 'success'
+    case 'FAILED':
+      return 'error'
+    default:
+      return 'grey'
+  }
+}
+
+const formatRunItemStatus = (status?: string) => {
+  switch (status) {
+    case 'PENDING':
+      return 'в обработке'
+    case 'OK':
+      return 'OK'
+    case 'BLOCKED':
+      return 'blocked'
+    case 'TIMEOUT':
+      return 'timeout'
+    case 'PARSE_ERROR':
+      return 'parse error'
+    case 'NO_TEMPLATE':
+      return 'no template'
+    case 'NEEDS_MANUAL':
+      return 'manual'
+    default:
+      return status || '—'
+  }
+}
+
+const getRunItemStatusColor = (status?: string) => {
+  switch (status) {
+    case 'PENDING':
+      return 'blue-grey'
+    case 'OK':
+      return 'success'
+    case 'BLOCKED':
+      return 'error'
+    case 'TIMEOUT':
+      return 'warning'
+    case 'PARSE_ERROR':
+      return 'error'
+    case 'NO_TEMPLATE':
+      return 'grey'
+    case 'NEEDS_MANUAL':
+      return 'warning'
+    default:
+      return 'grey'
+  }
+}
+
+const getRevisionRunItemName = (item: RevisionRunItem | any): string => {
+  const material = item?.material || {}
+  const position = item?.position || {}
+  return material.name || position.custom_name || position.name || `Материал #${item.material_id || item.project_position_id}`
+}
+
+const getMaterialCatalogLink = (materialId?: number | string | null): string => {
+  const id = Number(materialId)
+  if (!Number.isFinite(id) || id <= 0) {
+    return '/materials/catalog'
+  }
+
+  const resolved = router.resolve({
+    name: 'catalog',
+    query: { material_id: String(id) },
+  })
+
+  return resolved.href
+}
+
+const stopRevisionRunPolling = () => {
+  if (revisionRunPollTimer.value) {
+    clearInterval(revisionRunPollTimer.value)
+    revisionRunPollTimer.value = null
+  }
+}
+
+const startRevisionRunPolling = () => {
+  if (!activeRevisionRun.value) return
+  if (revisionRunPollTimer.value) return
+  revisionRunPollTimer.value = window.setInterval(() => {
+    void refreshRevisionRun(true)
+  }, 2500)
+}
+
+const refreshRevisionRun = async (silent = false) => {
+  if (!activeRevisionRun.value) return
+
+  if (!silent) {
+    revisionRunLoading.value = true
+  }
+
+  try {
+    const data = await revisionRunApi.show(projectId, activeRevisionRun.value.id)
+    const prevStatus = activeRevisionRun.value.status
+    activeRevisionRun.value = data.run
+    revisionRunItems.value = data.items || []
+    setStoredRevisionRunId(data.run?.id || null)
+
+    if (lastKnownRunStatus.value && lastKnownRunStatus.value !== data.run.status) {
+      if (data.run.status === 'NEEDS_MANUAL') {
+        showNotification('Ревизия требует ручного закрытия проблемных позиций', 'warning')
+      }
+      if (data.run.status === 'READY' && prevStatus !== 'READY') {
+        // Auto-finalize when all items are OK
+        stopRevisionRunPolling()
+        lastKnownRunStatus.value = data.run.status
+        void finalizeRevisionRun()
+        return
+      }
+    }
+    lastKnownRunStatus.value = data.run.status
+
+    if (data.run.status === 'FINALIZED') {
+      stopRevisionRunPolling()
+      setStoredRevisionRunId(null)
+      activeRevisionRun.value = null
+      revisionRunItems.value = []
+      return
+    }
+
+    if (data.run.status === 'PENDING' || data.run.status === 'IN_PROGRESS') {
+      startRevisionRunPolling()
+    } else {
+      // Safety net: keep polling if any item is still PENDING (unprocessed)
+      const hasPending = (data.items || []).some((i: any) => i.status === 'PENDING')
+      if (hasPending) {
+        startRevisionRunPolling()
+      } else {
+        stopRevisionRunPolling()
+      }
+    }
+  } catch (error: any) {
+    if (error?.response?.status === 404) {
+      setStoredRevisionRunId(null)
+      stopRevisionRunPolling()
+      activeRevisionRun.value = null
+      revisionRunItems.value = []
+      return
+    }
+    if (!silent) {
+      showNotification(`Ошибка загрузки статуса ревизии: ${error.response?.data?.message || error.message}`, 'error')
+    }
+  } finally {
+    if (!silent) {
+      revisionRunLoading.value = false
+    }
+  }
+}
+
 const createSnapshot = async () => {
   snapshotLoading.value = true
   try {
-    const res = await api.post(`/api/projects/${projectId}/revisions`)
-    if (res.data.success) {
-      latestRevision.value = {
-        number: res.data.number,
-        created_at: res.data.created_at,
-        status: 'locked'
-      }
-      showNotification(`Ревизия #${res.data.number} успешно создана`, 'success')
-      // Обновить информацию о последней ревизии
-      await fetchLatestRevision()
-      await fetchRevisions(1)
+    revisionRunPdfLinks.value = null
+    const res = await revisionRunApi.start(projectId)
+    activeRevisionRun.value = {
+      id: res.run_id,
+      project_id: Number(projectId),
+      status: res.status,
+      total_items: res.total_items,
+      ok_items: 0,
+      failed_items: 0,
     }
+    revisionRunItems.value = []
+    setStoredRevisionRunId(res.run_id)
+    lastKnownRunStatus.value = res.status
+    showNotification(`Сессия ревизии #${res.run_id} запущена`, 'success')
+    await refreshRevisionRun()
   } catch (error: any) {
-    console.error('❌ Snapshot creation error:', error)
-    showNotification(`Ошибка создания ревизии: ${error.response?.data?.message || error.message}`, 'error')
+    console.error('❌ Revision run start error:', error)
+    showNotification(`Ошибка запуска ревизии: ${error.response?.data?.message || error.message}`, 'error')
   } finally {
     snapshotLoading.value = false
   }
@@ -5502,6 +5987,21 @@ const downloadRevisionPdf = async (rev: any) => {
   }
 }
 
+const downloadPriceJustificationPdf = async (rev: any) => {
+  try {
+    const res = await api.get(`/api/projects/${projectId}/revisions/${rev.number}/price-justification.pdf`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `price_justification_${projectId}_rev_${rev.number}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (error: any) {
+    console.error('❌ Revision price justification PDF error:', error)
+    showNotification(`Ошибка PDF обоснований: ${error.response?.data?.message || error.message}`, 'error')
+  }
+}
+
 const publishRevision = async (rev: any) => {
   try {
     const res = await api.post(`/api/projects/${projectId}/revisions/${rev.number}/publish`)
@@ -5543,6 +6043,100 @@ const copyRevisionFingerprint = async (rev: any) => {
     console.error('❌ Copy fingerprint error:', error)
     showNotification('Не удалось скопировать fingerprint', 'error')
   }
+}
+
+const retryRevisionRun = async () => {
+  if (!activeRevisionRun.value) return
+  revisionRunRetryLoading.value = true
+  try {
+    await revisionRunApi.retry(projectId, activeRevisionRun.value.id)
+    showNotification('Retry запущен для проблемных позиций', 'success')
+    await refreshRevisionRun()
+  } catch (error: any) {
+    showNotification(`Ошибка retry: ${error.response?.data?.message || error.message}`, 'error')
+  } finally {
+    revisionRunRetryLoading.value = false
+  }
+}
+
+const openManualCloseDialog = (item: RevisionRunItem) => {
+  manualCloseItem.value = item
+  manualCloseForm.price_per_unit = 0
+  manualCloseForm.currency = 'RUB'
+  manualCloseForm.source_url = item.source_url || ''
+  manualCloseForm.screenshot_file = null
+  manualCloseDialog.value = true
+}
+
+const getManualScreenshotFile = (): File | null => {
+  const value = manualCloseForm.screenshot_file
+  if (!value) return null
+  if (Array.isArray(value)) {
+    return value[0] || null
+  }
+  return value as File
+}
+
+const submitManualClose = async () => {
+  if (!activeRevisionRun.value || !manualCloseItem.value) return
+
+  const screenshotFile = getManualScreenshotFile()
+  if (!screenshotFile) {
+    showNotification('Добавьте файл скриншота', 'warning')
+    return
+  }
+  if (!(manualCloseForm.price_per_unit > 0)) {
+    showNotification('Цена должна быть больше 0', 'warning')
+    return
+  }
+
+  manualCloseLoading.value = true
+  try {
+    await revisionRunApi.manual(activeRevisionRun.value.id, manualCloseItem.value.id, {
+      price_per_unit: manualCloseForm.price_per_unit,
+      currency: (manualCloseForm.currency || 'RUB').toUpperCase(),
+      source_url: manualCloseForm.source_url || undefined,
+      region_id: project.value?.region_id || undefined,
+      screenshot_file: screenshotFile,
+    })
+    showNotification('Позиция закрыта вручную', 'success')
+    manualCloseDialog.value = false
+    await refreshRevisionRun()
+  } catch (error: any) {
+    showNotification(`Ошибка ручного закрытия: ${error.response?.data?.message || error.message}`, 'error')
+  } finally {
+    manualCloseLoading.value = false
+  }
+}
+
+const finalizeRevisionRun = async () => {
+  if (!activeRevisionRun.value) return
+  revisionRunFinalizeLoading.value = true
+  try {
+    const data = await revisionRunApi.finalize(projectId, activeRevisionRun.value.id)
+    revisionRunPdfLinks.value = data.pdf
+    showNotification(`Ревизия #${data.revision.number} создана`, 'success')
+    setStoredRevisionRunId(null)
+    stopRevisionRunPolling()
+    activeRevisionRun.value = null
+    revisionRunItems.value = []
+    await fetchLatestRevision()
+    await fetchRevisions(1)
+  } catch (error: any) {
+    if (error.response?.status === 409) {
+      showNotification('Есть незакрытые позиции. Закройте все и повторите Finalize', 'warning')
+      await refreshRevisionRun()
+    } else {
+      showNotification(`Ошибка финализации: ${error.response?.data?.message || error.message}`, 'error')
+    }
+  } finally {
+    revisionRunFinalizeLoading.value = false
+  }
+}
+
+const openPdfLink = (url?: string) => {
+  if (!url) return
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 
@@ -6923,6 +7517,29 @@ onMounted(async () => {
 
   await fetchLatestRevision()
   await fetchRevisions(1)
+
+  const storedRunId = getStoredRevisionRunId()
+  if (storedRunId) {
+    activeRevisionRun.value = {
+      id: storedRunId,
+      project_id: Number(projectId),
+      status: 'PENDING',
+      total_items: 0,
+      ok_items: 0,
+      failed_items: 0,
+    }
+    await refreshRevisionRun(true)
+    // If restored run is already finalized, clear it
+    if (activeRevisionRun.value?.status === 'FINALIZED') {
+      setStoredRevisionRunId(null)
+      activeRevisionRun.value = null
+      revisionRunItems.value = []
+    }
+  }
+})
+
+onBeforeUnmount(() => {
+  stopRevisionRunPolling()
 })
 </script>
 
