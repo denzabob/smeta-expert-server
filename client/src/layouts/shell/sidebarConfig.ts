@@ -35,17 +35,17 @@ export const sidebarSections: MenuSection[] = [
         icon: 'mdi-folder-outline',
         showInRail: true,
       },
+      {
+        title: 'Идеи',
+        routeName: 'ideas',
+        icon: 'mdi-lightbulb-outline',
+        showInRail: true,
+      },
     ],
   },
   {
     title: 'Справочники',
     items: [
-      {
-        title: 'Материалы',
-        routeName: 'materials',
-        icon: 'mdi-package-variant-closed',
-        showInRail: true,
-      },
       {
         title: 'Каталог',
         routeName: 'catalog',

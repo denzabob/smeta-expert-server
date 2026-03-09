@@ -1,36 +1,31 @@
 <template>
-  <v-container fluid class="pa-0">
-    <!-- Header -->
-    <v-sheet class="pa-4" color="surface">
-      <div class="d-flex flex-wrap align-center ga-3">
-        <div class="flex-grow-1">
-          <div class="d-flex align-center ga-2 mb-1">
-            <v-btn
-              icon="mdi-arrow-left"
-              variant="text"
-              size="small"
-              @click="goBack"
-            />
-            <div class="text-h5 font-weight-medium">Версии прайс-листа</div>
-          </div>
-          <div v-if="priceList" class="text-medium-emphasis ml-10">
-            {{ priceList.title }}
-          </div>
-        </div>
+  <PageContainer>
+    <PageHeader title="Версии прайс-листа" :subtitle="priceList?.title">
+      <template #prefix>
         <v-btn
+          icon="mdi-arrow-left"
           variant="text"
-          prepend-icon="mdi-refresh"
-          class="text-none"
-          :loading="loading"
-          @click="fetchVersions"
-        >
-          Обновить
-        </v-btn>
-      </div>
-    </v-sheet>
+          size="small"
+          @click="goBack"
+        />
+      </template>
 
-    <!-- Versions Table -->
-    <v-sheet class="pa-4">
+      <template #actions>
+        <ButtonGroup>
+          <v-btn
+            variant="text"
+            prepend-icon="mdi-refresh"
+            class="text-none"
+            :loading="loading"
+            @click="fetchVersions"
+          >
+            Обновить
+          </v-btn>
+        </ButtonGroup>
+      </template>
+    </PageHeader>
+
+    <SectionCard>
       <v-data-table
         :headers="headers"
         :items="versions"
@@ -154,7 +149,7 @@
           </div>
         </template>
       </v-data-table>
-    </v-sheet>
+    </SectionCard>
 
     <!-- Snackbar -->
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000">
@@ -163,7 +158,7 @@
         <v-btn variant="text" @click="snackbar.show = false">Закрыть</v-btn>
       </template>
     </v-snackbar>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -172,6 +167,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { priceListsApi, type PriceList, type PriceListVersion } from '@/api/priceLists'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 
 const route = useRoute()
 const router = useRouter()

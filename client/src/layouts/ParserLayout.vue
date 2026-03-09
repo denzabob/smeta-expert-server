@@ -204,7 +204,7 @@ const showScrollTop = ref(false)
 const legacyTheme = localStorage.getItem('theme')
 const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
 const themeMode = ref<'light' | 'dark' | 'auto'>(
-  savedMode || (legacyTheme === 'expertDark' ? 'dark' : legacyTheme === 'expertLight' ? 'light' : 'auto')
+  savedMode || (legacyTheme === 'expertDark' ? 'dark' : legacyTheme === 'expertLight' ? 'light' : 'dark')
 )
 
 let mediaQuery: MediaQueryList | null = null
@@ -213,7 +213,7 @@ const systemPrefersDark = ref(false)
 
 const applyThemeMode = () => {
   const shouldDark = themeMode.value === 'auto' ? systemPrefersDark.value : themeMode.value === 'dark'
-  theme.global.name.value = shouldDark ? 'expertDark' : 'expertLight'
+  theme.global.name.value = shouldDark ? 'saasDark' : 'saasLight'
 }
 
 const handleScroll = () => {
@@ -283,11 +283,11 @@ async function logout() {
 
 <style scoped lang="scss">
 .app-bar {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .nav-drawer {
-  border-right: 1px solid rgba(0, 0, 0, 0.12);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 // Page transition

@@ -1,12 +1,9 @@
 <template>
-  <div class="work-profiles-view">
-    <!-- Header -->
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Профили работ</h1>
-        <div class="page-subtitle">Источники нормо-часов и профили должностей</div>
-      </div>
-    </div>
+  <PageContainer class="work-profiles-view">
+    <PageHeader
+      title="Профили работ"
+      subtitle="Источники нормо-часов и профили должностей"
+    />
 
     <!-- Вкладки -->
     <v-tabs v-model="activeTab" class="page-tabs">
@@ -40,8 +37,8 @@
         </div>
 
         <!-- Фильтры и поиск -->
-        <v-card class="content-card filters-card" elevation="0" variant="outlined">
-          <v-card-text class="filters-row">
+        <SectionCard class="content-card filters-card" variant="outlined">
+          <div class="filters-row">
             <v-text-field
               v-model="searchQuery"
               placeholder="Поиск по источнику..."
@@ -82,8 +79,8 @@
             >
               <v-icon>mdi-refresh</v-icon>
             </v-btn>
-          </v-card-text>
-        </v-card>
+          </div>
+        </SectionCard>
 
     <!-- Статистика -->
     <v-row class="stats-grid">
@@ -122,8 +119,8 @@
     </v-row>
 
     <!-- Таблица источников -->
-    <v-card class="content-card data-card" elevation="0" variant="outlined">
-      <v-card-title class="section-card-title">Источники нормо-часов</v-card-title>
+    <SectionCard class="content-card data-card" variant="outlined">
+      <template #title>Источники нормо-часов</template>
       
       <v-data-table
         :items="filteredProfiles"
@@ -247,7 +244,7 @@
           </div>
         </template>
       </v-data-table>
-    </v-card>
+    </SectionCard>
 
     <!-- Диалог добавления/редактирования -->
     <v-dialog v-model="dialog" max-width="700" scrollable>
@@ -488,7 +485,8 @@
         </div>
 
         <!-- Таблица профилей должностей -->
-        <v-card class="content-card data-card" elevation="0" variant="outlined">
+        <SectionCard class="content-card data-card" variant="outlined">
+          <template #title>Профили должностей</template>
           <v-data-table
             :items="positionProfiles"
             :headers="profileHeaders"
@@ -571,7 +569,7 @@
               </div>
             </template>
           </v-data-table>
-        </v-card>
+        </SectionCard>
       </v-window-item>
     </v-window>
 
@@ -795,12 +793,15 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </div>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import api from '@/api/axios'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 
 // === Интерфейсы ===
 interface WorkProfile {
@@ -1424,7 +1425,7 @@ onMounted(async () => {
 .content-card {
   border-radius: 12px;
   background: rgb(var(--v-theme-surface));
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
 .filters-card {
@@ -1458,24 +1459,11 @@ onMounted(async () => {
 }
 
 .data-table {
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
 .dialog-card {
   border-radius: 12px;
-}
-
-:deep(.v-theme--dark) .page-subtitle,
-:deep(.v-theme--dark) .section-subtitle {
-  color: rgba(var(--v-theme-on-surface), 0.7);
-}
-
-:deep(.v-theme--dark) .content-card {
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-:deep(.v-theme--dark) .data-table {
-  border-top-color: rgba(255, 255, 255, 0.08);
 }
 
 .text-truncate {

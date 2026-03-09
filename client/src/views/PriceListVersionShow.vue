@@ -1,44 +1,45 @@
 <template>
-  <v-container fluid class="pa-0">
-    <!-- Header -->
-    <v-sheet class="pa-4" color="surface">
-      <div class="d-flex flex-wrap align-center ga-3">
-        <div class="flex-grow-1">
-          <div class="d-flex align-center ga-2 mb-1">
-            <v-btn
-              icon="mdi-arrow-left"
-              variant="text"
-              size="small"
-              @click="goBack"
-            />
-            <div class="text-h5 font-weight-medium">Аудит версии прайс-листа</div>
-          </div>
-          <div v-if="version" class="text-medium-emphasis ml-10">
-            {{ formatDate(version.effective_date || version.created_at) }}
-            <v-chip
-              size="small"
-              :color="getStatusColor(version.status)"
-              variant="tonal"
-              class="ml-2"
-            >
-              {{ getStatusLabel(version.status) }}
-            </v-chip>
-          </div>
-        </div>
+  <PageContainer>
+    <PageHeader
+      title="Аудит версии прайс-листа"
+      :subtitle="version ? formatDate(version.effective_date || version.created_at) : undefined"
+    >
+      <template #prefix>
         <v-btn
+          icon="mdi-arrow-left"
           variant="text"
-          prepend-icon="mdi-refresh"
-          class="text-none"
-          :loading="loading"
-          @click="fetchItems"
-        >
-          Обновить
-        </v-btn>
-      </div>
-    </v-sheet>
+          size="small"
+          @click="goBack"
+        />
+      </template>
 
-    <!-- Version Metadata -->
-    <v-sheet v-if="version" class="pa-4">
+      <template #title-extra>
+        <v-chip
+          v-if="version"
+          size="small"
+          :color="getStatusColor(version.status)"
+          variant="tonal"
+        >
+          {{ getStatusLabel(version.status) }}
+        </v-chip>
+      </template>
+
+      <template #actions>
+        <ButtonGroup>
+          <v-btn
+            variant="text"
+            prepend-icon="mdi-refresh"
+            class="text-none"
+            :loading="loading"
+            @click="fetchItems"
+          >
+            Обновить
+          </v-btn>
+        </ButtonGroup>
+      </template>
+    </PageHeader>
+
+    <SectionCard v-if="version">
       <v-row dense>
         <v-col cols="12" md="4">
           <v-card class="h-100">
@@ -89,10 +90,9 @@
           </v-card>
         </v-col>
       </v-row>
-    </v-sheet>
+    </SectionCard>
 
-    <!-- Items Table with Filters -->
-    <v-sheet class="pa-4">
+    <SectionCard>
       <div class="d-flex justify-space-between align-center mb-3">
         <div class="text-h6">Позиции прайс-листа</div>
       </div>
@@ -214,7 +214,7 @@
           </div>
         </template>
       </v-data-table>
-    </v-sheet>
+    </SectionCard>
 
     <!-- Link Operation Dialog -->
     <v-dialog v-model="linkDialog.show" max-width="600" persistent>
@@ -268,7 +268,7 @@
         <v-btn variant="text" @click="snackbar.show = false">Закрыть</v-btn>
       </template>
     </v-snackbar>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -280,6 +280,10 @@ import {
   type PriceListVersionItem 
 } from '@/api/priceLists'
 import api from '@/api/axios'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 

@@ -1,33 +1,33 @@
 <template>
-  <v-container fluid class="pa-0 soft-page suppliers-page">
-    <v-sheet class="pa-4 soft-content-card" color="surface">
-      <div class="d-flex flex-wrap align-center ga-3">
-        <div>
-          <div class="text-h5 font-weight-medium">Поставщики</div>
-          <div class="text-medium-emphasis">Управление поставщиками и их прайс-листами</div>
-        </div>
-        <v-spacer />
-        <v-btn
-          color="primary"
-          prepend-icon="mdi-plus"
-          class="text-none"
-          @click="openCreateDialog"
-        >
-          Добавить
-        </v-btn>
-        <v-btn
-          variant="text"
-          prepend-icon="mdi-refresh"
-          class="text-none"
-          :loading="loading"
-          @click="fetchSuppliers"
-        >
-          Обновить
-        </v-btn>
-      </div>
-    </v-sheet>
+  <PageContainer>
+    <PageHeader
+      title="Поставщики"
+      subtitle="Управление поставщиками и их прайс-листами"
+    >
+      <template #actions>
+        <ButtonGroup>
+          <v-btn
+            color="primary"
+            prepend-icon="mdi-plus"
+            class="text-none"
+            @click="openCreateDialog"
+          >
+            Добавить
+          </v-btn>
+          <v-btn
+            variant="text"
+            prepend-icon="mdi-refresh"
+            class="text-none"
+            :loading="loading"
+            @click="fetchSuppliers"
+          >
+            Обновить
+          </v-btn>
+        </ButtonGroup>
+      </template>
+    </PageHeader>
 
-    <v-sheet class="pa-4 soft-content-card soft-data-card">
+    <SectionCard>
       <v-row class="mb-3" align="center" dense>
         <v-col cols="12" md="6">
           <v-text-field
@@ -180,11 +180,11 @@
           </v-menu>
         </template>
       </v-data-table>
-    </v-sheet>
+    </SectionCard>
 
     <!-- Create/Edit Dialog -->
     <v-dialog v-model="showDialog" max-width="600px" persistent>
-      <v-card class="soft-content-card soft-dialog-card">
+      <v-card>
         <v-card-title>
           <span class="text-h5">{{ editMode ? 'Редактировать' : 'Создать' }} поставщика</span>
         </v-card-title>
@@ -260,7 +260,7 @@
         <v-btn variant="text" @click="snackbar.show = false">Закрыть</v-btn>
       </template>
     </v-snackbar>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -268,6 +268,10 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { suppliersApi, type Supplier, type SupplierCreatePayload } from '@/api/suppliers'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 
 // State
 const loading = ref(false)
@@ -465,11 +469,3 @@ watch(typeFilter, () => {
   fetchSuppliers()
 })
 </script>
-
-<style scoped>
-@import '@/assets/soft-cards.css';
-
-.suppliers-page :deep(.v-sheet.soft-content-card) {
-  border-radius: 12px;
-}
-</style>

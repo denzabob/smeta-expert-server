@@ -47,7 +47,7 @@ const router = createRouter({
         {
           path: 'materials',
           name: 'materials',
-          component: () => import('@/views/MaterialsView.vue'),
+          redirect: { name: 'admin-materials' },
           meta: { title: 'Материалы' }
         },
         {
@@ -73,6 +73,24 @@ const router = createRouter({
           name: 'projects',
           component: () => import('@/views/ProjectsView.vue'),
           meta: { title: 'Проекты' }
+        },
+        {
+          path: 'ideas',
+          name: 'ideas',
+          component: () => import('@/views/IdeaList.vue'),
+          meta: { title: 'Ideas Board' }
+        },
+        {
+          path: 'ideas/create',
+          name: 'ideas-create',
+          component: () => import('@/views/IdeaCreate.vue'),
+          meta: { title: 'Создать идею' }
+        },
+        {
+          path: 'ideas/:id',
+          name: 'ideas-detail',
+          component: () => import('@/views/IdeaPage.vue'),
+          meta: { title: 'Идея' }
         },
         {
           path: '/projects/:id/edit',
@@ -134,11 +152,97 @@ const router = createRouter({
           component: () => import('@/views/PriceListVersionShow.vue'),
           meta: { title: 'Аудит версии' }
         },
+        // Legacy admin panel (will be deprecated)
+        {
+          path: 'admin-legacy',
+          name: 'admin-panel-legacy',
+          component: () => import('@/views/AdminPanelView.vue'),
+          meta: { requiresAdmin: true, title: 'Админ панель (старая)' }
+        },
+        // New admin interface
         {
           path: 'admin',
-          name: 'admin-panel',
-          component: () => import('@/views/AdminPanelView.vue'),
-          meta: { requiresAdmin: true, title: 'Админ панель' }
+          component: () => import('@/layouts/AdminLayout.vue'),
+          meta: { requiresAdmin: true, title: 'Админ панель' },
+          children: [
+            {
+              path: '',
+              name: 'admin-panel',
+              component: () => import('@/views/admin/AdminDashboard.vue'),
+              meta: { title: 'Обзор' }
+            },
+            {
+              path: 'dashboard',
+              name: 'admin-dashboard',
+              redirect: { name: 'admin-panel' }
+            },
+            {
+              path: 'problems',
+              name: 'admin-problems',
+              component: () => import('@/views/admin/AdminProblemsView.vue'),
+              meta: { title: 'Проблемные случаи' }
+            },
+            {
+              path: 'ideas',
+              name: 'admin-ideas',
+              component: () => import('@/views/admin/AdminIdeasView.vue'),
+              meta: { title: 'Модерация идей' }
+            },
+            {
+              path: 'materials',
+              name: 'admin-materials',
+              component: () => import('@/views/MaterialsView.vue'),
+              meta: { title: 'Материалы' }
+            },
+            {
+              path: 'rules',
+              name: 'admin-rules',
+              component: () => import('@/views/admin/AdminRulesView.vue'),
+              meta: { title: 'Правила распознавания' }
+            },
+            {
+              path: 'system',
+              name: 'admin-system',
+              component: () => import('@/views/admin/AdminSystemView.vue'),
+              meta: { title: 'Системные настройки' }
+            },
+            {
+              path: 'system/llm',
+              name: 'admin-system-llm',
+              component: () => import('@/views/admin/AdminSystemView.vue'),
+              meta: { title: 'LLM' }
+            },
+            {
+              path: 'system/prompts',
+              name: 'admin-system-prompts',
+              component: () => import('@/views/admin/AdminSystemView.vue'),
+              meta: { title: 'Промпты' }
+            },
+            {
+              path: 'system/stats',
+              name: 'admin-system-stats',
+              component: () => import('@/views/admin/AdminSystemView.vue'),
+              meta: { title: 'Статистика LLM' }
+            },
+            {
+              path: 'system/users',
+              name: 'admin-system-users',
+              component: () => import('@/views/admin/AdminSystemView.vue'),
+              meta: { title: 'Пользователи' }
+            },
+            {
+              path: 'system/notifications',
+              name: 'admin-system-notifications',
+              component: () => import('@/views/admin/AdminSystemView.vue'),
+              meta: { title: 'Уведомления' }
+            },
+            {
+              path: 'system/logs',
+              name: 'admin-system-logs',
+              component: () => import('@/views/admin/AdminSystemView.vue'),
+              meta: { title: 'Журнал системы' }
+            }
+          ]
         }
       ]
     },

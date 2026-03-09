@@ -1,63 +1,65 @@
 <template>
-  <v-container class="pa-0 project-editor-page">
-    <!-- Toolbar с кнопкой открытия настроек -->
-    <v-toolbar dark class="mb-4 project-toolbar" :class="{ 'project-toolbar--compact': compactLayout }">
-      <v-toolbar-title>
-        Проект #{{ project.number }}
+  <PageContainer no-padding class="project-editor-page">
+    <PageHeader
+      class="mb-4 project-toolbar"
+      :class="{ 'project-toolbar--compact': compactLayout }"
+      :title="`Проект #${project.number}`"
+    >
+      <template #title-extra>
         <v-chip
           v-if="latestRevision"
           size="small"
           color="success"
           variant="outlined"
-          class="ml-2"
           prepend-icon="mdi-check-circle"
         >
           Ревизия #{{ latestRevision.number }}
         </v-chip>
-      </v-toolbar-title>
-      <v-spacer />
-      <v-btn
-        size="small"
-        color="secondary"
-        prepend-icon="mdi-file-pdf-box"
-        :loading="pdfLoading"
-        :disabled="pdfLoading"
-        @click="generatePdf"
-        class="mr-2"
-      >
-        PDF
-      </v-btn>
-      <v-btn
-        size="small"
-        color="primary"
-        prepend-icon="mdi-shield-check"
-        :loading="snapshotLoading"
-        :disabled="snapshotLoading"
-        @click="createSnapshot"
-        class="mr-2"
-        title="Запустить строгую ревизию с обоснованием цен"
-      >
-        Ревизия (strict)
-      </v-btn>
-      <v-btn
-        size="small"
-        color="secondary"
-        prepend-icon="mdi-refresh"
-        :loading="refreshing"
-        :disabled="refreshing"
-        @click="refreshAll"
-        class="mr-2"
-      >
-        Обновить
-      </v-btn>
-      <v-btn
-        size="small"
-        prepend-icon="mdi-cog"
-        @click="openSettingsDrawer"
-      >
-        Настройки
-      </v-btn>
-    </v-toolbar>
+      </template>
+
+      <template #actions>
+        <div class="toolbar-actions">
+          <v-btn
+            size="small"
+            color="secondary"
+            prepend-icon="mdi-file-pdf-box"
+            :loading="pdfLoading"
+            :disabled="pdfLoading"
+            @click="generatePdf"
+          >
+            PDF
+          </v-btn>
+          <v-btn
+            size="small"
+            color="primary"
+            prepend-icon="mdi-shield-check"
+            :loading="snapshotLoading"
+            :disabled="snapshotLoading"
+            @click="createSnapshot"
+            title="Запустить строгую ревизию с обоснованием цен"
+          >
+            Ревизия (strict)
+          </v-btn>
+          <v-btn
+            size="small"
+            color="secondary"
+            prepend-icon="mdi-refresh"
+            :loading="refreshing"
+            :disabled="refreshing"
+            @click="refreshAll"
+          >
+            Обновить
+          </v-btn>
+          <v-btn
+            size="small"
+            prepend-icon="mdi-cog"
+            @click="openSettingsDrawer"
+          >
+            Настройки
+          </v-btn>
+        </div>
+      </template>
+    </PageHeader>
 
     <!-- Компонент настроек проекта -->
     <ProjectSettingsDrawer
@@ -79,14 +81,14 @@
     />
 
     <!-- Основной контент -->
-    <v-card>
-      <v-card-title>Содержимое проекта</v-card-title>
-      <v-card-text>
+    <SectionCard title="Содержимое проекта">
 
         <v-divider class="my-4" />
         <v-card-title>Позиции</v-card-title>
-        <v-btn prepend-icon="mdi-plus" @click="openPositionDialog">Добавить позицию</v-btn>
-        <v-btn prepend-icon="mdi-file-import" class="ml-2" variant="outlined" @click="importDialog = true">Импорт из Excel</v-btn>
+        <div class="toolbar-actions">
+          <v-btn prepend-icon="mdi-plus" @click="openPositionDialog">Добавить позицию</v-btn>
+          <v-btn prepend-icon="mdi-file-import" variant="outlined" @click="importDialog = true">Импорт из Excel</v-btn>
+        </div>
         
         <!-- Toolbar с пресетами и настройками отображения -->
         <div class="d-flex align-center gap-2 mt-3 flex-wrap">
@@ -1276,7 +1278,6 @@
           v-if="activeRevisionRun"
           variant="flat"
           class="mb-4 border"
-          style="border-color: rgba(var(--v-border-color), var(--v-border-opacity)) !important;"
         >
           <v-card-title class="d-flex align-center flex-wrap ga-2">
             <span>Сессия ревизии #{{ activeRevisionRun.id }}</span>
@@ -1553,8 +1554,7 @@
         <!-- PDF -->
         <v-divider class="my-4" />
         <v-btn color="secondary" @click="generatePdf" :loading="pdfLoading" :disabled="pdfLoading">Генерировать PDF</v-btn>
-      </v-card-text>
-    </v-card>
+    </SectionCard>
 
     <!-- Диалог просмотра ревизии -->
     <v-dialog v-model="revisionDialog" max-width="900">
@@ -2217,7 +2217,7 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-container>
+  </PageContainer>
 
   <!-- Диалог ручной операции -->
   <v-dialog v-model="operationDialog" max-width="600">
@@ -2890,6 +2890,9 @@ import ProfileRatesSection from '@/components/ProfileRatesSection.vue'
 import ProjectSettingsDrawer from '@/components/ProjectSettingsDrawer.vue'
 import ImportPositionsDialog from '@/components/ImportPositionsDialog.vue'
 import RowHoverActions, { type RowAction } from '@/components/RowHoverActions.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 
 const { smAndDown } = useDisplay()
 const compactLayout = computed(() => smAndDown.value)

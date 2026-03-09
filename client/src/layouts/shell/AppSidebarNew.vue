@@ -337,12 +337,21 @@ watch(() => authStore.isAuthenticated, (authed) => {
 <style scoped>
 /* Sidebar always fixed to viewport */
 .app-sidebar {
+  --sidebar-bg: rgb(var(--v-theme-surface));
+  --sidebar-border: rgba(var(--v-theme-on-surface), 0.12);
+  --sidebar-text: rgb(var(--v-theme-on-surface));
+  --sidebar-muted: rgba(var(--v-theme-on-surface), 0.65);
+  --sidebar-hover: rgba(var(--v-theme-on-surface), 0.08);
+  --sidebar-active-bg: rgba(var(--v-theme-primary), 0.18);
+  --sidebar-active-text: rgb(var(--v-theme-on-surface));
+  --sidebar-accent: rgb(var(--v-theme-primary));
+  --sidebar-avatar-bg: rgba(var(--v-theme-on-surface), 0.1);
   position: fixed !important;
   top: 0 !important;
   height: 100vh !important;
   max-height: 100vh !important;
-  background: var(--sidebar-bg, #fafafa);
-  border-right: 1px solid var(--sidebar-border, #e5e5e5);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
 }
 
 /* Override Vuetify's navigation drawer - make it truly fixed */
@@ -397,14 +406,14 @@ watch(() => authStore.isAuthenticated, (authed) => {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--sidebar-text, #555);
+  color: var(--sidebar-text);
   cursor: pointer;
   transition: background-color 0.15s ease;
   flex-shrink: 0;
 }
 
 .header-btn:hover {
-  background: var(--sidebar-hover, #f0f0f0);
+  background: var(--sidebar-hover);
 }
 
 .toggle-btn {
@@ -419,13 +428,13 @@ watch(() => authStore.isAuthenticated, (authed) => {
 /* Dividers */
 .sidebar-divider {
   height: 1px;
-  background: var(--sidebar-border, #e5e5e5);
+  background: var(--sidebar-border);
   margin: 8px 4px;
 }
 
 .section-divider {
   height: 1px;
-  background: var(--sidebar-border, #e5e5e5);
+  background: var(--sidebar-border);
   margin: 8px 8px;
 }
 
@@ -442,7 +451,7 @@ watch(() => authStore.isAuthenticated, (authed) => {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--sidebar-muted, #888);
+  color: var(--sidebar-muted);
 }
 
 .nav-item {
@@ -454,7 +463,7 @@ watch(() => authStore.isAuthenticated, (authed) => {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--sidebar-text, #444);
+  color: var(--sidebar-text);
   font-size: 14px;
   text-align: left;
   cursor: pointer;
@@ -463,12 +472,12 @@ watch(() => authStore.isAuthenticated, (authed) => {
 }
 
 .nav-item:hover {
-  background: var(--sidebar-hover, #f0f0f0);
+  background: var(--sidebar-hover);
 }
 
 .nav-item--active {
-  background: var(--sidebar-active-bg, #e8e8e8);
-  color: var(--sidebar-active-text, #1a1a1a);
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-text);
   font-weight: 500;
 }
 
@@ -479,7 +488,7 @@ watch(() => authStore.isAuthenticated, (authed) => {
   top: 8px;
   bottom: 8px;
   width: 3px;
-  background: var(--sidebar-accent, #333);
+  background: var(--sidebar-accent);
   border-radius: 0 2px 2px 0;
 }
 
@@ -528,7 +537,7 @@ watch(() => authStore.isAuthenticated, (authed) => {
 }
 
 .account-btn:hover {
-  background: var(--sidebar-hover, #f0f0f0);
+  background: var(--sidebar-hover);
 }
 
 .account-btn--rail {
@@ -540,8 +549,8 @@ watch(() => authStore.isAuthenticated, (authed) => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--sidebar-avatar-bg, #e0e0e0);
-  color: var(--sidebar-text, #444);
+  background: var(--sidebar-avatar-bg);
+  color: var(--sidebar-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -558,7 +567,7 @@ watch(() => authStore.isAuthenticated, (authed) => {
 .account-name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--sidebar-text, #1a1a1a);
+  color: var(--sidebar-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -566,31 +575,14 @@ watch(() => authStore.isAuthenticated, (authed) => {
 
 .account-email {
   font-size: 11px;
-  color: var(--sidebar-muted, #666);
+  color: var(--sidebar-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .account-chevron {
-  color: var(--sidebar-muted, #888);
+  color: var(--sidebar-muted);
   flex-shrink: 0;
-}
-
-/* Dark theme */
-.app-shell--dark .app-sidebar,
-.v-theme--dark .app-sidebar,
-.v-theme--myThemeDark .app-sidebar,
-:deep(.v-theme--dark) .app-sidebar,
-:deep(.v-theme--myThemeDark) .app-sidebar {
-  --sidebar-bg: #1c1c1e;
-  --sidebar-border: #2c2c2e;
-  --sidebar-text: #d0d0d0;
-  --sidebar-muted: #808080;
-  --sidebar-hover: #2a2a2c;
-  --sidebar-active-bg: #2e2e30;
-  --sidebar-active-text: #f0f0f0;
-  --sidebar-accent: #f0f0f0;
-  --sidebar-avatar-bg: #3c3c3e;
 }
 </style>

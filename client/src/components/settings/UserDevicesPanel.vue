@@ -212,6 +212,14 @@ onMounted(loadSessions)
 
 <style scoped>
 .devices-panel {
+  --devices-title: rgb(var(--v-theme-on-surface));
+  --devices-subtitle: rgba(var(--v-theme-on-surface), 0.65);
+  --devices-hover: rgba(var(--v-theme-on-surface), 0.08);
+  --devices-icon-bg: rgba(var(--v-theme-on-surface), 0.1);
+  --devices-border: rgba(var(--v-theme-on-surface), 0.12);
+}
+
+.devices-panel {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -365,44 +373,4 @@ onMounted(loadSessions)
   50% { opacity: 0.4; }
 }
 
-/* ── Dark mode ── */
-:global(.dialog-overlay--dark) .devices-section__title {
-  color: #808080;
-}
-
-:global(.dialog-overlay--dark) .session-item:hover {
-  background: #2a2a2c;
-}
-
-:global(.dialog-overlay--dark) .session-item__icon {
-  background: #3c3c3e;
-}
-
-:global(.dialog-overlay--dark) .session-item__title {
-  color: #f0f0f0;
-}
-
-:global(.dialog-overlay--dark) .session-item__subtitle {
-  color: #808080;
-}
-
-:global(.dialog-overlay--dark) .devices-empty {
-  color: #808080;
-}
-
-:global(.dialog-overlay--dark) .devices-terminate {
-  border-top-color: #3c3c3e;
-}
-
-:global(.dialog-overlay--dark) .terminate-btn:hover:not(:disabled) {
-  background: #2a2a2c;
-}
-
-:global(.dialog-overlay--dark) .terminate-btn__hint {
-  color: #808080;
-}
-
-:global(.dialog-overlay--dark) .skeleton-block {
-  background: #3c3c3e;
-}
 </style>

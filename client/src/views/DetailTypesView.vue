@@ -1,14 +1,11 @@
 <template>
-  <v-container fluid class="soft-page detail-types-view">
-    <v-card class="soft-content-card soft-data-card" elevation="0" variant="outlined">
-      <v-card-title class="d-flex align-center justify-space-between flex-wrap ga-2">
-        <div>
-          <div class="text-h5">Типы деталей</div>
-          <div class="text-caption text-medium-emphasis mt-1">
-            Шаги: 1) Создайте тип 2) Выберите схему торцов 3) При необходимости привяжите операции
-          </div>
-        </div>
-        <div class="d-flex align-center ga-2 flex-wrap">
+  <PageContainer class="soft-page detail-types-view">
+    <PageHeader
+      title="Типы деталей"
+      subtitle="Шаги: 1) Создайте тип 2) Выберите схему торцов 3) При необходимости привяжите операции"
+    >
+      <template #actions>
+        <ButtonGroup>
           <v-menu>
             <template #activator="{ props }">
               <v-btn variant="outlined" prepend-icon="mdi-shape-plus" v-bind="props">
@@ -35,10 +32,14 @@
           >
             Новый тип
           </v-btn>
-        </div>
-      </v-card-title>
+        </ButtonGroup>
+      </template>
+    </PageHeader>
 
-      <v-card-text class="pb-2">
+    <SectionCard class="soft-content-card soft-data-card" variant="outlined">
+      <template #title>Типы деталей</template>
+
+      <div class="pb-2">
         <v-row dense>
           <v-col cols="12" md="5">
             <v-text-field
@@ -122,7 +123,7 @@
             </div>
           </template>
         </v-alert>
-      </v-card-text>
+      </div>
 
       <v-data-table
         :headers="headers"
@@ -194,7 +195,7 @@
           </div>
         </template>
       </v-data-table>
-    </v-card>
+    </SectionCard>
 
     <v-dialog v-model="dialog" max-width="760" persistent>
       <v-card class="soft-content-card soft-dialog-card">
@@ -384,12 +385,16 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick, computed } from 'vue'
 import api from '@/api/axios'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 
 const dialog = ref(false)
 const editing = ref(false)
@@ -729,23 +734,15 @@ watch(addComponentDialog, (val) => {
 .operation-chip {
   background: rgb(var(--v-theme-surface));
   color: rgb(var(--v-theme-on-surface));
-  border-color: rgba(0, 0, 0, 0.08);
+  border-color: rgba(var(--v-theme-on-surface), 0.12);
 }
 
 .operation-qty-badge {
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(var(--v-theme-on-surface), 0.08);
   padding: 2px 6px;
   border-radius: 6px;
   margin-left: 8px;
   font-weight: 600;
   font-size: 12px;
-}
-
-:deep(.v-theme--dark) .operation-chip {
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-:deep(.v-theme--dark) .operation-qty-badge {
-  background: rgba(255, 255, 255, 0.08);
 }
 </style>

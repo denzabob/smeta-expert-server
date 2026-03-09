@@ -702,6 +702,17 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.security-panel {
+  --security-hover: rgba(var(--v-theme-on-surface), 0.08);
+  --security-icon-bg: rgba(var(--v-theme-on-surface), 0.1);
+  --security-title: rgb(var(--v-theme-on-surface));
+  --security-subtitle: rgba(var(--v-theme-on-surface), 0.65);
+  --security-input-bg: rgba(var(--v-theme-on-surface), 0.05);
+  --security-input-border: rgba(var(--v-theme-on-surface), 0.2);
+  --security-token-bg: rgba(var(--v-theme-success), 0.12);
+  --security-token-border: rgba(var(--v-theme-success), 0.35);
+}
+
 /* ─── List items ─── */
 .security-list {
   display: flex;
@@ -981,70 +992,6 @@ onMounted(async () => {
   margin: 0 0 8px;
 }
 
-/* ─── Dark mode support (via parent class) ─── */
-:global(.dialog-overlay--dark) .section-title,
-:global(.dialog-overlay--dark) .sub-header__title,
-:global(.dialog-overlay--dark) .security-item__title,
-:global(.dialog-overlay--dark) .form-label,
-:global(.dialog-overlay--dark) .pin-step-hint,
-:global(.dialog-overlay--dark) .checkbox-label {
-  color: #f0f0f0;
-}
-
-:global(.dialog-overlay--dark) .section-desc,
-:global(.dialog-overlay--dark) .security-item__subtitle {
-  color: #808080;
-}
-
-:global(.dialog-overlay--dark) .security-item:hover:not(:disabled):not(.security-item--disabled) {
-  background: #2a2a2c;
-}
-
-:global(.dialog-overlay--dark) .security-item__icon {
-  background: #3c3c3e;
-}
-
-:global(.dialog-overlay--dark) .back-btn:hover {
-  background: #2e2e30;
-}
-
-:global(.dialog-overlay--dark) .form-input {
-  background: #2e2e30;
-  border-color: #4c4c4e;
-  color: #f0f0f0;
-}
-
-:global(.dialog-overlay--dark) .form-input:focus {
-  border-color: #707070;
-}
-
-:global(.dialog-overlay--dark) .btn--primary {
-  background: #f0f0f0;
-  color: #1a1a1a;
-}
-
-:global(.dialog-overlay--dark) .btn--primary:hover:not(:disabled) {
-  background: #e0e0e0;
-}
-
-:global(.dialog-overlay--dark) .btn--secondary {
-  background: #3c3c3e;
-  color: #c0c0c0;
-}
-
-:global(.dialog-overlay--dark) .badge-later {
-  background: #3c3c3e;
-  color: #a0a0a0;
-}
-
-:global(.dialog-overlay--dark) .input-toggle {
-  color: #808080;
-}
-
-:global(.dialog-overlay--dark) .input-toggle:hover {
-  color: #c0c0c0;
-}
-
 /* ─── Chrome Token section ─── */
 .chrome-token-section {
   max-width: 460px;
@@ -1163,53 +1110,4 @@ onMounted(async () => {
   margin-top: 6px;
 }
 
-/* Dark mode for Chrome token section */
-:global(.dialog-overlay--dark) .chrome-token-desc {
-  color: #808080;
-}
-
-:global(.dialog-overlay--dark) .token-display {
-  background: #1a2e1a;
-  border-color: #2d5a2d;
-}
-
-:global(.dialog-overlay--dark) .token-display__header {
-  color: #86efac;
-}
-
-:global(.dialog-overlay--dark) .token-display__box {
-  background: #2e2e30;
-  border-color: #4c4c4e;
-}
-
-:global(.dialog-overlay--dark) .token-display__value {
-  color: #f0f0f0;
-}
-
-:global(.dialog-overlay--dark) .token-display__copy {
-  border-color: #4c4c4e;
-  color: #a0a0a0;
-}
-
-:global(.dialog-overlay--dark) .token-display__copy:hover {
-  background: #3c3c3e;
-  color: #f0f0f0;
-}
-
-:global(.dialog-overlay--dark) .btn--danger-text {
-  color: #f87171;
-  border-color: #7f1d1d;
-}
-
-:global(.dialog-overlay--dark) .btn--danger-text:hover:not(:disabled) {
-  background: #2a1a1a;
-}
-
-:global(.dialog-overlay--dark) .chrome-divider {
-  border-color: #3c3c3e;
-}
-
-:global(.dialog-overlay--dark) .chrome-revoke-hint {
-  color: #666;
-}
 </style>

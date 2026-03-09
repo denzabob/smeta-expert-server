@@ -189,7 +189,7 @@ watch(lgAndUp, (val) => {
 const legacyTheme = localStorage.getItem('app-theme')
 const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
 const themeMode = ref<'light' | 'dark' | 'auto'>(
-  savedMode || (legacyTheme === 'myThemeDark' ? 'dark' : legacyTheme === 'myTheme' ? 'light' : 'auto')
+  savedMode || (legacyTheme === 'myThemeDark' ? 'dark' : legacyTheme === 'myTheme' ? 'light' : 'dark')
 )
 
 let mediaQuery: MediaQueryList | null = null
@@ -198,7 +198,7 @@ const systemPrefersDark = ref(false)
 
 const applyThemeMode = () => {
   const shouldDark = themeMode.value === 'auto' ? systemPrefersDark.value : themeMode.value === 'dark'
-  theme.change(shouldDark ? 'myThemeDark' : 'myTheme')
+  theme.change(shouldDark ? 'saasDark' : 'saasLight')
 }
 
 const handleScroll = () => {

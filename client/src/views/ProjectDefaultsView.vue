@@ -1,13 +1,9 @@
 <template>
-  <v-container fluid class="user-settings-page">
-    <div class="d-flex align-center justify-space-between mb-4">
-      <div>
-        <div class="text-h5 font-weight-medium">Проект — настройки по умолчанию</div>
-        <div class="text-body-2 text-medium-emphasis">
-          Эти значения применяются только к новым проектам
-        </div>
-      </div>
-    </div>
+  <PageContainer class="user-settings-page">
+    <PageHeader
+      title="Проект — настройки по умолчанию"
+      subtitle="Эти значения применяются только к новым проектам"
+    />
 
     <!-- Info banner -->
     <v-alert type="info" variant="tonal" density="compact" class="mb-4" closable>
@@ -16,7 +12,7 @@
       </div>
     </v-alert>
 
-    <v-card class="settings-shell" elevation="1">
+    <SectionCard class="settings-shell">
       <div class="settings-topbar">
         <v-text-field
           v-model="searchQuery"
@@ -86,12 +82,12 @@
           </div>
         </div>
       </div>
-    </v-card>
+    </SectionCard>
 
     <v-snackbar v-model="snackbar.show" :timeout="snackbar.timeout" :color="snackbar.color" location="bottom right">
       {{ snackbar.message }}
     </v-snackbar>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -100,6 +96,9 @@ import { onBeforeRouteLeave } from 'vue-router'
 import api from '@/api/axios'
 import ProjectDefaultsForm from '@/components/settings/ProjectDefaultsForm.vue'
 import type { ProjectDefaultsData, Material, Region, CoefficientDescription } from '@/components/settings/ProjectDefaultsForm.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 
 const sections = [
   { id: 'general', title: 'Общие', icon: 'mdi-cog-outline', keywords: ['эксперт', 'регион', 'номер', 'режим'] },

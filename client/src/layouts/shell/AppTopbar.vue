@@ -192,8 +192,8 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   padding: 0 24px;
   height: 56px;
-  background: #fff;
-  border-bottom: 1px solid #e5e5e5;
+  background: rgb(var(--v-theme-surface));
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
 .topbar-left {
@@ -205,22 +205,22 @@ onBeforeUnmount(() => {
 .menu-toggle {
   padding: 8px 12px;
   font-size: 13px;
-  color: #333;
+  color: rgb(var(--v-theme-on-surface));
   background: transparent;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.2);
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
 
 .menu-toggle:hover {
-  background: #f5f5f5;
+  background: rgba(var(--v-theme-on-surface), 0.08);
 }
 
 .page-title {
   font-size: 16px;
   font-weight: 500;
-  color: #1a1a1a;
+  color: rgb(var(--v-theme-on-surface));
   margin: 0;
   letter-spacing: -0.2px;
 }
@@ -233,7 +233,7 @@ onBeforeUnmount(() => {
 
 .theme-toggle {
   display: flex;
-  border: 1px solid #e5e5e5;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.2);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -241,7 +241,7 @@ onBeforeUnmount(() => {
 .theme-btn {
   padding: 6px 10px;
   font-size: 12px;
-  color: #666;
+  color: rgb(var(--v-theme-on-surface-variant));
   background: transparent;
   border: none;
   cursor: pointer;
@@ -249,20 +249,20 @@ onBeforeUnmount(() => {
 }
 
 .theme-btn:not(:last-child) {
-  border-right: 1px solid #e5e5e5;
+  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.2);
 }
 
 .theme-btn:hover {
-  background: #f5f5f5;
+  background: rgba(var(--v-theme-on-surface), 0.08);
 }
 
 .theme-btn--active {
-  background: #1a1a1a;
-  color: #fff;
+  background: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary));
 }
 
 .theme-btn--active:hover {
-  background: #333;
+  background: rgba(var(--v-theme-primary), 0.85);
 }
 
 .account-dropdown {
@@ -275,22 +275,22 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 8px 12px;
   font-size: 13px;
-  color: #333;
+  color: rgb(var(--v-theme-on-surface));
   background: transparent;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.2);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .account-trigger:hover {
-  background: #f5f5f5;
-  border-color: #ccc;
+  background: rgba(var(--v-theme-on-surface), 0.08);
+  border-color: rgba(var(--v-theme-on-surface), 0.3);
 }
 
 .dropdown-arrow {
   font-size: 10px;
-  color: #888;
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 
 .dropdown-menu {
@@ -298,10 +298,10 @@ onBeforeUnmount(() => {
   top: calc(100% + 4px);
   right: 0;
   min-width: 200px;
-  background: #fff;
-  border: 1px solid #e5e5e5;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 16px rgba(var(--v-theme-on-surface), 0.16);
   z-index: 100;
   padding: 6px 0;
 }
@@ -312,7 +312,7 @@ onBeforeUnmount(() => {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  color: #888;
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 
 .dropdown-item {
@@ -320,7 +320,7 @@ onBeforeUnmount(() => {
   width: 100%;
   padding: 10px 16px;
   font-size: 13px;
-  color: #333;
+  color: rgb(var(--v-theme-on-surface));
   background: transparent;
   border: none;
   text-align: left;
@@ -329,20 +329,20 @@ onBeforeUnmount(() => {
 }
 
 .dropdown-item:hover {
-  background: #f5f5f5;
+  background: rgba(var(--v-theme-on-surface), 0.08);
 }
 
 .dropdown-item--danger {
-  color: #c00;
+  color: rgb(var(--v-theme-error));
 }
 
 .dropdown-item--danger:hover {
-  background: #fee;
+  background: rgba(var(--v-theme-error), 0.12);
 }
 
 .dropdown-divider {
   height: 1px;
-  background: #e5e5e5;
+  background: rgba(var(--v-theme-on-surface), 0.12);
   margin: 4px 0;
 }
 
@@ -356,104 +356,6 @@ onBeforeUnmount(() => {
 .dropdown-leave-to {
   opacity: 0;
   transform: translateY(-8px);
-}
-
-/* Dark theme */
-:deep(.v-theme--dark) .app-topbar,
-.v-theme--dark .app-topbar {
-  background: #1c1c1e;
-  border-bottom-color: #2c2c2e;
-}
-
-:deep(.v-theme--dark) .page-title,
-.v-theme--dark .page-title {
-  color: #f0f0f0;
-}
-
-:deep(.v-theme--dark) .menu-toggle,
-.v-theme--dark .menu-toggle {
-  color: #b0b0b0;
-  border-color: #3c3c3e;
-}
-
-:deep(.v-theme--dark) .menu-toggle:hover,
-.v-theme--dark .menu-toggle:hover {
-  background: #2a2a2c;
-}
-
-:deep(.v-theme--dark) .theme-toggle,
-.v-theme--dark .theme-toggle {
-  border-color: #3c3c3e;
-}
-
-:deep(.v-theme--dark) .theme-btn,
-.v-theme--dark .theme-btn {
-  color: #909090;
-}
-
-:deep(.v-theme--dark) .theme-btn:not(:last-child),
-.v-theme--dark .theme-btn:not(:last-child) {
-  border-right-color: #3c3c3e;
-}
-
-:deep(.v-theme--dark) .theme-btn:hover,
-.v-theme--dark .theme-btn:hover {
-  background: #2a2a2c;
-}
-
-:deep(.v-theme--dark) .theme-btn--active,
-.v-theme--dark .theme-btn--active {
-  background: #f0f0f0;
-  color: #1a1a1a;
-}
-
-:deep(.v-theme--dark) .account-trigger,
-.v-theme--dark .account-trigger {
-  color: #b0b0b0;
-  border-color: #3c3c3e;
-}
-
-:deep(.v-theme--dark) .account-trigger:hover,
-.v-theme--dark .account-trigger:hover {
-  background: #2a2a2c;
-  border-color: #4c4c4e;
-}
-
-:deep(.v-theme--dark) .dropdown-menu,
-.v-theme--dark .dropdown-menu {
-  background: #252527;
-  border-color: #3c3c3e;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-}
-
-:deep(.v-theme--dark) .dropdown-section-label,
-.v-theme--dark .dropdown-section-label {
-  color: #707070;
-}
-
-:deep(.v-theme--dark) .dropdown-item,
-.v-theme--dark .dropdown-item {
-  color: #b0b0b0;
-}
-
-:deep(.v-theme--dark) .dropdown-item:hover,
-.v-theme--dark .dropdown-item:hover {
-  background: #2e2e30;
-}
-
-:deep(.v-theme--dark) .dropdown-item--danger,
-.v-theme--dark .dropdown-item--danger {
-  color: #f87171;
-}
-
-:deep(.v-theme--dark) .dropdown-item--danger:hover,
-.v-theme--dark .dropdown-item--danger:hover {
-  background: #2d1f1f;
-}
-
-:deep(.v-theme--dark) .dropdown-divider,
-.v-theme--dark .dropdown-divider {
-  background: #3c3c3e;
 }
 
 /* Mobile adjustments */

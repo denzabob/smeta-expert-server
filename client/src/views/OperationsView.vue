@@ -1,13 +1,21 @@
 <template>
-  <v-container>
-    <v-card>
-      <v-card-title>Технологические операции</v-card-title>
-      <v-card-actions>
-        <v-btn prepend-icon="mdi-plus" @click="openCreateDialog">Новая операция</v-btn>
-        <v-btn prepend-icon="mdi-file-import" color="primary" variant="tonal" @click="showImportDialog = true">
-          Импорт прайса
-        </v-btn>
-      </v-card-actions>
+  <PageContainer>
+    <PageHeader
+      title="Технологические операции"
+      subtitle="Справочник операций и привязки строк прайса"
+    >
+      <template #actions>
+        <ButtonGroup>
+          <v-btn prepend-icon="mdi-plus" @click="openCreateDialog">Новая операция</v-btn>
+          <v-btn prepend-icon="mdi-file-import" color="primary" variant="tonal" @click="showImportDialog = true">
+            Импорт прайса
+          </v-btn>
+        </ButtonGroup>
+      </template>
+    </PageHeader>
+
+    <SectionCard>
+      <template #title>Технологические операции</template>
 
       <v-data-table
         :headers="headers"
@@ -48,7 +56,7 @@
           </div>
         </template>
       </v-data-table>
-    </v-card>
+    </SectionCard>
 
     <PriceImportDialog
       v-model="showImportDialog"
@@ -213,13 +221,17 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import api from '@/api/axios'
 import PriceImportDialog from '@/components/PriceImportDialog.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 
 interface OperationRow {
   id: number

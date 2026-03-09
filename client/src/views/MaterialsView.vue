@@ -1,42 +1,39 @@
 <template>
-  <v-container fluid class="pa-0">
-    <v-sheet class="pa-4" color="surface">
-      <div class="d-flex flex-wrap align-center ga-3">
-        <div>
-          <div class="text-h5 font-weight-medium">{{ pageTitle }}</div>
-          <div class="text-medium-emphasis">{{ pageSubtitle }}</div>
-        </div>
-        <v-spacer />
-        <v-btn
-            color="primary"
-            prepend-icon="mdi-plus"
-            class="text-none"
-            @click="openCreateDialog"
-        >
-          Добавить
-        </v-btn>
-        <v-btn
-            color="primary"
-            variant="tonal"
-            prepend-icon="mdi-file-import"
-            class="text-none"
-            @click="showImportDialog = true"
-        >
-          Импорт прайса
-        </v-btn>
-        <v-btn
-            variant="text"
-            prepend-icon="mdi-refresh"
-            class="text-none"
-            :loading="loading"
-            @click="fetchMaterials"
-        >
-          Обновить
-        </v-btn>
-      </div>
-    </v-sheet>
+  <PageContainer>
+    <PageHeader :title="pageTitle" :subtitle="pageSubtitle">
+      <template #actions>
+        <ButtonGroup>
+          <v-btn
+              color="primary"
+              prepend-icon="mdi-plus"
+              class="text-none"
+              @click="openCreateDialog"
+          >
+            Добавить
+          </v-btn>
+          <v-btn
+              color="primary"
+              variant="tonal"
+              prepend-icon="mdi-file-import"
+              class="text-none"
+              @click="showImportDialog = true"
+          >
+            Импорт прайса
+          </v-btn>
+          <v-btn
+              variant="text"
+              prepend-icon="mdi-refresh"
+              class="text-none"
+              :loading="loading"
+              @click="fetchMaterials"
+          >
+            Обновить
+          </v-btn>
+        </ButtonGroup>
+      </template>
+    </PageHeader>
 
-    <v-sheet class="pa-4">
+    <SectionCard>
       <v-row class="mb-3" align="center" dense>
         <v-col cols="12" md="4">
           <v-text-field
@@ -254,7 +251,7 @@
           </div>
         </template>
       </v-data-table>
-    </v-sheet>
+    </SectionCard>
 
     <!-- Dialog: Create / Edit -->
     <v-dialog v-model="dialog" max-width="640" persistent>
@@ -583,13 +580,17 @@
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000">
       {{ snackbar.message }}
     </v-snackbar>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/api/axios'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 import PriceImportDialog from '@/components/PriceImportDialog.vue'
 
 const props = withDefaults(defineProps<{

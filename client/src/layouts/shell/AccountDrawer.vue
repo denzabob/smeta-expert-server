@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="drawer">
-      <div v-if="modelValue" class="drawer-overlay" :class="{ 'drawer-overlay--dark': isDark }" @click.self="close">
+      <div v-if="modelValue" class="drawer-overlay" @click.self="close">
         <div class="drawer-container">
           <div class="drawer-content">
             <!-- User header -->
@@ -162,17 +162,9 @@ const extraItems = computed(() =>
 )
 const logoutItem = computed(() => accountMenuItems.find((item) => item.id === 'logout') ?? null)
 
-// Theme mode (for teleported overlay style sync only)
+// Theme mode controls shared with the topbar toggle.
 const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
 const themeMode = ref<'light' | 'dark' | 'auto'>(savedMode || 'auto')
-const systemPrefersDark = ref(false)
-
-let mediaQuery: MediaQueryList | null = null
-let mediaListener: ((e: MediaQueryListEvent) => void) | null = null
-
-const isDark = computed(() => {
-  return themeMode.value === 'auto' ? systemPrefersDark.value : themeMode.value === 'dark'
-})
 
 function setThemeMode(mode: 'light' | 'dark' | 'auto') {
   themeMode.value = mode
@@ -228,15 +220,6 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 onMounted(() => {
-  if (typeof window !== 'undefined' && 'matchMedia' in window) {
-    mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    systemPrefersDark.value = mediaQuery.matches
-    mediaListener = (e: MediaQueryListEvent) => {
-      systemPrefersDark.value = e.matches
-    }
-    mediaQuery.addEventListener('change', mediaListener)
-  }
-
   window.addEventListener('theme-mode-change', handleThemeModeChange)
   document.addEventListener('keydown', handleKeydown)
 })
@@ -251,9 +234,6 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  if (mediaQuery && mediaListener) {
-    mediaQuery.removeEventListener('change', mediaListener)
-  }
   window.removeEventListener('theme-mode-change', handleThemeModeChange)
   document.removeEventListener('keydown', handleKeydown)
 })
@@ -268,7 +248,7 @@ onBeforeUnmount(() => {
   align-items: flex-end;
   justify-content: flex-start;
   padding: 16px;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(var(--v-theme-on-surface), 0.36);
 }
 
 .drawer-container {
@@ -280,9 +260,19 @@ onBeforeUnmount(() => {
 }
 
 .drawer-content {
-  background: var(--drawer-bg, #fff);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  --drawer-bg: rgb(var(--v-theme-surface));
+  --drawer-border: rgba(var(--v-theme-on-surface), 0.12);
+  --drawer-text: rgb(var(--v-theme-on-surface));
+  --drawer-muted: rgba(var(--v-theme-on-surface), 0.65);
+  --drawer-hover: rgba(var(--v-theme-on-surface), 0.08);
+  --drawer-avatar-bg: rgba(var(--v-theme-on-surface), 0.1);
+  --drawer-danger: rgb(var(--v-theme-error));
+  --drawer-danger-hover: rgba(var(--v-theme-error), 0.14);
+  --drawer-active-bg: rgba(var(--v-theme-primary), 0.2);
+  --drawer-active-text: rgb(var(--v-theme-on-surface));
+  background: var(--drawer-bg);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(5, 10, 20, 0.35);
   overflow: hidden;
 }
 
@@ -304,8 +294,8 @@ onBeforeUnmount(() => {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: var(--drawer-avatar-bg, #e5e5e5);
-  color: var(--drawer-text, #333);
+  background: var(--drawer-avatar-bg);
+  color: var(--drawer-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -321,13 +311,13 @@ onBeforeUnmount(() => {
 .user-name {
   font-size: 15px;
   font-weight: 600;
-  color: var(--drawer-text, #1a1a1a);
+  color: var(--drawer-text);
   line-height: 1.3;
 }
 
 .user-email {
   font-size: 13px;
-  color: var(--drawer-muted, #666);
+  color: var(--drawer-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -340,22 +330,22 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
-  color: var(--drawer-muted, #888);
+  color: var(--drawer-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .close-btn:hover {
-  background: var(--drawer-hover, #f0f0f0);
-  color: var(--drawer-text, #333);
+  background: var(--drawer-hover);
+  color: var(--drawer-text);
 }
 
 /* Divider */
 .drawer-divider {
   height: 1px;
-  background: var(--drawer-border, #e5e5e5);
+  background: var(--drawer-border);
   margin: 0 12px;
 }
 
@@ -370,7 +360,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: var(--drawer-muted, #666);
+  color: var(--drawer-muted);
 }
 
 .theme-quick {
@@ -384,15 +374,15 @@ onBeforeUnmount(() => {
 .theme-quick__label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--drawer-muted, #666);
+  color: var(--drawer-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .theme-toggle {
   display: flex;
-  border: 1px solid var(--drawer-border, #e5e5e5);
-  border-radius: 8px;
+  border: 1px solid var(--drawer-border);
+  border-radius: 12px;
   overflow: hidden;
 }
 
@@ -404,22 +394,22 @@ onBeforeUnmount(() => {
   height: 30px;
   border: none;
   background: transparent;
-  color: var(--drawer-muted, #666);
+  color: var(--drawer-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .theme-btn:not(:last-child) {
-  border-right: 1px solid var(--drawer-border, #e5e5e5);
+  border-right: 1px solid var(--drawer-border);
 }
 
 .theme-btn:hover {
-  background: var(--drawer-hover, #f5f5f5);
+  background: var(--drawer-hover);
 }
 
 .theme-btn--active {
-  background: var(--drawer-active-bg, #1a1a1a);
-  color: var(--drawer-active-text, #fff);
+  background: var(--drawer-active-bg);
+  color: var(--drawer-active-text);
 }
 
 .drawer-item {
@@ -429,9 +419,9 @@ onBeforeUnmount(() => {
   width: 100%;
   padding: 10px 12px;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   background: transparent;
-  color: var(--drawer-text, #333);
+  color: var(--drawer-text);
   font-size: 14px;
   text-align: left;
   cursor: pointer;
@@ -439,15 +429,15 @@ onBeforeUnmount(() => {
 }
 
 .drawer-item:hover {
-  background: var(--drawer-hover, #f5f5f5);
+  background: var(--drawer-hover);
 }
 
 .drawer-item--danger {
-  color: var(--drawer-danger, #dc2626);
+  color: var(--drawer-danger);
 }
 
 .drawer-item--danger:hover {
-  background: var(--drawer-danger-hover, #fef2f2);
+  background: var(--drawer-danger-hover);
 }
 
 .drawer-item-icon {
@@ -460,7 +450,7 @@ onBeforeUnmount(() => {
 }
 
 .drawer-item--more {
-  color: var(--drawer-muted, #666);
+  color: var(--drawer-muted);
 }
 
 .drawer-item-chevron {
@@ -508,20 +498,6 @@ onBeforeUnmount(() => {
 .drawer-leave-to .drawer-content {
   transform: translateY(16px);
   opacity: 0;
-}
-
-/* Dark theme */
-.drawer-overlay--dark .drawer-content {
-  --drawer-bg: #252527;
-  --drawer-border: #3c3c3e;
-  --drawer-text: #e0e0e0;
-  --drawer-muted: #909090;
-  --drawer-hover: #2e2e30;
-  --drawer-avatar-bg: #3c3c3e;
-  --drawer-danger: #f87171;
-  --drawer-danger-hover: #2d1f1f;
-  --drawer-active-bg: #f0f0f0;
-  --drawer-active-text: #1a1a1a;
 }
 
 /* Mobile */

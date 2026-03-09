@@ -35,6 +35,7 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Конфиги
 COPY docker/app/php-fpm.conf /usr/local/etc/php-fpm.d/zzz-custom.conf
 COPY docker/app/php.ini /usr/local/etc/php/conf.d/custom.ini
+COPY docker/app/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Приложение
 WORKDIR /var/www/html
@@ -54,5 +55,8 @@ RUN php artisan key:generate --ansi
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 storage bootstrap/cache
 
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 9000
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["php-fpm"]

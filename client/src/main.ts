@@ -6,6 +6,7 @@ import axiosInstance, { setupAxiosInterceptors } from './api/axios.ts'
 import { useAuthStore } from '@/stores/auth'
 import '@mdi/font/css/materialdesignicons.css'
 import vuetify from '@/plugins/vuetify' // ← должен существовать
+import '@/styles/design-system.scss'
 
 const app = createApp(App)
 const pinia = createPinia()

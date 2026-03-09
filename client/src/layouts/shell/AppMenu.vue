@@ -27,7 +27,6 @@
         <div 
           v-if="isOpen" 
           class="menu-dropdown"
-          :class="{ 'menu-dropdown--dark': isDark }"
           :style="dropdownStyle"
           ref="dropdownRef"
         >
@@ -138,7 +137,7 @@ const isAdmin = computed(() => {
 })
 
 // Theme detection
-const isDark = computed(() => theme.global.name.value === 'myThemeDark')
+const isDark = computed(() => theme.global.current.value.dark)
 const currentLogo = computed(() => (isDark.value ? logoDark : logoLight))
 
 function toggleMenu() {
@@ -173,9 +172,21 @@ function updateDropdownPosition() {
   }
 }
 
-function navigateTo(routeName: string) {
-  router.push({ name: routeName })
-  closeMenu()
+async function navigateTo(routeName: string) {
+  try {
+    if (router.hasRoute(routeName)) {
+      await router.push({ name: routeName })
+    } else if (routeName === 'admin-panel') {
+      // Fallback for compatibility if route names are refactored again.
+      await router.push('/admin')
+    } else {
+      await router.push('/')
+    }
+  } catch (error) {
+    console.error('Menu navigation failed:', error)
+  } finally {
+    closeMenu()
+  }
 }
 
 function openDocs() {
@@ -320,17 +331,9 @@ onUnmounted(() => {
   box-shadow: 
     0 4px 6px -1px rgba(0, 0, 0, 0.1),
     0 2px 4px -1px rgba(0, 0, 0, 0.06),
-    0 0 0 1px rgba(0, 0, 0, 0.05);
+    0 0 0 1px rgba(var(--v-theme-on-surface), 0.08);
   overflow: hidden;
   min-width: 240px;
-}
-
-.menu-dropdown--dark {
-  background: #1e1e1e;
-  box-shadow: 
-    0 4px 6px -1px rgba(0, 0, 0, 0.3),
-    0 2px 4px -1px rgba(0, 0, 0, 0.2),
-    0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .menu-section {
@@ -346,18 +349,10 @@ onUnmounted(() => {
   color: rgba(var(--v-theme-on-surface), 0.5);
 }
 
-.menu-dropdown--dark .menu-section-title {
-  color: rgba(255, 255, 255, 0.5);
-}
-
 .menu-divider {
   height: 1px;
   background: rgba(var(--v-theme-on-surface), 0.08);
   margin: 0 8px;
-}
-
-.menu-dropdown--dark .menu-divider {
-  background: rgba(255, 255, 255, 0.1);
 }
 
 .menu-item {
@@ -375,24 +370,12 @@ onUnmounted(() => {
   text-align: left;
 }
 
-.menu-dropdown--dark .menu-item {
-  color: rgba(255, 255, 255, 0.87);
-}
-
 .menu-item:hover {
   background: rgba(var(--v-theme-on-surface), 0.05);
 }
 
-.menu-dropdown--dark .menu-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
 .menu-item--active {
   background: rgba(var(--v-theme-primary), 0.1);
-}
-
-.menu-dropdown--dark .menu-item--active {
-  background: rgba(103, 126, 234, 0.15);
 }
 
 .menu-item-icon {

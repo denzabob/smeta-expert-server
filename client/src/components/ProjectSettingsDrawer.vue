@@ -167,9 +167,9 @@
 
                       <div class="mb-3">
                         <div class="d-flex align-center gap-3">
-                          <span class="text-subtitle-2" :style="{ color: !projectData.use_area_calc_mode ? '#1976d2' : '#666' }">Расчёт по листам</span>
+                          <span class="text-subtitle-2 mode-switch-label" :class="{ 'mode-switch-label--active': !projectData.use_area_calc_mode }">Расчёт по листам</span>
                           <v-switch v-model="projectData.use_area_calc_mode" hide-details density="compact"  color="primary" />
-                          <span class="text-subtitle-2" :style="{ color: projectData.use_area_calc_mode ? '#1976d2' : '#666' }">Расчёт по площади</span>
+                          <span class="text-subtitle-2 mode-switch-label" :class="{ 'mode-switch-label--active': projectData.use_area_calc_mode }">Расчёт по площади</span>
                         </div>
                         <div class="text-caption text-grey mt-2">
                           Влияет на таблицу материалов и итоговую стоимость

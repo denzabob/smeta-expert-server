@@ -45,6 +45,9 @@ use App\Http\Controllers\Api\PinAuthController;
 use App\Http\Controllers\Api\AdminNotificationController;
 use App\Http\Controllers\Api\UserNotificationController;
 use App\Http\Controllers\Api\FacadeMaterialController;
+use App\Http\Controllers\Api\CommentController;
+use App\Http\Controllers\Api\IdeaController;
+use App\Http\Controllers\Api\VoteController;
 use App\Http\Controllers\ProjectImportController;
 use App\Http\Middleware\InternalOnlyMiddleware;
 
@@ -100,6 +103,17 @@ Route::middleware(InternalOnlyMiddleware::class)->group(function () {
 
 // Защищённые маршруты
 Route::middleware('auth:sanctum')->group(function () {
+    // ========== Ideas Board API ==========
+    Route::post('ideas', [IdeaController::class, 'store']);
+    Route::get('ideas', [IdeaController::class, 'index']);
+    Route::get('ideas/{idea}', [IdeaController::class, 'show']);
+    Route::delete('ideas/{idea}', [IdeaController::class, 'destroy']);
+    Route::post('ideas/{idea}/vote', [VoteController::class, 'vote']);
+    Route::delete('ideas/{idea}/vote', [VoteController::class, 'removeVote']);
+    Route::post('ideas/{idea}/comments', [CommentController::class, 'store']);
+    Route::delete('ideas/{idea}/comments/{comment}', [CommentController::class, 'destroy']);
+    Route::patch('ideas/{idea}/status', [IdeaController::class, 'updateStatus']);
+
     Route::get('chrome/auth/status', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'tokenStatus']);
     Route::post('chrome/auth/token/session', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'issueTokenFromSession']);
 

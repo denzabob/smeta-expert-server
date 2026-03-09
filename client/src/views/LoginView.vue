@@ -1,6 +1,5 @@
 <template>
-  <v-theme-provider theme="dark">
-    <v-container class="fill-height login-page" fluid>
+  <v-container class="fill-height login-page" fluid>
       <div class="login-prism-bg" aria-hidden="true">
         <PrismBackground
           animation-type="3drotate"
@@ -75,8 +74,7 @@
         @done="onPinSetupDone"
         @skip="onPinSetupSkip"
       />
-    </v-container>
-  </v-theme-provider>
+  </v-container>
 </template>
 
 <script setup lang="ts">
@@ -249,7 +247,7 @@ const navigateAfterLogin = async () => {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
-  background-color: #121212;
+  background-color: rgb(var(--v-theme-background));
   padding: 16px 12px;
 }
 

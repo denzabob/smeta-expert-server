@@ -1,29 +1,24 @@
 <template>
-  <v-container fluid class="pa-0">
-    <!-- Header -->
-    <v-sheet class="pa-4" color="surface">
-      <div class="d-flex flex-wrap align-center ga-3">
-        <div>
-          <div class="text-h5 font-weight-medium">Каталог материалов</div>
-          <div class="text-medium-emphasis">{{ modeSubtitle }}</div>
-        </div>
-        <v-spacer />
-        <v-btn color="primary" prepend-icon="mdi-form-select" class="text-none" @click="openAddManual">
-          Добавить вручную
-        </v-btn>
-        <v-btn color="primary" variant="tonal" prepend-icon="mdi-link-plus" class="text-none" @click="openAddByUrl">
-          Добавить по ссылке
-        </v-btn>
-        <v-btn variant="text" prepend-icon="mdi-refresh" class="text-none" :loading="store.loading" @click="reload">
-          Обновить
-        </v-btn>
-      </div>
-    </v-sheet>
+  <PageContainer>
+    <PageHeader title="Каталог материалов" :subtitle="modeSubtitle">
+      <template #actions>
+        <ButtonGroup>
+          <v-btn color="primary" prepend-icon="mdi-form-select" class="text-none" @click="openAddManual">
+            Добавить вручную
+          </v-btn>
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-link-plus" class="text-none" @click="openAddByUrl">
+            Добавить по ссылке
+          </v-btn>
+          <v-btn variant="text" prepend-icon="mdi-refresh" class="text-none" :loading="store.loading" @click="reload">
+            Обновить
+          </v-btn>
+        </ButtonGroup>
+      </template>
+    </PageHeader>
 
-    <!-- Mode tabs + Filters -->
-    <v-sheet class="pa-4">
+    <SectionCard>
       <!-- Mode switcher -->
-      <v-btn-toggle v-model="currentMode" mandatory density="comfortable" color="primary" class="mb-4">
+      <v-btn-toggle v-model="currentMode" mandatory density="comfortable" color="primary" class="mb-4 catalog-mode-tabs">
         <v-btn value="own" prepend-icon="mdi-account">Мои</v-btn>
         <v-btn value="library" prepend-icon="mdi-bookmark">Библиотека</v-btn>
         <v-btn value="public" prepend-icon="mdi-earth">Общий каталог</v-btn>
@@ -304,7 +299,7 @@
           </div>
         </template>
       </v-data-table>
-    </v-sheet>
+    </SectionCard>
 
     <!-- Dialogs -->
     <AddMaterialDialog
@@ -349,7 +344,7 @@
     <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
       {{ snackbarText }}
     </v-snackbar>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -357,6 +352,10 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMaterialCatalogStore } from '@/stores/materialCatalog'
 import api from '@/api/axios'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 import TrustBadge from '@/components/catalog/TrustBadge.vue'
 import AddMaterialDialog from '@/components/catalog/AddMaterialDialog.vue'
 import PriceObservationDialog from '@/components/catalog/PriceObservationDialog.vue'
@@ -817,3 +816,15 @@ watch(
   }
 )
 </script>
+
+<style scoped>
+.catalog-mode-tabs :deep(.v-slide-group__content) {
+  gap: 4px;
+}
+
+.catalog-mode-tabs :deep(.v-btn) {
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  margin-bottom: 2px;
+}
+</style>

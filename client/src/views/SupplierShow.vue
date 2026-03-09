@@ -1,37 +1,40 @@
 <template>
-  <v-container fluid class="pa-0 supplier-page">
-    <v-sheet class="pa-4 top-bar" color="surface">
-      <div v-if="supplier" class="d-flex flex-wrap align-center ga-3">
-        <div class="flex-grow-1 min-w-0">
-          <div class="d-flex align-center ga-2 mb-1 flex-wrap">
-            <v-btn icon="mdi-arrow-left" variant="text" size="small" :to="{ name: 'suppliers' }" />
-            <div class="text-h5 font-weight-medium text-truncate">{{ supplier.name }}</div>
-            <v-chip size="small" :color="supplier.is_active ? 'success' : 'grey'" variant="tonal">
-              {{ supplier.is_active ? 'Активен' : 'Неактивен' }}
-            </v-chip>
-          </div>
-          <div class="text-caption text-medium-emphasis info-strip">
-            <span>Прайс-листов: {{ supplier?.price_lists_count || 0 }}</span>
-            <span>Активных версий: {{ supplier?.active_versions_count || 0 }}</span>
-            <span>Последнее обновление: {{ supplier?.last_version_at ? formatDateOnly(supplier.last_version_at) : '—' }}</span>
-          </div>
-          <div v-if="contactLine" class="text-caption text-medium-emphasis mt-1 text-truncate">
-            Контакт: {{ contactLine }}
-          </div>
-        </div>
-        <div class="d-flex ga-2 flex-wrap justify-end">
+  <PageContainer class="supplier-page">
+    <PageHeader
+      v-if="supplier"
+      class="top-bar"
+      :title="supplier.name"
+      :subtitle="`Прайс-листов: ${supplier?.price_lists_count || 0} · Активных версий: ${supplier?.active_versions_count || 0} · Последнее обновление: ${supplier?.last_version_at ? formatDateOnly(supplier.last_version_at) : '—'}`"
+    >
+      <template #prefix>
+        <v-btn icon="mdi-arrow-left" variant="text" size="small" :to="{ name: 'suppliers' }" />
+      </template>
+
+      <template #title-extra>
+        <v-chip size="small" :color="supplier.is_active ? 'success' : 'grey'" variant="tonal">
+          {{ supplier.is_active ? 'Активен' : 'Неактивен' }}
+        </v-chip>
+      </template>
+
+      <template #actions>
+        <ButtonGroup>
           <v-btn variant="tonal" prepend-icon="mdi-pencil" class="text-none" @click="openEditSupplierDialog">
             Редактировать поставщика
           </v-btn>
           <v-btn color="primary" prepend-icon="mdi-plus" class="text-none" @click="openAddSourceDialog">
             Добавить источник цен
           </v-btn>
-        </div>
-      </div>
-      <v-progress-linear v-else indeterminate />
-    </v-sheet>
+        </ButtonGroup>
+      </template>
+    </PageHeader>
 
-    <v-sheet class="pa-4">
+    <v-progress-linear v-else indeterminate />
+
+    <div v-if="supplier && contactLine" class="text-caption text-medium-emphasis mt-1 text-truncate">
+      Контакт: {{ contactLine }}
+    </div>
+
+    <SectionCard>
       <div class="d-flex flex-wrap align-center ga-3 mb-3">
         <div>
           <div class="text-h6">Источники цен поставщика</div>
@@ -239,7 +242,7 @@
           В архив ({{ selectedCanArchiveCount }})
         </v-btn>
       </div>
-    </v-sheet>
+    </SectionCard>
 
     <v-dialog v-model="showAddSourceDialog" max-width="700" persistent>
       <v-card>
@@ -397,12 +400,16 @@
         <v-btn variant="text" @click="snackbar.show = false">Закрыть</v-btn>
       </template>
     </v-snackbar>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 import { suppliersApi, type Supplier } from '@/api/suppliers'
 import { priceListsApi, type PriceList, type PriceListCreatePayload, type PriceDocument } from '@/api/priceLists'
 import { format } from 'date-fns'

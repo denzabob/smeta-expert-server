@@ -1,13 +1,11 @@
 <template>
-  <v-container fluid class="user-settings-page">
-    <div class="d-flex align-center justify-space-between mb-4">
-      <div>
-        <div class="text-h5 font-weight-medium">Личные настройки</div>
-        <div class="text-body-2 text-medium-emphasis">Применяются к новым проектам по умолчанию</div>
-      </div>
-    </div>
+  <PageContainer class="user-settings-page">
+    <PageHeader
+      title="Личные настройки"
+      subtitle="Применяются к новым проектам по умолчанию"
+    />
 
-    <v-card class="settings-shell" elevation="1">
+    <SectionCard class="settings-shell">
       <div class="d-flex settings-body">
         <div class="settings-sidebar">
           <v-list
@@ -387,12 +385,12 @@
           </div>
         </div>
       </div>
-    </v-card>
+    </SectionCard>
 
     <v-snackbar v-model="snackbar.show" :timeout="snackbar.timeout" :color="snackbar.color" location="bottom right">
       {{ snackbar.message }}
     </v-snackbar>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -400,6 +398,9 @@ import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import api from '@/api/axios'
 import SecuritySection from '@/components/settings/SecuritySection.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 
 interface Region {
   id: number

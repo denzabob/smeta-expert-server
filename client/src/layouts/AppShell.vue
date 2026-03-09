@@ -1,5 +1,5 @@
 <template>
-  <v-app :class="appThemeClass">
+  <v-app>
     <!-- Mobile Header (только на мобильных) -->
     <div v-if="compactNav && !drawerOpen" class="mobile-header">
       <button class="mobile-menu-btn" @click="drawerOpen = true">
@@ -54,25 +54,23 @@ const settingsInitialTab = ref<string | undefined>(undefined)
 
 // Theme mode
 const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
-const themeMode = ref<'light' | 'dark' | 'auto'>(savedMode || 'auto')
+const themeMode = ref<'light' | 'dark' | 'auto'>(savedMode || 'dark')
 
 let mediaQuery: MediaQueryList | null = null
 let mediaListener: ((e: MediaQueryListEvent) => void) | null = null
 const systemPrefersDark = ref(false)
 
-const appThemeClass = computed(() => {
-  const isDark = themeMode.value === 'auto' 
-    ? systemPrefersDark.value 
-    : themeMode.value === 'dark'
-  return isDark ? 'app-shell--dark' : 'app-shell--light'
-})
-
 function applyTheme() {
   const shouldDark = themeMode.value === 'auto' 
     ? systemPrefersDark.value 
     : themeMode.value === 'dark'
-  const themeName = shouldDark ? 'myThemeDark' : 'myTheme'
+  const themeName = shouldDark ? 'saasDark' : 'saasLight'
   if (theme.global.current.value.dark !== shouldDark) {
+    theme.global.name.value = themeName
+    return
+  }
+
+  if (theme.global.name.value !== themeName) {
     theme.global.name.value = themeName
   }
 }
@@ -133,7 +131,10 @@ watch(themeMode, () => {
 <style scoped>
 .app-main {
   min-height: 100vh;
-  background: #f5f5f5;
+  background:
+    radial-gradient(1200px 520px at -8% -16%, rgba(56, 189, 248, 0.1), transparent 55%),
+    radial-gradient(900px 440px at 108% 4%, rgba(14, 165, 233, 0.08), transparent 60%),
+    rgb(var(--v-theme-background));
 }
 
 .app-main--mobile-header {
@@ -156,8 +157,8 @@ watch(themeMode, () => {
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  background: var(--mobile-header-bg, #fff);
-  border-bottom: 1px solid var(--mobile-header-border, #e5e5e5);
+  background: rgb(var(--v-theme-surface));
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   z-index: 100;
 }
 
@@ -168,32 +169,20 @@ watch(themeMode, () => {
   width: 40px;
   height: 40px;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   background: transparent;
-  color: var(--mobile-header-text, #333);
+  color: rgb(var(--v-theme-on-surface));
   cursor: pointer;
 }
 
 .mobile-menu-btn:active {
-  background: var(--mobile-header-hover, #f0f0f0);
+  background: rgba(var(--v-theme-on-surface), 0.12);
 }
 
 .mobile-title {
   font-size: 16px;
   font-weight: 600;
-  color: var(--mobile-header-text, #1a1a1a);
-}
-
-/* Dark theme */
-.app-shell--dark .app-main {
-  background: #121214;
-}
-
-.app-shell--dark .mobile-header {
-  --mobile-header-bg: #1c1c1e;
-  --mobile-header-border: #2c2c2e;
-  --mobile-header-text: #f0f0f0;
-  --mobile-header-hover: #2a2a2c;
+  color: rgb(var(--v-theme-on-surface));
 }
 
 /* Mobile */

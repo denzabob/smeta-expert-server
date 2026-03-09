@@ -214,7 +214,7 @@
             <div>Дата расчета: <strong>{{ formatDate(selectedRate?.fixed_at) }}</strong></div>
             <div>Метод: <strong>{{ getMethodLabel(selectedRate?.calculation_method) }}</strong></div>
             <div v-if="selectedRate?.is_locked">
-              Статус: <strong style="color: #f57c00;">Заблокирована</strong>
+              Статус: <strong class="status-warning">Заблокирована</strong>
               <span v-if="selectedRate.lock_reason"> — {{ selectedRate.lock_reason }}</span>
             </div>
           </div>
@@ -448,7 +448,7 @@ onMounted(() => {
 }
 
 .section-header {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   padding-bottom: 16px;
 }
 
@@ -458,22 +458,23 @@ onMounted(() => {
 }
 
 .border-table thead tr {
-  background-color: rgba(0, 0, 0, 0.04);
+  background-color: rgba(var(--v-theme-on-surface), 0.04);
 }
 
 .border-table th {
   padding: 10px;
   text-align: left;
   font-weight: 500;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
 .border-table td {
   padding: 10px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
 }
 
 .border-table tbody tr:hover {
-  background-color: rgba(0, 0, 0, 0.02);
+  background-color: rgba(var(--v-theme-on-surface), 0.03);
 }
+
 </style>

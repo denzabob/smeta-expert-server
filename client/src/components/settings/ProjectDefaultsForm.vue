@@ -63,14 +63,14 @@
           </div>
           <div class="setting-control">
             <div class="d-flex align-center gap-2">
-              <span class="text-body-2" :style="{ color: !form.use_area_calc_mode ? '#1976d2' : '#999' }">По листам</span>
+              <span class="text-body-2 mode-switch-label" :class="{ 'mode-switch-label--active': !form.use_area_calc_mode }">По листам</span>
               <v-switch
                 color="primary"
                 v-model="form.use_area_calc_mode"
                 hide-details
                 density="compact"
               />
-              <span class="text-body-2" :style="{ color: form.use_area_calc_mode ? '#1976d2' : '#999' }">По площади</span>
+              <span class="text-body-2 mode-switch-label" :class="{ 'mode-switch-label--active': form.use_area_calc_mode }">По площади</span>
             </div>
           </div>
         </div>
@@ -598,7 +598,7 @@ const positionItems = (total: number) => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   gap: 24px;
 }
 
@@ -629,7 +629,7 @@ const positionItems = (total: number) => {
 }
 
 .text-block-item {
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   border-radius: 8px;
   padding: 12px;
 }

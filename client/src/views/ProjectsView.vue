@@ -1,10 +1,16 @@
 <template>
-  <v-container>
-    <v-card>
-      <v-card-title>Проекты</v-card-title>
-      <v-card-actions>
-        <v-btn prepend-icon="mdi-plus" @click="createProject" :loading="creating">Новый проект</v-btn>
-      </v-card-actions>
+  <PageContainer>
+    <SectionCard>
+      <template #title>
+        <PageHeader title="Проекты">
+          <template #actions>
+            <ButtonGroup>
+              <v-btn prepend-icon="mdi-plus" @click="createProject" :loading="creating">Новый проект</v-btn>
+            </ButtonGroup>
+          </template>
+        </PageHeader>
+      </template>
+
       <v-data-table
         :headers="headers"
         :items="projects"
@@ -36,15 +42,13 @@
           {{ formatDateOnly(item.updated_at) }}
         </template>
         <template #item.actions="{ item }">
-          <v-btn variant="text" size="small" class="action-icon-btn" @click.stop="editProject(item)">
-            <v-icon>mdi-pencil</v-icon>
-          </v-btn>
-          <v-btn variant="text" size="small" class="action-icon-btn" @click.stop="deleteProject(item)">
-            <v-icon>mdi-delete</v-icon>
-          </v-btn>
+          <ButtonGroup>
+            <v-btn icon="mdi-pencil" variant="text" size="small" @click.stop="editProject(item)" />
+            <v-btn icon="mdi-delete" variant="text" size="small" @click.stop="deleteProject(item)" />
+          </ButtonGroup>
         </template>
       </v-data-table>
-    </v-card>
+    </SectionCard>
 
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000" location="bottom right">
       {{ snackbar.message }}
@@ -81,7 +85,7 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -89,6 +93,10 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/api/axios'
 import { consumeProjectsFlashMessage } from '@/router/projectAccess'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 
 const router = useRouter()
 
@@ -250,13 +258,3 @@ onMounted(async () => {
   showQueuedNotification()
 })
 </script>
-
-<style scoped>
-.action-icon-btn {
-  min-width: 30px;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border-radius: 6px;
-}
-</style>
