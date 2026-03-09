@@ -16,11 +16,19 @@
 /public/build
 /public/hot
 /public/storage
-/storage/app/price-lists/
-/storage/app/private/price-lists/
-/storage/*.key
-/storage/pail
 /vendor
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Laravel storage
+/storage/*.key
+/storage/app/*
+!/storage/app/public
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*
+
+# Laravel cache
+/bootstrap/cache/*
