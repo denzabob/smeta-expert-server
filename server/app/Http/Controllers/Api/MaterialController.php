@@ -38,10 +38,11 @@ class MaterialController extends Controller
         }
 
         $query = Material::where(function ($q) use ($user) {
-            $q->where(function ($sub) {
-                $sub->whereNull('user_id')
-                    ->where('origin', 'parser');
-            })->orWhere('user_id', $user->id);
+            // Include:
+            // 1. All parser materials (system catalog) - regardless of user_id
+            // 2. User's own materials
+            $q->where('origin', 'parser')
+              ->orWhere('user_id', $user->id);
         });
 
         // Фильтр по типу материала

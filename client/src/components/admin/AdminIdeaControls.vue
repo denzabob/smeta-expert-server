@@ -55,6 +55,29 @@
             {{ errorMessage }}
           </v-alert>
 
+          <v-form class="mb-4" @submit.prevent="addComment">
+            <v-textarea
+              v-model="newComment"
+              label="Добавить комментарий от администратора"
+              variant="outlined"
+              rows="3"
+              density="compact"
+              hide-details
+              :disabled="addCommentLoading"
+            />
+            <div class="d-flex justify-end mt-2">
+              <v-btn
+                type="submit"
+                size="small"
+                color="primary"
+                :loading="addCommentLoading"
+                :disabled="!newComment.trim()"
+              >
+                Добавить комментарий
+              </v-btn>
+            </div>
+          </v-form>
+
           <div v-if="commentsLoading" class="py-8 text-center text-medium-emphasis">
             <v-progress-circular indeterminate color="primary" />
           </div>
@@ -105,7 +128,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { ideasApi, type IdeaComment, type IdeaItem, type IdeaStatus } from '@/api/ideas'
+import { IDEA_STATUS_LABELS, ideasApi, type IdeaComment, type IdeaItem, type IdeaStatus } from '@/api/ideas'
 
 const props = defineProps<{ idea: IdeaItem }>()
 
@@ -121,7 +144,12 @@ const isAdmin = computed(() => {
   return Number(authStore.user?.id) === 1 || role === 'admin' || role === 'superadmin'
 })
 
-const statusOptions = ['NEW', 'PLANNED', 'REJECTED', 'IMPLEMENTED']
+const statusOptions = [
+  { title: IDEA_STATUS_LABELS.NEW, value: 'NEW' },
+  { title: IDEA_STATUS_LABELS.PLANNED, value: 'PLANNED' },
+  { title: IDEA_STATUS_LABELS.REJECTED, value: 'REJECTED' },
+  { title: IDEA_STATUS_LABELS.IMPLEMENTED, value: 'IMPLEMENTED' },
+]
 
 const statusDraft = ref<IdeaStatus>(props.idea.status)
 const statusLoading = ref(false)
@@ -131,6 +159,8 @@ const commentsDialog = ref(false)
 const commentsLoading = ref(false)
 const comments = ref<IdeaComment[]>([])
 const deletingCommentId = ref<number | null>(null)
+const addCommentLoading = ref(false)
+const newComment = ref('')
 const errorMessage = ref('')
 
 watch(
@@ -175,6 +205,7 @@ async function deleteIdea() {
 
 async function openCommentsDialog() {
   commentsDialog.value = true
+  newComment.value = ''
   await loadComments()
 }
 
@@ -202,10 +233,41 @@ async function deleteComment(commentId: number) {
   try {
     await ideasApi.deleteComment(props.idea.id, commentId)
     comments.value = comments.value.filter((item) => item.id !== commentId)
+    await syncIdea()
   } catch (error: any) {
     errorMessage.value = error?.response?.data?.message || 'Не удалось удалить комментарий.'
   } finally {
     deletingCommentId.value = null
+  }
+}
+
+async function addComment() {
+  if (!isAdmin.value) return
+
+  const comment = newComment.value.trim()
+  if (!comment) return
+
+  addCommentLoading.value = true
+  errorMessage.value = ''
+
+  try {
+    await ideasApi.addComment(props.idea.id, comment)
+    newComment.value = ''
+    await loadComments()
+    await syncIdea()
+  } catch (error: any) {
+    errorMessage.value = error?.response?.data?.message || 'Не удалось добавить комментарий.'
+  } finally {
+    addCommentLoading.value = false
+  }
+}
+
+async function syncIdea() {
+  try {
+    const detail = await ideasApi.get(props.idea.id)
+    emit('updated', detail)
+  } catch (error) {
+    console.error('Failed to sync idea after comments update:', error)
   }
 }
 

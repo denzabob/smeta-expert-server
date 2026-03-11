@@ -14,16 +14,26 @@
       <v-col cols="12" md="3">
         <v-card class="ideas-surface">
           <v-card-text>
-            <div class="text-subtitle-2 mb-2">Фильтры</div>
-            <v-select
-              class="idea-form-field"
-              v-model="status"
-              :items="statusOptions"
-              label="Статус"
-              variant="solo-filled"
-              density="comfortable"
-              @update:model-value="loadIdeas"
-            />
+            <div class="text-subtitle-2 mb-2">Статусы</div>
+            <v-list nav density="compact" class="status-menu-list pa-0 mb-4">
+              <v-list-item
+                v-for="item in statusMenuItems"
+                :key="item.value || 'all'"
+                :active="status === item.value"
+                class="status-menu-item"
+                @click="setStatusFilter(item.value)"
+              >
+                <template #prepend>
+                  <v-icon :icon="item.icon" size="18" />
+                </template>
+
+                <v-list-item-title>{{ item.title }}</v-list-item-title>
+
+                <template #append>
+                  <span class="text-caption text-medium-emphasis">{{ item.count }}</span>
+                </template>
+              </v-list-item>
+            </v-list>
 
             <div class="text-subtitle-2 mb-2">Теги</div>
             <v-chip-group column>
@@ -53,7 +63,7 @@
                   variant="solo-filled"
                   density="comfortable"
                   clearable
-                  @keydown.enter.prevent="loadIdeas"
+                  @keydown.enter.prevent="applyFilters"
                 />
               </v-col>
               <v-col cols="12" md="4">
@@ -64,12 +74,12 @@
                   label="Сортировка"
                   variant="solo-filled"
                   density="comfortable"
-                  @update:model-value="loadIdeas"
+                  @update:model-value="applyFilters"
                 />
               </v-col>
             </v-row>
             <div class="filters-bar mt-2">
-              <v-btn variant="tonal" @click="loadIdeas" :loading="loading">Применить</v-btn>
+              <v-btn variant="tonal" @click="applyFilters" :loading="loading">Применить</v-btn>
             </div>
           </v-card-text>
         </v-card>
@@ -108,20 +118,35 @@ const search = ref('')
 const sort = ref<IdeaSort>('new')
 const page = ref(1)
 
+type StatusMenuItem = {
+  title: string
+  value: IdeaStatus | ''
+  count: number
+  icon: string
+}
+
+const statusCounts = ref<Record<'all' | IdeaStatus, number>>({
+  all: 0,
+  NEW: 0,
+  PLANNED: 0,
+  REJECTED: 0,
+  IMPLEMENTED: 0,
+})
+
 const meta = ref({
   current_page: 1,
   last_page: 1,
-  per_page: 20,
+  per_page: 10,
   total: 0,
 })
 
-const statusOptions = [
-  { title: 'Все статусы', value: '' },
-  { title: IDEA_STATUS_LABELS.NEW, value: 'NEW' },
-  { title: IDEA_STATUS_LABELS.PLANNED, value: 'PLANNED' },
-  { title: IDEA_STATUS_LABELS.REJECTED, value: 'REJECTED' },
-  { title: IDEA_STATUS_LABELS.IMPLEMENTED, value: 'IMPLEMENTED' },
-]
+const statusMenuItems = computed<StatusMenuItem[]>(() => [
+  { title: 'Все', value: '', count: statusCounts.value.all, icon: 'mdi-format-list-bulleted' },
+  { title: IDEA_STATUS_LABELS.NEW, value: 'NEW', count: statusCounts.value.NEW, icon: 'mdi-lightbulb-outline' },
+  { title: IDEA_STATUS_LABELS.PLANNED, value: 'PLANNED', count: statusCounts.value.PLANNED, icon: 'mdi-hard-hat' },
+  { title: IDEA_STATUS_LABELS.REJECTED, value: 'REJECTED', count: statusCounts.value.REJECTED, icon: 'mdi-cancel' },
+  { title: IDEA_STATUS_LABELS.IMPLEMENTED, value: 'IMPLEMENTED', count: statusCounts.value.IMPLEMENTED, icon: 'mdi-check-circle-outline' },
+])
 
 const sortOptions = [
   { title: 'Новые', value: 'new' },
@@ -148,6 +173,7 @@ async function loadIdeas() {
       search: search.value || undefined,
       sort: sort.value,
       page: page.value,
+      per_page: 10,
     })
 
     ideas.value = response.data
@@ -157,6 +183,42 @@ async function loadIdeas() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadStatusCounts() {
+  try {
+    const [all, newIdeas, plannedIdeas, rejectedIdeas, implementedIdeas] = await Promise.all([
+      ideasApi.list({ per_page: 1 }),
+      ideasApi.list({ status: 'NEW', per_page: 1 }),
+      ideasApi.list({ status: 'PLANNED', per_page: 1 }),
+      ideasApi.list({ status: 'REJECTED', per_page: 1 }),
+      ideasApi.list({ status: 'IMPLEMENTED', per_page: 1 }),
+    ])
+
+    statusCounts.value = {
+      all: all.meta.total,
+      NEW: newIdeas.meta.total,
+      PLANNED: plannedIdeas.meta.total,
+      REJECTED: rejectedIdeas.meta.total,
+      IMPLEMENTED: implementedIdeas.meta.total,
+    }
+  } catch (error) {
+    console.error('Failed to load idea status counters:', error)
+  }
+}
+
+function applyFilters() {
+  page.value = 1
+  loadIdeas()
+}
+
+function setStatusFilter(nextStatus: IdeaStatus | '') {
+  if (status.value === nextStatus) {
+    return
+  }
+
+  status.value = nextStatus
+  applyFilters()
 }
 
 function openIdea(id: number) {
@@ -195,11 +257,21 @@ async function onClearVote(id: number) {
 
 function toggleTag(tag: string) {
   tagFilter.value = tagFilter.value === tag ? '' : tag
-  page.value = 1
-  loadIdeas()
+  applyFilters()
 }
 
 onMounted(() => {
   loadIdeas()
+  loadStatusCounts()
 })
 </script>
+
+<style scoped>
+.status-menu-list :deep(.v-list-item-title) {
+  font-weight: 500;
+}
+
+.status-menu-item :deep(.v-list-item__append) {
+  margin-inline-start: 8px;
+}
+</style>

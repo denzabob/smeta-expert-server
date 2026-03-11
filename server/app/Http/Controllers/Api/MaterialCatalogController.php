@@ -98,11 +98,11 @@ class MaterialCatalogController extends Controller
 
             default: // 'own'
                 $query->where(function ($q) use ($user) {
+                    // Include:
+                    // 1. User's own materials
+                    // 2. All parser materials (system catalog, regardless of user_id)
                     $q->where('user_id', $user->id)
-                      ->orWhere(function ($q2) {
-                          $q2->where('origin', 'parser')
-                             ->whereNull('user_id');
-                      });
+                      ->orWhere('origin', 'parser');
                 });
                 break;
         }
@@ -171,6 +171,11 @@ class MaterialCatalogController extends Controller
                 'created_at' => $material->created_at,
                 'updated_at' => $material->updated_at,
                 'price_checked_at' => $material->price_checked_at,
+                // Dimension fields
+                'length_mm' => $material->length_mm,
+                'width_mm' => $material->width_mm,
+                'thickness_mm' => $material->thickness_mm,
+                'facade_thickness_mm' => $material->facade_thickness_mm,
                 // Enrichment
                 'latest_price' => $latestPrice ? [
                     'price_per_unit' => $latestPrice->price_per_unit,

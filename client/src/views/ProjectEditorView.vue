@@ -99,6 +99,7 @@
             density="compact"
             color="primary"
             variant="outlined"
+            class="position-toolbar-toggle"
           >
             <v-btn v-for="preset in columnPresets" :key="preset.value" :value="preset.value" size="small">
               <v-icon start size="small">{{ preset.icon }}</v-icon>
@@ -115,6 +116,7 @@
             density="compact"
             color="secondary"
             variant="outlined"
+            class="position-toolbar-toggle"
           >
             <v-btn value="compact" size="small" title="Компактный">
               <v-icon size="small">mdi-view-compact</v-icon>
@@ -4138,14 +4140,33 @@ const hasMissingMainMaterialPrice = (item: Position): boolean => {
   }
   if (!item.material_id) return false
   const mat = materials.value.find(m => m.id === item.material_id)
-  return !mat || !(Number(mat.price_per_unit) > 0)
+  const result = !mat || !(Number(mat.price_per_unit) > 0)
+  if (item.material_id === 691) {
+    console.warn('DEBUG hasMissingMainMaterialPrice for ID 691:', {
+      found: !!mat,
+      price: mat?.price_per_unit,
+      price_number: Number(mat?.price_per_unit),
+      result
+    })
+  }
+  return result
 }
 
 const hasMissingMainMaterialSheetSize = (item: Position): boolean => {
   if (item.kind === 'facade' || !item.material_id) return false
   const mat = materials.value.find(m => m.id === item.material_id)
   if (!mat || mat.type !== 'plate') return false
-  return !(Number(mat.length_mm) > 0 && Number(mat.width_mm) > 0)
+  const result = !(Number(mat.length_mm) > 0 && Number(mat.width_mm) > 0)
+  if (item.material_id === 691) {
+    console.warn('DEBUG hasMissingMainMaterialSheetSize for ID 691:', {
+      found: !!mat,
+      type: mat?.type,
+      length_mm: mat?.length_mm,
+      width_mm: mat?.width_mm,
+      result
+    })
+  }
+  return result
 }
 
 const hasMissingEdgeMaterialPrice = (item: Position): boolean => {
@@ -8197,6 +8218,16 @@ onBeforeUnmount(() => {
 
 .bulk-actions-row :deep(.v-input) {
   min-width: 190px;
+}
+
+.position-toolbar-toggle :deep(.v-btn-group__content) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.position-toolbar-toggle :deep(.v-btn) {
+  border-radius: 10px !important;
 }
 
 .dimension-help {
