@@ -22,13 +22,28 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
 # Laravel storage
 /storage/*.key
+
+# Ignore everything in storage/app, but keep public dir itself
 /storage/app/*
-!/storage/app/public
+!/storage/app/public/
+
+# Ignore screenshots inside public storage
+/storage/app/public/screenshots/
+/server/server/storage/app/public/screenshots/
+
+# Framework/runtime files
 /storage/framework/cache/*
 /storage/framework/sessions/*
 /storage/framework/views/*
+/storage/framework/locks/*
+/server/storage/framework/locks/*
 /storage/logs/*
 
 # Laravel cache
