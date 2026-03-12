@@ -15,6 +15,11 @@ services:
         - playwright_browsers:/root/.cache/ms-playwright
     networks:
       - smeta-network
+    healthcheck:
+      test: ["CMD", "php", "-v"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   web:
     image: nginx:alpine
