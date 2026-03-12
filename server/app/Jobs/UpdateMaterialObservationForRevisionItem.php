@@ -116,6 +116,47 @@ class UpdateMaterialObservationForRevisionItem implements ShouldQueue
                 $this->markNeedsManual($item, RevisionRunItem::STATUS_BLOCKED, 'Источник заблокирован');
                 return;
             }
+
+            // Price not found — attempt screenshot anyway for OK_NO_PRICE
+            $shotNoPrice = $captureService->captureByUrl(
+                url: $rawUrl,
+                price: 0,
+                currency: 'RUB',
+                regionId: $regionId,
+                materialId: $material->id,
+                revisionRunItemId: $item->id
+            );
+
+            $shotNoPriceStatus = (string) ($shotNoPrice['status'] ?? 'error');
+            if ($shotNoPriceStatus === 'ok' && !empty($shotNoPrice['screenshot_path'])) {
+                $history = MaterialPriceHistory::create([
+                    'material_id' => $material->id,
+                    'version' => (int) ($material->version ?? 1),
+                    'valid_from' => now()->toDateString(),
+                    'price_per_unit' => 0,
+                    'source_url' => $normalizedUrl,
+                    'raw_source_url' => $rawUrl,
+                    'normalized_source_url' => $normalizedUrl,
+                    'screenshot_path' => $shotNoPrice['screenshot_path'],
+                    'observed_at' => now(),
+                    'region_id' => $regionId,
+                    'source_type' => MaterialPriceHistory::SOURCE_WEB,
+                    'is_verified' => false,
+                    'true_score' => 0,
+                    'currency' => 'RUB',
+                ]);
+
+                $item->update([
+                    'status' => RevisionRunItem::STATUS_OK_NO_PRICE,
+                    'message' => 'Скриншот получен, но цена не извлечена',
+                    'source_url' => $normalizedUrl,
+                    'material_id' => $material->id,
+                    'price_history_id' => $history->id,
+                ]);
+                $this->refreshRunStats($item->run, true);
+                return;
+            }
+
             $this->markNeedsManual($item, RevisionRunItem::STATUS_PARSE_ERROR, 'Цена не извлечена');
             return;
         }
@@ -210,10 +251,14 @@ class UpdateMaterialObservationForRevisionItem implements ShouldQueue
         }
 
         $total = $run->items()->count();
-        $ok = $run->items()->where('status', RevisionRunItem::STATUS_OK)->count();
+        $ok = $run->items()->whereIn('status', [
+            RevisionRunItem::STATUS_OK,
+            RevisionRunItem::STATUS_OK_NO_PRICE,
+        ])->count();
         // Count only actual failures, not pending (unprocessed) items
         $failed = $run->items()->whereNotIn('status', [
             RevisionRunItem::STATUS_OK,
+            RevisionRunItem::STATUS_OK_NO_PRICE,
             RevisionRunItem::STATUS_PENDING,
         ])->count();
 

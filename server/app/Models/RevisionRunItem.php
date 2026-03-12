@@ -15,6 +15,7 @@ class RevisionRunItem extends Model
     public const STATUS_PARSE_ERROR = 'PARSE_ERROR';
     public const STATUS_NO_TEMPLATE = 'NO_TEMPLATE';
     public const STATUS_NEEDS_MANUAL = 'NEEDS_MANUAL';
+    public const STATUS_OK_NO_PRICE = 'OK_NO_PRICE';
 
     public const STATE_PENDING = 'pending';
     public const STATE_RUNNING = 'running';

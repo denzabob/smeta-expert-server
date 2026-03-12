@@ -5,6 +5,8 @@ services:
       dockerfile: docker/app/Dockerfile
     container_name: smeta_app
     restart: unless-stopped
+    environment:
+      PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
     volumes:
         - ./server:/var/www/html
         - ./parser:/var/www/html/parser
@@ -60,6 +62,8 @@ services:
       dockerfile: docker/app/Dockerfile
     container_name: smeta_worker
     restart: unless-stopped
+    environment:
+      PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
     volumes:
       - ./server:/var/www/html
       - ./parser:/var/www/html/parser

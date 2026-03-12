@@ -762,14 +762,14 @@ class MaterialController extends Controller
             // Проверяем не блокирован ли парсер
             $blockDetection = $this->detectBlockedAccess($html);
             
-            // Если обычный запрос заблокирован, пробуем Puppeteer
+            // Если обычный запрос заблокирован, пробуем браузерный рендеринг (Playwright)
             if ($blockDetection['blocked']) {
-                Log::info('HTTP fetch blocked, trying Puppeteer', ['url' => $url, 'reason' => $blockDetection['reason']]);
+                Log::info('http.blocked_trying_browser', ['url' => $url, 'reason' => $blockDetection['reason']]);
                 
-                $puppeteerResult = $this->fetchWithPuppeteer($url);
-                if ($puppeteerResult['success']) {
-                    $html = $puppeteerResult['html'];
-                    Log::info('Puppeteer fetch succeeded', ['url' => $url]);
+                $browserResult = $this->fetchWithBrowser($url);
+                if ($browserResult['success']) {
+                    $html = $browserResult['html'];
+                    Log::info('browser.fetch_succeeded', ['url' => $url]);
                 } else {
                     // Оба метода не сработали
                     $result['status'] = 'blocked';
@@ -780,24 +780,24 @@ class MaterialController extends Controller
 
             $result = $this->extractFieldsFromHtml($html, $result, $url);
         } catch (\Throwable $e) {
-            Log::warning('materials.fetchByUrl http failed, trying Puppeteer fallback', [
+            Log::warning('http.failed_trying_browser', [
                 'url' => $url,
                 'error' => $e->getMessage(),
             ]);
 
-            $puppeteerResult = $this->fetchWithPuppeteer($url);
-            if ($puppeteerResult['success']) {
-                $result = $this->extractFieldsFromHtml($puppeteerResult['html'], $result, $url);
-                $result['message'] = 'Данные получены через браузерный fallback';
+            $browserResult = $this->fetchWithBrowser($url);
+            if ($browserResult['success']) {
+                $result = $this->extractFieldsFromHtml($browserResult['html'], $result, $url);
+                $result['message'] = 'Данные получены через браузерный fallback (Playwright)';
             } else {
-                $puppeteerError = $puppeteerResult['error'] ?? 'unknown';
-                Log::error('materials.fetchByUrl exception', [
+                $browserError = $browserResult['error'] ?? 'unknown';
+                Log::error('browser.fallback_failed', [
                     'url' => $url,
                     'error' => $e->getMessage(),
-                    'puppeteer_error' => $puppeteerError,
+                    'browser_error' => $browserError,
                 ]);
                 $result['status'] = 'fetch_failed';
-                $result['message'] = 'Ошибка при загрузке страницы: ' . $e->getMessage() . '. Browser fallback: ' . $puppeteerError;
+                $result['message'] = 'Ошибка при загрузке страницы: ' . $e->getMessage() . '. Browser fallback: ' . $browserError;
             }
         }
 
@@ -907,10 +907,11 @@ class MaterialController extends Controller
     }
 
     /**
-     * Загружает страницу используя Playwright (Headless Chrome)
-     * Обходит Cloudflare и другие защиты
+     * Загружает страницу используя Playwright (Headless Chromium).
+     * Обходит Cloudflare и другие защиты.
+     * Включает 1 retry при неудаче и случайную задержку перед навигацией.
      */
-    private function fetchWithPuppeteer(string $url): array
+    private function fetchWithBrowser(string $url, int $attempt = 1): array
     {
         try {
             $scriptPath = $this->resolveNodeScriptPath('scrape-page-pw.js');
@@ -942,7 +943,7 @@ class MaterialController extends Controller
             );
 
             if (!is_resource($process)) {
-                throw new \Exception('Failed to start Puppeteer process');
+                throw new \Exception('Failed to start Playwright process');
             }
 
             $output = stream_get_contents($pipes[1]);
@@ -955,14 +956,23 @@ class MaterialController extends Controller
             if ($returnCode !== 0) {
                 $stderrPayload = json_decode(trim($error), true);
                 $stderrMessage = is_array($stderrPayload) ? ($stderrPayload['error'] ?? null) : null;
-                Log::warning('Puppeteer process failed', [
+                Log::warning('browser.process_failed', [
                     'return_code' => $returnCode,
                     'stderr' => $error,
                     'url' => $url,
+                    'attempt' => $attempt,
                 ]);
+
+                // Retry once
+                if ($attempt < 2) {
+                    Log::info('browser.retry', ['url' => $url, 'attempt' => $attempt + 1]);
+                    usleep(random_int(500_000, 1_500_000));
+                    return $this->fetchWithBrowser($url, $attempt + 1);
+                }
+
                 return [
                     'success' => false,
-                    'error' => $stderrMessage ?: 'Puppeteer process failed',
+                    'error' => $stderrMessage ?: 'Playwright process failed',
                     'html' => null,
                 ];
             }
@@ -970,7 +980,7 @@ class MaterialController extends Controller
             $result = json_decode(trim($output), true);
 
             if ($result === null) {
-                Log::warning('Puppeteer JSON decode failed', [
+                Log::warning('browser.json_decode_failed', [
                     'json_error' => json_last_error_msg(),
                     'output_length' => strlen($output),
                     'url' => $url,
@@ -983,10 +993,18 @@ class MaterialController extends Controller
             }
 
             if (!isset($result['success']) || !$result['success']) {
-                Log::warning('Puppeteer returned error', [
+                Log::warning('browser.returned_error', [
                     'error' => $result['error'] ?? 'Unknown',
                     'url' => $url,
                 ]);
+
+                // Retry once on browser error
+                if ($attempt < 2) {
+                    Log::info('browser.retry', ['url' => $url, 'attempt' => $attempt + 1]);
+                    usleep(random_int(500_000, 1_500_000));
+                    return $this->fetchWithBrowser($url, $attempt + 1);
+                }
+
                 return [
                     'success' => false,
                     'error' => $result['error'] ?? 'Unknown error',
@@ -1010,10 +1028,19 @@ class MaterialController extends Controller
                 'html' => $html,
             ];
         } catch (\Throwable $e) {
-            Log::error('Puppeteer fetch exception', [
+            Log::error('browser.fetch_exception', [
                 'error' => $e->getMessage(),
                 'url' => $url,
+                'attempt' => $attempt,
             ]);
+
+            // Retry once on exception
+            if ($attempt < 2) {
+                Log::info('browser.retry', ['url' => $url, 'attempt' => $attempt + 1]);
+                usleep(random_int(500_000, 1_500_000));
+                return $this->fetchWithBrowser($url, $attempt + 1);
+            }
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -1124,7 +1151,16 @@ class MaterialController extends Controller
             return (float) str_replace(',', '.', $metaPrice);
         }
 
-        // 2. Точный UI-узел цены (напр. Boyard): <li class="bd-price__current">2 703,79 ₽</li>
+        // 2. itemprop="price" (microdata standard)
+        if (preg_match('/itemprop=["\']price["\'][^>]*(?:content=["\']([^"\']+)["\']|>\s*([0-9\s,.]+))/ui', $html, $matches)) {
+            $raw = !empty($matches[1]) ? $matches[1] : ($matches[2] ?? '');
+            $price = $this->cleanPrice($raw);
+            if ($this->isValidPrice($price)) {
+                return (float) $price;
+            }
+        }
+
+        // 3. Точный UI-узел цены (напр. Boyard): <li class="bd-price__current">2 703,79 ₽</li>
         if (preg_match('/<li[^>]*class=["\'][^"\']*bd-price__current[^"\']*["\'][^>]*>\s*([0-9][0-9\s]{1,}[.,][0-9]{1,2})\s*₽?\s*<\/li>/ui', $html, $matches)) {
             $price = $this->cleanPrice($matches[1]);
             if ($this->isValidPrice($price)) {
@@ -1132,22 +1168,50 @@ class MaterialController extends Controller
             }
         }
 
-        // 3. Ищем явную цену в рублях с учетом тысячных пробелов: "2 586,46 ₽"
-        if (preg_match('/([0-9][0-9\s]{1,}[.,][0-9]{1,2})\s*(?:₽|руб(?:\.|ля|лей)?)/ui', $html, $matches)) {
+        // 4. Ищем в атрибутах data-price, data-value
+        if (preg_match('/data-(?:price|value)=["\']([0-9]+(?:[.,][0-9]{1,2})?)["\']*/ui', $html, $matches)) {
+            if ($this->isValidPrice($matches[1])) {
+                return (float) str_replace(',', '.', $matches[1]);
+            }
+        }
+
+        // 5. Common product-price CSS selectors (skm-mebel.ru, ldsp-market.ru, donplita.ru, etc.)
+        $domPricePatterns = [
+            // product-price, product__price, item-price variants
+            '/<[^>]+class=["\'][^"\']*(?:product[_-]?price|item[_-]?price|price[_-]?current|price[_-]?new|price[_-]?value|current[_-]?price)[^"\']*["\'][^>]*>(?:[^<]*?)?([0-9][0-9\s\x{00A0},.]{1,20})(?:\s*(?:₽|руб|р\.|р\b))?/ui',
+            // BEM-style: __price, --price selectors
+            '/<[^>]+class=["\'][^"\']*(?:__price|--price)[^"\']*["\'][^>]*>(?:[^<]*?)?([0-9][0-9\s\x{00A0},.]{1,20})/ui',
+            // price inside nested spans: <span class="price"><span>1 234</span></span>
+            '/<[^>]+class=["\'][^"\']*\bprice\b[^"\']*["\'][^>]*>\s*(?:<[^>]+>)*\s*([0-9][0-9\s\x{00A0},.]{1,20})/ui',
+        ];
+
+        foreach ($domPricePatterns as $pattern) {
+            if (preg_match($pattern, $html, $matches)) {
+                $price = $this->cleanPrice($matches[1]);
+                if ($this->isValidPrice($price)) {
+                    Log::debug('dom.price_found', ['pattern' => 'css_selector', 'raw' => $matches[1]]);
+                    return (float) $price;
+                }
+            }
+        }
+
+        // 6. Ищем явную цену в рублях с учетом тысячных пробелов: "2 586,46 ₽"
+        if (preg_match('/([0-9][0-9\s\x{00A0}]{1,}[.,][0-9]{1,2})\s*(?:₽|руб(?:\.|ля|лей)?)/ui', $html, $matches)) {
             $price = $this->cleanPrice($matches[1]);
             if ($this->isValidPrice($price)) {
                 return (float) $price;
             }
         }
 
-        // 4. Ищем в атрибутах data-price, цена и т.д.
-        if (preg_match('/data-price=["\']([0-9]+(?:[.,][0-9]{1,2})?)["\']*/ui', $html, $matches)) {
-            if ($this->isValidPrice($matches[1])) {
-                return (float) str_replace(',', '.', $matches[1]);
+        // 7. Целая цена в рублях (без копеек): "1 234 ₽" or "1234 руб"
+        if (preg_match('/(?<![0-9.,])([0-9][0-9\s\x{00A0}]{2,10})(?:\s*(?:₽|руб(?:\.|ля|лей)?))/ui', $html, $matches)) {
+            $price = $this->cleanPrice($matches[1]);
+            if ($this->isValidPrice($price)) {
+                return (float) $price;
             }
         }
 
-        // 5. Ищем в классах span/div с id или class содержащих "price"
+        // 8. Ищем в классах span/div с id или class содержащих "price"
         if (preg_match('/<(?:span|div)[^>]*(?:id|class)=["\'](?:[^"\']*)?price[^"\']*["\'][^>]*>(?:\D)*([0-9\s,.]{2,20})(?:\D)/ui', $html, $matches)) {
             $price = $this->cleanPrice($matches[1]);
             if ($this->isValidPrice($price)) {
@@ -1155,8 +1219,7 @@ class MaterialController extends Controller
             }
         }
 
-        // 6. Ищем паттерн "цена: XXXX" или "Price: XXXX"
-        // Защита от ложного срабатывания на "цена за 1 компл"
+        // 9. Ищем паттерн "цена: XXXX" или "Price: XXXX"
         if (preg_match('/(?:цена|price|стоимость)[:\s]+([0-9\s,.]{2,20})(?:\s|₽|р|руб|грн|у\.е\.|\.)/ui', $html, $matches)) {
             $price = $this->cleanPrice($matches[1]);
             $num = is_numeric($price) ? (float) $price : 0.0;
@@ -1165,14 +1228,14 @@ class MaterialController extends Controller
             }
         }
 
-        // 7. Ищем в JSON-LD структурированных данных (резервный вариант)
+        // 10. Ищем в JSON-LD структурированных данных (резервный вариант)
         if (preg_match('/"price"[:\s]*"?([0-9]+(?:[.,][0-9]{1,2})?)"?/ui', $html, $matches)) {
             if ($this->isValidPrice($matches[1])) {
                 return (float) str_replace(',', '.', $matches[1]);
             }
         }
 
-        // 8. Fallback: ищем любое число с разделителем (может быть в конце, рядом с валютой)
+        // 11. Fallback: ищем любое число с разделителем рядом с валютой
         if (preg_match('/([0-9]{3,}[.,][0-9]{1,2})\s*(?:₽|р\.п\.|грн|\.)/u', $html, $matches)) {
             $price = $this->cleanPrice($matches[1]);
             if ($this->isValidPrice($price)) {
@@ -1180,8 +1243,7 @@ class MaterialController extends Controller
             }
         }
 
-        // 9. Последний вариант - просто ищем большое число (но предварительно удаляя даты и артикулы)
-        // Удаляем даты и очевидные артикулы
+        // 12. Последний вариант - ищем большое число (удаляя даты и артикулы)
         $cleaned = preg_replace('/\d{1,2}[.-]\d{1,2}[.-]\d{2,4}/', '', $html);
         if (preg_match('/([0-9]{4,}[.,][0-9]{2})/u', $cleaned, $matches)) {
             $price = $this->cleanPrice($matches[1]);

@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     libpng-dev \
     libjpeg-dev \
+    libwebp-dev \
     libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
@@ -26,7 +27,7 @@ RUN apt-get update && apt-get install -y \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
     libcups2 \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install pdo_mysql mbstring zip gd
 
 # Composer
@@ -44,9 +45,10 @@ COPY server/ .
 # PHP зависимости
 RUN composer install --no-dev --optimize-autoloader
 
-# Playwright (Node)
-RUN npm install playwright
-RUN npx playwright install chromium
+# Playwright runtime for Python screenshot service
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+RUN pip3 install --no-cache-dir --break-system-packages playwright
+RUN python3 -m playwright install chromium
 
 # Laravel ключ
 RUN php artisan key:generate --ansi

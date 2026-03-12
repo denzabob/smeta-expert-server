@@ -1,7 +1,7 @@
 import api from './axios'
 
 export type RevisionRunStatus = 'PENDING' | 'IN_PROGRESS' | 'NEEDS_MANUAL' | 'READY' | 'FINALIZED' | 'FAILED'
-export type RevisionRunItemStatus = 'PENDING' | 'OK' | 'BLOCKED' | 'TIMEOUT' | 'PARSE_ERROR' | 'NO_TEMPLATE' | 'NEEDS_MANUAL'
+export type RevisionRunItemStatus = 'PENDING' | 'OK' | 'OK_NO_PRICE' | 'BLOCKED' | 'TIMEOUT' | 'PARSE_ERROR' | 'NO_TEMPLATE' | 'NEEDS_MANUAL'
 
 export interface RevisionRun {
   id: number

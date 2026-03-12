@@ -12,6 +12,30 @@ import { writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+/**
+ * Random delay to mimic human navigation timing.
+ */
+function randomDelay(minMs, maxMs) {
+  const ms = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Check if the page is showing a Cloudflare challenge.
+ */
+async function detectCloudflare(page) {
+  try {
+    const title = (await page.title() || '').toLowerCase();
+    if (title.includes('just a moment') || title.includes('checking your browser')) {
+      return true;
+    }
+    const challenge = await page.$('#challenge-running');
+    return challenge !== null;
+  } catch {
+    return false;
+  }
+}
+
 async function scrapePage(url) {
   let browser;
   try {
@@ -23,12 +47,18 @@ async function scrapePage(url) {
         '--disable-setuid-sandbox',
         '--disable-blink-features=AutomationControlled',
         '--disable-dev-shm-usage',
-        '--disable-web-security',
       ],
     });
 
     const context = await browser.newContext({
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      viewport: { width: 1280, height: 900 },
+      locale: 'ru-RU',
+      extraHTTPHeaders: {
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'ru-RU,ru;q=0.9',
+        'Upgrade-Insecure-Requests': '1',
+      },
     });
 
     await context.addInitScript(() => {
@@ -39,7 +69,7 @@ async function scrapePage(url) {
 
     const page = await context.newPage();
 
-    // Блокируем ресурсы которые не нужны для парсинга (аналогично SkmMebelAdapter)
+    // Блокируем ресурсы которые не нужны для парсинга
     await page.route('**/*', (route) => {
       const type = route.request().resourceType();
       if (['image', 'media', 'font'].includes(type)) {
@@ -49,12 +79,16 @@ async function scrapePage(url) {
       const trackers = [
         'mc.yandex.ru', 'metrika', 'google-analytics', 'googletagmanager',
         'facebook.net', 'amplitude', 'hotjar', 'bitrix24',
+        'jivosite', 'carrotquest', 'top-fwz1', '/tracker', '/analytics', '/pixel',
       ];
       if (trackers.some(t => reqUrl.includes(t))) {
         return route.abort();
       }
       return route.continue();
     });
+
+    // Random delay 1-3s before navigation to mimic human behavior
+    await randomDelay(1000, 3000);
 
     // Переходим на страницу
     try {
@@ -67,6 +101,16 @@ async function scrapePage(url) {
     }
 
     await page.waitForTimeout(1500);
+
+    // Cloudflare detection — wait up to 20 seconds
+    if (await detectCloudflare(page)) {
+      console.error(JSON.stringify({ event: 'browser.cloudflare_detected', url }));
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        if (!(await detectCloudflare(page))) break;
+        await page.waitForTimeout(1000);
+      }
+    }
 
     // Получаем полный HTML страницы
     const html = await page.content();

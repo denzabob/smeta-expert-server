@@ -1478,10 +1478,6 @@
           <template v-slot:item.created_at="{ item }">
             {{ formatRevisionDate(item.created_at) }}
           </template>
-          <template v-slot:item.snapshot_hash="{ item }">
-            <span v-if="item.snapshot_hash">{{ formatSnapshotHash(item.snapshot_hash) }}</span>
-            <span v-else>—</span>
-          </template>
           <template v-slot:item.created_by="{ item }">
             <span v-if="item.created_by?.name">{{ item.created_by.name }}</span>
             <span v-else-if="item.createdBy?.name">{{ item.createdBy.name }}</span>
@@ -1527,14 +1523,6 @@
                 title="Снять публикацию"
                 :disabled="!canUnpublishRevision(item)"
                 @click="unpublishRevision(item)"
-              />
-              <v-btn
-                size="x-small"
-                variant="text"
-                icon="mdi-fingerprint"
-                title="Копировать fingerprint"
-                :disabled="item.status === 'stale'"
-                @click="copyRevisionFingerprint(item)"
               />
             </div>
           </template>
@@ -1611,6 +1599,14 @@
             density="compact"
             class="mb-2"
           />
+          <v-alert
+            type="warning"
+            variant="tonal"
+            density="compact"
+            class="mb-2"
+          >
+            Подставлена последняя цена из расчётов. Обязательно проверьте актуальность цены перед сохранением.
+          </v-alert>
           <v-text-field
             v-model="manualCloseForm.currency"
             label="Валюта"
@@ -1625,16 +1621,42 @@
             density="compact"
             class="mb-2"
           />
-          <v-file-input
-            v-model="manualCloseForm.screenshot_file"
-            accept="image/*"
-            label="Скриншот (обязательно)"
-            variant="outlined"
-            density="compact"
-            prepend-icon="mdi-camera"
-            show-size
-            class="mb-2"
-          />
+          <div
+            ref="manualScreenshotDropzone"
+            class="manual-screenshot-dropzone mb-2"
+            :class="{ 'manual-screenshot-dropzone--active': manualScreenshotDropActive }"
+            tabindex="0"
+            @dragenter.prevent="onManualScreenshotDragEnter"
+            @dragover.prevent="onManualScreenshotDragOver"
+            @dragleave.prevent="onManualScreenshotDragLeave"
+            @drop.prevent="onManualScreenshotDrop"
+            @paste="onManualScreenshotPaste"
+          >
+            <v-file-input
+              v-model="manualCloseForm.screenshot_file"
+              accept="image/*"
+              label="Скриншот (обязательно)"
+              variant="outlined"
+              density="compact"
+              prepend-icon="mdi-camera"
+              show-size
+              hide-details="auto"
+              class="mb-1"
+            />
+            <div class="d-flex align-center justify-space-between ga-2 text-caption text-medium-emphasis">
+              <span>Перетащите файл сюда или вставьте изображение из буфера (Ctrl+V)</span>
+              <v-btn
+                v-if="getManualScreenshotFile()"
+                size="x-small"
+                variant="text"
+                color="warning"
+                prepend-icon="mdi-close"
+                @click="clearManualScreenshotFile"
+              >
+                Очистить
+              </v-btn>
+            </div>
+          </div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -4015,7 +4037,6 @@ const revisionHeaders = [
   { title: '№', key: 'number' },
   { title: 'Статус', key: 'status' },
   { title: 'Создана', key: 'created_at' },
-  { title: 'Fingerprint', key: 'snapshot_hash' },
   { title: 'Автор', key: 'created_by' },
   { title: 'Действия', key: 'actions', sortable: false }
 ]
@@ -4060,6 +4081,8 @@ const lastKnownRunStatus = ref<string | null>(null)
 const manualCloseDialog = ref(false)
 const manualCloseLoading = ref(false)
 const manualCloseItem = ref<RevisionRunItem | null>(null)
+const manualScreenshotDropzone = ref<HTMLElement | null>(null)
+const manualScreenshotDropActive = ref(false)
 const manualCloseForm = reactive<{
   price_per_unit: number
   currency: string
@@ -5834,6 +5857,8 @@ const formatRunItemStatus = (status?: string) => {
       return 'в обработке'
     case 'OK':
       return 'OK'
+    case 'OK_NO_PRICE':
+      return 'OK без цены'
     case 'BLOCKED':
       return 'blocked'
     case 'TIMEOUT':
@@ -5855,6 +5880,8 @@ const getRunItemStatusColor = (status?: string) => {
       return 'blue-grey'
     case 'OK':
       return 'success'
+    case 'OK_NO_PRICE':
+      return 'warning'
     case 'BLOCKED':
       return 'error'
     case 'TIMEOUT':
@@ -6162,20 +6189,6 @@ const unpublishRevision = async (rev: any) => {
   }
 }
 
-const copyRevisionFingerprint = async (rev: any) => {
-  try {
-    if (!rev?.snapshot_hash) {
-      showNotification('Fingerprint отсутствует', 'warning')
-      return
-    }
-    await navigator.clipboard.writeText(rev.snapshot_hash)
-    showNotification('Fingerprint скопирован', 'success')
-  } catch (error: any) {
-    console.error('❌ Copy fingerprint error:', error)
-    showNotification('Не удалось скопировать fingerprint', 'error')
-  }
-}
-
 const retryRevisionRun = async () => {
   if (!activeRevisionRun.value) return
   revisionRunRetryLoading.value = true
@@ -6192,11 +6205,124 @@ const retryRevisionRun = async () => {
 
 const openManualCloseDialog = (item: RevisionRunItem) => {
   manualCloseItem.value = item
-  manualCloseForm.price_per_unit = 0
+  manualCloseForm.price_per_unit = getSuggestedManualClosePrice(item)
   manualCloseForm.currency = 'RUB'
   manualCloseForm.source_url = item.source_url || ''
   manualCloseForm.screenshot_file = null
+  manualScreenshotDropActive.value = false
   manualCloseDialog.value = true
+}
+
+const focusManualScreenshotDropzone = () => {
+  nextTick(() => {
+    window.setTimeout(() => {
+      manualScreenshotDropzone.value?.focus()
+    }, 50)
+  })
+}
+
+const getSuggestedManualClosePrice = (item: RevisionRunItem | any): number => {
+  const position = item?.position || {}
+  const material = item?.material || {}
+  const priceHistory = item?.priceHistory || item?.price_history || {}
+
+  const candidates = [
+    Number(position.unit_price),
+    Number(material.price_per_unit),
+    Number(priceHistory.price_per_unit),
+  ]
+
+  const found = candidates.find((value) => Number.isFinite(value) && value > 0)
+  if (!found) {
+    return 0
+  }
+
+  return Math.round(found * 100) / 100
+}
+
+const setManualScreenshotFile = (file: File | null): boolean => {
+  if (!file) {
+    return false
+  }
+
+  if (!file.type || !file.type.startsWith('image/')) {
+    showNotification('Поддерживаются только изображения', 'warning')
+    return false
+  }
+
+  manualCloseForm.screenshot_file = file
+  return true
+}
+
+const clearManualScreenshotFile = () => {
+  manualCloseForm.screenshot_file = null
+}
+
+const onManualScreenshotDragEnter = () => {
+  manualScreenshotDropActive.value = true
+}
+
+const onManualScreenshotDragOver = () => {
+  manualScreenshotDropActive.value = true
+}
+
+const onManualScreenshotDragLeave = (event: DragEvent) => {
+  const currentTarget = event.currentTarget as HTMLElement | null
+  const relatedTarget = event.relatedTarget as Node | null
+  if (currentTarget && relatedTarget && currentTarget.contains(relatedTarget)) {
+    return
+  }
+  manualScreenshotDropActive.value = false
+}
+
+const onManualScreenshotDrop = (event: DragEvent) => {
+  manualScreenshotDropActive.value = false
+  const dropped = event.dataTransfer?.files?.[0] || null
+  if (!dropped) {
+    return
+  }
+  if (setManualScreenshotFile(dropped)) {
+    showNotification('Скриншот добавлен', 'success')
+  }
+}
+
+const applyManualScreenshotFromClipboard = (event: ClipboardEvent): boolean => {
+  const items = event.clipboardData?.items
+  if (!items?.length) {
+    return false
+  }
+
+  for (const item of items) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) {
+      continue
+    }
+
+    const pasted = item.getAsFile()
+    if (pasted && setManualScreenshotFile(pasted)) {
+      return true
+    }
+    return false
+  }
+
+  return false
+}
+
+const onManualScreenshotPaste = (event: ClipboardEvent) => {
+  if (applyManualScreenshotFromClipboard(event)) {
+    showNotification('Скриншот вставлен из буфера', 'success')
+    event.preventDefault()
+  }
+}
+
+const onWindowPasteForManualClose = (event: ClipboardEvent) => {
+  if (!manualCloseDialog.value || event.defaultPrevented) {
+    return
+  }
+
+  if (applyManualScreenshotFromClipboard(event)) {
+    showNotification('Скриншот вставлен из буфера', 'success')
+    event.preventDefault()
+  }
 }
 
 const getManualScreenshotFile = (): File | null => {
@@ -7669,7 +7795,19 @@ onMounted(async () => {
   }
 })
 
+watch(manualCloseDialog, (isOpen) => {
+  if (!isOpen) {
+    window.removeEventListener('paste', onWindowPasteForManualClose)
+    manualScreenshotDropActive.value = false
+    return
+  }
+
+  window.addEventListener('paste', onWindowPasteForManualClose)
+  focusManualScreenshotDropzone()
+})
+
 onBeforeUnmount(() => {
+  window.removeEventListener('paste', onWindowPasteForManualClose)
   stopRevisionRunPolling()
 })
 </script>
@@ -7679,6 +7817,24 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   height: 80vh;
+}
+
+.manual-screenshot-dropzone {
+  border: 1px dashed rgba(var(--v-theme-primary), 0.45);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(var(--v-theme-primary), 0.03);
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.manual-screenshot-dropzone:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.22);
+}
+
+.manual-screenshot-dropzone--active {
+  border-color: rgba(var(--v-theme-primary), 0.95);
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 
 .steps-dialog-header {
