@@ -29,7 +29,6 @@ services:
     ports:
       - "127.0.0.1:8000:80"
     volumes:
-      - ./server:/var/www/html
       - ./docker/app/nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       app:
