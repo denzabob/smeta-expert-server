@@ -63,13 +63,15 @@ COPY server/composer.json server/composer.lock ./
 RUN composer install \
     --no-dev \
     --optimize-autoloader \
-    --no-interaction
+    --no-interaction \
+    --no-scripts
 
 # -------------------------
 # Copy project
 # -------------------------
 
 COPY server/ .
+RUN php artisan package:discover --ansi || true
 
 # -------------------------
 # Playwright
