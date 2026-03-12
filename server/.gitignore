@@ -24,6 +24,7 @@ Thumbs.db
 
 # Python
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 
@@ -34,9 +35,14 @@ __pycache__/
 /storage/app/*
 !/storage/app/public/
 
-# Ignore screenshots inside public storage
+# Ignore screenshots
 /storage/app/public/screenshots/
 /server/server/storage/app/public/screenshots/
+
+# Ignore generated storage trees if they exist outside root Laravel storage
+/server/server/storage/
+/server/storage/
+/storage/
 
 # Framework/runtime files
 /storage/framework/cache/*

@@ -4,6 +4,9 @@ chrome-extension/
 vendor/
 .env
 server/.env
+
+# Logs
+*.log
 storage/logs/
 server/storage/logs/
 
@@ -13,9 +16,30 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Logs
-*.log
-
 # Database dumps / local databases
 *.sql
 *.sqlite*
+
+# Python
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Root generated storage
+storage/app/public/screenshots/
+storage/framework/cache/
+storage/framework/sessions/
+storage/framework/views/
+storage/framework/locks/
+storage/logs/
+
+# Nested server generated storage
+server/storage/app/public/screenshots/
+server/storage/framework/cache/
+server/storage/framework/sessions/
+server/storage/framework/views/
+server/storage/framework/locks/
+server/storage/logs/
+
+# If you really do not need these generated trees in git
+server/server/storage/
