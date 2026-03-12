@@ -417,6 +417,7 @@ class ProjectRevisionController extends Controller
 
             return [
                 'project_position_id' => $j['project_position_id'] ?? null,
+                'project_fitting_id' => $j['project_fitting_id'] ?? null,
                 'material_id' => $materialId,
                 'name' => $j['name'] ?? ('Материал #' . ($materialId ?: '—')),
                 'article' => $j['article'] ?? null,

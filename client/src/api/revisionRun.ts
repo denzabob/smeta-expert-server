@@ -18,7 +18,8 @@ export interface RevisionRun {
 export interface RevisionRunItem {
   id: number
   revision_run_id: number
-  project_position_id: number
+  project_position_id: number | null
+  project_fitting_id?: number | null
   material_id: number | null
   material?: Record<string, unknown>
   source_url: string | null
@@ -26,6 +27,7 @@ export interface RevisionRunItem {
   message: string | null
   price_history_id: number | null
   position?: Record<string, unknown>
+  projectFitting?: Record<string, unknown>
   price_history?: Record<string, unknown>
   priceHistory?: Record<string, unknown>
 }

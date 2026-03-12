@@ -3,17 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Material;
 use App\Models\Project;
 use App\Models\ProjectFitting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class ProjectFittingController extends Controller
 {
     public function index(Project $project)
     {
         $this->authorize('view', $project);
-        return $project->fittings;
+        return $project->fittings()->with('material')->get();
     }
 
     public function store(Request $request, Project $project)
@@ -21,23 +23,37 @@ class ProjectFittingController extends Controller
         $this->authorize('update', $project);
 
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'article' => 'nullable|string|max:255',
-            'unit' => 'required|string|max:50',
+            'material_id' => [
+                'required',
+                'integer',
+                Rule::exists('materials', 'id')->where(fn ($query) => $query->where('type', Material::TYPE_HARDWARE)),
+            ],
             'quantity' => 'required|numeric|min:0',
-            'unit_price' => 'required|numeric|min:0',
         ]);
 
-        $validated['project_id'] = $project->id;
-        $fitting = ProjectFitting::create($validated);
-        return response()->json($fitting, 201);
+        $material = Material::query()
+            ->where('type', Material::TYPE_HARDWARE)
+            ->findOrFail((int) $validated['material_id']);
+
+        $fitting = ProjectFitting::create([
+            'project_id' => $project->id,
+            'material_id' => $material->id,
+            'name' => $material->name,
+            'article' => $material->article,
+            'unit' => $material->unit ?: 'шт',
+            'quantity' => (float) $validated['quantity'],
+            'unit_price' => (float) ($material->price_per_unit ?? 0),
+            'source_url' => $material->source_url,
+        ]);
+
+        return response()->json($fitting->load('material'), 201);
     }
 
     public function show(Project $project, ProjectFitting $fitting)
     {
         if ($fitting->project_id !== $project->id) abort(404);
         $this->authorize('view', $project);
-        return $fitting;
+        return $fitting->load('material');
     }
 
     public function update(Request $request, Project $project, ProjectFitting $fitting)
@@ -57,15 +73,42 @@ class ProjectFittingController extends Controller
         $this->authorize('update', $project);
 
         $validated = $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'article' => 'nullable|string|max:255',
-            'unit' => 'sometimes|required|string|max:50',
+            'material_id' => [
+                'sometimes',
+                'required',
+                'integer',
+                Rule::exists('materials', 'id')->where(fn ($query) => $query->where('type', Material::TYPE_HARDWARE)),
+            ],
             'quantity' => 'sometimes|required|numeric|min:0',
-            'unit_price' => 'sometimes|required|numeric|min:0',
         ]);
 
-        $fitting->update($validated);
-        return $fitting;
+        $materialId = isset($validated['material_id'])
+            ? (int) $validated['material_id']
+            : (int) $fitting->material_id;
+
+        if ($materialId <= 0) {
+            return response()->json([
+                'message' => 'material_id обязателен для фурнитуры',
+            ], 422);
+        }
+
+        $material = Material::query()
+            ->where('type', Material::TYPE_HARDWARE)
+            ->findOrFail($materialId);
+
+        $fitting->update([
+            'material_id' => $material->id,
+            'name' => $material->name,
+            'article' => $material->article,
+            'unit' => $material->unit ?: 'шт',
+            'quantity' => array_key_exists('quantity', $validated)
+                ? (float) $validated['quantity']
+                : (float) $fitting->quantity,
+            'unit_price' => (float) ($material->price_per_unit ?? 0),
+            'source_url' => $material->source_url,
+        ]);
+
+        return $fitting->load('material');
     }
 
     public function destroy(Project $project, ProjectFitting $fitting)
@@ -90,7 +133,7 @@ class ProjectFittingController extends Controller
     // Top-level handlers for routes like /api/project-fittings/{id}
     public function showById(ProjectFitting $fitting)
     {
-        $fitting->load('project');
+        $fitting->load(['project', 'material']);
         return $fitting;
     }
 
@@ -119,15 +162,42 @@ class ProjectFittingController extends Controller
         $this->authorize('update', $project);
 
         $validated = $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'article' => 'nullable|string|max:255',
-            'unit' => 'sometimes|required|string|max:50',
+            'material_id' => [
+                'sometimes',
+                'required',
+                'integer',
+                Rule::exists('materials', 'id')->where(fn ($query) => $query->where('type', Material::TYPE_HARDWARE)),
+            ],
             'quantity' => 'sometimes|required|numeric|min:0',
-            'unit_price' => 'sometimes|required|numeric|min:0',
         ]);
 
-        $fitting->update($validated);
-        return $fitting;
+        $materialId = isset($validated['material_id'])
+            ? (int) $validated['material_id']
+            : (int) $fitting->material_id;
+
+        if ($materialId <= 0) {
+            return response()->json([
+                'message' => 'material_id обязателен для фурнитуры',
+            ], 422);
+        }
+
+        $material = Material::query()
+            ->where('type', Material::TYPE_HARDWARE)
+            ->findOrFail($materialId);
+
+        $fitting->update([
+            'material_id' => $material->id,
+            'name' => $material->name,
+            'article' => $material->article,
+            'unit' => $material->unit ?: 'шт',
+            'quantity' => array_key_exists('quantity', $validated)
+                ? (float) $validated['quantity']
+                : (float) $fitting->quantity,
+            'unit_price' => (float) ($material->price_per_unit ?? 0),
+            'source_url' => $material->source_url,
+        ]);
+
+        return $fitting->load('material');
     }
     public function destroyById(ProjectFitting $fitting)
     {

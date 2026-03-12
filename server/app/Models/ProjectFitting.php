@@ -13,15 +13,22 @@ class ProjectFitting extends Model
 
     protected $fillable = [
         'project_id',
+        'material_id',
         'name',
         'article',
         'unit',
         'quantity',
         'unit_price',
+        'source_url',
     ];
 
     public function project()
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function material()
+    {
+        return $this->belongsTo(Material::class, 'material_id');
     }
 }

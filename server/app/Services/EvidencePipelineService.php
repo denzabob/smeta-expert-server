@@ -62,6 +62,7 @@ class EvidencePipelineService
         $item = RevisionRunItem::with([
             'run.project',
             'material',
+            'projectFitting.material',
             'position.material',
             'position.edgeMaterial',
             'position.facadeMaterial',
@@ -210,6 +211,7 @@ class EvidencePipelineService
         $this->transitionItem($item, EvidenceItemState::RUNNING, EvidenceStage::FETCH);
 
         $material = $item->material
+            ?: $item->projectFitting?->material
             ?: $item->position?->facadeMaterial
             ?: $item->position?->edgeMaterial
             ?: $item->position?->material;

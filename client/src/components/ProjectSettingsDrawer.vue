@@ -546,7 +546,7 @@ interface TextBlock {
 interface Material {
   id: number
   name: string
-  type: 'plate' | 'edge' | 'facade'
+  type: 'plate' | 'edge' | 'facade' | 'hardware'
 }
 
 interface Region {

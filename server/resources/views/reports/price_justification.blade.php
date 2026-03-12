@@ -27,7 +27,7 @@
 
   @forelse($rows as $row)
     <div class="item">
-      <div class="title">{{ $row['name'] ?? ('Позиция #' . ($row['project_position_id'] ?? '—')) }}</div>
+      <div class="title">{{ $row['name'] ?? ('Позиция #' . ($row['project_position_id'] ?? $row['project_fitting_id'] ?? '—')) }}</div>
       <div class="info">
         <span>Цена: <strong>{{ $row['price_per_unit'] }} {{ $row['currency'] }}</strong></span>
         @if(!empty($row['observed_at']))

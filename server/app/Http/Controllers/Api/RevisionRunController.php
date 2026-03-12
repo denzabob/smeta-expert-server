@@ -42,7 +42,8 @@ class RevisionRunController extends Controller
 
             RevisionRunItem::create([
                 'revision_run_id' => $run->id,
-                'project_position_id' => $reportItem['project_position_id'],
+                'project_position_id' => $reportItem['project_position_id'] ?? null,
+                'project_fitting_id' => $reportItem['project_fitting_id'] ?? null,
                 'material_id' => $reportItem['material_id'],
                 'source_url' => $sourceUrl,
                 'status' => RevisionRunItem::STATUS_PENDING,
@@ -63,7 +64,7 @@ class RevisionRunController extends Controller
     public function show(Project $project, int $runId): JsonResponse
     {
         $this->authorize('view', $project);
-        $run = RevisionRun::with(['items.position', 'items.material', 'items.priceHistory'])
+        $run = RevisionRun::with(['items.position', 'items.projectFitting.material', 'items.material', 'items.priceHistory'])
             ->where('project_id', $project->id)
             ->findOrFail($runId);
 
@@ -96,12 +97,13 @@ class RevisionRunController extends Controller
             'screenshot_file' => 'required|file|image|max:10240',
         ]);
 
-        $item = RevisionRunItem::with(['run.project', 'material', 'position.material', 'position.edgeMaterial', 'position.facadeMaterial'])
+        $item = RevisionRunItem::with(['run.project', 'material', 'projectFitting.material', 'position.material', 'position.edgeMaterial', 'position.facadeMaterial'])
             ->where('revision_run_id', $runId)
             ->findOrFail($itemId);
         $this->authorize('update', $item->run->project);
 
         $material = $item->material
+            ?: $item->projectFitting?->material
             ?: $item->position?->facadeMaterial
             ?: $item->position?->edgeMaterial
             ?: $item->position?->material;
@@ -149,7 +151,7 @@ class RevisionRunController extends Controller
     public function finalize(Project $project, int $runId): JsonResponse
     {
         $this->authorize('update', $project);
-        $run = RevisionRun::with(['items.priceHistory', 'items.material'])
+        $run = RevisionRun::with(['items.priceHistory', 'items.material', 'items.projectFitting'])
             ->where('project_id', $project->id)
             ->findOrFail($runId);
 
@@ -165,12 +167,16 @@ class RevisionRunController extends Controller
         $justifications = $run->items->map(function (RevisionRunItem $item) {
             $h = $item->priceHistory;
             $material = $item->material;
+            $fitting = $item->projectFitting;
             return [
                 'project_position_id' => $item->project_position_id,
+                'project_fitting_id' => $item->project_fitting_id,
                 'material_id' => $item->material_id,
-                'name' => $material?->name ?? ('Материал #' . ($item->material_id ?: '—')),
-                'article' => $material?->article,
-                'unit' => $material?->unit,
+                'name' => $material?->name
+                    ?? $fitting?->name
+                    ?? ('Материал #' . ($item->material_id ?: $item->project_fitting_id ?: '—')),
+                'article' => $material?->article ?? $fitting?->article,
+                'unit' => $material?->unit ?? $fitting?->unit,
                 'material_type' => $material?->type,
                 'price_history_id' => $item->price_history_id,
                 'source_url' => $item->source_url,
@@ -262,8 +268,24 @@ class RevisionRunController extends Controller
 
             $items['edge:' . $materialId] = [
                 'project_position_id' => $position->id,
+                'project_fitting_id' => null,
                 'material_id' => $materialId,
                 'source_url' => $edge['source_url'] ?? $position->edgeMaterial?->source_url,
+            ];
+        }
+
+        $fittings = $project->fittings()->with('material')->get();
+        foreach ($fittings as $fitting) {
+            $material = $fitting->material;
+            if (!$material) {
+                continue;
+            }
+
+            $items['hardware_fitting:' . $fitting->id] = [
+                'project_position_id' => null,
+                'project_fitting_id' => $fitting->id,
+                'material_id' => $material->id,
+                'source_url' => $fitting->source_url ?: $material->source_url,
             ];
         }
 

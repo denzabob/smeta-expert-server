@@ -2097,8 +2097,18 @@
       <v-card>
         <v-card-title>{{ editingFitting ? 'Редактировать фурнитуру' : 'Новая фурнитура' }}</v-card-title>
         <v-card-text>
-          <v-text-field v-model="fittingForm.name" label="Название" required />
-          <v-text-field v-model="fittingForm.article" label="Артикул (опционально)" />
+          <v-autocomplete
+            :model-value="fittingForm.material_id"
+            :items="hardwareMaterials"
+            item-title="name"
+            item-value="id"
+            label="Материал фурнитуры"
+            density="comfortable"
+            clearable
+            required
+            @update:model-value="onFittingMaterialChange"
+          />
+          <v-text-field v-model="fittingForm.article" label="Артикул" readonly />
           <v-autocomplete
             v-model="fittingForm.unit"
             :items="units"
@@ -2106,10 +2116,11 @@
             :rules="[v => !!v || 'Обязательно']"
             density="comfortable"
             class="mb-3"
-            clearable
+            readonly
           />
           <v-text-field v-model.number="fittingForm.quantity" label="Количество" type="number" />
-          <v-text-field v-model.number="fittingForm.unit_price" label="Цена за шт, ₽" type="number" />
+          <v-text-field v-model.number="fittingForm.unit_price" label="Цена за шт, ₽" type="number" readonly />
+          <v-text-field :model-value="selectedFittingMaterial?.source_url || '—'" label="Источник" readonly />
           <v-textarea v-model="fittingForm.note" label="Примечание (опционально)" rows="2" auto-grow />
         </v-card-text>
         <v-card-actions>
@@ -3012,11 +3023,13 @@ interface Position {
 interface Fitting {
   id: number
   project_id: string
+  material_id?: number | null
   name: string
   article: string
   unit: string
   quantity: number
   unit_price: number
+  source_url?: string | null
   note?: string | null
 }
 interface DetailType { id: number; name: string; edge_processing: string }
@@ -3024,6 +3037,8 @@ interface Material {
   id: number
   name: string
   type: 'plate' | 'edge' | 'facade' | 'hardware'
+  article?: string | null
+  source_url?: string | null
   origin?: 'parser' | 'user' | 'import' | string
   price_per_unit?: number
   length_mm?: number
@@ -4139,8 +4154,61 @@ const positionFormModel = ref<Position>({
 
 const fittingForm = ref<Fitting>({
   id: 0, project_id: projectId,
-  name: '', article: '', unit: 'шт', quantity: 1, unit_price: 0, note: ''
+  material_id: null, name: '', article: '', unit: 'шт', quantity: 1, unit_price: 0, source_url: null, note: ''
 })
+
+const hardwareMaterials = computed(() => {
+  return materials.value
+    .filter((material) => material.type === 'hardware')
+    .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+})
+
+const selectedFittingMaterial = computed(() => {
+  if (!fittingForm.value.material_id) {
+    return null
+  }
+
+  return hardwareMaterials.value.find((material) => material.id === fittingForm.value.material_id) || null
+})
+
+const resolveFittingMaterialId = (item: Fitting): number | null => {
+  if (item.material_id) {
+    return Number(item.material_id)
+  }
+
+  const byArticle = hardwareMaterials.value.find((material) => {
+    return !!item.article && !!material.article && String(material.article).trim() === String(item.article).trim()
+  })
+  if (byArticle) {
+    return byArticle.id
+  }
+
+  const byName = hardwareMaterials.value.find((material) => String(material.name).trim() === String(item.name).trim())
+  return byName?.id || null
+}
+
+const onFittingMaterialChange = (materialId: number | string | null) => {
+  const normalizedMaterialId = materialId == null ? null : Number(materialId)
+  fittingForm.value.material_id = Number.isFinite(normalizedMaterialId as number)
+    ? normalizedMaterialId
+    : null
+
+  const material = hardwareMaterials.value.find((entry) => entry.id === fittingForm.value.material_id)
+  if (!material) {
+    fittingForm.value.name = ''
+    fittingForm.value.article = ''
+    fittingForm.value.unit_price = 0
+    fittingForm.value.unit = units.value[0] || 'шт'
+    fittingForm.value.source_url = null
+    return
+  }
+
+  fittingForm.value.name = material.name
+  fittingForm.value.article = material.article || ''
+  fittingForm.value.unit_price = Number(material.price_per_unit) || 0
+  fittingForm.value.unit = material.unit || units.value[0] || 'шт'
+  fittingForm.value.source_url = material.source_url || null
+}
 
 const expenseForm = ref<any>({
   id: 0, project_id: projectId, type: '', cost: 0
@@ -4503,6 +4571,8 @@ const normalizeMaterialOption = (raw: any): Material | null => {
     id: Number(raw.id),
     name: String(raw.name),
     type: raw.type,
+    article: raw.article || null,
+    source_url: raw.source_url || null,
     origin: (raw.origin || (raw.user_id ? 'user' : 'parser')) as Material['origin'],
     price_per_unit: raw.price_per_unit != null ? Number(raw.price_per_unit) : undefined,
     length_mm: raw.length_mm != null ? Number(raw.length_mm) : undefined,
@@ -5427,28 +5497,58 @@ const applyBulkAction = async () => {
 const openFittingDialog = () => {
   editingFitting.value = false
   const defaultUnit = units.value[0] || 'шт'
-  fittingForm.value = { id: 0, project_id: projectId, name: '', article: '', unit: defaultUnit, quantity: 1, unit_price: 0, note: '' }
+  fittingForm.value = {
+    id: 0,
+    project_id: projectId,
+    material_id: null,
+    name: '',
+    article: '',
+    unit: defaultUnit,
+    quantity: 1,
+    unit_price: 0,
+    source_url: null,
+    note: '',
+  }
   fittingDialog.value = true
 }
 
 const editFitting = (item: Fitting) => {
   editingFitting.value = true
   const defaultUnit = units.value[0] || 'шт'
-  fittingForm.value = { ...item, unit: item.unit || defaultUnit, note: item.note ?? '' }
+  const materialId = resolveFittingMaterialId(item)
+  fittingForm.value = {
+    ...item,
+    material_id: materialId,
+    unit: item.unit || defaultUnit,
+    source_url: item.source_url || null,
+    note: item.note ?? '',
+  }
+  if (materialId) {
+    onFittingMaterialChange(materialId)
+  }
   fittingDialog.value = true
 }
 
 const saveFitting = async () => {
   if (fittingSaving.value) return
+
+  if (!fittingForm.value.material_id) {
+    showNotification('Выберите материал фурнитуры', 'warning')
+    return
+  }
+
   fittingSaving.value = true
 
   try {
+    const material = hardwareMaterials.value.find((entry) => entry.id === fittingForm.value.material_id)
     const payload = {
-      name: fittingForm.value.name,
-      article: fittingForm.value.article,
-      unit: fittingForm.value.unit || units.value[0] || 'шт',
+      material_id: fittingForm.value.material_id,
+      name: material?.name || fittingForm.value.name,
+      article: material?.article || fittingForm.value.article,
+      unit: material?.unit || fittingForm.value.unit || units.value[0] || 'шт',
       quantity: Number(fittingForm.value.quantity) || 0,
-      unit_price: Number(fittingForm.value.unit_price) || 0,
+      unit_price: Number(material?.price_per_unit ?? fittingForm.value.unit_price) || 0,
+      source_url: material?.source_url || fittingForm.value.source_url || null,
       note: fittingForm.value.note || null,
     }
 
@@ -5900,7 +6000,12 @@ const getRunItemStatusColor = (status?: string) => {
 const getRevisionRunItemName = (item: RevisionRunItem | any): string => {
   const material = item?.material || {}
   const position = item?.position || {}
-  return material.name || position.custom_name || position.name || `Материал #${item.material_id || item.project_position_id}`
+  const fitting = item?.projectFitting || {}
+  return material.name
+    || fitting.name
+    || position.custom_name
+    || position.name
+    || `Материал #${item.material_id || item.project_fitting_id || item.project_position_id || '—'}`
 }
 
 const getMaterialCatalogLink = (materialId?: number | string | null): string => {

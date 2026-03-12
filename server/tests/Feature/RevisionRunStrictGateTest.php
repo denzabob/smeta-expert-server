@@ -5,12 +5,14 @@ namespace Tests\Feature;
 use App\Models\Material;
 use App\Models\MaterialPriceHistory;
 use App\Models\Project;
+use App\Models\ProjectFitting;
 use App\Models\ProjectPosition;
 use App\Models\RevisionRun;
 use App\Models\RevisionRunItem;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -57,6 +59,25 @@ class RevisionRunStrictGateTest extends TestCase
             'width' => 600,
             'length' => 800,
             'requires_price_justification' => true,
+        ]);
+    }
+
+    private function makeHardwareMaterial(User $user): Material
+    {
+        return Material::create([
+            'user_id' => $user->id,
+            'origin' => 'user',
+            'name' => 'Петля с доводчиком',
+            'article' => 'HW-001',
+            'type' => 'hardware',
+            'unit' => 'шт',
+            'price_per_unit' => 250,
+            'source_url' => 'https://example.com/hardware/item-1',
+            'is_active' => true,
+            'version' => 1,
+            'visibility' => 'private',
+            'data_origin' => 'manual',
+            'trust_level' => 'unverified',
         ]);
     }
 
@@ -139,5 +160,42 @@ class RevisionRunStrictGateTest extends TestCase
         $this->assertSame(0, $history->true_score);
         $this->assertNotNull($history->screenshot_path);
         Storage::disk('public')->assertExists($history->screenshot_path);
+    }
+
+    public function test_start_run_includes_hardware_fittings(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $project = $this->makeProject($user);
+        $hardware = $this->makeHardwareMaterial($user);
+
+        $fitting = ProjectFitting::create([
+            'project_id' => $project->id,
+            'material_id' => $hardware->id,
+            'name' => $hardware->name,
+            'article' => $hardware->article,
+            'unit' => 'шт',
+            'quantity' => 4,
+            'unit_price' => 250,
+            'source_url' => $hardware->source_url,
+        ]);
+
+        $this->actingAs($user);
+        $response = $this->postJson("/api/projects/{$project->id}/revisions/run");
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('success', true);
+        $response->assertJsonPath('total_items', 1);
+
+        $runId = (int) $response->json('run_id');
+        $this->assertGreaterThan(0, $runId);
+
+        $this->assertDatabaseHas('revision_run_items', [
+            'revision_run_id' => $runId,
+            'project_position_id' => null,
+            'project_fitting_id' => $fitting->id,
+            'material_id' => $hardware->id,
+        ]);
     }
 }

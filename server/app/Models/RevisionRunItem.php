@@ -28,6 +28,7 @@ class RevisionRunItem extends Model
     protected $fillable = [
         'revision_run_id',
         'project_position_id',
+        'project_fitting_id',
         'material_id',
         'source_url',
         'status',
@@ -55,6 +56,11 @@ class RevisionRunItem extends Model
     public function position(): BelongsTo
     {
         return $this->belongsTo(ProjectPosition::class, 'project_position_id');
+    }
+
+    public function projectFitting(): BelongsTo
+    {
+        return $this->belongsTo(ProjectFitting::class, 'project_fitting_id');
     }
 
     public function material(): BelongsTo

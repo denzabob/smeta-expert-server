@@ -52,7 +52,7 @@ class UpdateMaterialObservationForRevisionItem implements ShouldQueue
         MaterialParseService $parseService,
         ScreenshotCaptureService $captureService
     ): void {
-        $item = RevisionRunItem::with(['run.project', 'material', 'position.material', 'position.edgeMaterial', 'position.facadeMaterial'])->find($this->revisionRunItemId);
+        $item = RevisionRunItem::with(['run.project', 'material', 'projectFitting.material', 'position.material', 'position.edgeMaterial', 'position.facadeMaterial'])->find($this->revisionRunItemId);
         if (!$item) {
             return;
         }
@@ -70,6 +70,7 @@ class UpdateMaterialObservationForRevisionItem implements ShouldQueue
         }
 
         $material = $item->material
+            ?: $item->projectFitting?->material
             ?: $item->position?->facadeMaterial
             ?: $item->position?->edgeMaterial
             ?: $item->position?->material;
