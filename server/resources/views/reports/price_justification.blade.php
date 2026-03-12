@@ -3,51 +3,253 @@
 <head>
   <meta charset="UTF-8" />
   <title>Обоснование цен</title>
+
   <style>
-    @page { size: A4; margin: 12mm; }
-    body { font-family: "DejaVu Sans", sans-serif; font-size: 8.5pt; color: #111; line-height: 1.3; }
-    h1 { font-size: 13pt; margin: 0 0 4mm 0; }
-    .meta { margin: 0 0 4mm 0; color: #444; font-size: 7.5pt; line-height: 1.4; }
-    .item { page-break-inside: avoid; margin-bottom: 5mm; border: 1px solid #ddd; padding: 3mm 3.5mm; }
-    .title { font-weight: bold; font-size: 9pt; margin-bottom: 1.5mm; }
-    .info { font-size: 7.5pt; color: #333; line-height: 1.5; margin-bottom: 1.5mm; }
-    .info span { display: inline-block; margin-right: 6mm; }
-    .shot { margin-top: 2mm; border: 1px solid #ccc; text-align: center; padding: 1.5mm; }
-    .shot img { max-width: 100%; max-height: 160mm; }
-    a { color: #1d4ed8; text-decoration: none; }
+    @page {
+      size: A4;
+      margin: 15mm 10mm 18mm 25mm; /* top right bottom left */
+    }
+
+    body {
+      font-family: "DejaVu Sans", sans-serif;
+      font-size: 8.8pt;
+      line-height: 1.24;
+      color: #111;
+      background: #fff;
+      margin: 0;
+      padding: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: underline;
+    }
+
+    .container {
+      width: 100%;
+      padding-top: 3mm; /* дополнительный гарантированный воздух сверху */
+    }
+
+    .muted { color: #606060; }
+    .bold { font-weight: 700; }
+    .mono { font-family: "DejaVu Sans Mono","Courier New",monospace; }
+
+    .header {
+      margin: 0 0 4.2mm 0;
+      padding: 0 0 3mm 0;
+      border-bottom: 1px solid #ddd;
+      page-break-after: avoid;
+      page-break-inside: avoid;
+    }
+
+    .header-title {
+      margin: 0 0 2.2mm 0;
+      font-size: 15px;
+      line-height: 1.1;
+      font-weight: 700;
+      text-align: center;
+      color: #111;
+    }
+
+    .header-meta {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 8.4pt;
+      color: #444;
+    }
+
+    .header-meta td {
+      padding: 0;
+      vertical-align: top;
+    }
+
+    .header-meta .left   { text-align: left; }
+    .header-meta .center { text-align: center; }
+    .header-meta .right  { text-align: right; }
+
+    .section-title {
+      font-size: 11pt;
+      font-weight: 800;
+      margin: 0 0 2.6mm 0;
+      padding-left: 3mm;
+      border-left: 2mm solid #4a4a4a;
+      page-break-after: avoid;
+    }
+
+    .section-note {
+      font-size: 8.2pt;
+      color: #666;
+      line-height: 1.2;
+      margin: 0 0 3mm 0;
+      page-break-after: avoid;
+    }
+
+    .item {
+      margin: 0 0 3mm 0;
+      border: 1px solid #d7d7d7;
+      border-left: 3px solid #9a9a9a;
+      background: #fff;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .item-head {
+      padding: 2.2mm 3mm 1.8mm 3mm;
+      background: #fafafa;
+      border-bottom: 1px solid #e4e4e4;
+    }
+
+    .item-title {
+      margin: 0;
+      font-size: 8.9pt;
+      line-height: 1.15;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.2px;
+      color: #111;
+      word-break: break-word;
+    }
+
+    .item-body {
+      padding: 2.2mm 3mm 2.5mm 3mm;
+    }
+
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      margin: 0 0 1.8mm 0;
+      font-size: 7.9pt;
+    }
+
+    .meta-table td {
+      border: none;
+      padding: 0 0 0.8mm 0;
+      vertical-align: top;
+      line-height: 1.14;
+    }
+
+    .meta-label {
+      width: 16%;
+      font-weight: 700;
+      color: #333;
+      padding-right: 2mm;
+      white-space: nowrap;
+    }
+
+    .meta-value {
+      width: 84%;
+      color: #111;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    .compact-source {
+      font-size: 7.6pt;
+      line-height: 1.12;
+    }
+
+    .price-badge {
+      display: inline-block;
+      padding: 0.7mm 2mm;
+      border: 1px solid #cfcfcf;
+      background: #f5f5f5;
+      font-weight: 700;
+      font-size: 7.8pt;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
+
+    .shot-wrap {
+      border: 1px solid #dcdcdc;
+      background: #fcfcfc;
+      padding: 1.2mm;
+      text-align: center;
+    }
+
+    .shot-wrap img {
+      display: block;
+      max-width: 100%;
+      max-height: 88mm;
+      width: auto;
+      height: auto;
+      margin: 0 auto;
+    }
+
+    .shot-empty {
+      min-height: 28mm;
+      padding: 10mm 0;
+      text-align: center;
+      color: #7a7a7a;
+      font-size: 8pt;
+      background: #f8f8f8;
+    }
+
+    .empty {
+      border: 1px dashed #cfcfcf;
+      padding: 5mm;
+      text-align: center;
+      color: #666;
+      font-size: 9pt;
+      margin-top: 6mm;
+    }
   </style>
 </head>
 <body>
-  <h1>Обоснование цен</h1>
-  <div class="meta">
-    Проект: {{ $project->number }}&nbsp;&nbsp;
-    Ревизия: {{ $revision->number }}&nbsp;&nbsp;
-    Дата: {{ optional($revision->created_at)->format('d.m.Y H:i') }}
-  </div>
-
-  @forelse($rows as $row)
-    <div class="item">
-      <div class="title">{{ $row['name'] ?? ('Позиция #' . ($row['project_position_id'] ?? $row['project_fitting_id'] ?? '—')) }}</div>
-      <div class="info">
-        <span>Цена: <strong>{{ $row['price_per_unit'] }} {{ $row['currency'] }}</strong></span>
-        @if(!empty($row['observed_at']))
-          <span>Дата: {{ \Carbon\Carbon::parse($row['observed_at'])->format('d.m.Y') }}</span>
-        @endif
-        @if(!empty($row['source_url']))
-          <span>Источник: <a href="{{ $row['source_url'] }}">{{ $row['source_url'] }}</a></span>
-        @endif
-      </div>
-
-      <div class="shot">
-        @if(!empty($row['screenshot_path']) && file_exists(storage_path('app/public/' . $row['screenshot_path'])))
-          <img src="{{ storage_path('app/public/' . $row['screenshot_path']) }}" alt="screenshot" />
-        @else
-          Скриншот отсутствует
-        @endif
-      </div>
+  <div class="container">
+    <div class="section-title">Материалы и ценовые подтверждения</div>
+    <div class="section-note">
+      Источники и скриншоты, подтверждающие стоимость материалов, включенных в ревизию сметы.
     </div>
-  @empty
-    <p>Нет данных обоснования цен в snapshot ревизии.</p>
-  @endforelse
+
+    @forelse($rows as $row)
+      <div class="item">
+        <div class="item-head">
+          <div class="item-title">
+            {{ $row['name'] ?? ('Позиция #' . ($row['project_position_id'] ?? $row['project_fitting_id'] ?? '—')) }}
+          </div>
+        </div>
+
+        <div class="item-body">
+          <table class="meta-table">
+            @if(!empty($row['source_url']))
+              <tr>
+                <td class="meta-label">Источник</td>
+                <td class="meta-value compact-source">
+                  <a href="{{ $row['source_url'] }}">{{ $row['source_url'] }}</a>
+                </td>
+              </tr>
+            @endif
+
+            @if(!empty($row['price_per_unit']) && !empty($row['currency']))
+              <tr>
+                <td class="meta-label">Цена</td>
+                <td class="meta-value">
+                  <span class="price-badge">{{ $row['price_per_unit'] }} {{ $row['currency'] }}</span>
+                </td>
+              </tr>
+            @endif
+          </table>
+
+          <div class="shot-wrap">
+            @if(!empty($row['screenshot_path']) && file_exists(storage_path('app/public/' . $row['screenshot_path'])))
+              <img src="{{ storage_path('app/public/' . $row['screenshot_path']) }}" alt="screenshot" />
+            @else
+              <div class="shot-empty">Скриншот отсутствует</div>
+            @endif
+          </div>
+        </div>
+      </div>
+    @empty
+      <div class="empty">
+        Нет данных обоснования цен в snapshot ревизии.
+      </div>
+    @endforelse
+  </div>
 </body>
 </html>
