@@ -1,9 +1,13 @@
 FROM php:8.3-fpm
 
-# Установка зависимостей ОС
+# -------------------------
+# System dependencies
+# -------------------------
+
 RUN apt-get update && apt-get install -y \
     git \
     curl \
+    unzip \
     libpng-dev \
     libjpeg-dev \
     libwebp-dev \
@@ -11,8 +15,6 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libxml2-dev \
     libzip-dev \
-    unzip \
-    nginx \
     python3 \
     python3-pip \
     nodejs \
@@ -28,37 +30,76 @@ RUN apt-get update && apt-get install -y \
     libatk-bridge2.0-0 \
     libcups2 \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
-    && docker-php-ext-install pdo_mysql mbstring zip gd
+    && docker-php-ext-install pdo_mysql mbstring zip gd \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
+# -------------------------
 # Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# -------------------------
 
-# Конфиги
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# -------------------------
+# PHP config
+# -------------------------
+
 COPY docker/app/php-fpm.conf /usr/local/etc/php-fpm.d/zzz-custom.conf
 COPY docker/app/php.ini /usr/local/etc/php/conf.d/custom.ini
 COPY docker/app/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-# Приложение
+# -------------------------
+# Workdir
+# -------------------------
+
 WORKDIR /var/www/html
+
+# -------------------------
+# Copy only composer first (build cache)
+# -------------------------
+
+COPY server/composer.json server/composer.lock ./
+
+RUN composer install \
+    --no-dev \
+    --optimize-autoloader \
+    --no-interaction
+
+# -------------------------
+# Copy project
+# -------------------------
+
 COPY server/ .
 
-# PHP зависимости
-RUN composer install --no-dev --optimize-autoloader
+# -------------------------
+# Playwright
+# -------------------------
 
-# Playwright runtime for Python screenshot service
 ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
-RUN pip3 install --no-cache-dir --break-system-packages playwright
-RUN python3 -m playwright install chromium
 
-# Laravel ключ
-RUN php artisan key:generate --ansi
+RUN pip3 install --no-cache-dir --break-system-packages playwright \
+    && python3 -m playwright install chromium
 
-# Права
+# -------------------------
+# Laravel setup
+# -------------------------
+
+RUN php artisan key:generate --ansi || true
+
+# -------------------------
+# Permissions
+# -------------------------
+
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 storage bootstrap/cache
+    && chmod -R 775 storage bootstrap/cache
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# -------------------------
+# Port
+# -------------------------
+
 EXPOSE 9000
+
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["php-fpm"]
