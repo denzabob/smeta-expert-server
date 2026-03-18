@@ -49,15 +49,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | SMS.ru Transport
+    | SMS.ru CallCheck Transport
     |--------------------------------------------------------------------------
     */
 
     'sms_ru' => [
         'enabled' => (bool) env('SMSRU_ENABLED', false),
         'api_id' => env('SMSRU_API_ID'),
-        'from' => env('SMSRU_FROM'),
-        'message_template' => env('SMSRU_MESSAGE_TEMPLATE', 'Код подтверждения: {code}'),
+        'timeout' => (int) env('SMSRU_CALLCHECK_TIMEOUT', 15),
+        'test_confirmed' => (bool) env('SMSRU_CALLCHECK_TEST_CONFIRMED', true),
+        'webhook' => [
+            'enabled' => (bool) env('SMSRU_CALLCHECK_WEBHOOK_ENABLED', true),
+            'token' => env('SMSRU_CALLCHECK_WEBHOOK_TOKEN'),
+        ],
     ],
 
 ];

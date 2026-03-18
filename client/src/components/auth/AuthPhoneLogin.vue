@@ -23,7 +23,7 @@
         class="mt-2"
         @click="requestCode"
       >
-        Получить код
+        Продолжить
       </v-btn>
 
       <v-alert v-if="generalError" type="error" variant="tonal" class="mt-3" density="compact">
@@ -33,12 +33,19 @@
 
     <!-- Шаг 2: Ввод кода подтверждения -->
     <div v-else-if="step === 'code'">
-      <div class="text-body-2 text-medium-emphasis mb-3">
+      <div class="text-body-2 text-medium-emphasis mb-3" v-if="verificationMethod === 'code'">
         Код отправлен на <strong>{{ phoneMasked }}</strong>
         <span v-if="currentChannel" class="ml-1">({{ channelLabel }})</span>
       </div>
 
+      <div v-else class="text-body-2 text-medium-emphasis mb-3">
+        Позвоните с номера <strong>{{ phoneMasked }}</strong>
+        <span v-if="callPhonePretty">на <strong>{{ callPhonePretty }}</strong></span>
+        <span v-if="currentChannel" class="ml-1">({{ channelLabel }})</span>
+      </div>
+
       <v-otp-input
+        v-if="verificationMethod === 'code'"
         ref="otpInputRef"
         v-model="code"
         :length="6"
@@ -47,16 +54,36 @@
         @finish="verifyCode"
       />
 
+      <v-alert
+        v-else
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-3"
+      >
+        После звонка нажмите кнопку «Проверить звонок». Звонок бесплатный: система сбрасывает вызов.
+      </v-alert>
+
       <v-btn
         block
         color="primary"
         size="large"
         :loading="loading"
-        :disabled="code.length < 6"
+        :disabled="verificationMethod === 'code' && code.length < 6"
         class="mt-4"
         @click="verifyCode"
       >
-        Подтвердить
+        {{ verificationMethod === 'code' ? 'Подтвердить' : 'Проверить звонок' }}
+      </v-btn>
+
+      <v-btn
+        v-if="verificationMethod === 'call' && callPhoneRaw"
+        block
+        variant="outlined"
+        class="mt-2"
+        :href="`tel:${callPhoneRaw}`"
+      >
+        Позвонить {{ callPhonePretty || callPhoneRaw }}
       </v-btn>
 
       <v-alert v-if="codeError" type="error" variant="tonal" class="mt-3" density="compact">
@@ -102,6 +129,9 @@ const generalError = ref('')
 const challengeId = ref('')
 const phoneMasked = ref('')
 const currentChannel = ref('')
+const verificationMethod = ref<'code' | 'call'>('code')
+const callPhoneRaw = ref('')
+const callPhonePretty = ref('')
 const resendAvailableAt = ref<Date | null>(null)
 const resendCountdown = ref(0)
 let resendTimer: ReturnType<typeof setInterval> | null = null
@@ -109,8 +139,8 @@ let resendTimer: ReturnType<typeof setInterval> | null = null
 const otpInputRef = ref<any>(null)
 
 const channelLabel = computed(() => {
-  if (currentChannel.value === 'telegram') return 'Telegram'
-  if (currentChannel.value === 'sms') return 'SMS'
+  if (currentChannel.value === 'telegram_gateway') return 'Telegram'
+  if (currentChannel.value === 'sms_ru_callcheck') return 'Звонок'
   return currentChannel.value
 })
 
@@ -156,6 +186,9 @@ async function requestCode() {
     challengeId.value = result.challenge_id
     phoneMasked.value = result.phone_masked
     currentChannel.value = result.channel
+    verificationMethod.value = result.verification_method
+    callPhoneRaw.value = result.call_phone || ''
+    callPhonePretty.value = result.call_phone_pretty || ''
     startResendTimer(result.resend_available_at)
     step.value = 'code'
     code.value = ''
@@ -184,6 +217,9 @@ async function resendCode() {
   try {
     const result = await phoneAuthApi.resendCode({ challenge_id: challengeId.value })
     currentChannel.value = result.channel
+    verificationMethod.value = result.verification_method
+    callPhoneRaw.value = result.call_phone || ''
+    callPhonePretty.value = result.call_phone_pretty || ''
     startResendTimer(result.resend_available_at)
     code.value = ''
   } catch (err: any) {
@@ -195,20 +231,27 @@ async function resendCode() {
 }
 
 async function verifyCode() {
-  if (code.value.length < 6 || loading.value) return
+  if (loading.value) return
+  if (verificationMethod.value === 'code' && code.value.length < 6) return
 
   codeError.value = ''
   loading.value = true
 
   try {
-    const result = await phoneAuthApi.verifyCode({
-      challenge_id: challengeId.value,
-      code: code.value,
-    })
+    const payload = verificationMethod.value === 'code'
+      ? { challenge_id: challengeId.value, code: code.value }
+      : { challenge_id: challengeId.value }
+
+    const result = await phoneAuthApi.verifyCode(payload)
     emit('verified', result)
   } catch (err: any) {
     const status = err.response?.status
     const data = err.response?.data
+
+    if (verificationMethod.value === 'call' && status === 409) {
+      codeError.value = data?.message || 'Звонок пока не подтвержден. Попробуйте снова через несколько секунд.'
+      return
+    }
 
     if (status === 422) {
       codeError.value = data?.errors?.code?.[0] || data?.message || 'Неверный код'
@@ -230,5 +273,8 @@ function backToPhone() {
   code.value = ''
   codeError.value = ''
   challengeId.value = ''
+  verificationMethod.value = 'code'
+  callPhoneRaw.value = ''
+  callPhonePretty.value = ''
 }
 </script>

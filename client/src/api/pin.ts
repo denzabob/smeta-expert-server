@@ -49,6 +49,14 @@ export const pinApi = {
   },
 
   /**
+   * Доверить текущее устройство для уже включенного PIN
+   */
+  async trustCurrentDevice() {
+    const { data } = await api.post('/api/auth/pin/trust-device')
+    return data
+  },
+
+  /**
    * Отключить PIN (требует auth + пароль)
    */
   async disablePin(password: string) {

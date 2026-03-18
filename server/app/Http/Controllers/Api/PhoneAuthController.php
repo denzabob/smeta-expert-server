@@ -63,6 +63,9 @@ class PhoneAuthController extends Controller
         return response()->json([
             'challenge_id' => $challenge->id,
             'channel' => $result['channel_used'],
+            'verification_method' => $result['channel_used'] === 'sms_ru_callcheck' ? 'call' : 'code',
+            'call_phone' => $result['call_phone'],
+            'call_phone_pretty' => $result['call_phone_pretty'],
             'phone_masked' => VerificationCodeService::maskPhone($phone),
             'resend_available_at' => $challenge->resend_available_at?->toIso8601String(),
             'expires_at' => $challenge->expires_at->toIso8601String(),
@@ -103,6 +106,9 @@ class PhoneAuthController extends Controller
 
         return response()->json([
             'channel' => $result['channel_used'],
+            'verification_method' => $result['channel_used'] === 'sms_ru_callcheck' ? 'call' : 'code',
+            'call_phone' => $result['call_phone'],
+            'call_phone_pretty' => $result['call_phone_pretty'],
             'resend_available_at' => $result['next_retry_at'],
         ]);
     }
@@ -116,7 +122,7 @@ class PhoneAuthController extends Controller
     {
         $request->validate([
             'challenge_id' => ['required', 'uuid'],
-            'code' => ['required', 'string', 'size:6'],
+            'code' => ['nullable', 'string', 'size:6'],
         ]);
 
         $challenge = AuthVerificationChallenge::find($request->input('challenge_id'));
@@ -127,26 +133,48 @@ class PhoneAuthController extends Controller
             ], 422);
         }
 
+        $isVerifiedCallCheck = $challenge->current_channel === 'sms_ru_callcheck'
+            && $challenge->status === 'verified';
+
         // Expired or exhausted → 410 Gone
-        if ($challenge->isExpired()) {
+        if (!$isVerifiedCallCheck && $challenge->isExpired()) {
             return response()->json([
                 'message' => 'Срок действия кода истёк. Запросите новый.',
             ], 410);
         }
 
-        if (!$challenge->hasAttemptsLeft()) {
+        if (!$isVerifiedCallCheck && !$challenge->hasAttemptsLeft()) {
             return response()->json([
                 'message' => 'Превышено количество попыток. Запросите новый код.',
             ], 410);
         }
 
-        $result = $this->verificationService->verifyCode($challenge, $request->input('code'));
+        $isCallCheck = $challenge->current_channel === 'sms_ru_callcheck';
+        if (!$isCallCheck && !$request->filled('code')) {
+            return response()->json([
+                'message' => 'Введите код подтверждения.',
+            ], 422);
+        }
+
+        $result = $this->verificationService->verifyCode($challenge, (string) $request->input('code', ''));
 
         if (!$result['valid']) {
             if (in_array($result['error'], ['challenge_expired', 'too_many_attempts'])) {
                 return response()->json([
                     'message' => 'Срок действия кода истёк. Запросите новый.',
                 ], 410);
+            }
+
+            if ($result['error'] === 'call_not_confirmed') {
+                return response()->json([
+                    'message' => 'Звонок ещё не подтверждён. Позвоните на указанный номер и повторите проверку.',
+                ], 409);
+            }
+
+            if ($result['error'] === 'provider_error') {
+                return response()->json([
+                    'message' => 'Не удалось проверить статус звонка. Попробуйте снова.',
+                ], 503);
             }
 
             // Invalid code

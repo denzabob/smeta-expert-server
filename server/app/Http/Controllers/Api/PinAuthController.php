@@ -178,7 +178,7 @@ class PinAuthController extends Controller
 
         // Доверить устройство если запрошено
         if ($request->boolean('trust_device', true)) {
-            $cookieData = $this->trustCurrentDevice($user, $request);
+            $cookieData = $this->issueTrustedDeviceCookies($user, $request);
             $response['device_trusted'] = true;
 
             return response()->json($response)
@@ -273,6 +273,31 @@ class PinAuthController extends Controller
         return response()->json(['message' => 'Устройство забыто'])
             ->withCookie(cookie()->forget('tdid'))
             ->withCookie(cookie()->forget('tds'));
+    }
+
+    /**
+     * POST /api/auth/pin/trust-device
+     *
+     * Доверить текущее устройство для уже настроенного PIN.
+     */
+    public function trustDevice(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (!$user->pin_enabled) {
+            return response()->json([
+                'message' => 'PIN-вход не включён для аккаунта.',
+            ], 422);
+        }
+
+        $cookieData = $this->issueTrustedDeviceCookies($user, $request);
+
+        return response()->json([
+            'message' => 'Устройство добавлено в доверенные.',
+            'device_trusted' => true,
+        ])
+            ->withCookie($cookieData['tdid_cookie'])
+            ->withCookie($cookieData['tds_cookie']);
     }
 
     /**
@@ -425,7 +450,7 @@ class PinAuthController extends Controller
     /**
      * Доверить текущее устройство и вернуть данные для cookies.
      */
-    private function trustCurrentDevice(User $user, Request $request): array
+    private function issueTrustedDeviceCookies(User $user, Request $request): array
     {
         // Отозвать существующее устройство с тем же device_id (если есть)
         $existingDeviceId = $request->cookie('tdid');

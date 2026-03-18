@@ -205,6 +205,142 @@ class PhoneAuthTest extends TestCase
         $response->assertGone();
     }
 
+    public function test_verify_callcheck_without_code_when_confirmed(): void
+    {
+        config([
+            'verification.test_mode' => true,
+            'verification.sms_ru.test_confirmed' => true,
+        ]);
+
+        $challenge = AuthVerificationChallenge::create([
+            'purpose' => 'phone_auth',
+            'phone' => '+79995554433',
+            'code_hash' => Hash::make('000000'),
+            'expires_at' => now()->addMinutes(5),
+            'attempts_left' => 5,
+            'resend_available_at' => now(),
+            'status' => 'pending',
+            'current_channel' => 'sms_ru_callcheck',
+            'channel_attempt_order' => ['sms_ru_callcheck'],
+            'provider_message_id' => 'test_callcheck_123',
+            'ip_address' => '127.0.0.1',
+        ]);
+
+        $response = $this->postJson('/api/auth/phone/verify-code', [
+            'challenge_id' => $challenge->id,
+        ]);
+
+        $response->assertOk()
+            ->assertJson([
+                'status' => 'needs_onboarding',
+                'need_profile_completion' => true,
+            ]);
+
+        $this->assertDatabaseHas('users', [
+            'phone' => '+79995554433',
+        ]);
+    }
+
+    public function test_verify_callcheck_returns_pending_when_not_confirmed(): void
+    {
+        config([
+            'verification.test_mode' => true,
+            'verification.sms_ru.test_confirmed' => false,
+        ]);
+
+        $challenge = AuthVerificationChallenge::create([
+            'purpose' => 'phone_auth',
+            'phone' => '+79995550011',
+            'code_hash' => Hash::make('000000'),
+            'expires_at' => now()->addMinutes(5),
+            'attempts_left' => 5,
+            'resend_available_at' => now(),
+            'status' => 'pending',
+            'current_channel' => 'sms_ru_callcheck',
+            'channel_attempt_order' => ['sms_ru_callcheck'],
+            'provider_message_id' => 'test_callcheck_456',
+            'ip_address' => '127.0.0.1',
+        ]);
+
+        $response = $this->postJson('/api/auth/phone/verify-code', [
+            'challenge_id' => $challenge->id,
+        ]);
+
+        $response->assertStatus(409)
+            ->assertJsonPath('message', 'Звонок ещё не подтверждён. Позвоните на указанный номер и повторите проверку.');
+    }
+
+    public function test_callcheck_webhook_marks_challenge_verified(): void
+    {
+        config([
+            'verification.sms_ru.webhook.enabled' => true,
+            'verification.sms_ru.webhook.token' => 'webhook-secret',
+        ]);
+
+        $challenge = AuthVerificationChallenge::create([
+            'purpose' => 'phone_auth',
+            'phone' => '+79991230000',
+            'code_hash' => Hash::make('000000'),
+            'expires_at' => now()->addMinutes(5),
+            'attempts_left' => 5,
+            'resend_available_at' => now(),
+            'status' => 'pending',
+            'current_channel' => 'sms_ru_callcheck',
+            'channel_attempt_order' => ['sms_ru_callcheck'],
+            'provider_message_id' => 'check_abc_1',
+            'ip_address' => '127.0.0.1',
+        ]);
+
+        $response = $this->post('/api/auth/phone/callcheck/webhook', [
+            'token' => 'webhook-secret',
+            'check_id' => 'check_abc_1',
+            'check_status' => '401',
+        ]);
+
+        $response->assertOk();
+
+        $challenge->refresh();
+        $this->assertSame('verified', $challenge->status);
+    }
+
+    public function test_verify_callcheck_succeeds_after_webhook_confirmation(): void
+    {
+        config([
+            'verification.sms_ru.webhook.enabled' => true,
+            'verification.sms_ru.webhook.token' => 'webhook-secret',
+        ]);
+
+        $challenge = AuthVerificationChallenge::create([
+            'purpose' => 'phone_auth',
+            'phone' => '+79997776655',
+            'code_hash' => Hash::make('000000'),
+            'expires_at' => now()->addMinutes(5),
+            'attempts_left' => 5,
+            'resend_available_at' => now(),
+            'status' => 'pending',
+            'current_channel' => 'sms_ru_callcheck',
+            'channel_attempt_order' => ['sms_ru_callcheck'],
+            'provider_message_id' => 'check_abc_2',
+            'ip_address' => '127.0.0.1',
+        ]);
+
+        $this->post('/api/auth/phone/callcheck/webhook', [
+            'token' => 'webhook-secret',
+            'check_id' => 'check_abc_2',
+            'check_status' => '401',
+        ])->assertOk();
+
+        $response = $this->postJson('/api/auth/phone/verify-code', [
+            'challenge_id' => $challenge->id,
+        ]);
+
+        $response->assertOk()
+            ->assertJson([
+                'status' => 'needs_onboarding',
+                'need_profile_completion' => true,
+            ]);
+    }
+
     // ─── Complete Registration (Onboarding) ─────────────────────────
 
     public function test_complete_registration(): void

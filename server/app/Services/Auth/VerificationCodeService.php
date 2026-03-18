@@ -12,17 +12,19 @@ class VerificationCodeService
     /** @var VerificationTransportInterface[] */
     protected array $transports = [];
 
+    protected SmsRuCallCheckTransport $callCheckTransport;
+
     public function __construct()
     {
-        // Build transport chain: Telegram Gateway first, SMS.ru fallback
+        // Build transport chain: Telegram Gateway first, SMS.ru CallCheck fallback
         $tg = new TelegramGatewayTransport();
-        $sms = new SmsRuTransport();
+        $this->callCheckTransport = new SmsRuCallCheckTransport();
 
         if ($tg->isAvailable()) {
             $this->transports[] = $tg;
         }
-        if ($sms->isAvailable()) {
-            $this->transports[] = $sms;
+        if ($this->callCheckTransport->isAvailable()) {
+            $this->transports[] = $this->callCheckTransport;
         }
     }
 
@@ -58,7 +60,7 @@ class VerificationCodeService
     /**
      * Create and send a verification challenge.
      *
-     * @return array{challenge: AuthVerificationChallenge, channel_used: string, error: ?string}
+    * @return array{challenge: ?AuthVerificationChallenge, channel_used: ?string, error: ?string, call_phone: ?string, call_phone_pretty: ?string}
      */
     public function createChallenge(
         string $phone,
@@ -76,6 +78,8 @@ class VerificationCodeService
                 'challenge' => null,
                 'channel_used' => null,
                 'error' => 'rate_limited',
+                'call_phone' => null,
+                'call_phone_pretty' => null,
             ];
         }
 
@@ -86,6 +90,8 @@ class VerificationCodeService
                 'challenge' => null,
                 'channel_used' => null,
                 'error' => 'rate_limited',
+                'call_phone' => null,
+                'call_phone_pretty' => null,
             ];
         }
 
@@ -124,18 +130,26 @@ class VerificationCodeService
             'challenge' => $challenge->fresh(),
             'channel_used' => $challenge->current_channel,
             'error' => $deliveryResult['success'] ? null : 'delivery_failed',
+            'call_phone' => $deliveryResult['meta']['call_phone'] ?? null,
+            'call_phone_pretty' => $deliveryResult['meta']['call_phone_pretty'] ?? null,
         ];
     }
 
     /**
      * Resend code for an existing challenge.
      *
-     * @return array{channel_used: ?string, error: ?string, next_retry_at: ?string}
+    * @return array{channel_used: ?string, error: ?string, next_retry_at: ?string, call_phone: ?string, call_phone_pretty: ?string}
      */
     public function resendCode(AuthVerificationChallenge $challenge): array
     {
         if (!$challenge->isPending()) {
-            return ['channel_used' => null, 'error' => 'challenge_not_pending', 'next_retry_at' => null];
+            return [
+                'channel_used' => null,
+                'error' => 'challenge_not_pending',
+                'next_retry_at' => null,
+                'call_phone' => null,
+                'call_phone_pretty' => null,
+            ];
         }
 
         if (!$challenge->canResend()) {
@@ -143,6 +157,8 @@ class VerificationCodeService
                 'channel_used' => null,
                 'error' => 'resend_cooldown',
                 'next_retry_at' => $challenge->resend_available_at->toIso8601String(),
+                'call_phone' => null,
+                'call_phone_pretty' => null,
             ];
         }
 
@@ -162,6 +178,8 @@ class VerificationCodeService
             'channel_used' => $challenge->current_channel,
             'error' => $deliveryResult['success'] ? null : 'delivery_failed',
             'next_retry_at' => $challenge->resend_available_at->toIso8601String(),
+            'call_phone' => $deliveryResult['meta']['call_phone'] ?? null,
+            'call_phone_pretty' => $deliveryResult['meta']['call_phone_pretty'] ?? null,
         ];
     }
 
@@ -172,6 +190,10 @@ class VerificationCodeService
      */
     public function verifyCode(AuthVerificationChallenge $challenge, string $code): array
     {
+        if ($challenge->current_channel === 'sms_ru_callcheck') {
+            return $this->verifyCallCheck($challenge);
+        }
+
         if (!$challenge->isPending()) {
             return ['valid' => false, 'error' => 'challenge_expired'];
         }
@@ -193,6 +215,94 @@ class VerificationCodeService
     }
 
     /**
+     * Verify call-based challenge through SMS.ru CallCheck status API.
+     *
+     * @return array{valid: bool, error: ?string}
+     */
+    protected function verifyCallCheck(AuthVerificationChallenge $challenge): array
+    {
+        if ($challenge->status === 'verified') {
+            return ['valid' => true, 'error' => null];
+        }
+
+        if (!$challenge->isPending()) {
+            return ['valid' => false, 'error' => 'challenge_expired'];
+        }
+
+        $checkId = (string) ($challenge->provider_message_id ?? '');
+        if ($checkId === '') {
+            return ['valid' => false, 'error' => 'provider_error'];
+        }
+
+        $status = $this->callCheckTransport->getCheckStatus($checkId);
+
+        if (!$status['success']) {
+            return ['valid' => false, 'error' => 'provider_error'];
+        }
+
+        if ($status['confirmed']) {
+            $challenge->markVerified();
+            return ['valid' => true, 'error' => null];
+        }
+
+        if ($status['expired']) {
+            $challenge->markExpired();
+            return ['valid' => false, 'error' => 'challenge_expired'];
+        }
+
+        return ['valid' => false, 'error' => 'call_not_confirmed'];
+    }
+
+    /**
+     * Process CallCheck webhook update and sync challenge status.
+     *
+     * @return array{success: bool, processed: bool, error: ?string}
+     */
+    public function processCallCheckWebhook(string $checkId, string $checkStatus): array
+    {
+        $challenge = AuthVerificationChallenge::where('current_channel', 'sms_ru_callcheck')
+            ->where('provider_message_id', $checkId)
+            ->latest('created_at')
+            ->first();
+
+        if (!$challenge) {
+            // Idempotent OK: challenge may already be cleaned up.
+            return ['success' => true, 'processed' => false, 'error' => null];
+        }
+
+        if ($checkStatus === '401') {
+            if ($challenge->status !== 'verified') {
+                $challenge->markVerified();
+            }
+
+            return ['success' => true, 'processed' => true, 'error' => null];
+        }
+
+        if ($checkStatus === '402') {
+            if ($challenge->status === 'pending') {
+                $challenge->markExpired();
+            }
+
+            return ['success' => true, 'processed' => true, 'error' => null];
+        }
+
+        if ($checkStatus === '400') {
+            // Not confirmed yet, keep pending unless already expired by TTL.
+            if ($challenge->isExpired() && $challenge->status === 'pending') {
+                $challenge->markExpired();
+            }
+
+            return ['success' => true, 'processed' => true, 'error' => null];
+        }
+
+        $challenge->update([
+            'last_error' => 'sms_ru_callcheck webhook unknown status: ' . $checkStatus,
+        ]);
+
+        return ['success' => false, 'processed' => true, 'error' => 'unknown_status'];
+    }
+
+    /**
      * Deliver code through transport chain with fallback.
      */
     protected function deliverCode(string $phone, string $code, AuthVerificationChallenge $challenge): array
@@ -204,14 +314,14 @@ class VerificationCodeService
                     'current_channel' => 'test',
                     'provider_message_id' => 'test_' . time(),
                 ]);
-                return ['success' => true];
+                return ['success' => true, 'meta' => null];
             }
 
             $challenge->update([
                 'status' => 'failed',
                 'last_error' => 'No delivery transports configured',
             ]);
-            return ['success' => false];
+            return ['success' => false, 'meta' => null];
         }
 
         foreach ($this->transports as $transport) {
@@ -223,7 +333,10 @@ class VerificationCodeService
                     'provider_message_id' => $result['provider_message_id'],
                     'last_error' => null,
                 ]);
-                return ['success' => true];
+                return [
+                    'success' => true,
+                    'meta' => is_array($result['meta'] ?? null) ? $result['meta'] : null,
+                ];
             }
 
             // Log failure, try next transport
@@ -234,7 +347,7 @@ class VerificationCodeService
 
         // All transports failed
         $challenge->update(['status' => 'failed']);
-        return ['success' => false];
+        return ['success' => false, 'meta' => null];
     }
 
     /**

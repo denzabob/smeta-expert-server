@@ -120,6 +120,36 @@
         @done="onPinSetupDone"
         @skip="onPinSetupSkip"
       />
+
+      <v-dialog v-model="showPinTrustDialog" max-width="420" persistent>
+        <v-card>
+          <v-card-title class="text-h6">
+            <v-icon class="mr-2" color="primary">mdi-cellphone-lock</v-icon>
+            Доверить это устройство
+          </v-card-title>
+
+          <v-card-text>
+            <div class="text-body-2 text-medium-emphasis mb-3">
+              PIN уже настроен для этого аккаунта. Добавить текущее устройство в доверенные,
+              чтобы в следующий раз входить по PIN без логина и пароля?
+            </div>
+
+            <v-alert v-if="pinTrustError" type="error" variant="tonal" density="compact">
+              {{ pinTrustError }}
+            </v-alert>
+          </v-card-text>
+
+          <v-card-actions>
+            <v-btn variant="text" :disabled="pinTrustLoading" @click="onSkipTrustDevice">
+              Не сейчас
+            </v-btn>
+            <v-spacer />
+            <v-btn color="primary" :loading="pinTrustLoading" @click="onTrustDeviceForPin">
+              Доверять устройство
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
   </v-container>
 </template>
 
@@ -151,6 +181,9 @@ const pinStatusChecked = ref(false)
 const pinUserName = ref<string | null>(null)
 const pinUserEmail = ref<string | null>(null)
 const showPinSetup = ref(false)
+const showPinTrustDialog = ref(false)
+const pinTrustLoading = ref(false)
+const pinTrustError = ref('')
 
 // Данные от логина для решения о PIN setup
 const loginResponseData = ref<any>(null)
@@ -263,9 +296,10 @@ const onLoginSuccess = (data: any) => {
     return
   }
 
-  // Если PIN включён, но на этом устройстве нет доверия → предложить доверять
+  // PIN уже есть, но устройство не доверено → предложить доверить устройство.
   if (data?.should_offer_pin_setup) {
-    showPinSetup.value = true
+    pinTrustError.value = ''
+    showPinTrustDialog.value = true
     return
   }
 
@@ -297,8 +331,13 @@ const onPhoneVerified = async (data: VerifyCodeResponse) => {
   }
 
   loginResponseData.value = data
-  if (data.should_offer_pin_enable || data.should_offer_pin_setup) {
+  if (data.should_offer_pin_enable) {
     showPinSetup.value = true
+    return
+  }
+  if (data.should_offer_pin_setup) {
+    pinTrustError.value = ''
+    showPinTrustDialog.value = true
     return
   }
   navigateAfterLogin()
@@ -312,10 +351,36 @@ const onOnboardingCompleted = async (data: any) => {
   await authStore.checkAuth(true)
 
   loginResponseData.value = data
-  if (data.should_offer_pin_enable || data.should_offer_pin_setup) {
+  if (data.should_offer_pin_enable) {
     showPinSetup.value = true
     return
   }
+  if (data.should_offer_pin_setup) {
+    pinTrustError.value = ''
+    showPinTrustDialog.value = true
+    return
+  }
+  navigateAfterLogin()
+}
+
+const onTrustDeviceForPin = async () => {
+  if (pinTrustLoading.value) return
+
+  pinTrustLoading.value = true
+  pinTrustError.value = ''
+  try {
+    await pinApi.trustCurrentDevice()
+    showPinTrustDialog.value = false
+    navigateAfterLogin()
+  } catch (e: any) {
+    pinTrustError.value = e?.response?.data?.message || 'Не удалось доверить устройство.'
+  } finally {
+    pinTrustLoading.value = false
+  }
+}
+
+const onSkipTrustDevice = () => {
+  showPinTrustDialog.value = false
   navigateAfterLogin()
 }
 

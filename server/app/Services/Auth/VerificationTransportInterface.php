@@ -7,7 +7,7 @@ interface VerificationTransportInterface
     /**
      * Send verification code to the given phone number.
      *
-     * @return array{success: bool, provider_message_id: ?string, error: ?string}
+    * @return array{success: bool, provider_message_id: ?string, error: ?string, meta?: array<string, mixed>|null}
      */
     public function sendCode(string $phone, string $code): array;
 
@@ -17,7 +17,7 @@ interface VerificationTransportInterface
     public function isAvailable(): bool;
 
     /**
-     * Get transport channel name (e.g. 'telegram_gateway', 'sms_ru').
+     * Get transport channel name (e.g. 'telegram_gateway', 'sms_ru_callcheck').
      */
     public function channelName(): string;
 }

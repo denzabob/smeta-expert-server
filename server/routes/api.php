@@ -46,6 +46,7 @@ use App\Http\Controllers\Api\PhoneAuthController;
 use App\Http\Controllers\Api\YandexAuthController;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\EmailVerificationController;
+use App\Http\Controllers\Api\SmsRuCallCheckWebhookController;
 use App\Http\Controllers\Api\AdminNotificationController;
 use App\Http\Controllers\Api\UserNotificationController;
 use App\Http\Controllers\Api\FacadeMaterialController;
@@ -78,6 +79,8 @@ Route::post('auth/trusted-device/forget', [PinAuthController::class, 'forgetDevi
 Route::post('auth/phone/request-code', [PhoneAuthController::class, 'requestCode']);
 Route::post('auth/phone/resend-code', [PhoneAuthController::class, 'resendCode']);
 Route::post('auth/phone/verify-code', [PhoneAuthController::class, 'verifyCode']);
+Route::post('auth/phone/callcheck/webhook', SmsRuCallCheckWebhookController::class);
+Route::get('auth/phone/callcheck/webhook', SmsRuCallCheckWebhookController::class);
 
 // ========== Yandex OAuth (публичные) ==========
 // OAuth state хранится в сессии, поэтому для redirect/callback обязателен web middleware.
@@ -413,6 +416,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ========== PIN & Trusted Devices (Protected) ==========
     Route::post('auth/pin/set', [PinAuthController::class, 'set']);
     Route::post('auth/pin/disable', [PinAuthController::class, 'disable']);
+    Route::post('auth/pin/trust-device', [PinAuthController::class, 'trustDevice']);
     Route::get('auth/trusted-devices', [PinAuthController::class, 'trustedDevices']);
     Route::post('auth/trusted-devices/{id}/revoke', [PinAuthController::class, 'revokeDevice']);
     Route::post('auth/terminate-sessions', [PinAuthController::class, 'terminateSessions']);

@@ -7,6 +7,9 @@ export interface RequestCodePayload {
 export interface RequestCodeResponse {
   challenge_id: string
   channel: string
+  verification_method: 'code' | 'call'
+  call_phone?: string | null
+  call_phone_pretty?: string | null
   phone_masked: string
   resend_available_at: string
   expires_at: string
@@ -18,12 +21,15 @@ export interface ResendCodePayload {
 
 export interface ResendCodeResponse {
   channel: string
+  verification_method: 'code' | 'call'
+  call_phone?: string | null
+  call_phone_pretty?: string | null
   resend_available_at: string
 }
 
 export interface VerifyCodePayload {
   challenge_id: string
-  code: string
+  code?: string
 }
 
 export interface VerifyCodeResponse {
