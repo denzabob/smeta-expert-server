@@ -66,6 +66,8 @@ class PhoneAuthTest extends TestCase
             ])
             ->assertJsonPath('status', 'pending');
 
+        $this->assertGreaterThan(0, (int) $response->json('ttl_seconds'));
+
         $this->assertDatabaseHas('auth_verification_challenges', [
             'phone' => '+79991234567',
             'purpose' => 'phone_auth',
