@@ -73,6 +73,15 @@ export interface AuthMethodsResponse {
     label: string
     configured: boolean
     linked: boolean
+    connection_status?: 'connected' | 'not_connected'
+    can_connect?: boolean
+    can_disconnect?: boolean
+    linked_account?: {
+      provider_user_id: string
+      provider_username?: string | null
+      provider_email?: string | null
+      last_used_at?: string | null
+    } | null
   }>
   login_methods_count: number
 }

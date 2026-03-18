@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
+    "test:unit": "vitest run src/components/settings/providerConnectionRows.spec.ts",
     "lint": "eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/"
   },
@@ -45,6 +46,7 @@
     "sass-embedded": "^1.97.1",
     "typescript": "~5.9.0",
     "vite": "^7.2.4",
+    "vitest": "^3.2.4",
     "vite-plugin-vue-devtools": "^8.0.5",
     "vite-plugin-vuetify": "^2.1.2",
     "vue-tsc": "^3.1.5"

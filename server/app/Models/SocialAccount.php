@@ -16,6 +16,7 @@ class SocialAccount extends Model
         'linked_at',
         'last_used_at',
         'is_active',
+        'unlinked_at',
         'raw_profile_json',
     ];
 
@@ -25,6 +26,7 @@ class SocialAccount extends Model
             'linked_at' => 'datetime',
             'last_used_at' => 'datetime',
             'is_active' => 'boolean',
+            'unlinked_at' => 'datetime',
             'raw_profile_json' => 'array',
         ];
     }
@@ -37,6 +39,11 @@ class SocialAccount extends Model
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
+    }
+
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
     }
 
     /**

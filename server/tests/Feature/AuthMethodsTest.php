@@ -93,6 +93,69 @@ class AuthMethodsTest extends TestCase
 
         $account->refresh();
         $this->assertFalse((bool) $account->is_active);
+        $this->assertNotNull($account->unlinked_at);
+    }
+
+    public function test_auth_methods_show_connect_action_when_yandex_not_linked(): void
+    {
+        config([
+            'services.yandex.client_id' => 'test-client-id',
+            'services.yandex.client_secret' => 'test-secret',
+            'services.yandex.redirect_uri' => 'http://localhost/api/auth/yandex/callback',
+        ]);
+
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->getJson('/api/auth/methods');
+        $response->assertOk();
+
+        $providers = $response->json('supported_providers');
+        $this->assertIsArray($providers);
+        $yandex = collect($providers)->firstWhere('provider', 'yandex');
+
+        $this->assertNotNull($yandex);
+        $this->assertFalse((bool) ($yandex['linked'] ?? true));
+        $this->assertSame('not_connected', $yandex['connection_status'] ?? null);
+        $this->assertTrue((bool) ($yandex['can_connect'] ?? false));
+    }
+
+    public function test_after_unlink_auth_methods_show_connect_again(): void
+    {
+        config([
+            'services.yandex.client_id' => 'test-client-id',
+            'services.yandex.client_secret' => 'test-secret',
+            'services.yandex.redirect_uri' => 'http://localhost/api/auth/yandex/callback',
+        ]);
+
+        $user = User::factory()->create([
+            'phone' => '+79991119988',
+            'phone_verified_at' => now(),
+        ]);
+
+        SocialAccount::create([
+            'user_id' => $user->id,
+            'provider' => 'yandex',
+            'provider_user_id' => 'ya_reconnect_1',
+            'provider_username' => 'linked_yandex',
+            'is_active' => true,
+            'linked_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->postJson('/api/auth/methods/providers/yandex/unlink')
+            ->assertOk();
+
+        $response = $this->actingAs($user)->getJson('/api/auth/methods');
+        $response->assertOk();
+
+        $providers = $response->json('supported_providers');
+        $yandex = collect($providers)->firstWhere('provider', 'yandex');
+
+        $this->assertNotNull($yandex);
+        $this->assertFalse((bool) ($yandex['linked'] ?? true));
+        $this->assertTrue((bool) ($yandex['can_connect'] ?? false));
+
+        $this->assertSame([], $response->json('linked_providers'));
     }
 
     public function test_phone_change_requires_password_when_password_exists(): void

@@ -507,49 +507,38 @@
             </div>
           </div>
 
-          <div v-if="authMethods?.linked_providers.length" class="linked-providers-list">
+          <div v-if="providerConnectionRows.length" class="available-providers-list">
             <div
-              v-for="providerItem in authMethods.linked_providers"
+              v-for="providerItem in providerConnectionRows"
               :key="providerItem.provider"
               class="linked-provider-row"
             >
               <div>
                 <div class="linked-provider-row__title">{{ providerItem.label }}</div>
                 <div class="linked-provider-row__meta">
-                  {{ providerItem.provider_email || providerItem.provider_username || providerItem.provider_user_id }}
+                  <span class="mr-2">{{ providerItem.statusText }}</span>
+                  <span v-if="providerItem.identityHint">{{ providerItem.identityHint }}</span>
                 </div>
               </div>
-              <button
-                class="btn btn--danger-text"
-                type="button"
-                :disabled="providerBusy === providerItem.provider || !providerItem.can_unlink"
-                @click="unlinkProvider(providerItem.provider)"
-              >
-                {{ providerBusy === providerItem.provider ? 'Отвязка...' : 'Отвязать' }}
-              </button>
-            </div>
-          </div>
 
-          <div v-if="authMethods?.supported_providers.length" class="available-providers-list">
-            <div
-              v-for="providerItem in authMethods.supported_providers"
-              :key="providerItem.provider"
-              class="linked-provider-row"
-            >
-              <div>
-                <div class="linked-provider-row__title">{{ providerItem.label }}</div>
-                <div class="linked-provider-row__meta">
-                  {{ providerItem.linked ? 'Уже подключён' : providerItem.configured ? 'Доступен для подключения' : 'Временно недоступен' }}
-                </div>
-              </div>
               <button
-                v-if="!providerItem.linked"
+                v-if="providerItem.action === 'connect'"
                 class="btn btn--secondary"
                 type="button"
                 :disabled="providerBusy === providerItem.provider || !providerItem.configured"
                 @click="linkProvider(providerItem.provider)"
               >
                 {{ providerBusy === providerItem.provider ? 'Переход...' : 'Подключить' }}
+              </button>
+
+              <button
+                v-else-if="providerItem.action === 'disconnect'"
+                class="btn btn--danger-text"
+                type="button"
+                :disabled="providerBusy === providerItem.provider || !providerItem.canUnlink"
+                @click="unlinkProvider(providerItem.provider)"
+              >
+                {{ providerBusy === providerItem.provider ? 'Отвязка...' : 'Отключить' }}
               </button>
             </div>
           </div>
@@ -659,6 +648,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { authApi, type AuthMethodsResponse } from '@/api/auth'
 import { pinApi } from '@/api/pin'
+import { buildProviderConnectionRows } from '@/components/settings/providerConnectionRows'
 import PinInput from '@/components/auth/PinInput.vue'
 import UserDevicesPanel from '@/components/settings/UserDevicesPanel.vue'
 
@@ -708,6 +698,8 @@ const authMethodsLoading = ref(false)
 const authMethodsError = ref('')
 const authMethodsSuccess = ref('')
 const providerBusy = ref<string | null>(null)
+
+const providerConnectionRows = computed(() => buildProviderConnectionRows(authMethods.value))
 
 const authMethodsSubtitle = computed(() => {
   if (!authMethods.value) return 'Телефон, пароль и OAuth'
@@ -849,10 +841,18 @@ function consumeOauthLinkResult() {
   const provider = url.searchParams.get('provider')
   if (!result) return
 
+  const providerLabel = provider === 'yandex' ? 'Яндекс' : 'внешний аккаунт'
+
   if (result === 'success') {
-    authMethodsSuccess.value = `Провайдер ${provider || ''} успешно подключён.`.trim()
+    authMethodsSuccess.value = `${providerLabel} успешно подключён.`
+  } else if (result === 'already_linked_to_other_user') {
+    authMethodsError.value = `${providerLabel} уже подключён к другому аккаунту.`
+  } else if (result === 'provider_already_connected') {
+    authMethodsError.value = 'У вас уже подключён другой аккаунт Яндекса. Сначала отключите текущий.'
+  } else if (result === 'auth_required') {
+    authMethodsError.value = 'Сессия устарела. Повторите подключение из настроек аккаунта.'
   } else {
-    authMethodsError.value = 'Не удалось подключить внешний аккаунт. Попробуйте снова.'
+    authMethodsError.value = `Не удалось подключить ${providerLabel.toLowerCase()}. Попробуйте снова.`
   }
 
   url.searchParams.delete('oauth_link')

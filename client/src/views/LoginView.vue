@@ -31,6 +31,17 @@
               {{ topMessage }}
             </v-alert>
 
+            <v-alert
+              v-if="topError"
+              type="error"
+              variant="tonal"
+              closable
+              class="mb-4"
+              @click:close="clearTopError"
+            >
+              {{ topError }}
+            </v-alert>
+
             <div v-if="resolvingAuthMode" class="auth-resolving">
               <v-progress-circular indeterminate size="26" color="primary" class="mb-3" />
               <div class="text-body-2 text-medium-emphasis">Проверяем способ входа...</div>
@@ -177,6 +188,7 @@ const route = useRoute()
 const mode = ref<AuthMode>('login')
 const resolvingAuthMode = ref(true)
 const topMessage = ref('')
+const topError = ref('')
 const pinStatusChecked = ref(false)
 const pinUserName = ref<string | null>(null)
 const pinUserEmail = ref<string | null>(null)
@@ -262,10 +274,46 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => [route.query.error, route.query.provider],
+  ([errorRaw, providerRaw]) => {
+    const error = typeof errorRaw === 'string' ? errorRaw : ''
+    const provider = typeof providerRaw === 'string' ? providerRaw : ''
+
+    if (!error) {
+      topError.value = ''
+      return
+    }
+
+    const providerLabel = provider === 'yandex' ? 'Яндекса' : 'провайдера'
+
+    const messages: Record<string, string> = {
+      oauth_state_mismatch: 'Сессия авторизации устарела. Попробуйте вход через Яндекс ещё раз.',
+      oauth_no_code: 'Яндекс не передал код авторизации. Повторите попытку.',
+      oauth_token_failed: 'Не удалось подтвердить вход через Яндекс. Попробуйте позже.',
+      oauth_profile_failed: 'Не удалось получить профиль Яндекса. Попробуйте позже.',
+      oauth_link_required: `Этот аккаунт ${providerLabel} не подключен. Войдите по телефону или email и подключите его в настройках.`,
+      already_linked_to_other_user: 'Этот аккаунт Яндекса уже подключён к другому пользователю.',
+      provider_already_connected: 'К вашему профилю уже подключён другой аккаунт Яндекса. Сначала отключите текущий.',
+    }
+
+    topError.value = messages[error] || 'Не удалось выполнить вход через внешний аккаунт.'
+  },
+  { immediate: true }
+)
+
 const clearTopMessage = async () => {
   topMessage.value = ''
   const query = { ...route.query }
   delete (query as any).message
+  await router.replace({ query })
+}
+
+const clearTopError = async () => {
+  topError.value = ''
+  const query = { ...route.query }
+  delete (query as any).error
+  delete (query as any).provider
   await router.replace({ query })
 }
 

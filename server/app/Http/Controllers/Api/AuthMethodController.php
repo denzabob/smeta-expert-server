@@ -12,6 +12,7 @@ use App\Services\Auth\YandexAuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class AuthMethodController extends Controller
@@ -38,14 +39,29 @@ class AuthMethodController extends Controller
         $user = $request->user();
 
         $supportedProviders = array_map(function (array $meta) use ($user) {
+            $linkedAccount = $user->socialAccounts()
+                ->where('provider', $meta['provider'])
+                ->where('is_active', true)
+                ->first();
+
+            $canDisconnect = $linkedAccount
+                ? $this->loginMethodService->canUnlinkProvider($user, $meta['provider'])
+                : false;
+
             return [
                 'provider' => $meta['provider'],
                 'label' => $meta['label'],
                 'configured' => $meta['configured'],
-                'linked' => $user->socialAccounts()
-                    ->where('provider', $meta['provider'])
-                    ->where('is_active', true)
-                    ->exists(),
+                'linked' => $linkedAccount !== null,
+                'connection_status' => $linkedAccount ? 'connected' : 'not_connected',
+                'can_connect' => $meta['configured'] && $linkedAccount === null,
+                'can_disconnect' => $canDisconnect,
+                'linked_account' => $linkedAccount ? [
+                    'provider_user_id' => $linkedAccount->provider_user_id,
+                    'provider_username' => $linkedAccount->provider_username,
+                    'provider_email' => $linkedAccount->provider_email,
+                    'last_used_at' => $linkedAccount->last_used_at?->toIso8601String(),
+                ] : null,
             ];
         }, $this->loginMethodService->supportedProviders());
 
@@ -131,6 +147,13 @@ class AuthMethodController extends Controller
 
         $account->update([
             'is_active' => false,
+            'unlinked_at' => now(),
+        ]);
+
+        Log::info('[YandexAuth] provider unlinked', [
+            'provider' => $provider,
+            'provider_user_id' => $account->provider_user_id,
+            'user_id' => $user->id,
         ]);
 
         return response()->json([

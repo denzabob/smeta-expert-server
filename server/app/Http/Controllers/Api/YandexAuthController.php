@@ -121,6 +121,10 @@ class YandexAuthController extends Controller
 
         if (!$user) {
             $error = (string) ($result['error'] ?? 'oauth_profile_failed');
+            if ($error === 'oauth_link_required') {
+                return redirect($frontendBase . '/login?mode=login&error=oauth_link_required&provider=yandex');
+            }
+
             return redirect($frontendBase . '/login?error=' . urlencode($error));
         }
 

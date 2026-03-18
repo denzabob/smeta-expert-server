@@ -108,11 +108,10 @@ class YandexAuthService
         $displayName = $profile['display_name'] ?? $profile['real_name'] ?? $profile['login'] ?? '';
         $providerUsername = $profile['login'] ?? null;
 
-        // 1. Check if social account already linked
+        // 1. Active linked identity -> normal login.
         $social = SocialAccount::findByProvider('yandex', $providerUserId);
         if ($social) {
             $user = $social->user;
-            // Update raw profile
             $social->update([
                 'provider_username' => $providerUsername,
                 'provider_email' => $providerEmail,
@@ -129,33 +128,84 @@ class YandexAuthService
             ];
         }
 
+        // 2. Historical unlinked identity -> safely reactivate and login same user.
         $inactiveLinked = SocialAccount::where('provider', 'yandex')
             ->where('provider_user_id', $providerUserId)
             ->where('is_active', false)
             ->first();
 
         if ($inactiveLinked) {
+            Log::info('[YandexAuth] provider login attempted with unlinked identity', [
+                'provider' => 'yandex',
+                'provider_user_id' => $providerUserId,
+                'user_id' => $inactiveLinked->user_id,
+            ]);
+
+            $user = $inactiveLinked->user;
+            if ($user) {
+                $inactiveLinked->update([
+                    'is_active' => true,
+                    'unlinked_at' => null,
+                    'linked_at' => now(),
+                    'last_used_at' => now(),
+                    'provider_username' => $providerUsername,
+                    'provider_email' => $providerEmail,
+                    'provider_phone' => $providerPhone,
+                    'raw_profile_json' => $profile,
+                ]);
+
+                Log::info('[YandexAuth] provider relinked', [
+                    'provider' => 'yandex',
+                    'provider_user_id' => $providerUserId,
+                    'user_id' => $user->id,
+                    'source' => 'guest_login_reactivate',
+                ]);
+
+                return [
+                    'user' => $user,
+                    'is_new' => false,
+                    'needs_onboarding' => !$user->registration_completed_at,
+                    'error' => null,
+                ];
+            }
+
             return [
                 'user' => null,
                 'is_new' => false,
                 'needs_onboarding' => false,
-                'error' => 'provider_unlinked',
+                'error' => 'oauth_link_required',
             ];
         }
 
-        // 2. Try to find existing user by phone or email
-        $user = null;
+        // 3. Existing local account by email/phone, but provider not linked -> controlled flow.
+        $matchedUser = null;
         if ($providerPhone) {
             $normalizedPhone = VerificationCodeService::normalizePhone($providerPhone);
-            $user = User::where('phone', $normalizedPhone)->first();
+            $matchedUser = User::where('phone', $normalizedPhone)->first();
         }
-        if (!$user && $providerEmail) {
-            $user = User::where('email', $providerEmail)->first();
+        if (!$matchedUser && $providerEmail) {
+            $matchedUser = User::where('email', $providerEmail)->first();
         }
 
+        if ($matchedUser) {
+            Log::info('[YandexAuth] login requires manual link for existing account', [
+                'provider' => 'yandex',
+                'provider_user_id' => $providerUserId,
+                'matched_user_id' => $matchedUser->id,
+            ]);
+
+            return [
+                'user' => null,
+                'is_new' => false,
+                'needs_onboarding' => false,
+                'error' => 'oauth_link_required',
+            ];
+        }
+
+        // 4. New user -> create account + active provider link.
         $isNew = false;
+        $user = null;
         if (!$user) {
-            // 3. Create new user
             $user = User::create([
                 'name' => $displayName,
                 'full_name' => $displayName,
@@ -169,7 +219,7 @@ class YandexAuthService
             $isNew = true;
         }
 
-        // 4. Link social account
+        // 5. Link social account for new user.
         SocialAccount::create([
             'user_id' => $user->id,
             'provider' => 'yandex',
@@ -180,6 +230,7 @@ class YandexAuthService
             'linked_at' => now(),
             'last_used_at' => now(),
             'is_active' => true,
+            'unlinked_at' => null,
             'raw_profile_json' => $profile,
         ]);
 
@@ -216,6 +267,13 @@ class YandexAuthService
             ->first();
 
         if ($linkedByProviderId && (int) $linkedByProviderId->user_id !== (int) $user->id) {
+            Log::warning('[YandexAuth] provider link conflict', [
+                'provider' => 'yandex',
+                'provider_user_id' => $providerUserId,
+                'current_user_id' => $user->id,
+                'linked_user_id' => $linkedByProviderId->user_id,
+            ]);
+
             return [
                 'linked' => false,
                 'already_linked' => false,
@@ -228,15 +286,27 @@ class YandexAuthService
             ->first();
 
         $alreadyLinked = false;
+        $wasExistingInactive = false;
 
         if (!$account) {
             $account = new SocialAccount();
             $account->user_id = $user->id;
             $account->provider = 'yandex';
             $account->linked_at = now();
+        } elseif ($account->is_active && $account->provider_user_id !== $providerUserId) {
+            return [
+                'linked' => false,
+                'already_linked' => false,
+                'error' => 'provider_already_connected',
+            ];
         } else {
+            $wasExistingInactive = !$account->is_active;
             $alreadyLinked = $account->is_active
                 && $account->provider_user_id === $providerUserId;
+        }
+
+        if ($account->exists && !$account->is_active) {
+            $account->linked_at = now();
         }
 
         $account->provider_user_id = $providerUserId;
@@ -245,8 +315,18 @@ class YandexAuthService
         $account->provider_phone = $providerPhone;
         $account->last_used_at = now();
         $account->is_active = true;
+        $account->unlinked_at = null;
         $account->raw_profile_json = $profile;
         $account->save();
+
+        if ($wasExistingInactive && !$alreadyLinked) {
+            Log::info('[YandexAuth] provider relinked', [
+                'provider' => 'yandex',
+                'provider_user_id' => $providerUserId,
+                'user_id' => $user->id,
+                'source' => 'settings_link_flow',
+            ]);
+        }
 
         return [
             'linked' => true,
