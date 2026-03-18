@@ -80,8 +80,11 @@ Route::post('auth/phone/resend-code', [PhoneAuthController::class, 'resendCode']
 Route::post('auth/phone/verify-code', [PhoneAuthController::class, 'verifyCode']);
 
 // ========== Yandex OAuth (публичные) ==========
-Route::get('auth/yandex/redirect', [YandexAuthController::class, 'redirect']);
-Route::get('auth/yandex/callback', [YandexAuthController::class, 'callback']);
+// OAuth state хранится в сессии, поэтому для redirect/callback обязателен web middleware.
+Route::middleware('web')->group(function () {
+    Route::get('auth/yandex/redirect', [YandexAuthController::class, 'redirect']);
+    Route::get('auth/yandex/callback', [YandexAuthController::class, 'callback']);
+});
 
 // ========== Password Reset (публичные) ==========
 Route::post('forgot-password', [PasswordResetController::class, 'sendResetLink']);
