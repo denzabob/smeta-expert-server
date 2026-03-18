@@ -7,6 +7,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('parsing_sessions')) {
+            return;
+        }
+
         // Обходим ENUM, приводя к строке
         DB::statement("
             UPDATE parsing_sessions 

@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('parsing_sessions')) {
+            return;
+        }
+
         Schema::table('parsing_sessions', function (Blueprint $table) {
             // Full-scan idempotency fields
             $table->string('full_scan_run_id', 64)->nullable()->after('total_urls');

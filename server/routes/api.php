@@ -42,6 +42,10 @@ use App\Http\Controllers\Api\AdminMaterialDimensionRuleController;
 use App\Http\Controllers\Api\AdminMaterialTypePatternController;
 use App\Http\Controllers\Api\AdminSystemLogController;
 use App\Http\Controllers\Api\PinAuthController;
+use App\Http\Controllers\Api\PhoneAuthController;
+use App\Http\Controllers\Api\YandexAuthController;
+use App\Http\Controllers\Api\PasswordResetController;
+use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\AdminNotificationController;
 use App\Http\Controllers\Api\UserNotificationController;
 use App\Http\Controllers\Api\FacadeMaterialController;
@@ -69,6 +73,24 @@ Route::withoutMiddleware([
 Route::get('auth/pin/status', [PinAuthController::class, 'status']);
 Route::post('auth/pin/login', [PinAuthController::class, 'login']);
 Route::post('auth/trusted-device/forget', [PinAuthController::class, 'forgetDevice']);
+
+// ========== Phone Auth (публичные) ==========
+Route::post('auth/phone/request-code', [PhoneAuthController::class, 'requestCode']);
+Route::post('auth/phone/resend-code', [PhoneAuthController::class, 'resendCode']);
+Route::post('auth/phone/verify-code', [PhoneAuthController::class, 'verifyCode']);
+
+// ========== Yandex OAuth (публичные) ==========
+Route::get('auth/yandex/redirect', [YandexAuthController::class, 'redirect']);
+Route::get('auth/yandex/callback', [YandexAuthController::class, 'callback']);
+
+// ========== Password Reset (публичные) ==========
+Route::post('forgot-password', [PasswordResetController::class, 'sendResetLink']);
+Route::post('reset-password', [PasswordResetController::class, 'resetPassword']);
+
+// ========== Email Verification (signed URL — публичный) ==========
+Route::get('email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])
+    ->middleware('signed')
+    ->name('verification.email.verify');
 
 Route::post('/parser/materials', [ParserMaterialController::class, 'store']);
 Route::post('/parser/materials/batch', [ParserMaterialController::class, 'storeBatch']);
@@ -103,6 +125,12 @@ Route::middleware(InternalOnlyMiddleware::class)->group(function () {
 
 // Защищённые маршруты
 Route::middleware('auth:sanctum')->group(function () {
+    // ========== Phone Auth: Complete Registration (onboarding) ==========
+    Route::post('register/complete', [PhoneAuthController::class, 'completeRegistration']);
+
+    // ========== Email Verification (protected) ==========
+    Route::post('email/verification-notification', [EmailVerificationController::class, 'sendNotification']);
+
     // ========== Ideas Board API ==========
     Route::post('ideas', [IdeaController::class, 'store']);
     Route::get('ideas', [IdeaController::class, 'index']);

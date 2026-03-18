@@ -87,7 +87,7 @@
         <v-card-title>Позиции</v-card-title>
         <div class="toolbar-actions">
           <v-btn prepend-icon="mdi-plus" @click="openPositionDialog">Добавить позицию</v-btn>
-          <v-btn prepend-icon="mdi-file-import" variant="outlined" @click="importDialog = true">Импорт из Excel</v-btn>
+          <v-btn prepend-icon="mdi-file-import" variant="outlined" class="excel-import-btn" @click="importDialog = true">Импорт из Excel</v-btn>
         </div>
         
         <!-- Toolbar с пресетами и настройками отображения -->
@@ -104,25 +104,6 @@
             <v-btn v-for="preset in columnPresets" :key="preset.value" :value="preset.value" size="small">
               <v-icon start size="small">{{ preset.icon }}</v-icon>
               {{ preset.label }}
-            </v-btn>
-          </v-btn-toggle>
-          
-          <v-spacer />
-          
-          <!-- Плотность отображения -->
-          <v-btn-toggle
-            v-model="tableDensity"
-            mandatory
-            density="compact"
-            color="secondary"
-            variant="outlined"
-            class="position-toolbar-toggle"
-          >
-            <v-btn value="compact" size="small" title="Компактный">
-              <v-icon size="small">mdi-view-compact</v-icon>
-            </v-btn>
-            <v-btn value="comfortable" size="small" title="Комфортный">
-              <v-icon size="small">mdi-view-sequential</v-icon>
             </v-btn>
           </v-btn-toggle>
         </div>
@@ -1680,7 +1661,7 @@
               mandatory
               density="comfortable"
               color="primary"
-              class="mb-4"
+              class="mb-4 position-kind-toggle"
             >
               <v-btn value="panel">
                 <v-icon start>mdi-texture-box</v-icon>
@@ -8481,14 +8462,49 @@ onBeforeUnmount(() => {
   min-width: 190px;
 }
 
+.excel-import-btn {
+  color: #117e43 !important;
+  border-color: #117e43 !important;
+}
+
 .position-toolbar-toggle :deep(.v-btn-group__content) {
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  padding-right: 8px;
+  padding-bottom: 8px;
+}
+
+.position-toolbar-toggle {
+  height: auto !important;
+  overflow: visible !important;
 }
 
 .position-toolbar-toggle :deep(.v-btn) {
   border-radius: 10px !important;
+  margin-right: 8px;
+  margin-bottom: 8px;
+  border-inline-start-width: 1px !important;
+  border-inline-end-width: 1px !important;
+}
+
+.position-kind-toggle :deep(.v-btn-group__content) {
+  display: flex;
+  flex-wrap: wrap;
+  padding-right: 8px;
+  padding-bottom: 8px;
+}
+
+.position-kind-toggle {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.position-kind-toggle :deep(.v-btn) {
+  margin-right: 8px;
+  margin-bottom: 8px;
+  border-inline-start-width: 1px !important;
+  border-inline-end-width: 1px !important;
 }
 
 .dimension-help {

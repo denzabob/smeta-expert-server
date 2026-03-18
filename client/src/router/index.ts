@@ -284,8 +284,15 @@ router.beforeEach(async (to, from, next) => {
       await authStore.checkAuth()
     }
     
-    // Если уже авторизован — отправляем на главную
+    // Если уже авторизован — проверяем onboarding
     if (authStore.isAuthenticated) {
+      if (authStore.needsOnboarding) {
+        // Разрешаем оставаться на login с mode=onboarding
+        if (to.query.mode === 'onboarding') {
+          return next()
+        }
+        return next({ name: 'login', query: { mode: 'onboarding' } })
+      }
       return next({ name: 'projects' })
     }
     return next()
@@ -301,6 +308,11 @@ router.beforeEach(async (to, from, next) => {
     // Если после проверки пользователь не авторизован — на логин
     if (!authStore.isAuthenticated) {
       return next({ name: 'login', query: { intended: to.fullPath } })
+    }
+
+    // Если авторизован, но не прошёл onboarding — на onboarding
+    if (authStore.needsOnboarding) {
+      return next({ name: 'login', query: { mode: 'onboarding' } })
     }
   }
 

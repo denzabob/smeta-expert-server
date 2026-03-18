@@ -1,5 +1,5 @@
 // src/stores/auth.ts
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import api, { ensureCsrfCookie } from '@/api/axios'  // твой Axios с withCredentials: true
 
@@ -7,6 +7,11 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<any>(null)
   const isAuthenticated = ref(false)
   const authChecked = ref(false)  // флаг: авторизация уже проверена
+
+  /** Пользователь авторизован, но не завершил onboarding */
+  const needsOnboarding = computed(() => {
+    return isAuthenticated.value && user.value && !user.value.registration_completed_at
+  })
 
   // Проверка текущего пользователя
   async function checkAuth(force = false) {
@@ -58,5 +63,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { user, isAuthenticated, authChecked, checkAuth, logout }
+  return { user, isAuthenticated, authChecked, needsOnboarding, checkAuth, logout }
 })

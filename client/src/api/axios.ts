@@ -138,7 +138,10 @@ export function setupAxiosInterceptors(options: AxiosAuthInterceptorOptions) {
           url.includes('/api/forgot-password') ||
           url.includes('/api/reset-password') ||
           url.includes('/api/me') ||
-          url.includes('/api/auth/pin/');  // PIN endpoints
+          url.includes('/api/auth/pin/') ||
+          url.includes('/api/auth/phone/') ||
+          url.includes('/api/auth/yandex/') ||
+          url.includes('/api/register/complete');  // Phone/Yandex/onboarding auth endpoints
 
         if (!isAuthEndpoint && !config._handled401) {
           config._handled401 = true

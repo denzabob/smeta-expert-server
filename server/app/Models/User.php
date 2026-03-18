@@ -2,17 +2,17 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, \Illuminate\Auth\MustVerifyEmail;
 
     /**
      * The attributes that are mass assignable.
@@ -21,8 +21,15 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'full_name',
         'email',
         'password',
+        'phone',
+        'phone_verified_at',
+        'activity_profile',
+        'registration_completed_at',
+        'last_login_channel',
+        'auth_status',
         'pin_enabled',
         'pin_hash',
         'pin_changed_at',
@@ -41,6 +48,7 @@ class User extends Authenticatable
         'remember_token',
         'pin_hash',
         'current_session_id',
+        'auth_status',
     ];
 
     /**
@@ -52,6 +60,8 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'phone_verified_at' => 'datetime',
+            'registration_completed_at' => 'datetime',
             'password' => 'hashed',
             'pin_enabled' => 'boolean',
             'pin_changed_at' => 'datetime',
@@ -156,5 +166,19 @@ class User extends Authenticatable
         ]);
     }
 
-    // связи для пользовательских материалов можно добавить позже при необходимости
+    /**
+     * Привязанные OAuth-аккаунты (Yandex и др.).
+     */
+    public function socialAccounts()
+    {
+        return $this->hasMany(SocialAccount::class);
+    }
+
+    /**
+     * Проверить, завершена ли регистрация (onboarding пройден).
+     */
+    public function isRegistrationComplete(): bool
+    {
+        return $this->registration_completed_at !== null;
+    }
 }

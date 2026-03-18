@@ -45,19 +45,64 @@
               @switch-account="onSwitchAccount"
             />
 
-            <!-- Обычный логин -->
-            <AuthLogin
-              v-else-if="mode === 'login'"
-              @forgot="switchMode('forgot')"
-              @register="switchMode('register')"
-              @login-success="onLoginSuccess"
+            <!-- Телефонная авторизация -->
+            <template v-else-if="mode === 'phone'">
+              <AuthPhoneLogin @verified="onPhoneVerified" />
+
+              <div class="auth-divider my-4">
+                <v-divider />
+                <span class="text-caption text-medium-emphasis px-2">или</span>
+                <v-divider />
+              </div>
+
+              <YandexLoginButton class="mb-3" />
+
+              <div class="text-center">
+                <v-btn variant="text" size="small" @click="switchMode('login')">
+                  Войти по email
+                </v-btn>
+              </div>
+            </template>
+
+            <!-- Onboarding: заполнение профиля -->
+            <OnboardingCompletion
+              v-else-if="mode === 'onboarding'"
+              @completed="onOnboardingCompleted"
             />
+
+            <!-- Обычный логин -->
+            <template v-else-if="mode === 'login'">
+              <AuthLogin
+                @forgot="switchMode('forgot')"
+                @register="switchMode('phone')"
+                @login-success="onLoginSuccess"
+              />
+
+              <div class="auth-divider my-4">
+                <v-divider />
+                <span class="text-caption text-medium-emphasis px-2">или</span>
+                <v-divider />
+              </div>
+
+              <v-btn
+                block
+                variant="outlined"
+                size="large"
+                class="text-none mb-3"
+                prepend-icon="mdi-phone"
+                @click="switchMode('phone')"
+              >
+                Войти по телефону
+              </v-btn>
+
+              <YandexLoginButton />
+            </template>
 
             <!-- Восстановление PIN (ввод пароля → новый PIN) -->
             <AuthLogin
               v-else-if="mode === 'forgot-pin'"
               @forgot="switchMode('forgot')"
-              @register="switchMode('register')"
+              @register="switchMode('phone')"
               @login-success="onLoginSuccess"
             />
 
@@ -84,11 +129,16 @@ import AuthLogin from '@/components/auth/AuthLogin.vue'
 import AuthForgot from '@/components/auth/AuthForgot.vue'
 import AuthRegister from '@/components/auth/AuthRegister.vue'
 import AuthPinLogin from '@/components/auth/AuthPinLogin.vue'
+import AuthPhoneLogin from '@/components/auth/AuthPhoneLogin.vue'
+import OnboardingCompletion from '@/components/auth/OnboardingCompletion.vue'
+import YandexLoginButton from '@/components/auth/YandexLoginButton.vue'
 import PinSetupDialog from '@/components/auth/PinSetupDialog.vue'
 import PrismBackground from '@/components/effects/PrismBackground.vue'
 import { pinApi } from '@/api/pin'
+import { useAuthStore } from '@/stores/auth'
+import type { VerifyCodeResponse } from '@/api/phoneAuth'
 
-type AuthMode = 'login' | 'pin' | 'forgot' | 'forgot-pin' | 'register'
+type AuthMode = 'login' | 'pin' | 'forgot' | 'forgot-pin' | 'register' | 'phone' | 'onboarding'
 
 const router = useRouter()
 const route = useRoute()
@@ -108,6 +158,8 @@ const cardTitle = computed(() => {
   if (mode.value === 'pin') return 'Быстрый вход'
   if (mode.value === 'forgot') return 'Восстановление пароля'
   if (mode.value === 'forgot-pin') return 'Вход в систему'
+  if (mode.value === 'phone') return 'Вход по телефону'
+  if (mode.value === 'onboarding') return 'Завершение регистрации'
   return 'Вход в систему'
 })
 
@@ -126,18 +178,26 @@ onMounted(async () => {
 
     // Если нет PIN — показываем режим из query
     const queryMode = route.query.mode as string
-    if (queryMode === 'forgot' || queryMode === 'register') {
-      mode.value = queryMode
-    } else {
+    if (queryMode === 'onboarding') {
+      mode.value = 'onboarding'
+    } else if (queryMode === 'forgot') {
+      mode.value = 'forgot'
+    } else if (queryMode === 'login') {
       mode.value = 'login'
+    } else {
+      // По умолчанию — телефонная авторизация
+      mode.value = 'phone'
     }
   } catch {
-    // Если ошибка — просто показываем обычный логин
     const queryMode = route.query.mode as string
-    if (queryMode === 'forgot' || queryMode === 'register') {
-      mode.value = queryMode
-    } else {
+    if (queryMode === 'onboarding') {
+      mode.value = 'onboarding'
+    } else if (queryMode === 'forgot') {
+      mode.value = 'forgot'
+    } else if (queryMode === 'login') {
       mode.value = 'login'
+    } else {
+      mode.value = 'phone'
     }
   } finally {
     resolvingAuthMode.value = false
@@ -150,8 +210,8 @@ watch(
     if (resolvingAuthMode.value) return
     if (mode.value === 'pin') return // Не переключать из PIN режима по query
     const m = typeof newMode === 'string' ? newMode : ''
-    if (m === 'forgot' || m === 'login' || m === 'register') {
-      mode.value = m
+    if (['forgot', 'login', 'register', 'phone', 'onboarding'].includes(m)) {
+      mode.value = m as AuthMode
     }
   }
 )
@@ -222,6 +282,42 @@ const onPinSetupSkip = () => {
   navigateAfterLogin()
 }
 
+/**
+ * Вызывается после успешной верификации кода по телефону.
+ */
+const onPhoneVerified = async (data: VerifyCodeResponse) => {
+  const authStore = useAuthStore()
+  await authStore.checkAuth(true) // Обновляем состояние после серверного логина
+
+  if (data.status === 'needs_onboarding' || data.need_profile_completion) {
+    mode.value = 'onboarding'
+    await router.replace({ query: { ...route.query, mode: 'onboarding' } })
+    return
+  }
+
+  loginResponseData.value = data
+  if (data.should_offer_pin_enable || data.should_offer_pin_setup) {
+    showPinSetup.value = true
+    return
+  }
+  navigateAfterLogin()
+}
+
+/**
+ * Вызывается после завершения onboarding (заполнение профиля).
+ */
+const onOnboardingCompleted = async (data: any) => {
+  const authStore = useAuthStore()
+  await authStore.checkAuth(true)
+
+  loginResponseData.value = data
+  if (data.should_offer_pin_enable || data.should_offer_pin_setup) {
+    showPinSetup.value = true
+    return
+  }
+  navigateAfterLogin()
+}
+
 const navigateAfterLogin = async () => {
   const intendedRaw = route.query.intended
   const intended = typeof intendedRaw === 'string' ? intendedRaw : ''
@@ -280,6 +376,15 @@ const navigateAfterLogin = async () => {
   align-items: center;
   justify-content: center;
   text-align: center;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+}
+
+.auth-divider .v-divider {
+  flex: 1;
 }
 
 @media (max-width: 600px) {

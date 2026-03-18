@@ -7,7 +7,7 @@
   <style>
     @page {
       size: A4;
-      margin: 15mm 10mm 18mm 25mm; /* top right bottom left */
+      margin: 5mm 10mm 10mm 25mm; /* top right bottom left */
     }
 
     body {

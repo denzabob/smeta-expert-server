@@ -74,4 +74,15 @@ return [
         'max_tokens' => env('MISTRAL_MAX_TOKENS', 4096),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Yandex ID OAuth
+    |--------------------------------------------------------------------------
+    */
+    'yandex' => [
+        'client_id' => env('YANDEX_ID_CLIENT_ID'),
+        'client_secret' => env('YANDEX_ID_CLIENT_SECRET'),
+        'redirect_uri' => env('YANDEX_ID_REDIRECT_URI'),
+    ],
+
 ];

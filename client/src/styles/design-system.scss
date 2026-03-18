@@ -10,7 +10,7 @@
   --ds-radius-16: 16px;
 
   --ds-border-color: rgba(var(--v-theme-on-surface), 0.12);
-  --ds-elevation-1: 0 2px 8px rgba(15, 23, 42, 0.12);
+  --ds-elevation-1: none;
   --ds-table-row-height: 44px;
 }
 
@@ -228,7 +228,7 @@ body {
 
 .v-btn--variant-elevated,
 .v-btn--variant-flat {
-  box-shadow: var(--ds-elevation-1) !important;
+  box-shadow: none !important;
 }
 
 .v-field {
@@ -239,6 +239,10 @@ body {
 .v-field--density-compact {
   --v-input-control-height: 36px;
   min-height: 36px;
+}
+
+.v-input.v-input--horizontal.v-input--density-comfortable:not([class*='mb-']) {
+  margin-bottom: var(--ds-space-8);
 }
 
 .v-field--variant-outlined .v-field__outline {
@@ -259,7 +263,7 @@ body {
 }
 
 .v-switch .v-switch__thumb {
-  box-shadow: var(--ds-elevation-1);
+  box-shadow: none;
 }
 
 .v-switch.v-selection-control--dirty .v-switch__track {
@@ -306,6 +310,44 @@ body {
 
 .v-tab--selected {
   background: rgba(var(--v-theme-primary), 0.16);
+}
+
+.v-btn-group--horizontal.v-btn-group--density-compact .v-btn-group__content {
+  display: flex;
+  flex-wrap: wrap;
+  padding-right: var(--ds-space-8);
+  padding-bottom: var(--ds-space-8);
+}
+
+.v-btn-group--horizontal.v-btn-group--density-compact {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.v-btn-group--horizontal.v-btn-group--density-compact .v-btn-group__content .v-btn {
+  margin-right: var(--ds-space-8);
+  margin-bottom: var(--ds-space-8);
+  border-inline-start-width: 1px !important;
+  border-inline-end-width: 1px !important;
+}
+
+.v-overlay__content .v-btn-group--horizontal.v-btn-group--density-default .v-btn-group__content {
+  display: flex;
+  flex-wrap: wrap;
+  padding-right: var(--ds-space-8);
+  padding-bottom: var(--ds-space-8);
+}
+
+.v-overlay__content .v-btn-group--horizontal.v-btn-group--density-default {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.v-overlay__content .v-btn-group--horizontal.v-btn-group--density-default .v-btn-group__content .v-btn {
+  margin-right: var(--ds-space-8);
+  margin-bottom: var(--ds-space-8);
+  border-inline-start-width: 1px !important;
+  border-inline-end-width: 1px !important;
 }
 
 .v-navigation-drawer {
