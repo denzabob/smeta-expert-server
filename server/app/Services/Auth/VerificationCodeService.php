@@ -67,9 +67,11 @@ class VerificationCodeService
         string $purpose,
         string $ip,
         ?string $email = null,
-        ?int $userId = null
+        ?int $userId = null,
+        bool $preferCallFlow = false
     ): array {
         $phone = self::normalizePhone($phone);
+        $transports = $this->resolveTransports($preferCallFlow);
 
         // Rate limiting: max challenges per phone+IP per hour
         $maxPerPhoneIp = config('verification.rate_limits.per_phone_ip_hour', 5);
@@ -106,7 +108,7 @@ class VerificationCodeService
         $ttl = config('verification.code_ttl_minutes', 5);
         $resendCooldown = config('verification.resend_cooldown_seconds', 60);
 
-        $channelOrder = array_map(fn($t) => $t->channelName(), $this->transports);
+        $channelOrder = array_map(fn($t) => $t->channelName(), $transports);
 
         $challenge = AuthVerificationChallenge::create([
             'id' => Str::uuid()->toString(),
@@ -124,7 +126,7 @@ class VerificationCodeService
         ]);
 
         // Try to deliver via transport chain
-        $deliveryResult = $this->deliverCode($phone, $code, $challenge);
+        $deliveryResult = $this->deliverCode($phone, $code, $challenge, $transports);
 
         return [
             'challenge' => $challenge->fresh(),
@@ -172,7 +174,12 @@ class VerificationCodeService
             'resend_available_at' => now()->addSeconds($resendCooldown),
         ]);
 
-        $deliveryResult = $this->deliverCode($challenge->phone, $code, $challenge);
+        $deliveryResult = $this->deliverCode(
+            $challenge->phone,
+            $code,
+            $challenge,
+            $this->resolveTransports($challenge->current_channel === 'sms_ru_callcheck')
+        );
 
         return [
             'channel_used' => $challenge->current_channel,
@@ -236,6 +243,12 @@ class VerificationCodeService
 
         $status = $this->callCheckTransport->getCheckStatus($checkId);
 
+        if (is_array($status['provider_payload'] ?? null)) {
+            $challenge->update([
+                'provider_payload' => $status['provider_payload'],
+            ]);
+        }
+
         if (!$status['success']) {
             return ['valid' => false, 'error' => 'provider_error'];
         }
@@ -258,7 +271,7 @@ class VerificationCodeService
      *
      * @return array{success: bool, processed: bool, error: ?string}
      */
-    public function processCallCheckWebhook(string $checkId, string $checkStatus): array
+    public function processCallCheckWebhook(string $checkId, string $checkStatus, array $payload = []): array
     {
         $challenge = AuthVerificationChallenge::where('current_channel', 'sms_ru_callcheck')
             ->where('provider_message_id', $checkId)
@@ -270,7 +283,15 @@ class VerificationCodeService
             return ['success' => true, 'processed' => false, 'error' => null];
         }
 
-        if ($checkStatus === '401') {
+        if (!empty($payload)) {
+            $challenge->update([
+                'provider_payload' => $payload,
+            ]);
+        }
+
+        $normalizedStatus = mb_strtolower(trim($checkStatus));
+
+        if (in_array($normalizedStatus, ['401', 'verified', 'confirm', 'confirmed', 'success', 'ok'], true)) {
             if ($challenge->status !== 'verified') {
                 $challenge->markVerified();
             }
@@ -278,7 +299,7 @@ class VerificationCodeService
             return ['success' => true, 'processed' => true, 'error' => null];
         }
 
-        if ($checkStatus === '402') {
+        if (in_array($normalizedStatus, ['402', 'expired', 'failed', 'timeout', 'canceled', 'cancelled'], true)) {
             if ($challenge->status === 'pending') {
                 $challenge->markExpired();
             }
@@ -286,7 +307,7 @@ class VerificationCodeService
             return ['success' => true, 'processed' => true, 'error' => null];
         }
 
-        if ($checkStatus === '400') {
+        if (in_array($normalizedStatus, ['400', 'pending', 'waiting', 'in_progress'], true)) {
             // Not confirmed yet, keep pending unless already expired by TTL.
             if ($challenge->isExpired() && $challenge->status === 'pending') {
                 $challenge->markExpired();
@@ -305,9 +326,14 @@ class VerificationCodeService
     /**
      * Deliver code through transport chain with fallback.
      */
-    protected function deliverCode(string $phone, string $code, AuthVerificationChallenge $challenge): array
+    protected function deliverCode(
+        string $phone,
+        string $code,
+        AuthVerificationChallenge $challenge,
+        array $transports
+    ): array
     {
-        if (empty($this->transports)) {
+        if (empty($transports)) {
             // No transports configured — test mode fallback
             if (config('verification.test_mode')) {
                 $challenge->update([
@@ -324,18 +350,26 @@ class VerificationCodeService
             return ['success' => false, 'meta' => null];
         }
 
-        foreach ($this->transports as $transport) {
+        foreach ($transports as $transport) {
             $result = $transport->sendCode($phone, $code);
 
             if ($result['success']) {
-                $challenge->update([
+                $updates = [
                     'current_channel' => $transport->channelName(),
                     'provider_message_id' => $result['provider_message_id'],
                     'last_error' => null,
-                ]);
+                ];
+
+                $meta = is_array($result['meta'] ?? null) ? $result['meta'] : null;
+                if ($meta) {
+                    $updates = array_merge($updates, $this->providerMetaToChallengeUpdates($meta));
+                }
+
+                $challenge->update($updates);
+
                 return [
                     'success' => true,
-                    'meta' => is_array($result['meta'] ?? null) ? $result['meta'] : null,
+                    'meta' => $meta,
                 ];
             }
 
@@ -372,5 +406,94 @@ class VerificationCodeService
             return $phone;
         }
         return mb_substr($phone, 0, 4) . str_repeat('*', $len - 8) . mb_substr($phone, -4);
+    }
+
+    /**
+     * @return VerificationTransportInterface[]
+     */
+    protected function resolveTransports(bool $preferCallFlow): array
+    {
+        if (!$preferCallFlow) {
+            return $this->transports;
+        }
+
+        if ($this->callCheckTransport->isAvailable()) {
+            return [$this->callCheckTransport];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string,mixed> $meta
+     * @return array<string,mixed>
+     */
+    protected function providerMetaToChallengeUpdates(array $meta): array
+    {
+        $updates = [];
+
+        $callPhone = isset($meta['call_phone']) ? $this->normalizeProviderPhone((string) $meta['call_phone']) : null;
+        $callPhonePretty = isset($meta['call_phone_pretty'])
+            ? trim((string) $meta['call_phone_pretty'])
+            : null;
+
+        if ($callPhone !== null) {
+            $updates['call_phone'] = $callPhone;
+            $updates['call_phone_pretty'] = $callPhonePretty ?: $this->prettyRussianPhone($callPhone);
+        } elseif ($callPhonePretty) {
+            $updates['call_phone_pretty'] = $callPhonePretty;
+        }
+
+        if (isset($meta['provider_payload']) && is_array($meta['provider_payload'])) {
+            $updates['provider_payload'] = $meta['provider_payload'];
+        }
+
+        return $updates;
+    }
+
+    protected function normalizeProviderPhone(string $phone): ?string
+    {
+        $digits = preg_replace('/\D+/', '', $phone);
+        if ($digits === '') {
+            return null;
+        }
+
+        if (strlen($digits) === 10) {
+            $digits = '7' . $digits;
+        }
+
+        if (strlen($digits) === 11 && $digits[0] === '8') {
+            $digits[0] = '7';
+        }
+
+        if (strlen($digits) < 10) {
+            return null;
+        }
+
+        return '+' . $digits;
+    }
+
+    protected function prettyRussianPhone(string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', $phone);
+        if (strlen($digits) === 11 && $digits[0] === '8') {
+            $digits[0] = '7';
+        }
+
+        if (strlen($digits) === 10) {
+            $digits = '7' . $digits;
+        }
+
+        if (strlen($digits) === 11 && $digits[0] === '7') {
+            return sprintf(
+                '+7 (%s) %s-%s-%s',
+                substr($digits, 1, 3),
+                substr($digits, 4, 3),
+                substr($digits, 7, 2),
+                substr($digits, 9, 2)
+            );
+        }
+
+        return $phone;
     }
 }

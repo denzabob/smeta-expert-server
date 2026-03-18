@@ -28,14 +28,14 @@ class SmsRuCallCheckWebhookController extends Controller
             }
         }
 
-        $checkId = trim((string) $request->input('check_id', ''));
+        $checkId = trim((string) $request->input('check_id', $request->input('id', '')));
         $checkStatus = trim((string) $request->input('check_status', $request->input('status', '')));
 
         if ($checkId === '' || $checkStatus === '') {
             return response('bad_request', 422);
         }
 
-        $result = $this->verificationService->processCallCheckWebhook($checkId, $checkStatus);
+        $result = $this->verificationService->processCallCheckWebhook($checkId, $checkStatus, $request->all());
 
         if (!$result['success']) {
             Log::warning('[SmsRuCallCheckWebhook] Failed to process webhook', [

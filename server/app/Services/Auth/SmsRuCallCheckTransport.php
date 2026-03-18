@@ -20,6 +20,12 @@ class SmsRuCallCheckTransport implements VerificationTransportInterface
                 'meta' => [
                     'call_phone' => '78005008275',
                     'call_phone_pretty' => '+7 (800) 500-82-75',
+                    'provider_payload' => [
+                        'status' => 'OK',
+                        'status_code' => 100,
+                        'check_id' => $checkId,
+                        'check_status' => config('verification.sms_ru.test_confirmed', true) ? '401' : '400',
+                    ],
                 ],
             ];
         }
@@ -58,6 +64,7 @@ class SmsRuCallCheckTransport implements VerificationTransportInterface
                         'call_phone' => $body['call_phone'] ?? null,
                         'call_phone_pretty' => $body['call_phone_pretty'] ?? null,
                         'call_phone_html' => $body['call_phone_html'] ?? null,
+                        'provider_payload' => $body,
                     ],
                 ];
             }
@@ -90,6 +97,12 @@ class SmsRuCallCheckTransport implements VerificationTransportInterface
                 'pending' => !$confirmed,
                 'expired' => false,
                 'error' => null,
+                'provider_payload' => [
+                    'status' => 'OK',
+                    'status_code' => 100,
+                    'check_id' => $checkId,
+                    'check_status' => $confirmed ? '401' : '400',
+                ],
             ];
         }
 
@@ -142,6 +155,7 @@ class SmsRuCallCheckTransport implements VerificationTransportInterface
                 'pending' => $checkStatus === '400',
                 'expired' => $checkStatus === '402',
                 'error' => null,
+                'provider_payload' => $body,
             ];
         } catch (\Throwable $e) {
             Log::warning('[SmsRuCallCheck] Status check failed', [
@@ -161,6 +175,10 @@ class SmsRuCallCheckTransport implements VerificationTransportInterface
 
     public function isAvailable(): bool
     {
+        if (config('verification.test_mode')) {
+            return true;
+        }
+
         return (bool) config('verification.sms_ru.enabled')
             && !empty(config('verification.sms_ru.api_id'));
     }

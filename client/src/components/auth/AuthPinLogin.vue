@@ -126,6 +126,15 @@ const onPinComplete = async (completedPin: string) => {
     await pinApi.loginByPin(completedPin)
     await authStore.checkAuth(true)
 
+    // Avoid redirect loop: if onboarding is required, open onboarding mode directly.
+    if (authStore.needsOnboarding) {
+      await router.replace({
+        name: 'login',
+        query: { ...route.query, mode: 'onboarding' },
+      })
+      return
+    }
+
     // Redirect
     const intendedRaw = route.query.intended
     const intended = typeof intendedRaw === 'string' ? intendedRaw : ''

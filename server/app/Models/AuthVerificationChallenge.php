@@ -23,10 +23,14 @@ class AuthVerificationChallenge extends Model
         'attempts_left',
         'resend_available_at',
         'status',
+        'verified_at',
         'current_channel',
         'channel_attempt_order',
         'provider_message_id',
+        'call_phone',
+        'call_phone_pretty',
         'last_error',
+        'provider_payload',
         'user_id',
         'ip_address',
     ];
@@ -41,7 +45,9 @@ class AuthVerificationChallenge extends Model
         return [
             'expires_at' => 'datetime',
             'resend_available_at' => 'datetime',
+            'verified_at' => 'datetime',
             'channel_attempt_order' => 'array',
+            'provider_payload' => 'array',
         ];
     }
 
@@ -101,7 +107,10 @@ class AuthVerificationChallenge extends Model
 
     public function markVerified(): void
     {
-        $this->update(['status' => 'verified']);
+        $this->update([
+            'status' => 'verified',
+            'verified_at' => now(),
+        ]);
     }
 
     public function markExpired(): void

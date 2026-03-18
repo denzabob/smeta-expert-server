@@ -4,6 +4,36 @@ export interface RequestCodePayload {
   phone: string
 }
 
+export interface RequestCallPayload {
+  phone: string
+}
+
+export interface RequestCallResponse {
+  verification_id: string
+  challenge_id: string
+  status: 'pending'
+  phone_masked: string
+  call_phone?: string | null
+  call_phone_pretty?: string | null
+  expires_at: string
+  ttl_seconds: number
+}
+
+export interface CallStatusPayload {
+  verification_id: string
+}
+
+export interface CallStatusResponse {
+  verification_id: string
+  status: 'pending' | 'verified' | 'expired' | 'failed'
+  call_phone?: string | null
+  call_phone_pretty?: string | null
+  expires_at: string
+  ttl_seconds: number
+  message?: string
+  auth?: VerifyCodeResponse
+}
+
 export interface RequestCodeResponse {
   challenge_id: string
   channel: string
@@ -67,6 +97,25 @@ export interface CompleteRegistrationResponse {
 }
 
 export const phoneAuthApi = {
+  /**
+   * Запросить challenge для входа/регистрации через звонок
+   * POST /api/auth/phone/call/request
+   */
+  async requestCallChallenge(payload: RequestCallPayload): Promise<RequestCallResponse> {
+    await ensureCsrfCookie()
+    const { data } = await api.post('/api/auth/phone/call/request', payload)
+    return data
+  },
+
+  /**
+   * Проверить статус call challenge
+   * POST /api/auth/phone/call/status
+   */
+  async getCallStatus(payload: CallStatusPayload): Promise<CallStatusResponse> {
+    const { data } = await api.post('/api/auth/phone/call/status', payload)
+    return data
+  },
+
   /**
    * Запросить код подтверждения на телефон
    * POST /api/auth/phone/request-code

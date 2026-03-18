@@ -78,6 +78,12 @@ Route::post('auth/pin/login', [PinAuthController::class, 'login']);
 Route::post('auth/trusted-device/forget', [PinAuthController::class, 'forgetDevice']);
 
 // ========== Phone Auth (публичные) ==========
+Route::post('auth/phone/call/request', [PhoneAuthController::class, 'requestCall']);
+Route::get('auth/phone/call/status', [PhoneAuthController::class, 'callStatus']);
+Route::post('auth/phone/call/status', [PhoneAuthController::class, 'callStatus']);
+Route::post('auth/phone/call/webhook', SmsRuCallCheckWebhookController::class);
+Route::get('auth/phone/call/webhook', SmsRuCallCheckWebhookController::class);
+
 Route::post('auth/phone/request-code', [PhoneAuthController::class, 'requestCode']);
 Route::post('auth/phone/resend-code', [PhoneAuthController::class, 'resendCode']);
 Route::post('auth/phone/verify-code', [PhoneAuthController::class, 'verifyCode']);

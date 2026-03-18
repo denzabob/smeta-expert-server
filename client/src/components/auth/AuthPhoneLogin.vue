@@ -1,9 +1,8 @@
 <template>
   <div class="auth-phone">
-    <!-- Шаг 1: Ввод номера телефона -->
     <div v-if="step === 'phone'">
       <v-text-field
-        v-model="phone"
+        v-model="phoneModel"
         label="Номер телефона"
         placeholder="+7 (999) 123-45-67"
         variant="outlined"
@@ -11,8 +10,12 @@
         prepend-inner-icon="mdi-phone"
         :error-messages="phoneError"
         :disabled="loading"
-        @keyup.enter="requestCode"
+        @keyup.enter="requestCallChallenge"
       />
+
+      <div class="text-caption text-medium-emphasis mb-2">
+        Если вы еще не зарегистрированы, аккаунт будет создан после подтверждения номера.
+      </div>
 
       <v-btn
         block
@@ -21,7 +24,7 @@
         :loading="loading"
         :disabled="!isPhoneValid"
         class="mt-2"
-        @click="requestCode"
+        @click="requestCallChallenge"
       >
         Продолжить
       </v-btn>
@@ -31,53 +34,56 @@
       </v-alert>
     </div>
 
-    <!-- Шаг 2: Ввод кода подтверждения -->
-    <div v-else-if="step === 'code'">
-      <div class="text-body-2 text-medium-emphasis mb-3" v-if="verificationMethod === 'code'">
-        Код отправлен на <strong>{{ phoneMasked }}</strong>
-        <span v-if="currentChannel" class="ml-1">({{ channelLabel }})</span>
+    <div v-else>
+      <div class="text-body-2 text-medium-emphasis mb-2">
+        Позвоните с номера <strong>{{ phoneMasked }}</strong> на номер:
       </div>
 
-      <div v-else class="text-body-2 text-medium-emphasis mb-3">
-        Позвоните с номера <strong>{{ phoneMasked }}</strong>
-        <span v-if="callPhonePretty">на <strong>{{ callPhonePretty }}</strong></span>
-        <span v-if="currentChannel" class="ml-1">({{ channelLabel }})</span>
+      <div class="call-number mb-3">
+        {{ callPhonePretty || callPhoneRaw || 'номер недоступен' }}
       </div>
 
-      <v-otp-input
-        v-if="verificationMethod === 'code'"
-        ref="otpInputRef"
-        v-model="code"
-        :length="6"
-        :disabled="loading"
-        type="number"
-        @finish="verifyCode"
+      <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+        Звонок бесплатный. После звонка подтверждение произойдет автоматически.
+      </v-alert>
+
+      <div class="d-flex align-center justify-space-between mb-2">
+        <v-chip
+          size="small"
+          :color="statusColor"
+          variant="flat"
+        >
+          {{ statusLabel }}
+        </v-chip>
+        <span class="text-caption text-medium-emphasis">Осталось: {{ ttlLabel }}</span>
+      </div>
+
+      <v-progress-linear
+        :model-value="ttlProgress"
+        color="primary"
+        height="6"
+        rounded
+        class="mb-3"
       />
 
-      <v-alert
-        v-else
-        type="info"
-        variant="tonal"
-        density="compact"
-        class="mb-3"
-      >
-        После звонка нажмите кнопку «Проверить звонок». Звонок бесплатный: система сбрасывает вызов.
+      <v-alert v-if="statusMessage" :type="statusAlertType" variant="tonal" class="mb-3" density="compact">
+        {{ statusMessage }}
       </v-alert>
 
       <v-btn
         block
         color="primary"
         size="large"
-        :loading="loading"
-        :disabled="verificationMethod === 'code' && code.length < 6"
-        class="mt-4"
-        @click="verifyCode"
+        :loading="loadingStatus"
+        :disabled="callStatus === 'verified'"
+        class="mt-2"
+        @click="checkCallStatus"
       >
-        {{ verificationMethod === 'code' ? 'Подтвердить' : 'Проверить звонок' }}
+        Я позвонил, проверить
       </v-btn>
 
       <v-btn
-        v-if="verificationMethod === 'call' && callPhoneRaw"
+        v-if="callPhoneRaw"
         block
         variant="outlined"
         class="mt-2"
@@ -86,19 +92,14 @@
         Позвонить {{ callPhonePretty || callPhoneRaw }}
       </v-btn>
 
-      <v-alert v-if="codeError" type="error" variant="tonal" class="mt-3" density="compact">
-        {{ codeError }}
-      </v-alert>
-
       <div class="d-flex align-center justify-space-between mt-3">
         <v-btn
           variant="text"
           size="small"
-          :disabled="!canResend"
-          :loading="resending"
-          @click="resendCode"
+          :disabled="loading"
+          @click="requestNewNumber"
         >
-          {{ canResend ? 'Отправить повторно' : `Повторно через ${resendCountdown}с` }}
+          Запросить новый номер
         </v-btn>
 
         <v-btn variant="text" size="small" @click="backToPhone">
@@ -110,71 +111,141 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
-import { phoneAuthApi, type VerifyCodeResponse } from '@/api/phoneAuth'
+import { computed, onUnmounted, ref } from 'vue'
+import {
+  phoneAuthApi,
+  type VerifyCodeResponse,
+  type CallStatusResponse,
+} from '@/api/phoneAuth'
+import {
+  formatRuPhoneMask,
+  isCompleteRuPhone,
+  toE164RuPhone,
+  toStatusLabel,
+  type CallUiStatus,
+} from '@/components/auth/phoneCallFlow'
 
 const emit = defineEmits<{
   (e: 'verified', data: VerifyCodeResponse): void
 }>()
 
-const step = ref<'phone' | 'code'>('phone')
-const phone = ref('')
-const code = ref('')
-const loading = ref(false)
-const resending = ref(false)
+const step = ref<'phone' | 'waiting'>('phone')
+const phoneInput = ref('')
 const phoneError = ref('')
-const codeError = ref('')
 const generalError = ref('')
+const loading = ref(false)
+const loadingStatus = ref(false)
 
-const challengeId = ref('')
+const verificationId = ref('')
 const phoneMasked = ref('')
-const currentChannel = ref('')
-const verificationMethod = ref<'code' | 'call'>('code')
 const callPhoneRaw = ref('')
 const callPhonePretty = ref('')
-const resendAvailableAt = ref<Date | null>(null)
-const resendCountdown = ref(0)
-let resendTimer: ReturnType<typeof setInterval> | null = null
 
-const otpInputRef = ref<any>(null)
+const callStatus = ref<CallUiStatus>('idle')
+const statusMessage = ref('')
+const ttlSeconds = ref(0)
+const ttlInitial = ref(0)
 
-const channelLabel = computed(() => {
-  if (currentChannel.value === 'telegram_gateway') return 'Telegram'
-  if (currentChannel.value === 'sms_ru_callcheck') return 'Звонок'
-  return currentChannel.value
+let pollTimer: ReturnType<typeof setInterval> | null = null
+let ttlTimer: ReturnType<typeof setInterval> | null = null
+
+const phoneModel = computed({
+  get: () => phoneInput.value,
+  set: (value: string) => {
+    phoneInput.value = formatRuPhoneMask(value)
+  },
 })
 
-const isPhoneValid = computed(() => {
-  const digits = phone.value.replace(/\D/g, '')
-  return digits.length >= 10 && digits.length <= 12
+const isPhoneValid = computed(() => isCompleteRuPhone(phoneInput.value))
+
+const statusLabel = computed(() => toStatusLabel(callStatus.value) || 'Ожидаем звонок')
+
+const statusColor = computed(() => {
+  if (callStatus.value === 'verified') return 'success'
+  if (callStatus.value === 'expired') return 'warning'
+  if (callStatus.value === 'failed') return 'error'
+  return 'info'
 })
 
-const canResend = computed(() => resendCountdown.value <= 0)
+const statusAlertType = computed<'info' | 'success' | 'warning' | 'error'>(() => {
+  if (callStatus.value === 'verified') return 'success'
+  if (callStatus.value === 'expired') return 'warning'
+  if (callStatus.value === 'failed') return 'error'
+  return 'info'
+})
 
-function startResendTimer(availableAt: string | Date) {
-  if (resendTimer) clearInterval(resendTimer)
+const ttlLabel = computed(() => {
+  if (ttlSeconds.value <= 0) return '00:00'
+  const minutes = String(Math.floor(ttlSeconds.value / 60)).padStart(2, '0')
+  const seconds = String(ttlSeconds.value % 60).padStart(2, '0')
+  return `${minutes}:${seconds}`
+})
 
-  const target = new Date(availableAt)
-  resendAvailableAt.value = target
+const ttlProgress = computed(() => {
+  if (ttlInitial.value <= 0) return 0
+  return Math.max(0, Math.min(100, (ttlSeconds.value / ttlInitial.value) * 100))
+})
 
-  const updateCountdown = () => {
-    const diff = Math.max(0, Math.ceil((target.getTime() - Date.now()) / 1000))
-    resendCountdown.value = diff
-    if (diff <= 0 && resendTimer) {
-      clearInterval(resendTimer)
-      resendTimer = null
+function resetTimers() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+  if (ttlTimer) {
+    clearInterval(ttlTimer)
+    ttlTimer = null
+  }
+}
+
+function startTimers() {
+  resetTimers()
+
+  ttlTimer = setInterval(() => {
+    if (ttlSeconds.value > 0) {
+      ttlSeconds.value -= 1
+    }
+
+    if (ttlSeconds.value <= 0 && callStatus.value === 'pending') {
+      callStatus.value = 'expired'
+      statusMessage.value = 'Время ожидания звонка истекло. Запросите новый номер.'
+      resetTimers()
+    }
+  }, 1000)
+
+  pollTimer = setInterval(() => {
+    if (callStatus.value === 'pending') {
+      void pollStatus()
+    }
+  }, 3000)
+}
+
+function applyCallStatusPayload(payload: CallStatusResponse) {
+  if (payload.call_phone) callPhoneRaw.value = payload.call_phone
+  if (payload.call_phone_pretty) callPhonePretty.value = payload.call_phone_pretty
+
+  const nextStatus = payload.status
+  callStatus.value = nextStatus
+  statusMessage.value = payload.message || ''
+
+  if (payload.ttl_seconds >= 0) {
+    ttlSeconds.value = payload.ttl_seconds
+    if (ttlInitial.value < payload.ttl_seconds) {
+      ttlInitial.value = payload.ttl_seconds
     }
   }
 
-  updateCountdown()
-  resendTimer = setInterval(updateCountdown, 1000)
+  if (nextStatus === 'verified' && payload.auth) {
+    resetTimers()
+    emit('verified', payload.auth)
+    return
+  }
+
+  if (nextStatus === 'expired' || nextStatus === 'failed') {
+    resetTimers()
+  }
 }
 
-onUnmounted(() => {
-  if (resendTimer) clearInterval(resendTimer)
-})
-
-async function requestCode() {
+async function requestCallChallenge() {
   if (!isPhoneValid.value || loading.value) return
 
   phoneError.value = ''
@@ -182,99 +253,97 @@ async function requestCode() {
   loading.value = true
 
   try {
-    const result = await phoneAuthApi.requestCode({ phone: phone.value })
-    challengeId.value = result.challenge_id
+    const result = await phoneAuthApi.requestCallChallenge({
+      phone: toE164RuPhone(phoneInput.value),
+    })
+
+    verificationId.value = result.verification_id
     phoneMasked.value = result.phone_masked
-    currentChannel.value = result.channel
-    verificationMethod.value = result.verification_method
     callPhoneRaw.value = result.call_phone || ''
     callPhonePretty.value = result.call_phone_pretty || ''
-    startResendTimer(result.resend_available_at)
-    step.value = 'code'
-    code.value = ''
+
+    ttlSeconds.value = Math.max(0, result.ttl_seconds)
+    ttlInitial.value = Math.max(1, result.ttl_seconds)
+
+    callStatus.value = 'pending'
+    statusMessage.value = 'Ожидаем звонок.'
+    step.value = 'waiting'
+
+    startTimers()
+    await pollStatus()
   } catch (err: any) {
     const status = err.response?.status
     const data = err.response?.data
 
     if (status === 422) {
-      phoneError.value = data?.errors?.phone?.[0] || 'Некорректный номер телефона'
+      phoneError.value = data?.errors?.phone?.[0] || data?.message || 'Некорректный номер телефона'
     } else if (status === 429) {
       generalError.value = 'Слишком много запросов. Подождите немного.'
     } else {
-      generalError.value = data?.message || 'Ошибка при отправке кода'
+      generalError.value = data?.message || 'Не удалось запросить номер для звонка.'
     }
   } finally {
     loading.value = false
   }
 }
 
-async function resendCode() {
-  if (!canResend.value || resending.value) return
+async function pollStatus() {
+  if (!verificationId.value || loadingStatus.value) return
 
-  codeError.value = ''
-  resending.value = true
-
+  loadingStatus.value = true
   try {
-    const result = await phoneAuthApi.resendCode({ challenge_id: challengeId.value })
-    currentChannel.value = result.channel
-    verificationMethod.value = result.verification_method
-    callPhoneRaw.value = result.call_phone || ''
-    callPhonePretty.value = result.call_phone_pretty || ''
-    startResendTimer(result.resend_available_at)
-    code.value = ''
-  } catch (err: any) {
-    const data = err.response?.data
-    codeError.value = data?.message || 'Не удалось отправить код повторно'
-  } finally {
-    resending.value = false
-  }
-}
-
-async function verifyCode() {
-  if (loading.value) return
-  if (verificationMethod.value === 'code' && code.value.length < 6) return
-
-  codeError.value = ''
-  loading.value = true
-
-  try {
-    const payload = verificationMethod.value === 'code'
-      ? { challenge_id: challengeId.value, code: code.value }
-      : { challenge_id: challengeId.value }
-
-    const result = await phoneAuthApi.verifyCode(payload)
-    emit('verified', result)
+    const result = await phoneAuthApi.getCallStatus({
+      verification_id: verificationId.value,
+    })
+    applyCallStatusPayload(result)
   } catch (err: any) {
     const status = err.response?.status
     const data = err.response?.data
 
-    if (verificationMethod.value === 'call' && status === 409) {
-      codeError.value = data?.message || 'Звонок пока не подтвержден. Попробуйте снова через несколько секунд.'
+    if (status === 410) {
+      callStatus.value = 'expired'
+      statusMessage.value = data?.message || 'Время ожидания звонка истекло. Запросите новый номер.'
+      resetTimers()
       return
     }
 
-    if (status === 422) {
-      codeError.value = data?.errors?.code?.[0] || data?.message || 'Неверный код'
-    } else if (status === 410) {
-      codeError.value = 'Код истёк или исчерпаны попытки. Запросите новый.'
-      step.value = 'phone'
-    } else if (status === 429) {
-      codeError.value = 'Слишком много попыток. Подождите.'
-    } else {
-      codeError.value = data?.message || 'Ошибка проверки кода'
-    }
+    callStatus.value = 'failed'
+    statusMessage.value = data?.message || 'Не удалось проверить статус звонка. Попробуйте снова.'
   } finally {
-    loading.value = false
+    loadingStatus.value = false
   }
 }
 
+async function checkCallStatus() {
+  await pollStatus()
+}
+
+async function requestNewNumber() {
+  if (loading.value) return
+  await requestCallChallenge()
+}
+
 function backToPhone() {
+  resetTimers()
   step.value = 'phone'
-  code.value = ''
-  codeError.value = ''
-  challengeId.value = ''
-  verificationMethod.value = 'code'
+  callStatus.value = 'idle'
+  statusMessage.value = ''
+  verificationId.value = ''
   callPhoneRaw.value = ''
   callPhonePretty.value = ''
+  ttlSeconds.value = 0
+  ttlInitial.value = 0
 }
+
+onUnmounted(() => {
+  resetTimers()
+})
 </script>
+
+<style scoped>
+.call-number {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+</style>

@@ -196,6 +196,7 @@ const showPinSetup = ref(false)
 const showPinTrustDialog = ref(false)
 const pinTrustLoading = ref(false)
 const pinTrustError = ref('')
+const authStore = useAuthStore()
 
 // Данные от логина для решения о PIN setup
 const loginResponseData = ref<any>(null)
@@ -211,6 +212,15 @@ const cardTitle = computed(() => {
 
 // Проверить PIN-статус при загрузке страницы
 onMounted(async () => {
+  const queryMode = typeof route.query.mode === 'string' ? route.query.mode : ''
+
+  // Keep onboarding route stable and prevent switching back to PIN on trusted devices.
+  if (queryMode === 'onboarding') {
+    mode.value = 'onboarding'
+    resolvingAuthMode.value = false
+    return
+  }
+
   try {
     const status = await pinApi.getStatus()
     pinStatusChecked.value = true
@@ -223,7 +233,6 @@ onMounted(async () => {
     }
 
     // Если нет PIN — показываем режим из query
-    const queryMode = route.query.mode as string
     if (queryMode === 'onboarding') {
       mode.value = 'onboarding'
     } else if (queryMode === 'forgot') {
@@ -235,7 +244,6 @@ onMounted(async () => {
       mode.value = 'phone'
     }
   } catch {
-    const queryMode = route.query.mode as string
     if (queryMode === 'onboarding') {
       mode.value = 'onboarding'
     } else if (queryMode === 'forgot') {
@@ -254,8 +262,8 @@ watch(
   () => route.query.mode,
   (newMode) => {
     if (resolvingAuthMode.value) return
-    if (mode.value === 'pin') return // Не переключать из PIN режима по query
     const m = typeof newMode === 'string' ? newMode : ''
+    if (mode.value === 'pin' && m !== 'onboarding') return // Keep PIN mode unless onboarding is explicitly requested
     if (['forgot', 'login', 'register', 'phone', 'onboarding'].includes(m)) {
       mode.value = m as AuthMode
     }
@@ -369,7 +377,6 @@ const onPinSetupSkip = () => {
  * Вызывается после успешной верификации кода по телефону.
  */
 const onPhoneVerified = async (data: VerifyCodeResponse) => {
-  const authStore = useAuthStore()
   await authStore.checkAuth(true) // Обновляем состояние после серверного логина
 
   if (data.status === 'needs_onboarding' || data.need_profile_completion) {
@@ -395,7 +402,6 @@ const onPhoneVerified = async (data: VerifyCodeResponse) => {
  * Вызывается после завершения onboarding (заполнение профиля).
  */
 const onOnboardingCompleted = async (data: any) => {
-  const authStore = useAuthStore()
   await authStore.checkAuth(true)
 
   loginResponseData.value = data
@@ -433,7 +439,6 @@ const onSkipTrustDevice = () => {
 }
 
 const onOnboardingSwitchAccount = async () => {
-  const authStore = useAuthStore()
   await authStore.logout()
   mode.value = 'login'
   const query = { ...route.query }

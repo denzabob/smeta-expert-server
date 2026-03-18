@@ -46,6 +46,33 @@ class PhoneAuthTest extends TestCase
         ]);
     }
 
+    public function test_request_call_challenge_success(): void
+    {
+        config(['verification.test_mode' => true]);
+
+        $response = $this->postJson('/api/auth/phone/call/request', [
+            'phone' => '+7 (999) 123-45-67',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonStructure([
+                'verification_id',
+                'challenge_id',
+                'status',
+                'call_phone_pretty',
+                'expires_at',
+                'ttl_seconds',
+            ])
+            ->assertJsonPath('status', 'pending');
+
+        $this->assertDatabaseHas('auth_verification_challenges', [
+            'phone' => '+79991234567',
+            'purpose' => 'phone_auth',
+            'status' => 'pending',
+            'current_channel' => 'sms_ru_callcheck',
+        ]);
+    }
+
     public function test_request_code_normalizes_russian_phone(): void
     {
         config(['verification.test_mode' => true]);
@@ -339,6 +366,151 @@ class PhoneAuthTest extends TestCase
                 'status' => 'needs_onboarding',
                 'need_profile_completion' => true,
             ]);
+    }
+
+    public function test_call_status_logs_in_existing_user_after_webhook(): void
+    {
+        config([
+            'verification.sms_ru.webhook.enabled' => true,
+            'verification.sms_ru.webhook.token' => 'webhook-secret',
+        ]);
+
+        $user = User::factory()->create([
+            'phone' => '+79990000001',
+            'phone_verified_at' => now(),
+            'registration_completed_at' => now(),
+        ]);
+
+        $challenge = AuthVerificationChallenge::create([
+            'purpose' => 'phone_auth',
+            'phone' => '+79990000001',
+            'code_hash' => Hash::make('000000'),
+            'expires_at' => now()->addMinutes(5),
+            'attempts_left' => 5,
+            'resend_available_at' => now(),
+            'status' => 'pending',
+            'current_channel' => 'sms_ru_callcheck',
+            'channel_attempt_order' => ['sms_ru_callcheck'],
+            'provider_message_id' => 'check_existing_1',
+            'ip_address' => '127.0.0.1',
+            'user_id' => $user->id,
+        ]);
+
+        $this->post('/api/auth/phone/call/webhook', [
+            'token' => 'webhook-secret',
+            'check_id' => 'check_existing_1',
+            'check_status' => '401',
+        ])->assertOk();
+
+        $statusResponse = $this->postJson('/api/auth/phone/call/status', [
+            'verification_id' => $challenge->id,
+        ]);
+
+        $statusResponse->assertOk()
+            ->assertJsonPath('status', 'verified')
+            ->assertJsonPath('auth.status', 'authenticated');
+
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_call_status_creates_new_user_and_returns_onboarding_when_verified(): void
+    {
+        config([
+            'verification.sms_ru.webhook.enabled' => true,
+            'verification.sms_ru.webhook.token' => 'webhook-secret',
+        ]);
+
+        $challenge = AuthVerificationChallenge::create([
+            'purpose' => 'phone_auth',
+            'phone' => '+79990000002',
+            'code_hash' => Hash::make('000000'),
+            'expires_at' => now()->addMinutes(5),
+            'attempts_left' => 5,
+            'resend_available_at' => now(),
+            'status' => 'pending',
+            'current_channel' => 'sms_ru_callcheck',
+            'channel_attempt_order' => ['sms_ru_callcheck'],
+            'provider_message_id' => 'check_new_1',
+            'ip_address' => '127.0.0.1',
+        ]);
+
+        $this->post('/api/auth/phone/call/webhook', [
+            'token' => 'webhook-secret',
+            'check_id' => 'check_new_1',
+            'check_status' => '401',
+        ])->assertOk();
+
+        $statusResponse = $this->postJson('/api/auth/phone/call/status', [
+            'verification_id' => $challenge->id,
+        ]);
+
+        $statusResponse->assertOk()
+            ->assertJsonPath('status', 'verified')
+            ->assertJsonPath('auth.status', 'needs_onboarding')
+            ->assertJsonPath('auth.need_profile_completion', true);
+
+        $this->assertDatabaseHas('users', [
+            'phone' => '+79990000002',
+        ]);
+    }
+
+    public function test_call_status_returns_expired_for_expired_challenge(): void
+    {
+        $challenge = AuthVerificationChallenge::create([
+            'purpose' => 'phone_auth',
+            'phone' => '+79990000003',
+            'code_hash' => Hash::make('000000'),
+            'expires_at' => now()->subMinute(),
+            'attempts_left' => 5,
+            'resend_available_at' => now(),
+            'status' => 'pending',
+            'current_channel' => 'sms_ru_callcheck',
+            'channel_attempt_order' => ['sms_ru_callcheck'],
+            'provider_message_id' => 'check_expired_1',
+            'ip_address' => '127.0.0.1',
+        ]);
+
+        $response = $this->postJson('/api/auth/phone/call/status', [
+            'verification_id' => $challenge->id,
+        ]);
+
+        $response->assertStatus(410)
+            ->assertJsonPath('status', 'expired');
+    }
+
+    public function test_request_new_call_challenge_after_expiration(): void
+    {
+        config(['verification.test_mode' => true]);
+
+        $expired = AuthVerificationChallenge::create([
+            'purpose' => 'phone_auth',
+            'phone' => '+79990000004',
+            'code_hash' => Hash::make('000000'),
+            'expires_at' => now()->subMinute(),
+            'attempts_left' => 0,
+            'resend_available_at' => now()->subMinute(),
+            'status' => 'expired',
+            'current_channel' => 'sms_ru_callcheck',
+            'channel_attempt_order' => ['sms_ru_callcheck'],
+            'provider_message_id' => 'check_expired_2',
+            'ip_address' => '127.0.0.1',
+        ]);
+
+        $response = $this->postJson('/api/auth/phone/call/request', [
+            'phone' => '+7 999 000 00 04',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('status', 'pending');
+
+        $newChallengeId = (string) $response->json('verification_id');
+        $this->assertNotSame($expired->id, $newChallengeId);
+
+        $this->assertDatabaseHas('auth_verification_challenges', [
+            'id' => $newChallengeId,
+            'phone' => '+79990000004',
+            'status' => 'pending',
+        ]);
     }
 
     // ─── Complete Registration (Onboarding) ─────────────────────────

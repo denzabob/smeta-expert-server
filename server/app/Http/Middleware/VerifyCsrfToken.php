@@ -18,5 +18,7 @@ class VerifyCsrfToken extends Middleware
         'api/chrome/*',
         'api/auth/phone/callcheck/webhook',
         '/api/auth/phone/callcheck/webhook',
+        'api/auth/phone/call/webhook',
+        '/api/auth/phone/call/webhook',
     ];
 }
