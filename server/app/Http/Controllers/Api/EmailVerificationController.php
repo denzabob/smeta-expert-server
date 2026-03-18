@@ -46,7 +46,7 @@ class EmailVerificationController extends Controller
      */
     public function verify(Request $request, int $id, string $hash): RedirectResponse
     {
-        $frontendBase = config('app.frontend_url', 'http://localhost:5173');
+        $frontendBase = $this->resolveFrontendBase($request);
 
         $user = User::find($id);
 
@@ -66,5 +66,15 @@ class EmailVerificationController extends Controller
         $user->markEmailAsVerified();
 
         return redirect($frontendBase . '/settings?email_verified=success');
+    }
+
+    protected function resolveFrontendBase(Request $request): string
+    {
+        $configured = (string) config('app.frontend_url', '');
+        if ($configured !== '') {
+            return rtrim($configured, '/');
+        }
+
+        return rtrim($request->getSchemeAndHttpHost(), '/');
     }
 }

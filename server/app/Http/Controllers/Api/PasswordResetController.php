@@ -27,7 +27,7 @@ class PasswordResetController extends Controller
         ]);
 
         // Configure reset URL to point to SPA frontend
-        $frontendBase = config('app.frontend_url', 'http://localhost:5173');
+        $frontendBase = $this->resolveFrontendBase($request);
         ResetPassword::createUrlUsing(function ($notifiable, string $token) use ($frontendBase) {
             return $frontendBase . '/reset-password?token=' . $token . '&email=' . urlencode($notifiable->getEmailForPasswordReset());
         });
@@ -85,5 +85,15 @@ class PasswordResetController extends Controller
             Password::RESET_THROTTLED => 'Подождите перед повторной попыткой.',
             default => 'Не удалось сбросить пароль.',
         };
+    }
+
+    protected function resolveFrontendBase(Request $request): string
+    {
+        $configured = (string) config('app.frontend_url', '');
+        if ($configured !== '') {
+            return rtrim($configured, '/');
+        }
+
+        return rtrim($request->getSchemeAndHttpHost(), '/');
     }
 }

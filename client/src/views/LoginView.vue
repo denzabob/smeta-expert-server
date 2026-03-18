@@ -68,6 +68,7 @@
             <OnboardingCompletion
               v-else-if="mode === 'onboarding'"
               @completed="onOnboardingCompleted"
+              @switch-account="onOnboardingSwitchAccount"
             />
 
             <!-- Обычный логин -->
@@ -316,6 +317,15 @@ const onOnboardingCompleted = async (data: any) => {
     return
   }
   navigateAfterLogin()
+}
+
+const onOnboardingSwitchAccount = async () => {
+  const authStore = useAuthStore()
+  await authStore.logout()
+  mode.value = 'login'
+  const query = { ...route.query }
+  delete (query as any).mode
+  await router.replace({ query })
 }
 
 const navigateAfterLogin = async () => {

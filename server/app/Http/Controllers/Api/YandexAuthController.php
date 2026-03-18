@@ -50,7 +50,7 @@ class YandexAuthController extends Controller
     {
         $state = $request->query('state');
         $storedState = $request->session()->pull('yandex_oauth_state');
-        $frontendBase = config('app.frontend_url', 'http://localhost:5173');
+        $frontendBase = $this->resolveFrontendBase($request);
 
         // Validate state
         if (!$state || !$storedState || !hash_equals($storedState, $state)) {
@@ -104,5 +104,15 @@ class YandexAuthController extends Controller
         }
 
         return redirect($frontendBase . '/projects');
+    }
+
+    protected function resolveFrontendBase(Request $request): string
+    {
+        $configured = (string) config('app.frontend_url', '');
+        if ($configured !== '') {
+            return rtrim($configured, '/');
+        }
+
+        return rtrim($request->getSchemeAndHttpHost(), '/');
     }
 }

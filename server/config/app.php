@@ -54,6 +54,9 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // SPA frontend base URL for auth-related redirects (OAuth callback, reset-password, email verify).
+    'frontend_url' => env('FRONTEND_URL', ''),
+
     'public_verify_base_url' => rtrim(env('PUBLIC_VERIFY_BASE_URL', 'https://verify.prismcore.ru'), '/'),
 
     /*

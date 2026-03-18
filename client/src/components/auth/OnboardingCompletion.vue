@@ -73,6 +73,16 @@
       Завершить регистрацию
     </v-btn>
 
+    <v-btn
+      block
+      variant="text"
+      class="mt-2"
+      :disabled="loading"
+      @click="emit('switch-account')"
+    >
+      Войти под другим аккаунтом
+    </v-btn>
+
     <v-alert v-if="generalError" type="error" variant="tonal" class="mt-3" density="compact">
       {{ generalError }}
     </v-alert>
@@ -85,6 +95,7 @@ import { phoneAuthApi, type CompleteRegistrationResponse } from '@/api/phoneAuth
 
 const emit = defineEmits<{
   (e: 'completed', data: CompleteRegistrationResponse): void
+  (e: 'switch-account'): void
 }>()
 
 const activityProfiles = [
