@@ -16,5 +16,7 @@ class VerifyCsrfToken extends Middleware
         'api/materials/fetch',
         'materials/fetch',
         'api/chrome/*',
+        'api/auth/phone/callcheck/webhook',
+        '/api/auth/phone/callcheck/webhook',
     ];
 }

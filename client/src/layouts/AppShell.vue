@@ -33,13 +33,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
 import AppSidebar from './shell/AppSidebarNew.vue'
 import AccountSettingsDialog from './shell/AccountSettingsDialog.vue'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const { smAndDown } = useDisplay()
 const theme = useTheme()
@@ -86,6 +87,19 @@ function openAccountSettings(tab?: string) {
   settingsDialogOpen.value = true
 }
 
+function handleSettingsQueryOpen() {
+  const requestedTab = route.query.open_settings
+  if (typeof requestedTab !== 'string' || requestedTab.trim() === '') {
+    return
+  }
+
+  openAccountSettings(requestedTab)
+
+  const nextQuery = { ...route.query }
+  delete (nextQuery as any).open_settings
+  void router.replace({ query: nextQuery })
+}
+
 async function handleLogout() {
   await authStore.logout()
   router.push({ name: 'login' })
@@ -114,6 +128,7 @@ onMounted(() => {
   window.addEventListener('theme-mode-change', handleThemeModeChange)
   
   applyTheme()
+  handleSettingsQueryOpen()
 })
 
 onBeforeUnmount(() => {
@@ -126,6 +141,13 @@ onBeforeUnmount(() => {
 watch(themeMode, () => {
   applyTheme()
 })
+
+watch(
+  () => route.query.open_settings,
+  () => {
+    handleSettingsQueryOpen()
+  }
+)
 </script>
 
 <style scoped>

@@ -98,7 +98,7 @@ class YandexAuthService
     /**
      * Find or create user from Yandex profile.
      *
-     * @return array{user: User, is_new: bool, needs_onboarding: bool}
+     * @return array{user: ?User, is_new: bool, needs_onboarding: bool, error: ?string}
      */
     public function findOrCreateUser(array $profile): array
     {
@@ -106,6 +106,7 @@ class YandexAuthService
         $providerEmail = $profile['default_email'] ?? null;
         $providerPhone = $profile['default_phone']['number'] ?? null;
         $displayName = $profile['display_name'] ?? $profile['real_name'] ?? $profile['login'] ?? '';
+        $providerUsername = $profile['login'] ?? null;
 
         // 1. Check if social account already linked
         $social = SocialAccount::findByProvider('yandex', $providerUserId);
@@ -113,8 +114,10 @@ class YandexAuthService
             $user = $social->user;
             // Update raw profile
             $social->update([
+                'provider_username' => $providerUsername,
                 'provider_email' => $providerEmail,
                 'provider_phone' => $providerPhone,
+                'last_used_at' => now(),
                 'raw_profile_json' => $profile,
             ]);
 
@@ -122,6 +125,21 @@ class YandexAuthService
                 'user' => $user,
                 'is_new' => false,
                 'needs_onboarding' => !$user->registration_completed_at,
+                'error' => null,
+            ];
+        }
+
+        $inactiveLinked = SocialAccount::where('provider', 'yandex')
+            ->where('provider_user_id', $providerUserId)
+            ->where('is_active', false)
+            ->first();
+
+        if ($inactiveLinked) {
+            return [
+                'user' => null,
+                'is_new' => false,
+                'needs_onboarding' => false,
+                'error' => 'provider_unlinked',
             ];
         }
 
@@ -156,8 +174,12 @@ class YandexAuthService
             'user_id' => $user->id,
             'provider' => 'yandex',
             'provider_user_id' => $providerUserId,
+            'provider_username' => $providerUsername,
             'provider_email' => $providerEmail,
             'provider_phone' => $providerPhone,
+            'linked_at' => now(),
+            'last_used_at' => now(),
+            'is_active' => true,
             'raw_profile_json' => $profile,
         ]);
 
@@ -165,6 +187,71 @@ class YandexAuthService
             'user' => $user,
             'is_new' => $isNew,
             'needs_onboarding' => !$user->registration_completed_at,
+            'error' => null,
+        ];
+    }
+
+    /**
+     * Link a Yandex profile to an already authenticated user.
+     *
+     * @return array{linked: bool, already_linked: bool, error: ?string}
+     */
+    public function linkProfileToUser(User $user, array $profile): array
+    {
+        $providerUserId = (string) ($profile['id'] ?? '');
+        if ($providerUserId === '') {
+            return [
+                'linked' => false,
+                'already_linked' => false,
+                'error' => 'invalid_profile',
+            ];
+        }
+
+        $providerEmail = $profile['default_email'] ?? null;
+        $providerPhone = $profile['default_phone']['number'] ?? null;
+        $providerUsername = $profile['login'] ?? null;
+
+        $linkedByProviderId = SocialAccount::where('provider', 'yandex')
+            ->where('provider_user_id', $providerUserId)
+            ->first();
+
+        if ($linkedByProviderId && (int) $linkedByProviderId->user_id !== (int) $user->id) {
+            return [
+                'linked' => false,
+                'already_linked' => false,
+                'error' => 'already_linked_to_other_user',
+            ];
+        }
+
+        $account = SocialAccount::where('provider', 'yandex')
+            ->where('user_id', $user->id)
+            ->first();
+
+        $alreadyLinked = false;
+
+        if (!$account) {
+            $account = new SocialAccount();
+            $account->user_id = $user->id;
+            $account->provider = 'yandex';
+            $account->linked_at = now();
+        } else {
+            $alreadyLinked = $account->is_active
+                && $account->provider_user_id === $providerUserId;
+        }
+
+        $account->provider_user_id = $providerUserId;
+        $account->provider_username = $providerUsername;
+        $account->provider_email = $providerEmail;
+        $account->provider_phone = $providerPhone;
+        $account->last_used_at = now();
+        $account->is_active = true;
+        $account->raw_profile_json = $profile;
+        $account->save();
+
+        return [
+            'linked' => true,
+            'already_linked' => $alreadyLinked,
+            'error' => null,
         ];
     }
 

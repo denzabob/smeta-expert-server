@@ -90,20 +90,19 @@
           </span>
         </button>
 
-        <!-- Аккаунты для входа (Госуслуги) — заглушка -->
-        <button class="security-item security-item--disabled" @click="showGosuslugiStub">
+        <!-- Аккаунты для входа -->
+        <button class="security-item" @click="openAuthMethodsView">
           <span class="security-item__icon">
             <v-icon size="20">mdi-account-key-outline</v-icon>
           </span>
           <span class="security-item__body">
             <span class="security-item__title">
               Аккаунты для входа
-              <span class="badge-later">Позже</span>
             </span>
-            <span class="security-item__subtitle">Госуслуги</span>
+            <span class="security-item__subtitle">{{ authMethodsSubtitle }}</span>
           </span>
           <span class="security-item__arrow">
-            <v-icon size="18" color="grey">mdi-chevron-right</v-icon>
+            <v-icon size="18">mdi-chevron-right</v-icon>
           </span>
         </button>
       </div>
@@ -296,6 +295,268 @@
       </div>
     </template>
 
+    <!-- ======================== AUTH METHODS VIEW ======================== -->
+    <template v-if="currentView === 'auth-methods'">
+      <div class="sub-header">
+        <button class="back-btn" @click="goBack">
+          <v-icon size="20">mdi-arrow-left</v-icon>
+        </button>
+        <h3 class="sub-header__title">Способы входа</h3>
+      </div>
+
+      <div class="auth-methods-view">
+        <v-alert
+          v-if="authMethodsError"
+          type="error"
+          variant="tonal"
+          density="compact"
+          class="mb-3"
+          closable
+          @click:close="authMethodsError = ''"
+        >
+          {{ authMethodsError }}
+        </v-alert>
+
+        <v-alert
+          v-if="authMethodsSuccess"
+          type="success"
+          variant="tonal"
+          density="compact"
+          class="mb-3"
+          closable
+          @click:close="authMethodsSuccess = ''"
+        >
+          {{ authMethodsSuccess }}
+        </v-alert>
+
+        <div v-if="authMethodsLoading" class="auth-loading">Загрузка способов входа...</div>
+
+        <div class="auth-method-card">
+          <div class="auth-method-card__header">
+            <div>
+              <div class="auth-method-card__title">Телефон</div>
+              <div class="auth-method-card__subtitle">{{ authMethods?.phone.masked || 'Не указан' }}</div>
+            </div>
+            <span class="auth-badge" :class="authMethods?.phone.verified ? 'auth-badge--ok' : 'auth-badge--warn'">
+              {{ authMethods?.phone.verified ? 'Подтверждён' : 'Не подтверждён' }}
+            </span>
+          </div>
+
+          <div v-if="phoneChangeStep === 'form'" class="auth-inline-form">
+            <div class="form-group">
+              <label class="form-label">Новый номер телефона</label>
+              <input
+                v-model="phoneChange.phone"
+                type="text"
+                class="form-input"
+                placeholder="+7 (999) 123-45-67"
+              />
+            </div>
+
+            <div v-if="authMethods?.password.enabled" class="form-group">
+              <label class="form-label">Текущий пароль</label>
+              <input
+                v-model="phoneChange.currentPassword"
+                type="password"
+                class="form-input"
+                placeholder="Введите текущий пароль"
+                autocomplete="current-password"
+              />
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn--secondary" type="button" @click="resetPhoneChange">Очистить</button>
+              <button
+                class="btn btn--primary"
+                type="button"
+                :disabled="phoneChange.requesting"
+                @click="requestPhoneChange"
+              >
+                {{ phoneChange.requesting ? 'Отправка...' : 'Подтвердить новый номер' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="phoneChangeStep === 'verify'" class="auth-inline-form">
+            <p class="auth-verify-hint" v-if="phoneChange.verificationMethod === 'code'">
+              Введите код, отправленный на новый номер.
+            </p>
+            <p class="auth-verify-hint" v-else>
+              Позвоните на номер {{ phoneChange.callPhonePretty || phoneChange.callPhone }} и нажмите «Проверить звонок».
+            </p>
+
+            <div v-if="phoneChange.verificationMethod === 'code'" class="form-group">
+              <label class="form-label">Код подтверждения</label>
+              <input
+                v-model="phoneChange.code"
+                type="text"
+                class="form-input"
+                placeholder="6 цифр"
+                maxlength="6"
+              />
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn--secondary" type="button" @click="cancelPhoneVerify">Отмена</button>
+              <button
+                class="btn btn--secondary"
+                type="button"
+                :disabled="!phoneCanResend || phoneChange.resending"
+                @click="resendPhoneChange"
+              >
+                {{ phoneChange.resending ? 'Отправка...' : phoneCanResend ? 'Отправить повторно' : `Повторно через ${phoneResendCountdown}с` }}
+              </button>
+              <button
+                class="btn btn--primary"
+                type="button"
+                :disabled="phoneVerifyDisabled"
+                @click="confirmPhoneChange"
+              >
+                {{ phoneChange.verifying ? 'Проверка...' : phoneChange.verificationMethod === 'call' ? 'Проверить звонок' : 'Подтвердить код' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-method-card">
+          <div class="auth-method-card__header">
+            <div>
+              <div class="auth-method-card__title">Email</div>
+              <div class="auth-method-card__subtitle">{{ authMethods?.email.value || 'Не указан' }}</div>
+            </div>
+            <span class="auth-badge" :class="authMethods?.email.verified ? 'auth-badge--ok' : 'auth-badge--warn'">
+              {{ authMethods?.email.verified ? 'Подтверждён' : 'Не подтверждён' }}
+            </span>
+          </div>
+
+          <div class="auth-inline-form">
+            <div class="form-group">
+              <label class="form-label">Новый email</label>
+              <input
+                v-model="emailChange.email"
+                type="email"
+                class="form-input"
+                placeholder="name@example.com"
+                autocomplete="email"
+              />
+            </div>
+
+            <div v-if="authMethods?.password.enabled" class="form-group">
+              <label class="form-label">Текущий пароль</label>
+              <input
+                v-model="emailChange.currentPassword"
+                type="password"
+                class="form-input"
+                placeholder="Введите текущий пароль"
+                autocomplete="current-password"
+              />
+            </div>
+
+            <div class="form-actions">
+              <button
+                v-if="authMethods?.email.value && !authMethods?.email.verified"
+                class="btn btn--secondary"
+                type="button"
+                :disabled="emailChange.resendingVerification"
+                @click="resendEmailVerification"
+              >
+                {{ emailChange.resendingVerification ? 'Отправка...' : 'Отправить письмо повторно' }}
+              </button>
+              <button
+                class="btn btn--primary"
+                type="button"
+                :disabled="emailChange.saving"
+                @click="submitEmailChange"
+              >
+                {{ emailChange.saving ? 'Сохранение...' : 'Изменить email' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-method-card">
+          <div class="auth-method-card__header">
+            <div>
+              <div class="auth-method-card__title">Пароль</div>
+              <div class="auth-method-card__subtitle">
+                {{ authMethods?.password.enabled ? 'Пароль установлен' : 'Пароль не установлен' }}
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button
+              v-if="authMethods?.password.enabled"
+              class="btn btn--secondary"
+              type="button"
+              @click="currentView = 'password'"
+            >
+              Сменить пароль
+            </button>
+            <span v-else class="auth-static-note">
+              Для установки пароля используйте восстановление доступа по email.
+            </span>
+          </div>
+        </div>
+
+        <div class="auth-method-card">
+          <div class="auth-method-card__header">
+            <div>
+              <div class="auth-method-card__title">Внешние аккаунты</div>
+              <div class="auth-method-card__subtitle">Подключите сервисы для быстрого входа</div>
+            </div>
+          </div>
+
+          <div v-if="authMethods?.linked_providers.length" class="linked-providers-list">
+            <div
+              v-for="providerItem in authMethods.linked_providers"
+              :key="providerItem.provider"
+              class="linked-provider-row"
+            >
+              <div>
+                <div class="linked-provider-row__title">{{ providerItem.label }}</div>
+                <div class="linked-provider-row__meta">
+                  {{ providerItem.provider_email || providerItem.provider_username || providerItem.provider_user_id }}
+                </div>
+              </div>
+              <button
+                class="btn btn--danger-text"
+                type="button"
+                :disabled="providerBusy === providerItem.provider || !providerItem.can_unlink"
+                @click="unlinkProvider(providerItem.provider)"
+              >
+                {{ providerBusy === providerItem.provider ? 'Отвязка...' : 'Отвязать' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="authMethods?.supported_providers.length" class="available-providers-list">
+            <div
+              v-for="providerItem in authMethods.supported_providers"
+              :key="providerItem.provider"
+              class="linked-provider-row"
+            >
+              <div>
+                <div class="linked-provider-row__title">{{ providerItem.label }}</div>
+                <div class="linked-provider-row__meta">
+                  {{ providerItem.linked ? 'Уже подключён' : providerItem.configured ? 'Доступен для подключения' : 'Временно недоступен' }}
+                </div>
+              </div>
+              <button
+                v-if="!providerItem.linked"
+                class="btn btn--secondary"
+                type="button"
+                :disabled="providerBusy === providerItem.provider || !providerItem.configured"
+                @click="linkProvider(providerItem.provider)"
+              >
+                {{ providerBusy === providerItem.provider ? 'Переход...' : 'Подключить' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
     <!-- ======================== DEVICES VIEW ======================== -->
     <template v-if="currentView === 'devices'">
       <div class="sub-header">
@@ -394,14 +655,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { authApi } from '@/api/auth'
+import { authApi, type AuthMethodsResponse } from '@/api/auth'
 import { pinApi } from '@/api/pin'
 import PinInput from '@/components/auth/PinInput.vue'
 import UserDevicesPanel from '@/components/settings/UserDevicesPanel.vue'
 
-type ViewName = 'list' | 'password' | 'pin' | 'devices' | 'chrome-token'
+type ViewName = 'list' | 'password' | 'pin' | 'auth-methods' | 'devices' | 'chrome-token'
 type PinStep = 'enter' | 'confirm' | 'password'
 
 const authStore = useAuthStore()
@@ -415,6 +676,10 @@ function goBack() {
   pwReset()
   pinReset()
   chromeReset()
+  authMethodsError.value = ''
+  authMethodsSuccess.value = ''
+  resetPhoneChange()
+  resetEmailChange()
   currentView.value = 'list'
 }
 
@@ -437,9 +702,311 @@ function notify(message: string, color = 'info') {
   snackbar.value = { show: true, message, color }
 }
 
-// ─── Gosuslugi stub ───
-function showGosuslugiStub() {
-  notify('Будет добавлено позже', 'info')
+// ─── Auth methods ───
+const authMethods = ref<AuthMethodsResponse | null>(null)
+const authMethodsLoading = ref(false)
+const authMethodsError = ref('')
+const authMethodsSuccess = ref('')
+const providerBusy = ref<string | null>(null)
+
+const authMethodsSubtitle = computed(() => {
+  if (!authMethods.value) return 'Телефон, пароль и OAuth'
+
+  const parts: string[] = []
+  if (authMethods.value.phone.value) parts.push('Телефон')
+  if (authMethods.value.password.enabled) parts.push('Пароль')
+  for (const linked of authMethods.value.linked_providers) {
+    parts.push(linked.label)
+  }
+
+  if (!parts.length) {
+    return 'Нет активных методов входа'
+  }
+
+  return parts.join(', ')
+})
+
+const phoneChangeStep = ref<'form' | 'verify'>('form')
+const phoneChange = ref({
+  phone: '',
+  currentPassword: '',
+  challengeId: '',
+  verificationMethod: 'code' as 'code' | 'call',
+  callPhone: '',
+  callPhonePretty: '',
+  code: '',
+  requesting: false,
+  resending: false,
+  verifying: false,
+})
+
+const phoneResendCountdown = ref(0)
+let phoneResendTimer: ReturnType<typeof setInterval> | null = null
+
+const phoneCanResend = computed(() => phoneResendCountdown.value <= 0)
+const phoneVerifyDisabled = computed(() => {
+  if (phoneChange.value.verifying) return true
+  if (phoneChange.value.verificationMethod === 'code') {
+    return phoneChange.value.code.length < 6
+  }
+  return false
+})
+
+const emailChange = ref({
+  email: '',
+  currentPassword: '',
+  saving: false,
+  resendingVerification: false,
+})
+
+function clearPhoneResendTimer() {
+  if (phoneResendTimer) {
+    clearInterval(phoneResendTimer)
+    phoneResendTimer = null
+  }
+}
+
+function startPhoneResendTimer(availableAt: string) {
+  clearPhoneResendTimer()
+
+  const target = new Date(availableAt)
+  const updateCountdown = () => {
+    const diff = Math.max(0, Math.ceil((target.getTime() - Date.now()) / 1000))
+    phoneResendCountdown.value = diff
+    if (diff <= 0) {
+      clearPhoneResendTimer()
+    }
+  }
+
+  updateCountdown()
+  phoneResendTimer = setInterval(updateCountdown, 1000)
+}
+
+function resetPhoneChange() {
+  phoneChangeStep.value = 'form'
+  phoneChange.value = {
+    phone: authMethods.value?.phone.value || '',
+    currentPassword: '',
+    challengeId: '',
+    verificationMethod: 'code',
+    callPhone: '',
+    callPhonePretty: '',
+    code: '',
+    requesting: false,
+    resending: false,
+    verifying: false,
+  }
+  phoneResendCountdown.value = 0
+  clearPhoneResendTimer()
+}
+
+function cancelPhoneVerify() {
+  phoneChangeStep.value = 'form'
+  phoneChange.value.challengeId = ''
+  phoneChange.value.code = ''
+  phoneChange.value.verificationMethod = 'code'
+  phoneChange.value.callPhone = ''
+  phoneChange.value.callPhonePretty = ''
+  phoneResendCountdown.value = 0
+  clearPhoneResendTimer()
+}
+
+function resetEmailChange() {
+  emailChange.value = {
+    email: authMethods.value?.email.value || '',
+    currentPassword: '',
+    saving: false,
+    resendingVerification: false,
+  }
+}
+
+async function loadAuthMethods() {
+  authMethodsLoading.value = true
+  authMethodsError.value = ''
+
+  try {
+    const data = await authApi.getAuthMethods()
+    authMethods.value = data
+    resetPhoneChange()
+    resetEmailChange()
+  } catch (e: any) {
+    authMethodsError.value = e.response?.data?.message || 'Не удалось загрузить способы входа.'
+  } finally {
+    authMethodsLoading.value = false
+  }
+}
+
+function openAuthMethodsView() {
+  currentView.value = 'auth-methods'
+  if (!authMethods.value) {
+    void loadAuthMethods()
+  }
+}
+
+function consumeOauthLinkResult() {
+  const url = new URL(window.location.href)
+  const result = url.searchParams.get('oauth_link')
+  const provider = url.searchParams.get('provider')
+  if (!result) return
+
+  if (result === 'success') {
+    authMethodsSuccess.value = `Провайдер ${provider || ''} успешно подключён.`.trim()
+  } else {
+    authMethodsError.value = 'Не удалось подключить внешний аккаунт. Попробуйте снова.'
+  }
+
+  url.searchParams.delete('oauth_link')
+  url.searchParams.delete('provider')
+  window.history.replaceState({}, '', url.toString())
+}
+
+async function linkProvider(provider: string) {
+  providerBusy.value = provider
+  authMethodsError.value = ''
+
+  try {
+    const result = await authApi.getProviderLinkRedirect(provider)
+    window.location.href = result.redirect_url
+  } catch (e: any) {
+    authMethodsError.value = e.response?.data?.message || 'Не удалось начать привязку аккаунта.'
+  } finally {
+    providerBusy.value = null
+  }
+}
+
+async function unlinkProvider(provider: string) {
+  const confirmed = window.confirm('Отвязать этот аккаунт для входа?')
+  if (!confirmed) return
+
+  providerBusy.value = provider
+  authMethodsError.value = ''
+
+  try {
+    const result = await authApi.unlinkProvider(provider)
+    authMethodsSuccess.value = result.message || 'Аккаунт отвязан.'
+    await loadAuthMethods()
+  } catch (e: any) {
+    authMethodsError.value = e.response?.data?.message || 'Не удалось отвязать аккаунт.'
+  } finally {
+    providerBusy.value = null
+  }
+}
+
+async function requestPhoneChange() {
+  if (phoneChange.value.requesting) return
+
+  authMethodsError.value = ''
+  authMethodsSuccess.value = ''
+  phoneChange.value.requesting = true
+
+  try {
+    const response = await authApi.requestPhoneChange({
+      phone: phoneChange.value.phone,
+      current_password: phoneChange.value.currentPassword || undefined,
+    })
+
+    phoneChange.value.challengeId = response.challenge_id
+    phoneChange.value.verificationMethod = response.verification_method
+    phoneChange.value.callPhone = response.call_phone || ''
+    phoneChange.value.callPhonePretty = response.call_phone_pretty || ''
+    phoneChange.value.code = ''
+    phoneChangeStep.value = 'verify'
+    startPhoneResendTimer(response.resend_available_at)
+    authMethodsSuccess.value = 'Код подтверждения отправлен на новый номер.'
+  } catch (e: any) {
+    authMethodsError.value = e.response?.data?.message || 'Не удалось отправить подтверждение номера.'
+  } finally {
+    phoneChange.value.requesting = false
+  }
+}
+
+async function resendPhoneChange() {
+  if (!phoneCanResend.value || phoneChange.value.resending || !phoneChange.value.challengeId) return
+
+  authMethodsError.value = ''
+  phoneChange.value.resending = true
+
+  try {
+    const response = await authApi.resendPhoneChange(phoneChange.value.challengeId)
+    phoneChange.value.verificationMethod = response.verification_method
+    phoneChange.value.callPhone = response.call_phone || ''
+    phoneChange.value.callPhonePretty = response.call_phone_pretty || ''
+    startPhoneResendTimer(response.resend_available_at)
+    authMethodsSuccess.value = 'Подтверждение отправлено повторно.'
+  } catch (e: any) {
+    authMethodsError.value = e.response?.data?.message || 'Не удалось отправить подтверждение повторно.'
+  } finally {
+    phoneChange.value.resending = false
+  }
+}
+
+async function confirmPhoneChange() {
+  if (phoneVerifyDisabled.value || !phoneChange.value.challengeId) return
+
+  authMethodsError.value = ''
+  phoneChange.value.verifying = true
+
+  try {
+    const response = await authApi.confirmPhoneChange({
+      challenge_id: phoneChange.value.challengeId,
+      code: phoneChange.value.verificationMethod === 'code' ? phoneChange.value.code : undefined,
+    })
+
+    authMethodsSuccess.value = response.message || 'Номер телефона обновлён.'
+    if (authStore.user) {
+      authStore.user.phone = response.phone
+      authStore.user.phone_verified_at = new Date().toISOString()
+    }
+    await loadAuthMethods()
+    resetPhoneChange()
+  } catch (e: any) {
+    authMethodsError.value = e.response?.data?.message || 'Не удалось подтвердить новый номер.'
+  } finally {
+    phoneChange.value.verifying = false
+  }
+}
+
+async function submitEmailChange() {
+  if (emailChange.value.saving) return
+
+  authMethodsError.value = ''
+  authMethodsSuccess.value = ''
+  emailChange.value.saving = true
+
+  try {
+    const response = await authApi.changeEmail({
+      email: emailChange.value.email,
+      current_password: emailChange.value.currentPassword || undefined,
+    })
+
+    if (authStore.user) {
+      authStore.user.email = response.email
+      authStore.user.email_verified_at = null
+    }
+
+    authMethodsSuccess.value = response.message || 'Email обновлён.'
+    await loadAuthMethods()
+  } catch (e: any) {
+    authMethodsError.value = e.response?.data?.message || 'Не удалось изменить email.'
+  } finally {
+    emailChange.value.saving = false
+  }
+}
+
+async function resendEmailVerification() {
+  if (emailChange.value.resendingVerification) return
+
+  authMethodsError.value = ''
+  emailChange.value.resendingVerification = true
+
+  try {
+    const response = await authApi.resendEmailVerification()
+    authMethodsSuccess.value = response.message || 'Письмо отправлено повторно.'
+  } catch (e: any) {
+    authMethodsError.value = e.response?.data?.message || 'Не удалось отправить письмо повторно.'
+  } finally {
+    emailChange.value.resendingVerification = false
+  }
 }
 
 // ==================== CHANGE PASSWORD ====================
@@ -678,6 +1245,11 @@ async function revokeChromeToken() {
 watch(currentView, (view) => {
   if (view === 'password') pwReset(), nextTick(() => {})
   if (view === 'pin') pinReset()
+  if (view === 'auth-methods') {
+    authMethodsError.value = ''
+    authMethodsSuccess.value = ''
+    void loadAuthMethods()
+  }
   if (view === 'chrome-token') {
     chromeReset()
     void loadChromeTokenStatus()
@@ -686,18 +1258,28 @@ watch(currentView, (view) => {
 
 // ─── Initial data load ───
 onMounted(async () => {
+  consumeOauthLinkResult()
+
   try {
-    const [status, sessions] = await Promise.all([
+    const [status, sessions, methods] = await Promise.all([
       pinApi.getStatus(),
       authApi.getSessions(),
+      authApi.getAuthMethods(),
     ])
     pinEnabled.value = status.pin_enabled
     // Current + others
     sessionsCount.value = 1 + (sessions.others?.length || 0)
+    authMethods.value = methods
+    resetPhoneChange()
+    resetEmailChange()
     await loadChromeTokenStatus()
   } catch {
     // Silently fail — non-critical info
   }
+})
+
+onUnmounted(() => {
+  clearPhoneResendTimer()
 })
 </script>
 
@@ -976,6 +1558,110 @@ onMounted(async () => {
 .checkbox-label input {
   width: 16px;
   height: 16px;
+}
+
+/* ─── Auth methods view ─── */
+.auth-methods-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+}
+
+.auth-loading {
+  font-size: 12px;
+  color: var(--security-subtitle, #777);
+}
+
+.auth-method-card {
+  border: 1px solid var(--security-input-border, #ddd);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--security-input-bg, #fff);
+}
+
+.auth-method-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.auth-method-card__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--security-title, #333);
+}
+
+.auth-method-card__subtitle {
+  font-size: 12px;
+  color: var(--security-subtitle, #777);
+  margin-top: 2px;
+}
+
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.auth-badge--ok {
+  color: #065f46;
+  background: #d1fae5;
+}
+
+.auth-badge--warn {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.auth-inline-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-verify-hint {
+  font-size: 12px;
+  color: var(--security-subtitle, #777);
+  margin: 0;
+}
+
+.linked-providers-list,
+.available-providers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linked-provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--security-input-border, #e4e4e4);
+  border-radius: 6px;
+}
+
+.linked-provider-row__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--security-title, #333);
+}
+
+.linked-provider-row__meta {
+  font-size: 11px;
+  color: var(--security-subtitle, #888);
+}
+
+.auth-static-note {
+  font-size: 12px;
+  color: var(--security-subtitle, #777);
 }
 
 /* ─── Section title & desc (matching AccountSettingsDialog) ─── */

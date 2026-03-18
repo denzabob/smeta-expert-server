@@ -10,14 +10,21 @@ class SocialAccount extends Model
         'user_id',
         'provider',
         'provider_user_id',
+        'provider_username',
         'provider_email',
         'provider_phone',
+        'linked_at',
+        'last_used_at',
+        'is_active',
         'raw_profile_json',
     ];
 
     protected function casts(): array
     {
         return [
+            'linked_at' => 'datetime',
+            'last_used_at' => 'datetime',
+            'is_active' => 'boolean',
             'raw_profile_json' => 'array',
         ];
     }
@@ -27,6 +34,11 @@ class SocialAccount extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
     /**
      * Find social account by provider + provider_user_id.
      */
@@ -34,6 +46,7 @@ class SocialAccount extends Model
     {
         return static::where('provider', $provider)
             ->where('provider_user_id', $providerUserId)
+            ->where('is_active', true)
             ->first();
     }
 }

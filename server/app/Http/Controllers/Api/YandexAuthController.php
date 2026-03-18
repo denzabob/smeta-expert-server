@@ -31,9 +31,24 @@ class YandexAuthController extends Controller
             return response()->json(['message' => 'Вход через Яндекс временно недоступен.'], 503);
         }
 
+        $intent = (string) $request->query('intent', 'login');
+        if (!in_array($intent, ['login', 'link'], true)) {
+            return response()->json(['message' => 'Некорректный OAuth intent.'], 422);
+        }
+
+        if ($intent === 'link' && !$request->user()) {
+            return response()->json(['message' => 'Для привязки требуется авторизация.'], 401);
+        }
+
         // Generate and store state for CSRF protection
         $state = Str::random(40);
         $request->session()->put('yandex_oauth_state', $state);
+        $request->session()->put('yandex_oauth_context', [
+            'state' => $state,
+            'intent' => $intent,
+            'provider' => 'yandex',
+            'user_id' => $request->user()?->id,
+        ]);
 
         $url = $this->yandexService->getRedirectUrl($state);
 
@@ -49,7 +64,15 @@ class YandexAuthController extends Controller
     public function callback(Request $request): RedirectResponse
     {
         $state = $request->query('state');
-        $storedState = $request->session()->pull('yandex_oauth_state');
+        $context = $request->session()->pull('yandex_oauth_context');
+        $storedState = is_array($context) ? ($context['state'] ?? null) : null;
+        if (!$storedState) {
+            // Backward compatibility with older sessions.
+            $storedState = $request->session()->pull('yandex_oauth_state');
+            $context = ['intent' => 'login'];
+        }
+
+        $intent = is_array($context) ? ($context['intent'] ?? 'login') : 'login';
         $frontendBase = $this->resolveFrontendBase($request);
 
         // Validate state
@@ -74,9 +97,32 @@ class YandexAuthController extends Controller
             return redirect($frontendBase . '/login?error=oauth_profile_failed');
         }
 
+        if ($intent === 'link') {
+            $authUser = $request->user();
+            $expectedUserId = is_array($context) ? (int) ($context['user_id'] ?? 0) : 0;
+
+            if (!$authUser || ($expectedUserId > 0 && (int) $authUser->id !== $expectedUserId)) {
+                return redirect($frontendBase . '/projects?open_settings=security&oauth_link=auth_required&provider=yandex');
+            }
+
+            $linked = $this->yandexService->linkProfileToUser($authUser, $profile);
+
+            if (!$linked['linked']) {
+                $error = $linked['error'] ?? 'failed';
+                return redirect($frontendBase . '/projects?open_settings=security&oauth_link=' . urlencode($error) . '&provider=yandex');
+            }
+
+            return redirect($frontendBase . '/projects?open_settings=security&oauth_link=success&provider=yandex');
+        }
+
         // Find or create user
         $result = $this->yandexService->findOrCreateUser($profile);
         $user = $result['user'];
+
+        if (!$user) {
+            $error = (string) ($result['error'] ?? 'oauth_profile_failed');
+            return redirect($frontendBase . '/login?error=' . urlencode($error));
+        }
 
         // Log in
         Auth::login($user);

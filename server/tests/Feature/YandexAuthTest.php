@@ -169,4 +169,47 @@ class YandexAuthTest extends TestCase
         $response->assertRedirect();
         $this->assertStringContainsString('mode=onboarding', $response->headers->get('Location'));
     }
+
+    public function test_callback_links_provider_when_intent_is_link(): void
+    {
+        config([
+            'services.yandex.client_id' => 'test-client-id',
+            'services.yandex.client_secret' => 'test-secret',
+            'services.yandex.redirect_uri' => 'http://localhost/api/auth/yandex/callback',
+        ]);
+
+        $user = User::factory()->create([
+            'registration_completed_at' => now(),
+        ]);
+
+        $mock = Mockery::mock(YandexAuthService::class);
+        $mock->shouldReceive('exchangeCode')->with('test-code')->andReturn(['access_token' => 'test-token']);
+        $mock->shouldReceive('getUserProfile')->with('test-token')->andReturn([
+            'id' => 'yandex-link-1',
+            'default_email' => 'linked@example.com',
+            'login' => 'linked-user',
+        ]);
+        $mock->shouldReceive('linkProfileToUser')->andReturn([
+            'linked' => true,
+            'already_linked' => false,
+            'error' => null,
+        ]);
+        $this->app->instance(YandexAuthService::class, $mock);
+
+        $response = $this->actingAs($user)
+            ->withSession([
+                'yandex_oauth_context' => [
+                    'state' => 'valid-state',
+                    'intent' => 'link',
+                    'provider' => 'yandex',
+                    'user_id' => $user->id,
+                ],
+            ])
+            ->get('/api/auth/yandex/callback?state=valid-state&code=test-code');
+
+        $response->assertRedirect();
+        $this->assertStringContainsString('oauth_link=success', $response->headers->get('Location'));
+        $this->assertStringContainsString('open_settings=security', $response->headers->get('Location'));
+        $this->assertAuthenticatedAs($user);
+    }
 }
