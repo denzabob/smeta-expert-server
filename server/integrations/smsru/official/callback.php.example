@@ -1,0 +1,23 @@
+<?php
+
+/*
+Example of official SMS.ru callback script format.
+You can keep this file as reference.
+In this project callbacks should be sent to:
+  /api/auth/phone/call/webhook
+
+If you still use a standalone callback.php, it should return plain "100".
+*/
+
+foreach (($_POST['data'] ?? []) as $entry) {
+    $lines = explode("\n", $entry);
+    if (($lines[0] ?? '') === 'sms_status') {
+        $sms_id = trim((string) ($lines[1] ?? ''));
+        $sms_status = trim((string) ($lines[2] ?? ''));
+
+        // Process status update here.
+        // "Status changed. Message: $sms_id. New status: $sms_status";
+    }
+}
+
+echo '100';

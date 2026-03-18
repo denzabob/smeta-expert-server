@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuthVerificationChallenge;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -70,6 +71,49 @@ class PhoneAuthTest extends TestCase
             'purpose' => 'phone_auth',
             'status' => 'pending',
             'current_channel' => 'sms_ru_callcheck',
+        ]);
+    }
+
+    public function test_request_call_challenge_falls_back_to_http_when_official_library_has_no_callcheck_methods(): void
+    {
+        config([
+            'verification.test_mode' => false,
+            'verification.sms_ru.enabled' => true,
+            'verification.sms_ru.api_id' => 'test-api-id',
+            'verification.sms_ru.official_library.enabled' => true,
+            'verification.sms_ru.official_library.path' => base_path('integrations/smsru/official/sms.ru.php'),
+            'verification.sms_ru.official_library.class' => 'SMSRU',
+        ]);
+
+        Http::fake([
+            'https://sms.ru/callcheck/add*' => Http::response([
+                'status' => 'OK',
+                'status_code' => 100,
+                'check_id' => 'check_fallback_1',
+                'check_status' => '400',
+                'call_phone' => '74991234567',
+                'call_phone_pretty' => '+7 (499) 123-45-67',
+            ], 200),
+        ]);
+
+        $response = $this->postJson('/api/auth/phone/call/request', [
+            'phone' => '+7 (999) 123-45-67',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('status', 'pending')
+            ->assertJsonPath('call_phone_pretty', '+7 (499) 123-45-67');
+
+        Http::assertSent(function ($request) {
+            return str_contains((string) $request->url(), '/callcheck/add');
+        });
+
+        $this->assertDatabaseHas('auth_verification_challenges', [
+            'phone' => '+79991234567',
+            'purpose' => 'phone_auth',
+            'status' => 'pending',
+            'current_channel' => 'sms_ru_callcheck',
+            'provider_message_id' => 'check_fallback_1',
         ]);
     }
 

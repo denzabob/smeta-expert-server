@@ -350,6 +350,9 @@
                 type="text"
                 class="form-input"
                 placeholder="+7 (999) 123-45-67"
+                inputmode="tel"
+                autocomplete="tel"
+                @input="onPhoneChangeInput"
               />
             </div>
 
@@ -648,6 +651,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { authApi, type AuthMethodsResponse } from '@/api/auth'
 import { pinApi } from '@/api/pin'
+import { formatRuPhoneMask } from '@/components/auth/phoneCallFlow'
 import { buildProviderConnectionRows } from '@/components/settings/providerConnectionRows'
 import PinInput from '@/components/auth/PinInput.vue'
 import UserDevicesPanel from '@/components/settings/UserDevicesPanel.vue'
@@ -801,6 +805,10 @@ function cancelPhoneVerify() {
   phoneChange.value.callPhonePretty = ''
   phoneResendCountdown.value = 0
   clearPhoneResendTimer()
+}
+
+function onPhoneChangeInput() {
+  phoneChange.value.phone = formatRuPhoneMask(phoneChange.value.phone)
 }
 
 function resetEmailChange() {

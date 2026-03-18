@@ -44,7 +44,7 @@
       </div>
 
       <v-alert type="info" variant="tonal" density="compact" class="mb-3">
-        Звонок бесплатный. После звонка подтверждение произойдет автоматически.
+        Звонок бесплатный. После звонка подтверждение произойдет автоматически, статус проверяется каждые несколько секунд.
       </v-alert>
 
       <div class="d-flex align-center justify-space-between mb-2">
@@ -69,18 +69,6 @@
       <v-alert v-if="statusMessage" :type="statusAlertType" variant="tonal" class="mb-3" density="compact">
         {{ statusMessage }}
       </v-alert>
-
-      <v-btn
-        block
-        color="primary"
-        size="large"
-        :loading="loadingStatus"
-        :disabled="callStatus === 'verified'"
-        class="mt-2"
-        @click="checkCallStatus"
-      >
-        Я позвонил, проверить
-      </v-btn>
 
       <v-btn
         v-if="callPhoneRaw"
@@ -312,10 +300,6 @@ async function pollStatus() {
   } finally {
     loadingStatus.value = false
   }
-}
-
-async function checkCallStatus() {
-  await pollStatus()
 }
 
 async function requestNewNumber() {

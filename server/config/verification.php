@@ -58,6 +58,13 @@ return [
         'api_id' => env('SMSRU_API_ID'),
         'timeout' => (int) env('SMSRU_CALLCHECK_TIMEOUT', 15),
         'test_confirmed' => (bool) env('SMSRU_CALLCHECK_TEST_CONFIRMED', true),
+        'test_call_phone' => env('SMSRU_CALLCHECK_TEST_PHONE', '74995555555'),
+        'test_call_phone_pretty' => env('SMSRU_CALLCHECK_TEST_PHONE_PRETTY', '+7 (499) 555-5555'),
+        'official_library' => [
+            'enabled' => (bool) env('SMSRU_OFFICIAL_LIBRARY_ENABLED', false),
+            'path' => env('SMSRU_OFFICIAL_LIBRARY_PATH', base_path('integrations/smsru/official/sms.ru.php')),
+            'class' => env('SMSRU_OFFICIAL_LIBRARY_CLASS', 'SMSRU'),
+        ],
         'webhook' => [
             'enabled' => (bool) env('SMSRU_CALLCHECK_WEBHOOK_ENABLED', true),
             'token' => env('SMSRU_CALLCHECK_WEBHOOK_TOKEN'),

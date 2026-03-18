@@ -28,24 +28,95 @@ class SmsRuCallCheckWebhookController extends Controller
             }
         }
 
+        $jobs = [];
+
         $checkId = trim((string) $request->input('check_id', $request->input('id', '')));
         $checkStatus = trim((string) $request->input('check_status', $request->input('status', '')));
+        if ($checkId !== '' && $checkStatus !== '') {
+            $jobs[] = [
+                'id' => $checkId,
+                'status' => $checkStatus,
+                'payload' => $request->all(),
+            ];
+        }
 
-        if ($checkId === '' || $checkStatus === '') {
+        foreach ($this->parseOfficialCallbackEntries($request->input('data')) as $entry) {
+            $jobs[] = [
+                'id' => $entry['id'],
+                'status' => $entry['status'],
+                'payload' => [
+                    'line_type' => $entry['line_type'],
+                    'raw_entry' => $entry['raw_entry'],
+                    'raw_request' => $request->all(),
+                ],
+            ];
+        }
+
+        if (empty($jobs)) {
             return response('bad_request', 422);
         }
 
-        $result = $this->verificationService->processCallCheckWebhook($checkId, $checkStatus, $request->all());
+        foreach ($jobs as $job) {
+            $result = $this->verificationService->processCallCheckWebhook(
+                $job['id'],
+                $job['status'],
+                $job['payload']
+            );
 
-        if (!$result['success']) {
-            Log::warning('[SmsRuCallCheckWebhook] Failed to process webhook', [
-                'check_id' => $checkId,
-                'check_status' => $checkStatus,
-                'error' => $result['error'],
-            ]);
+            if (!$result['success']) {
+                Log::warning('[SmsRuCallCheckWebhook] Failed to process webhook', [
+                    'check_id' => $job['id'],
+                    'check_status' => $job['status'],
+                    'error' => $result['error'],
+                ]);
+            }
         }
 
-        // SMS providers usually expect fast plain-text ack.
+        // Official SMS.ru callback format expects plain "100" ACK.
+        if (is_array($request->input('data'))) {
+            return response('100', 200);
+        }
+
         return response('OK', 200);
+    }
+
+    /**
+     * @param mixed $data
+     * @return array<int,array{id:string,status:string,line_type:string,raw_entry:string}>
+     */
+    protected function parseOfficialCallbackEntries(mixed $data): array
+    {
+        if (!is_array($data)) {
+            return [];
+        }
+
+        $entries = [];
+        foreach ($data as $rawEntry) {
+            if (!is_string($rawEntry) || trim($rawEntry) === '') {
+                continue;
+            }
+
+            $lines = preg_split('/\r\n|\r|\n/', trim($rawEntry));
+            if (!$lines || count($lines) < 3) {
+                continue;
+            }
+
+            $lineType = trim((string) $lines[0]);
+            $id = trim((string) $lines[1]);
+            $status = trim((string) $lines[2]);
+
+            if ($id === '' || $status === '') {
+                continue;
+            }
+
+            $entries[] = [
+                'id' => $id,
+                'status' => $status,
+                'line_type' => $lineType,
+                'raw_entry' => $rawEntry,
+            ];
+        }
+
+        return $entries;
     }
 }
