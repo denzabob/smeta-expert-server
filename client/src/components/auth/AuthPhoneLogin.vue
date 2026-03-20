@@ -164,8 +164,9 @@ const statusAlertType = computed<'info' | 'success' | 'warning' | 'error'>(() =>
 
 const ttlLabel = computed(() => {
   if (ttlSeconds.value <= 0) return '00:00'
-  const minutes = String(Math.floor(ttlSeconds.value / 60)).padStart(2, '0')
-  const seconds = String(ttlSeconds.value % 60).padStart(2, '0')
+  const ttl = Math.max(0, Math.floor(ttlSeconds.value))
+  const minutes = String(Math.floor(ttl / 60)).padStart(2, '0')
+  const seconds = String(ttl % 60).padStart(2, '0')
   return `${minutes}:${seconds}`
 })
 
@@ -216,9 +217,10 @@ function applyCallStatusPayload(payload: CallStatusResponse) {
   statusMessage.value = payload.message || ''
 
   if (payload.ttl_seconds >= 0) {
-    ttlSeconds.value = payload.ttl_seconds
-    if (ttlInitial.value < payload.ttl_seconds) {
-      ttlInitial.value = payload.ttl_seconds
+    const nextTtl = Math.max(0, Math.floor(payload.ttl_seconds))
+    ttlSeconds.value = nextTtl
+    if (ttlInitial.value < nextTtl) {
+      ttlInitial.value = nextTtl
     }
   }
 
@@ -250,8 +252,9 @@ async function requestCallChallenge() {
     callPhoneRaw.value = result.call_phone || ''
     callPhonePretty.value = result.call_phone_pretty || ''
 
-    ttlSeconds.value = Math.max(0, result.ttl_seconds)
-    ttlInitial.value = Math.max(1, result.ttl_seconds)
+    const nextTtl = Math.max(0, Math.floor(result.ttl_seconds))
+    ttlSeconds.value = nextTtl
+    ttlInitial.value = Math.max(1, nextTtl)
 
     callStatus.value = 'pending'
     statusMessage.value = 'Ожидаем звонок.'

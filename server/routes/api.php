@@ -41,6 +41,7 @@ use App\Http\Controllers\Api\AdminMaterialDimensionParseFailureController;
 use App\Http\Controllers\Api\AdminMaterialDimensionRuleController;
 use App\Http\Controllers\Api\AdminMaterialTypePatternController;
 use App\Http\Controllers\Api\AdminSystemLogController;
+use App\Http\Controllers\Api\AdminUsersController;
 use App\Http\Controllers\Api\PinAuthController;
 use App\Http\Controllers\Api\PhoneAuthController;
 use App\Http\Controllers\Api\YandexAuthController;
@@ -482,6 +483,19 @@ Route::middleware('auth:sanctum')->group(function () {
     // ========== Admin System Logs API ==========
     Route::get('admin/system/logs', [AdminSystemLogController::class, 'index']);
     Route::get('admin/system/logs/download', [AdminSystemLogController::class, 'download']);
+
+    // ========== Admin Users Management API ==========
+    Route::get('admin/system/users', [AdminUsersController::class, 'index']);
+    Route::get('admin/system/users/audit-log', [AdminUsersController::class, 'auditLog']);
+    Route::post('admin/system/users/bulk-action', [AdminUsersController::class, 'bulkAction']);
+    Route::get('admin/system/users/{id}', [AdminUsersController::class, 'show'])->where('id', '[0-9]+');
+    Route::get('admin/system/users/{id}/dependencies', [AdminUsersController::class, 'dependencies'])->where('id', '[0-9]+');
+    Route::post('admin/system/users/{id}/block', [AdminUsersController::class, 'block'])->where('id', '[0-9]+');
+    Route::post('admin/system/users/{id}/unblock', [AdminUsersController::class, 'unblock'])->where('id', '[0-9]+');
+    Route::delete('admin/system/users/{id}', [AdminUsersController::class, 'softDelete'])->where('id', '[0-9]+');
+    Route::delete('admin/system/users/{id}/force', [AdminUsersController::class, 'hardDelete'])->where('id', '[0-9]+');
+    Route::post('admin/system/users/{id}/restore', [AdminUsersController::class, 'restore'])->where('id', '[0-9]+');
+    Route::put('admin/system/users/{id}/role', [AdminUsersController::class, 'updateRole'])->where('id', '[0-9]+');
 
     // ========== Admin Material Dimensions API ==========
     Route::post('admin/material-dimension-rules/preview', [AdminMaterialDimensionRuleController::class, 'preview']);

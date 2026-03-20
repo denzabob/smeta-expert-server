@@ -261,8 +261,11 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
 
   const isAdminUser = () => {
-    const role = String((authStore.user as any)?.role ?? (authStore.user as any)?.user_role ?? '').toLowerCase()
-    return Number(authStore.user?.id) === 1 || role === 'admin' || role === 'superadmin'
+    const u = authStore.user as any
+    if (!u) return false
+    if (u.is_admin) return true
+    const role = String(u.role ?? u.user_role ?? '').toLowerCase()
+    return Number(u.id) === 1 || role === 'admin' || role === 'superadmin'
   }
 
   if (to.name === 'admin-login') {

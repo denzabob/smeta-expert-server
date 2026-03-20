@@ -17,6 +17,20 @@ class EnforceSingleSession
     {
         $user = $request->user();
 
+        // Block access for blocked or soft-deleted users
+        if ($user && ($user->auth_status === 'blocked' || $user->trashed())) {
+            if ($request->hasSession()) {
+                Auth::guard('web')->logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+
+            return response()->json([
+                'message' => 'Ваша учетная запись заблокирована или деактивирована.',
+                'reason' => 'account_blocked',
+            ], 403);
+        }
+
         // Пропускаем проверку сессии для token-based запросов (Chrome extension и т.д.)
         // У таких запросов нет session store — вызов $request->session() приведёт к ошибке.
         if (!$request->hasSession()) {

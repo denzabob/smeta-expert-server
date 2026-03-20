@@ -9,7 +9,7 @@ class SmsRuCallCheckTransport implements VerificationTransportInterface
 {
     public function sendCode(string $phone, string $code): array
     {
-        if (config('verification.test_mode')) {
+        if ($this->shouldUseSimulatedMode()) {
             [$testCallPhone, $testCallPhonePretty] = $this->resolveTestCallPhonePair();
             $checkId = 'test_callcheck_' . time();
             Log::info('[SmsRuCallCheck][TEST] Challenge created for ' . $phone, ['check_id' => $checkId]);
@@ -101,7 +101,7 @@ class SmsRuCallCheckTransport implements VerificationTransportInterface
      */
     public function getCheckStatus(string $checkId): array
     {
-        if (config('verification.test_mode')) {
+        if ($this->shouldUseSimulatedMode()) {
             $confirmed = (bool) config('verification.sms_ru.test_confirmed', true);
             return [
                 'success' => true,
@@ -199,7 +199,7 @@ class SmsRuCallCheckTransport implements VerificationTransportInterface
 
     public function isAvailable(): bool
     {
-        if (config('verification.test_mode')) {
+        if ($this->shouldUseSimulatedMode()) {
             return true;
         }
 
@@ -210,6 +210,12 @@ class SmsRuCallCheckTransport implements VerificationTransportInterface
     public function channelName(): string
     {
         return 'sms_ru_callcheck';
+    }
+
+    protected function shouldUseSimulatedMode(): bool
+    {
+        return (bool) config('verification.test_mode')
+            && !(bool) config('verification.sms_ru.enabled');
     }
 
     /**

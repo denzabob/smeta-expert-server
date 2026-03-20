@@ -67,7 +67,7 @@ class PhoneAuthController extends Controller
             'call_phone' => $challenge->call_phone,
             'call_phone_pretty' => $challenge->call_phone_pretty,
             'expires_at' => $challenge->expires_at->toIso8601String(),
-            'ttl_seconds' => max(0, now()->diffInSeconds($challenge->expires_at, false)),
+            'ttl_seconds' => (int) max(0, now()->diffInSeconds($challenge->expires_at, false)),
         ]);
     }
 
@@ -116,7 +116,7 @@ class PhoneAuthController extends Controller
                     'verification_id' => $challenge->id,
                     'status' => 'failed',
                     'expires_at' => $challenge->expires_at->toIso8601String(),
-                    'ttl_seconds' => max(0, now()->diffInSeconds($challenge->expires_at, false)),
+                    'ttl_seconds' => (int) max(0, now()->diffInSeconds($challenge->expires_at, false)),
                     'message' => 'Не удалось проверить статус звонка. Попробуйте снова.',
                 ], 503);
             }
@@ -138,7 +138,7 @@ class PhoneAuthController extends Controller
                 'call_phone' => $challenge->call_phone,
                 'call_phone_pretty' => $challenge->call_phone_pretty,
                 'expires_at' => $challenge->expires_at->toIso8601String(),
-                'ttl_seconds' => max(0, now()->diffInSeconds($challenge->expires_at, false)),
+                'ttl_seconds' => (int) max(0, now()->diffInSeconds($challenge->expires_at, false)),
                 'message' => 'Ожидаем звонок.',
             ]);
         }
@@ -161,7 +161,7 @@ class PhoneAuthController extends Controller
             'verification_id' => $challenge->id,
             'status' => 'failed',
             'expires_at' => $challenge->expires_at->toIso8601String(),
-            'ttl_seconds' => max(0, now()->diffInSeconds($challenge->expires_at, false)),
+            'ttl_seconds' => (int) max(0, now()->diffInSeconds($challenge->expires_at, false)),
             'message' => 'Подтверждение не выполнено. Запросите новый номер.',
         ], 422);
     }
@@ -372,7 +372,7 @@ class PhoneAuthController extends Controller
             'verification_id' => $challenge->id,
             'status' => 'verified',
             'expires_at' => $challenge->expires_at->toIso8601String(),
-            'ttl_seconds' => max(0, now()->diffInSeconds($challenge->expires_at, false)),
+            'ttl_seconds' => (int) max(0, now()->diffInSeconds($challenge->expires_at, false)),
             'auth' => $authPayload,
             'message' => 'Звонок подтвержден.',
         ]);

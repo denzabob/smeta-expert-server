@@ -1,153 +1,991 @@
 <template>
-  <v-card variant="outlined" :loading="loading">
-    <v-card-title class="d-flex align-center">
-      <v-icon class="mr-2">mdi-account-group</v-icon>
-      Пользователи (активность LLM)
-      <v-spacer />
-      <v-select
-        v-model="period"
-        :items="periodOptions"
-        density="compact"
-        variant="outlined"
-        hide-details
-        style="max-width: 160px"
-        @update:model-value="loadUsers"
-      />
-    </v-card-title>
+  <div class="admin-users">
+    <!-- Metrics Cards -->
+    <v-row class="mb-4" dense>
+      <v-col cols="12" sm="6" md="3" lg="2" v-for="metric in metricCards" :key="metric.label">
+        <v-card variant="outlined" class="pa-3 text-center" :class="{ 'border-primary': metric.active }">
+          <div class="text-h5 font-weight-bold" :class="metric.color">{{ metric.value }}</div>
+          <div class="text-caption text-medium-emphasis">{{ metric.label }}</div>
+        </v-card>
+      </v-col>
+    </v-row>
 
-    <v-card-text>
-      <v-text-field
-        v-model="search"
-        prepend-inner-icon="mdi-magnify"
-        label="Поиск по имени"
-        variant="outlined"
-        density="compact"
-        hide-details
-        class="mb-4"
-        style="max-width: 320px"
-      />
+    <!-- Toolbar: Search + Filters + Actions -->
+    <v-card variant="outlined" class="mb-4">
+      <v-card-text class="d-flex flex-wrap align-center ga-3">
+        <v-text-field
+          v-model="search"
+          prepend-inner-icon="mdi-magnify"
+          label="Поиск по ID, email, имени, телефону"
+          variant="outlined"
+          density="compact"
+          hide-details
+          clearable
+          style="max-width: 350px; min-width: 200px"
+          @keyup.enter="loadUsers"
+          @click:clear="search = ''; loadUsers()"
+        />
 
+        <v-select
+          v-model="filterStatus"
+          :items="statusOptions"
+          label="Статус"
+          variant="outlined"
+          density="compact"
+          hide-details
+          clearable
+          style="max-width: 180px"
+          @update:model-value="loadUsers"
+        />
+
+        <v-select
+          v-model="filterRole"
+          :items="roleOptions"
+          label="Роль"
+          variant="outlined"
+          density="compact"
+          hide-details
+          clearable
+          style="max-width: 180px"
+          @update:model-value="loadUsers"
+        />
+
+        <v-spacer />
+
+        <v-btn
+          v-if="selectedUsers.length > 0"
+          color="warning"
+          variant="tonal"
+          size="small"
+          prepend-icon="mdi-selection-multiple"
+          @click="showBulkActionDialog = true"
+        >
+          Действия ({{ selectedUsers.length }})
+        </v-btn>
+
+        <v-btn icon="mdi-refresh" variant="text" :loading="loading" @click="loadUsers" />
+      </v-card-text>
+    </v-card>
+
+    <!-- Users Table -->
+    <v-card variant="outlined" :loading="loading">
       <v-data-table
+        v-model="selectedUsers"
         :headers="headers"
-        :items="filteredUsers"
+        :items="users"
         :loading="loading"
+        :items-per-page="perPage"
         density="comfortable"
+        show-select
         class="elevation-0"
+        item-value="id"
+        @update:options="onTableOptions"
       >
-        <template #item.user_name="{ item }">
-          <div class="d-flex align-center">
-            <v-avatar size="32" class="mr-2" color="primary">
-              <span class="text-white text-caption">{{ initials(item.user_name) }}</span>
+        <!-- User name + avatar -->
+        <template #item.name="{ item }">
+          <div class="d-flex align-center py-1">
+            <v-avatar size="32" class="mr-2" :color="getStatusColor(item)">
+              <span class="text-white text-caption">{{ initials(item.name || item.email || '?') }}</span>
             </v-avatar>
-            <div class="font-weight-medium">{{ item.user_name }}</div>
+            <div>
+              <div class="font-weight-medium">{{ item.name || '—' }}</div>
+              <div class="text-caption text-medium-emphasis">{{ item.email || item.phone || '—' }}</div>
+            </div>
           </div>
         </template>
 
-        <template #item.success_rate="{ item }">
-          <v-chip
-            :color="item.success_rate >= 95 ? 'success' : item.success_rate >= 80 ? 'warning' : 'error'"
-            size="small"
-            variant="tonal"
-          >
-            {{ item.success_rate.toFixed(1) }}%
+        <!-- Role -->
+        <template #item.role="{ item }">
+          <v-chip size="small" :color="getRoleColor(item.role)" variant="tonal">
+            {{ getRoleLabel(item.role) }}
           </v-chip>
         </template>
 
-        <template #item.total_cost="{ item }">
-          ${{ item.total_cost.toFixed(4) }}
+        <!-- Status -->
+        <template #item.auth_status="{ item }">
+          <v-chip size="small" :color="getStatusChipColor(item)" variant="tonal">
+            {{ getStatusLabel(item) }}
+          </v-chip>
         </template>
 
-        <template #item.last_used_at="{ item }">
-          <span class="text-medium-emphasis">{{ formatDate(item.last_used_at) }}</span>
+        <!-- Registration date -->
+        <template #item.created_at="{ item }">
+          <span class="text-medium-emphasis text-body-2">{{ formatDate(item.created_at) }}</span>
+        </template>
+
+        <!-- Last login -->
+        <template #item.last_login_at="{ item }">
+          <span class="text-medium-emphasis text-body-2">{{ formatDate(item.last_login_at) }}</span>
+        </template>
+
+        <!-- AI requests -->
+        <template #item.ai_requests_count="{ item }">
+          <span class="font-weight-medium">{{ item.ai_requests_count || 0 }}</span>
+        </template>
+
+        <!-- Actions -->
+        <template #item.actions="{ item }">
+          <div class="d-flex ga-1">
+            <v-btn icon="mdi-eye" size="x-small" variant="text" @click="openUserCard(item)" title="Просмотр" />
+            <v-menu>
+              <template #activator="{ props }">
+                <v-btn icon="mdi-dots-vertical" size="x-small" variant="text" v-bind="props" />
+              </template>
+              <v-list density="compact">
+                <v-list-item v-if="!item.deleted_at && item.auth_status !== 'blocked'" @click="openBlockDialog(item)">
+                  <template #prepend><v-icon size="small" color="warning">mdi-lock</v-icon></template>
+                  <v-list-item-title>Заблокировать</v-list-item-title>
+                </v-list-item>
+                <v-list-item v-if="item.auth_status === 'blocked'" @click="openUnblockDialog(item)">
+                  <template #prepend><v-icon size="small" color="success">mdi-lock-open</v-icon></template>
+                  <v-list-item-title>Разблокировать</v-list-item-title>
+                </v-list-item>
+                <v-list-item v-if="!item.deleted_at" @click="openDeleteDialog(item, 'soft')">
+                  <template #prepend><v-icon size="small" color="error">mdi-delete</v-icon></template>
+                  <v-list-item-title>Удалить (soft)</v-list-item-title>
+                </v-list-item>
+                <v-list-item v-if="item.deleted_at" @click="restoreUser(item)">
+                  <template #prepend><v-icon size="small" color="info">mdi-restore</v-icon></template>
+                  <v-list-item-title>Восстановить</v-list-item-title>
+                </v-list-item>
+                <v-divider />
+                <v-list-item @click="openDeleteDialog(item, 'hard')" class="text-error">
+                  <template #prepend><v-icon size="small" color="error">mdi-delete-forever</v-icon></template>
+                  <v-list-item-title>Удалить навсегда</v-list-item-title>
+                </v-list-item>
+              </v-list>
+            </v-menu>
+          </div>
+        </template>
+
+        <!-- Pagination footer -->
+        <template #bottom>
+          <div class="d-flex justify-center align-center pa-4" v-if="pagination.last_page > 1">
+            <v-pagination
+              v-model="page"
+              :length="pagination.last_page"
+              :total-visible="7"
+              density="compact"
+              @update:model-value="loadUsers"
+            />
+          </div>
         </template>
       </v-data-table>
+    </v-card>
 
-      <v-alert type="info" variant="tonal" class="mt-4" density="compact">
-        Раздел показывает статистику использования LLM по пользователям. Управление аккаунтами в этой версии API не реализовано.
-      </v-alert>
-    </v-card-text>
-  </v-card>
+    <!-- LLM Stats (preserved) -->
+    <v-card variant="outlined" class="mt-4">
+      <v-expansion-panels variant="accordion">
+        <v-expansion-panel>
+          <v-expansion-panel-title>
+            <v-icon class="mr-2">mdi-chart-bar</v-icon>
+            Статистика использования LLM
+          </v-expansion-panel-title>
+          <v-expansion-panel-text>
+            <AdminUsersLlmStats />
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
+    </v-card>
+
+    <!-- User Card Dialog -->
+    <v-dialog v-model="showUserCard" max-width="900" scrollable>
+      <v-card v-if="selectedUser">
+        <v-card-title class="d-flex align-center">
+          <v-avatar size="40" :color="getStatusColor(selectedUser)" class="mr-3">
+            <span class="text-white">{{ initials(selectedUser.name || '?') }}</span>
+          </v-avatar>
+          <div>
+            <div>{{ selectedUser.name || '—' }}</div>
+            <div class="text-caption text-medium-emphasis">ID: {{ selectedUser.id }} &bull; {{ selectedUser.email || selectedUser.phone || '—' }}</div>
+          </div>
+          <v-spacer />
+          <v-chip :color="getStatusChipColor(selectedUser)" size="small" variant="tonal" class="mr-2">
+            {{ getStatusLabel(selectedUser) }}
+          </v-chip>
+          <v-btn icon="mdi-close" variant="text" @click="showUserCard = false" />
+        </v-card-title>
+
+        <v-divider />
+
+        <v-card-text style="max-height: 75vh; overflow-y: auto">
+          <v-tabs v-model="cardTab" density="compact" class="mb-4">
+            <v-tab value="info">Основные данные</v-tab>
+            <v-tab value="ai">Статистика ИИ</v-tab>
+            <v-tab value="deps">Зависимости</v-tab>
+            <v-tab value="audit">Журнал действий</v-tab>
+          </v-tabs>
+
+          <v-window v-model="cardTab">
+            <!-- Info Tab -->
+            <v-window-item value="info">
+              <v-table density="comfortable">
+                <tbody>
+                  <tr><td class="text-medium-emphasis" width="200">ID</td><td>{{ selectedUser.id }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Имя</td><td>{{ selectedUser.name || '—' }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Полное имя</td><td>{{ selectedUser.full_name || '—' }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Email</td><td>{{ selectedUser.email || '—' }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Телефон</td><td>{{ selectedUser.phone || '—' }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Роль</td>
+                    <td>
+                      <v-chip :color="getRoleColor(selectedUser.role)" size="small" variant="tonal">{{ getRoleLabel(selectedUser.role) }}</v-chip>
+                      <v-btn v-if="selectedUser.id !== currentUserId" size="x-small" variant="text" icon="mdi-pencil" class="ml-1" @click="showRoleDialog = true" />
+                    </td>
+                  </tr>
+                  <tr><td class="text-medium-emphasis">Статус</td><td><v-chip :color="getStatusChipColor(selectedUser)" size="small" variant="tonal">{{ getStatusLabel(selectedUser) }}</v-chip></td></tr>
+                  <tr v-if="selectedUser.blocked_reason"><td class="text-medium-emphasis">Причина блокировки</td><td class="text-error">{{ selectedUser.blocked_reason }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Канал входа</td><td>{{ selectedUser.last_login_channel || '—' }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Профиль активности</td><td>{{ selectedUser.activity_profile || '—' }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Email подтвержден</td><td>{{ formatDate(selectedUser.email_verified_at) }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Телефон подтвержден</td><td>{{ formatDate(selectedUser.phone_verified_at) }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Регистрация завершена</td><td>{{ formatDate(selectedUser.registration_completed_at) }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Дата регистрации</td><td>{{ formatDate(selectedUser.created_at) }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Последний вход</td><td>{{ formatDate(selectedUser.last_login_at) }}</td></tr>
+                  <tr><td class="text-medium-emphasis">Токенов (API)</td><td>{{ userDetail?.tokens_count ?? '—' }}</td></tr>
+                </tbody>
+              </v-table>
+
+              <!-- Social accounts -->
+              <div v-if="userDetail?.social_accounts?.length" class="mt-4">
+                <div class="text-subtitle-2 mb-2">Привязанные аккаунты</div>
+                <v-chip v-for="sa in userDetail.social_accounts" :key="sa.id" class="mr-2" size="small" variant="tonal">
+                  {{ sa.provider }}
+                </v-chip>
+              </div>
+
+              <!-- Settings -->
+              <div v-if="userDetail?.settings" class="mt-4">
+                <div class="text-subtitle-2 mb-2">Настройки</div>
+                <v-table density="compact">
+                  <tbody>
+                    <tr><td class="text-medium-emphasis" width="200">Регион</td><td>{{ userDetail.settings.region_id || '—' }}</td></tr>
+                    <tr><td class="text-medium-emphasis">Имя эксперта</td><td>{{ userDetail.settings.expert_name || '—' }}</td></tr>
+                    <tr><td class="text-medium-emphasis">Номер эксперта</td><td>{{ userDetail.settings.expert_number || '—' }}</td></tr>
+                  </tbody>
+                </v-table>
+              </div>
+            </v-window-item>
+
+            <!-- AI Stats Tab -->
+            <v-window-item value="ai">
+              <v-row v-if="userDetail?.ai_stats" dense class="mb-4">
+                <v-col cols="6" sm="3" v-for="stat in aiStatCards" :key="stat.label">
+                  <v-card variant="tonal" class="pa-3 text-center">
+                    <div class="text-h6 font-weight-bold">{{ stat.value }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ stat.label }}</div>
+                  </v-card>
+                </v-col>
+              </v-row>
+              <v-alert v-else type="info" variant="tonal" density="compact">Нет данных об использовании ИИ</v-alert>
+            </v-window-item>
+
+            <!-- Dependencies Tab -->
+            <v-window-item value="deps">
+              <v-alert v-if="loadingDeps" type="info" variant="tonal" density="compact">Загрузка зависимостей...</v-alert>
+              <div v-else-if="userDependencies">
+                <v-alert v-if="userDependencies.total_records === 0" type="success" variant="tonal" density="compact" class="mb-3">
+                  Нет связанных записей — удаление безопасно.
+                </v-alert>
+                <v-alert v-else type="warning" variant="tonal" density="compact" class="mb-3">
+                  Всего связанных записей: <strong>{{ userDependencies.total_records }}</strong>
+                </v-alert>
+
+                <v-table density="compact">
+                  <thead>
+                    <tr>
+                      <th>Сущность</th>
+                      <th>Количество</th>
+                      <th>Стратегия при удалении</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(count, key) in userDependencies.dependencies" :key="key" :class="{ 'text-medium-emphasis': count === 0 }">
+                      <td>{{ depLabel(key as string) }}</td>
+                      <td><strong v-if="count > 0">{{ count }}</strong><span v-else>0</span></td>
+                      <td>
+                        <v-chip size="x-small" :color="depStrategyColor(key as string)" variant="tonal">
+                          {{ depStrategy(key as string) }}
+                        </v-chip>
+                      </td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </div>
+            </v-window-item>
+
+            <!-- Audit Log Tab -->
+            <v-window-item value="audit">
+              <v-table v-if="userDetail?.audit_log?.length" density="compact">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Действие</th>
+                    <th>Администратор</th>
+                    <th>Причина</th>
+                    <th>Результат</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="log in userDetail.audit_log" :key="log.id">
+                    <td class="text-body-2">{{ formatDate(log.created_at) }}</td>
+                    <td><v-chip size="x-small" :color="auditActionColor(log.action)" variant="tonal">{{ auditActionLabel(log.action) }}</v-chip></td>
+                    <td class="text-body-2">{{ log.admin?.name || log.admin?.email || '—' }}</td>
+                    <td class="text-body-2">{{ log.reason || '—' }}</td>
+                    <td><v-chip size="x-small" :color="log.result === 'success' ? 'success' : 'error'" variant="tonal">{{ log.result }}</v-chip></td>
+                  </tr>
+                </tbody>
+              </v-table>
+              <v-alert v-else type="info" variant="tonal" density="compact">Нет записей в журнале</v-alert>
+            </v-window-item>
+          </v-window>
+        </v-card-text>
+
+        <v-divider />
+
+        <v-card-actions>
+          <v-btn v-if="selectedUser && !selectedUser.deleted_at && selectedUser.auth_status !== 'blocked'" color="warning" variant="tonal" @click="openBlockDialog(selectedUser)">
+            <v-icon start>mdi-lock</v-icon>Заблокировать
+          </v-btn>
+          <v-btn v-if="selectedUser && selectedUser.auth_status === 'blocked'" color="success" variant="tonal" @click="openUnblockDialog(selectedUser)">
+            <v-icon start>mdi-lock-open</v-icon>Разблокировать
+          </v-btn>
+          <v-spacer />
+          <v-btn variant="text" @click="showUserCard = false">Закрыть</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Block Dialog -->
+    <v-dialog v-model="showBlockDialog" max-width="480">
+      <v-card>
+        <v-card-title class="text-warning">
+          <v-icon class="mr-2">mdi-lock</v-icon>Блокировка пользователя
+        </v-card-title>
+        <v-card-text>
+          <p class="mb-3">Вы собираетесь заблокировать пользователя <strong>{{ actionTarget?.name || actionTarget?.email }}</strong> (ID: {{ actionTarget?.id }}).</p>
+          <p class="text-caption text-medium-emphasis mb-3">Пользователь потеряет доступ к системе. Все активные сессии и токены будут отозваны.</p>
+          <v-textarea
+            v-model="actionReason"
+            label="Причина блокировки *"
+            variant="outlined"
+            density="compact"
+            rows="3"
+            :rules="[v => !!v || 'Укажите причину']"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showBlockDialog = false">Отмена</v-btn>
+          <v-btn color="warning" variant="flat" :loading="actionLoading" :disabled="!actionReason" @click="confirmBlock">Заблокировать</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Unblock Dialog -->
+    <v-dialog v-model="showUnblockDialog" max-width="480">
+      <v-card>
+        <v-card-title class="text-success">
+          <v-icon class="mr-2">mdi-lock-open</v-icon>Разблокировка пользователя
+        </v-card-title>
+        <v-card-text>
+          <p class="mb-3">Вы собираетесь разблокировать пользователя <strong>{{ actionTarget?.name || actionTarget?.email }}</strong> (ID: {{ actionTarget?.id }}).</p>
+          <p class="text-caption text-medium-emphasis mb-3">Пользователь сможет снова войти в систему.</p>
+          <v-textarea
+            v-model="actionReason"
+            label="Причина разблокировки"
+            variant="outlined"
+            density="compact"
+            rows="2"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showUnblockDialog = false">Отмена</v-btn>
+          <v-btn color="success" variant="flat" :loading="actionLoading" @click="confirmUnblock">Разблокировать</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Delete Dialog -->
+    <v-dialog v-model="showDeleteDialog" max-width="600" scrollable>
+      <v-card>
+        <v-card-title class="text-error">
+          <v-icon class="mr-2">{{ deleteMode === 'hard' ? 'mdi-delete-forever' : 'mdi-delete' }}</v-icon>
+          {{ deleteMode === 'hard' ? 'Полное удаление' : 'Удаление' }} пользователя
+        </v-card-title>
+        <v-card-text>
+          <v-alert v-if="deleteMode === 'hard'" type="error" variant="tonal" density="compact" class="mb-3">
+            <strong>ВНИМАНИЕ!</strong> Полное удаление необратимо. Все данные пользователя будут удалены навсегда.
+          </v-alert>
+          <p class="mb-3">Пользователь: <strong>{{ actionTarget?.name || actionTarget?.email }}</strong> (ID: {{ actionTarget?.id }})</p>
+
+          <!-- Dependencies preview -->
+          <div v-if="deleteDependencies" class="mb-3">
+            <div class="text-subtitle-2 mb-2">Связанные данные ({{ deleteDependencies.total_records }} записей):</div>
+            <div class="d-flex flex-wrap ga-1 mb-2">
+              <v-chip v-for="(count, key) in deleteDependencies.dependencies" :key="key" size="x-small" variant="tonal"
+                :color="count > 0 ? 'warning' : 'default'" v-show="count > 0">
+                {{ depLabel(key as string) }}: {{ count }}
+              </v-chip>
+            </div>
+          </div>
+          <v-progress-linear v-else-if="loadingDeleteDeps" indeterminate color="warning" class="mb-3" />
+
+          <v-textarea
+            v-model="actionReason"
+            :label="deleteMode === 'hard' ? 'Причина удаления *' : 'Причина удаления'"
+            variant="outlined"
+            density="compact"
+            rows="2"
+          />
+
+          <v-text-field
+            v-if="deleteMode === 'hard'"
+            v-model="deleteConfirmation"
+            label="Введите DELETE для подтверждения"
+            variant="outlined"
+            density="compact"
+            hide-details
+            class="mt-2"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showDeleteDialog = false">Отмена</v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            :loading="actionLoading"
+            :disabled="deleteMode === 'hard' && deleteConfirmation !== 'DELETE'"
+            @click="confirmDelete"
+          >
+            {{ deleteMode === 'hard' ? 'Удалить навсегда' : 'Удалить' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Role Change Dialog -->
+    <v-dialog v-model="showRoleDialog" max-width="400">
+      <v-card>
+        <v-card-title>Изменение роли</v-card-title>
+        <v-card-text>
+          <p class="mb-3">Пользователь: <strong>{{ selectedUser?.name || selectedUser?.email }}</strong></p>
+          <v-select
+            v-model="newRole"
+            :items="roleOptions"
+            label="Новая роль"
+            variant="outlined"
+            density="compact"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showRoleDialog = false">Отмена</v-btn>
+          <v-btn color="primary" variant="flat" :loading="actionLoading" @click="confirmRoleChange">Сохранить</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Bulk Action Dialog -->
+    <v-dialog v-model="showBulkActionDialog" max-width="480">
+      <v-card>
+        <v-card-title>Массовая операция</v-card-title>
+        <v-card-text>
+          <p class="mb-3">Выбрано пользователей: <strong>{{ selectedUsers.length }}</strong></p>
+          <v-select
+            v-model="bulkAction"
+            :items="bulkActionOptions"
+            label="Действие"
+            variant="outlined"
+            density="compact"
+          />
+          <v-textarea
+            v-model="actionReason"
+            label="Причина"
+            variant="outlined"
+            density="compact"
+            rows="2"
+            class="mt-2"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showBulkActionDialog = false">Отмена</v-btn>
+          <v-btn color="warning" variant="flat" :loading="actionLoading" :disabled="!bulkAction" @click="confirmBulkAction">Выполнить</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Snackbar -->
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="4000" location="bottom right">
+      {{ snackbarText }}
+    </v-snackbar>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api/axios'
+import AdminUsersLlmStats from './AdminUsersLlmStats.vue'
+import { useAuthStore } from '@/stores/auth'
 
-interface UserLlmStats {
-  user_id: number
-  user_name: string
-  total_requests: number
-  successful_requests: number
-  success_rate: number
-  total_cost: number
-  total_tokens: number
-  avg_latency_ms: number
-  last_used_at: string | null
+// ----- Types -----
+interface UserItem {
+  id: number
+  name: string | null
+  full_name: string | null
+  email: string | null
+  phone: string | null
+  role: string
+  auth_status: string
+  blocked_reason: string | null
+  blocked_at: string | null
+  created_at: string
+  last_login_at: string | null
+  last_login_channel: string | null
+  activity_profile: string | null
+  email_verified_at: string | null
+  phone_verified_at: string | null
+  registration_completed_at: string | null
+  deleted_at: string | null
+  ai_requests_count: number
 }
 
-const loading = ref(false)
-const search = ref('')
-const period = ref('30d')
-const users = ref<UserLlmStats[]>([])
+interface UserDetail {
+  user: UserItem
+  ai_stats: any
+  dependencies: Record<string, number>
+  audit_log: any[]
+  settings: any
+  social_accounts: any[]
+  tokens_count: number
+}
 
-const periodOptions = [
-  { title: '7 дней', value: '7d' },
-  { title: '30 дней', value: '30d' },
-  { title: '90 дней', value: '90d' },
+interface Pagination {
+  total: number
+  per_page: number
+  current_page: number
+  last_page: number
+}
+
+interface Metrics {
+  total: number
+  active: number
+  blocked: number
+  deleted: number
+  total_ai_requests: number
+}
+
+// ----- State -----
+const authStore = useAuthStore()
+const currentUserId = computed(() => authStore.user?.id)
+
+const loading = ref(false)
+const users = ref<UserItem[]>([])
+const selectedUsers = ref<number[]>([])
+const pagination = ref<Pagination>({ total: 0, per_page: 20, current_page: 1, last_page: 1 })
+const metrics = ref<Metrics>({ total: 0, active: 0, blocked: 0, deleted: 0, total_ai_requests: 0 })
+
+// Filters
+const search = ref('')
+const filterStatus = ref<string | null>(null)
+const filterRole = ref<string | null>(null)
+const page = ref(1)
+const perPage = ref(20)
+const sortBy = ref('created_at')
+const sortDir = ref<'asc' | 'desc'>('desc')
+
+// User card
+const showUserCard = ref(false)
+const selectedUser = ref<UserItem | null>(null)
+const userDetail = ref<UserDetail | null>(null)
+const cardTab = ref('info')
+
+// Dependencies
+const userDependencies = ref<any>(null)
+const loadingDeps = ref(false)
+const deleteDependencies = ref<any>(null)
+const loadingDeleteDeps = ref(false)
+
+// Action dialogs
+const actionTarget = ref<UserItem | null>(null)
+const actionReason = ref('')
+const actionLoading = ref(false)
+
+const showBlockDialog = ref(false)
+const showUnblockDialog = ref(false)
+const showDeleteDialog = ref(false)
+const deleteMode = ref<'soft' | 'hard'>('soft')
+const deleteConfirmation = ref('')
+const showRoleDialog = ref(false)
+const newRole = ref('user')
+const showBulkActionDialog = ref(false)
+const bulkAction = ref<string | null>(null)
+
+// Snackbar
+const snackbar = ref(false)
+const snackbarText = ref('')
+const snackbarColor = ref('success')
+
+// ----- Options -----
+const statusOptions = [
+  { title: 'Активные', value: 'active' },
+  { title: 'Заблокированные', value: 'blocked' },
+  { title: 'Удаленные', value: 'deleted' },
+]
+
+const roleOptions = [
+  { title: 'Пользователь', value: 'user' },
+  { title: 'Администратор', value: 'admin' },
+  { title: 'Суперадмин', value: 'superadmin' },
+]
+
+const bulkActionOptions = [
+  { title: 'Заблокировать', value: 'block' },
+  { title: 'Разблокировать', value: 'unblock' },
+  { title: 'Удалить (soft)', value: 'soft_delete' },
 ]
 
 const headers = [
-  { title: 'Пользователь', key: 'user_name', sortable: false },
-  { title: 'Запросов', key: 'total_requests', sortable: true, width: 110 },
-  { title: 'Успешность', key: 'success_rate', sortable: true, width: 120 },
-  { title: 'Токены', key: 'total_tokens', sortable: true, width: 120 },
-  { title: 'Средняя задержка', key: 'avg_latency_ms', sortable: true, width: 150 },
-  { title: 'Стоимость', key: 'total_cost', sortable: true, width: 110 },
-  { title: 'Последнее использование', key: 'last_used_at', sortable: true, width: 180 },
+  { title: 'ID', key: 'id', sortable: true, width: 70 },
+  { title: 'Пользователь', key: 'name', sortable: true },
+  { title: 'Роль', key: 'role', sortable: false, width: 130 },
+  { title: 'Статус', key: 'auth_status', sortable: false, width: 140 },
+  { title: 'Регистрация', key: 'created_at', sortable: true, width: 140 },
+  { title: 'Последний вход', key: 'last_login_at', sortable: true, width: 140 },
+  { title: 'ИИ запросов', key: 'ai_requests_count', sortable: true, width: 110 },
+  { title: '', key: 'actions', sortable: false, width: 80 },
 ]
 
-const filteredUsers = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  if (!q) return users.value
-  return users.value.filter(u => u.user_name.toLowerCase().includes(q))
+// ----- Computed -----
+const metricCards = computed(() => [
+  { label: 'Всего', value: metrics.value.total, color: '', active: false },
+  { label: 'Активные', value: metrics.value.active, color: 'text-success', active: filterStatus.value === 'active' },
+  { label: 'Заблокированные', value: metrics.value.blocked, color: 'text-warning', active: filterStatus.value === 'blocked' },
+  { label: 'Удаленные', value: metrics.value.deleted, color: 'text-error', active: filterStatus.value === 'deleted' },
+  { label: 'ИИ запросов', value: metrics.value.total_ai_requests, color: 'text-info', active: false },
+])
+
+const aiStatCards = computed(() => {
+  const s = userDetail.value?.ai_stats
+  if (!s) return []
+  const rate = s.total_requests > 0 ? ((s.successful_requests / s.total_requests) * 100).toFixed(1) : '0'
+  return [
+    { label: 'Всего запросов', value: s.total_requests || 0 },
+    { label: 'Успешность', value: `${rate}%` },
+    { label: 'Токенов', value: formatNumber(s.total_tokens || 0) },
+    { label: 'Стоимость', value: `$${Number(s.total_cost || 0).toFixed(4)}` },
+  ]
 })
 
-function initials(name: string): string {
-  return name
-    .split(' ')
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+// ----- Methods -----
+function notify(text: string, color = 'success') {
+  snackbarText.value = text
+  snackbarColor.value = color
+  snackbar.value = true
 }
 
 function formatDate(date: string | null): string {
   if (!date) return '—'
   return new Date(date).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   })
 }
 
+function formatNumber(n: number): string {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
+  return String(n)
+}
+
+function initials(name: string): string {
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
+}
+
+function getStatusColor(user: UserItem): string {
+  if (user.deleted_at) return 'grey'
+  if (user.auth_status === 'blocked') return 'warning'
+  return 'primary'
+}
+
+function getStatusChipColor(user: UserItem): string {
+  if (user.deleted_at) return 'error'
+  if (user.auth_status === 'blocked') return 'warning'
+  return 'success'
+}
+
+function getStatusLabel(user: UserItem): string {
+  if (user.deleted_at) return 'Удален'
+  if (user.auth_status === 'blocked') return 'Заблокирован'
+  return 'Активен'
+}
+
+function getRoleColor(role: string): string {
+  if (role === 'superadmin') return 'error'
+  if (role === 'admin') return 'primary'
+  return 'default'
+}
+
+function getRoleLabel(role: string): string {
+  const map: Record<string, string> = { user: 'Пользователь', admin: 'Администратор', superadmin: 'Суперадмин' }
+  return map[role] || role
+}
+
+const depLabels: Record<string, string> = {
+  projects: 'Проекты', operations: 'Операции', suppliers: 'Поставщики',
+  ai_logs: 'Логи ИИ', import_sessions: 'Импорты', ideas: 'Идеи',
+  idea_votes: 'Голоса', idea_comments: 'Комментарии',
+  trusted_devices: 'Устройства', social_accounts: 'OAuth аккаунты',
+  tokens: 'API токены', notifications: 'Уведомления',
+  user_settings: 'Настройки', user_material_library: 'Библиотека материалов',
+  operation_groups: 'Группы операций', chrome_ext_logs: 'Логи расширения',
+  furniture_modules: 'Модули мебели', detail_types: 'Типы деталей',
+  revision_runs: 'Запуски ревизий', collect_profiles: 'Профили сбора',
+  price_import_sessions: 'Импорт прайсов', project_revisions: 'Ревизии проектов',
+}
+
+function depLabel(key: string): string {
+  return depLabels[key] || key
+}
+
+const nullifyDeps = ['project_revisions', 'ai_logs']
+
+function depStrategy(key: string): string {
+  if (key === 'ai_logs') return 'Анонимизация'
+  if (nullifyDeps.includes(key)) return 'Отвязка (SET NULL)'
+  return 'Каскадное удаление'
+}
+
+function depStrategyColor(key: string): string {
+  if (key === 'ai_logs') return 'info'
+  if (nullifyDeps.includes(key)) return 'warning'
+  return 'error'
+}
+
+function auditActionColor(action: string): string {
+  const map: Record<string, string> = {
+    view: 'default', block: 'warning', unblock: 'success',
+    soft_delete: 'error', hard_delete: 'error', restore: 'info', role_change: 'primary',
+  }
+  return map[action] || 'default'
+}
+
+function auditActionLabel(action: string): string {
+  const map: Record<string, string> = {
+    view: 'Просмотр', block: 'Блокировка', unblock: 'Разблокировка',
+    soft_delete: 'Удаление', hard_delete: 'Полное удаление', restore: 'Восстановление', role_change: 'Смена роли',
+  }
+  return map[action] || action
+}
+
+function onTableOptions(options: any) {
+  if (options.sortBy?.length) {
+    const s = options.sortBy[0]
+    sortBy.value = s.key
+    sortDir.value = s.order
+  }
+}
+
+// ----- API Calls -----
 async function loadUsers() {
   loading.value = true
   try {
-    const response = await api.get('/api/admin/llm-stats/users', {
-      params: { period: period.value },
-    })
-    users.value = response.data?.users || []
-  } catch (error) {
-    console.error('Failed to load users stats:', error)
-    users.value = []
+    const params: Record<string, any> = {
+      page: page.value,
+      per_page: perPage.value,
+      sort_by: sortBy.value,
+      sort_dir: sortDir.value,
+    }
+    if (search.value) params.search = search.value
+    if (filterStatus.value) params.status = filterStatus.value
+    if (filterRole.value) params.role = filterRole.value
+
+    const { data } = await api.get('/api/admin/system/users', { params })
+    users.value = data.users || []
+    pagination.value = data.pagination || { total: 0, per_page: 20, current_page: 1, last_page: 1 }
+    metrics.value = data.metrics || metrics.value
+  } catch (err: any) {
+    console.error('Failed to load users:', err)
+    notify('Ошибка загрузки пользователей', 'error')
   } finally {
     loading.value = false
   }
 }
 
+async function openUserCard(user: UserItem) {
+  selectedUser.value = user
+  userDetail.value = null
+  userDependencies.value = null
+  showUserCard.value = true
+  cardTab.value = 'info'
+
+  try {
+    const { data } = await api.get(`/api/admin/system/users/${user.id}`)
+    selectedUser.value = data.user
+    userDetail.value = data
+  } catch (err: any) {
+    notify('Ошибка загрузки карточки', 'error')
+  }
+}
+
+async function loadDependencies(userId: number) {
+  loadingDeps.value = true
+  try {
+    const { data } = await api.get(`/api/admin/system/users/${userId}/dependencies`)
+    userDependencies.value = data
+  } catch (err: any) {
+    console.error('Failed to load deps:', err)
+  } finally {
+    loadingDeps.value = false
+  }
+}
+
+watch(cardTab, (tab) => {
+  if (tab === 'deps' && selectedUser.value && !userDependencies.value) {
+    loadDependencies(selectedUser.value.id)
+  }
+})
+
+// ----- Block / Unblock -----
+function openBlockDialog(user: UserItem) {
+  actionTarget.value = user
+  actionReason.value = ''
+  showBlockDialog.value = true
+}
+
+function openUnblockDialog(user: UserItem) {
+  actionTarget.value = user
+  actionReason.value = ''
+  showUnblockDialog.value = true
+}
+
+async function confirmBlock() {
+  if (!actionTarget.value || !actionReason.value) return
+  actionLoading.value = true
+  try {
+    await api.post(`/api/admin/system/users/${actionTarget.value.id}/block`, { reason: actionReason.value })
+    notify('Пользователь заблокирован')
+    showBlockDialog.value = false
+    showUserCard.value = false
+    loadUsers()
+  } catch (err: any) {
+    notify(err.response?.data?.error || 'Ошибка блокировки', 'error')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function confirmUnblock() {
+  if (!actionTarget.value) return
+  actionLoading.value = true
+  try {
+    await api.post(`/api/admin/system/users/${actionTarget.value.id}/unblock`, { reason: actionReason.value })
+    notify('Пользователь разблокирован')
+    showUnblockDialog.value = false
+    showUserCard.value = false
+    loadUsers()
+  } catch (err: any) {
+    notify(err.response?.data?.error || 'Ошибка разблокировки', 'error')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+// ----- Delete -----
+function openDeleteDialog(user: UserItem, mode: 'soft' | 'hard') {
+  actionTarget.value = user
+  deleteMode.value = mode
+  actionReason.value = ''
+  deleteConfirmation.value = ''
+  deleteDependencies.value = null
+  showDeleteDialog.value = true
+
+  // Load dependencies preview
+  loadingDeleteDeps.value = true
+  api.get(`/api/admin/system/users/${user.id}/dependencies`)
+    .then(({ data }) => { deleteDependencies.value = data })
+    .catch(() => {})
+    .finally(() => { loadingDeleteDeps.value = false })
+}
+
+async function confirmDelete() {
+  if (!actionTarget.value) return
+  actionLoading.value = true
+  try {
+    if (deleteMode.value === 'hard') {
+      await api.delete(`/api/admin/system/users/${actionTarget.value.id}/force`, { data: { reason: actionReason.value } })
+      notify('Пользователь полностью удален')
+    } else {
+      await api.delete(`/api/admin/system/users/${actionTarget.value.id}`, { data: { reason: actionReason.value } })
+      notify('Пользователь деактивирован')
+    }
+    showDeleteDialog.value = false
+    showUserCard.value = false
+    loadUsers()
+  } catch (err: any) {
+    notify(err.response?.data?.error || 'Ошибка удаления', 'error')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function restoreUser(user: UserItem) {
+  try {
+    await api.post(`/api/admin/system/users/${user.id}/restore`)
+    notify('Пользователь восстановлен')
+    loadUsers()
+  } catch (err: any) {
+    notify(err.response?.data?.error || 'Ошибка восстановления', 'error')
+  }
+}
+
+// ----- Role Change -----
+async function confirmRoleChange() {
+  if (!selectedUser.value) return
+  actionLoading.value = true
+  try {
+    const { data } = await api.put(`/api/admin/system/users/${selectedUser.value.id}/role`, { role: newRole.value })
+    selectedUser.value = data.user
+    notify('Роль изменена')
+    showRoleDialog.value = false
+    loadUsers()
+  } catch (err: any) {
+    notify(err.response?.data?.error || 'Ошибка изменения роли', 'error')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+// ----- Bulk Actions -----
+async function confirmBulkAction() {
+  if (!bulkAction.value || selectedUsers.value.length === 0) return
+  actionLoading.value = true
+  try {
+    const { data } = await api.post('/api/admin/system/users/bulk-action', {
+      action: bulkAction.value,
+      user_ids: selectedUsers.value,
+      reason: actionReason.value || 'Массовая операция',
+    })
+    notify(data.message)
+    showBulkActionDialog.value = false
+    selectedUsers.value = []
+    loadUsers()
+  } catch (err: any) {
+    notify(err.response?.data?.error || 'Ошибка массовой операции', 'error')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+// ----- Init -----
 onMounted(() => {
   loadUsers()
 })
 </script>
+
+<style scoped>
+.admin-users {
+  width: 100%;
+}
+</style>

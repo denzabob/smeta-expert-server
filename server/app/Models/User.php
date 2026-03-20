@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Hash;
@@ -12,7 +13,7 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable, \Illuminate\Auth\MustVerifyEmail;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes, \Illuminate\Auth\MustVerifyEmail;
 
     /**
      * The attributes that are mass assignable.
@@ -30,6 +31,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'registration_completed_at',
         'last_login_channel',
         'auth_status',
+        'role',
+        'blocked_reason',
+        'blocked_by',
+        'blocked_at',
+        'last_login_at',
         'pin_enabled',
         'pin_hash',
         'pin_changed_at',
@@ -62,11 +68,33 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'phone_verified_at' => 'datetime',
             'registration_completed_at' => 'datetime',
+            'blocked_at' => 'datetime',
+            'last_login_at' => 'datetime',
             'password' => 'hashed',
             'pin_enabled' => 'boolean',
             'pin_changed_at' => 'datetime',
             'pin_locked_until' => 'datetime',
         ];
+    }
+
+    public function isAdmin(): bool
+    {
+        return in_array($this->role, ['admin', 'superadmin']) || (int) $this->id === 1;
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'superadmin' || (int) $this->id === 1;
+    }
+
+    public function isBlocked(): bool
+    {
+        return $this->auth_status === 'blocked';
+    }
+
+    public function auditLogs()
+    {
+        return $this->hasMany(AdminAuditLog::class, 'target_user_id');
     }
 
     /**
