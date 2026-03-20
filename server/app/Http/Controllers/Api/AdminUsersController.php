@@ -26,12 +26,10 @@ class AdminUsersController extends Controller
         $this->authorizeAdmin($request);
 
         $query = User::withTrashed()
-            ->leftJoin('ai_logs', 'users.id', '=', 'ai_logs.user_id')
             ->select([
                 'users.*',
-                DB::raw('COUNT(ai_logs.id) as ai_requests_count'),
-            ])
-            ->groupBy('users.id');
+                DB::raw('(SELECT COUNT(*) FROM ai_logs WHERE ai_logs.user_id = users.id) as ai_requests_count'),
+            ]);
 
         // Search
         $search = $request->query('search');
