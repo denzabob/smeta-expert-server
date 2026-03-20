@@ -6,6 +6,7 @@ use App\Models\AdminAuditLog;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class AdminUserService
 {
@@ -149,7 +150,6 @@ class AdminUserService
             'user_material_library' => DB::table('user_material_library')->where('user_id', $userId)->count(),
             'operation_groups' => DB::table('operation_groups')->where('user_id', $userId)->count(),
             'chrome_ext_logs' => DB::table('chrome_ext_logs')->where('user_id', $userId)->count(),
-            'furniture_modules' => DB::table('furniture_modules')->where('user_id', $userId)->count(),
             'detail_types' => DB::table('detail_types')->where('user_id', $userId)->count(),
             'revision_runs' => DB::table('revision_runs')->where('initiator_user_id', $userId)->count(),
             'collect_profiles' => DB::table('parser_supplier_collect_profiles')->where('user_id', $userId)->count(),
@@ -227,15 +227,21 @@ class AdminUserService
         // Operations without FK cascade
         DB::table('operations')->where('user_id', $userId)->delete();
 
-        // Furniture modules and cascade
-        $moduleIds = DB::table('furniture_modules')->where('user_id', $userId)->pluck('id');
-        if ($moduleIds->isNotEmpty()) {
-            $detailIds = DB::table('details')->whereIn('module_id', $moduleIds)->pluck('id');
-            if ($detailIds->isNotEmpty()) {
-                DB::table('fittings')->whereIn('detail_id', $detailIds)->delete();
-                DB::table('details')->whereIn('id', $detailIds)->delete();
+        // Furniture modules and cascade (only if table exists)
+        if (Schema::hasTable('furniture_modules')) {
+            $moduleIds = DB::table('furniture_modules')->where('user_id', $userId)->pluck('id');
+            if ($moduleIds->isNotEmpty()) {
+                if (Schema::hasTable('details')) {
+                    $detailIds = DB::table('details')->whereIn('module_id', $moduleIds)->pluck('id');
+                    if ($detailIds->isNotEmpty()) {
+                        if (Schema::hasTable('fittings')) {
+                            DB::table('fittings')->whereIn('detail_id', $detailIds)->delete();
+                        }
+                        DB::table('details')->whereIn('id', $detailIds)->delete();
+                    }
+                }
+                DB::table('furniture_modules')->whereIn('id', $moduleIds)->delete();
             }
-            DB::table('furniture_modules')->whereIn('id', $moduleIds)->delete();
         }
 
         // Detail types

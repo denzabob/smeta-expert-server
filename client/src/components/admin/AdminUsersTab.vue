@@ -229,7 +229,7 @@
                   <tr><td class="text-medium-emphasis">Роль</td>
                     <td>
                       <v-chip :color="getRoleColor(selectedUser.role)" size="small" variant="tonal">{{ getRoleLabel(selectedUser.role) }}</v-chip>
-                      <v-btn v-if="selectedUser.id !== currentUserId" size="x-small" variant="text" icon="mdi-pencil" class="ml-1" @click="showRoleDialog = true" />
+                      <v-btn v-if="selectedUser.id !== currentUserId && selectedUser.role !== 'superadmin'" size="x-small" variant="text" icon="mdi-pencil" class="ml-1" @click="showRoleDialog = true" />
                     </td>
                   </tr>
                   <tr><td class="text-medium-emphasis">Статус</td><td><v-chip :color="getStatusChipColor(selectedUser)" size="small" variant="tonal">{{ getStatusLabel(selectedUser) }}</v-chip></td></tr>
@@ -638,7 +638,6 @@ const statusOptions = [
 const roleOptions = [
   { title: 'Пользователь', value: 'user' },
   { title: 'Администратор', value: 'admin' },
-  { title: 'Суперадмин', value: 'superadmin' },
 ]
 
 const bulkActionOptions = [
@@ -740,7 +739,7 @@ const depLabels: Record<string, string> = {
   tokens: 'API токены', notifications: 'Уведомления',
   user_settings: 'Настройки', user_material_library: 'Библиотека материалов',
   operation_groups: 'Группы операций', chrome_ext_logs: 'Логи расширения',
-  furniture_modules: 'Модули мебели', detail_types: 'Типы деталей',
+  detail_types: 'Типы деталей',
   revision_runs: 'Запуски ревизий', collect_profiles: 'Профили сбора',
   price_import_sessions: 'Импорт прайсов', project_revisions: 'Ревизии проектов',
 }

@@ -76,6 +76,9 @@ class AdminUsersController extends Controller
         $perPage = min((int) $request->query('per_page', 20), 100);
         $paginated = $query->paginate($perPage);
 
+        // Make auth_status visible (it's $hidden on User model)
+        $paginated->getCollection()->each(fn ($u) => $u->makeVisible(['auth_status']));
+
         // Get summary metrics
         $metrics = $this->getMetrics();
 
@@ -108,7 +111,7 @@ class AdminUsersController extends Controller
                 DB::raw('COUNT(*) as total_requests'),
                 DB::raw('SUM(CASE WHEN is_successful THEN 1 ELSE 0 END) as successful_requests'),
                 DB::raw('SUM(COALESCE(cost_usd, 0)) as total_cost'),
-                DB::raw('SUM(COALESCE(total_tokens, 0)) as total_tokens'),
+                DB::raw('SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)) as total_tokens'),
                 DB::raw('MAX(created_at) as last_used_at'),
             ])
             ->first();
@@ -288,7 +291,7 @@ class AdminUsersController extends Controller
             'cascade_delete' => ['projects', 'operations', 'suppliers', 'import_sessions', 'ideas',
                 'idea_votes', 'idea_comments', 'trusted_devices', 'social_accounts', 'tokens',
                 'notifications', 'user_settings', 'user_material_library', 'operation_groups',
-                'chrome_ext_logs', 'furniture_modules', 'detail_types', 'revision_runs',
+                'chrome_ext_logs', 'detail_types', 'revision_runs',
                 'collect_profiles', 'price_import_sessions'],
             'nullify' => ['project_revisions'],
             'preserve_anonymized' => ['ai_logs'],
@@ -341,7 +344,7 @@ class AdminUsersController extends Controller
         $this->authorizeAdmin($request);
 
         $validator = Validator::make($request->all(), [
-            'role' => 'required|string|in:user,admin,superadmin',
+            'role' => 'required|string|in:user,admin',
         ]);
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
@@ -351,9 +354,9 @@ class AdminUsersController extends Controller
         $targetUser = User::findOrFail($id);
         $newRole = $request->input('role');
 
-        // Only superadmin can assign superadmin role
-        if ($newRole === 'superadmin' && !$admin->isSuperAdmin()) {
-            return response()->json(['error' => 'Только суперадминистратор может назначать роль суперадминистратора'], 403);
+        // Superadmin is hardcoded to id=1, cannot be assigned
+        if ($newRole === 'superadmin') {
+            return response()->json(['error' => 'Роль суперадминистратора назначается только через БД'], 403);
         }
 
         // Cannot change own role
