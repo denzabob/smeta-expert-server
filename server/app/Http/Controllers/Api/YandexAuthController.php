@@ -124,8 +124,22 @@ class YandexAuthController extends Controller
             if ($error === 'oauth_link_required') {
                 return redirect($frontendBase . '/login?mode=login&error=oauth_link_required&provider=yandex');
             }
+            if ($error === 'account_deleted') {
+                return redirect($frontendBase . '/login?error=account_deleted');
+            }
+            if ($error === 'account_blocked') {
+                return redirect($frontendBase . '/login?error=account_blocked');
+            }
 
             return redirect($frontendBase . '/login?error=' . urlencode($error));
+        }
+
+        // Check blocked/deleted before login
+        if ($user->trashed()) {
+            return redirect($frontendBase . '/login?error=account_deleted');
+        }
+        if ($user->isBlocked()) {
+            return redirect($frontendBase . '/login?error=account_blocked');
         }
 
         // Log in

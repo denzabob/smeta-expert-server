@@ -111,7 +111,27 @@ class YandexAuthService
         // 1. Active linked identity -> normal login.
         $social = SocialAccount::findByProvider('yandex', $providerUserId);
         if ($social) {
-            $user = $social->user;
+            // Use withTrashed to find soft-deleted users
+            $user = User::withTrashed()->find($social->user_id);
+
+            // Check if user is deleted or blocked
+            if ($user && $user->trashed()) {
+                return [
+                    'user' => null,
+                    'is_new' => false,
+                    'needs_onboarding' => false,
+                    'error' => 'account_deleted',
+                ];
+            }
+            if ($user && $user->isBlocked()) {
+                return [
+                    'user' => null,
+                    'is_new' => false,
+                    'needs_onboarding' => false,
+                    'error' => 'account_blocked',
+                ];
+            }
+
             $social->update([
                 'provider_username' => $providerUsername,
                 'provider_email' => $providerEmail,
@@ -123,8 +143,8 @@ class YandexAuthService
             return [
                 'user' => $user,
                 'is_new' => false,
-                'needs_onboarding' => !$user->registration_completed_at,
-                'error' => null,
+                'needs_onboarding' => $user ? !$user->registration_completed_at : false,
+                'error' => $user ? null : 'oauth_profile_failed',
             ];
         }
 
@@ -141,7 +161,25 @@ class YandexAuthService
                 'user_id' => $inactiveLinked->user_id,
             ]);
 
-            $user = $inactiveLinked->user;
+            // Use withTrashed to find soft-deleted users
+            $user = User::withTrashed()->find($inactiveLinked->user_id);
+
+            if ($user && $user->trashed()) {
+                return [
+                    'user' => null,
+                    'is_new' => false,
+                    'needs_onboarding' => false,
+                    'error' => 'account_deleted',
+                ];
+            }
+            if ($user && $user->isBlocked()) {
+                return [
+                    'user' => null,
+                    'is_new' => false,
+                    'needs_onboarding' => false,
+                    'error' => 'account_blocked',
+                ];
+            }
             if ($user) {
                 $inactiveLinked->update([
                     'is_active' => true,
@@ -181,13 +219,29 @@ class YandexAuthService
         $matchedUser = null;
         if ($providerPhone) {
             $normalizedPhone = VerificationCodeService::normalizePhone($providerPhone);
-            $matchedUser = User::where('phone', $normalizedPhone)->first();
+            $matchedUser = User::withTrashed()->where('phone', $normalizedPhone)->first();
         }
         if (!$matchedUser && $providerEmail) {
-            $matchedUser = User::where('email', $providerEmail)->first();
+            $matchedUser = User::withTrashed()->where('email', $providerEmail)->first();
         }
 
         if ($matchedUser) {
+            if ($matchedUser->trashed()) {
+                return [
+                    'user' => null,
+                    'is_new' => false,
+                    'needs_onboarding' => false,
+                    'error' => 'account_deleted',
+                ];
+            }
+            if ($matchedUser->isBlocked()) {
+                return [
+                    'user' => null,
+                    'is_new' => false,
+                    'needs_onboarding' => false,
+                    'error' => 'account_blocked',
+                ];
+            }
             Log::info('[YandexAuth] login requires manual link for existing account', [
                 'provider' => 'yandex',
                 'provider_user_id' => $providerUserId,

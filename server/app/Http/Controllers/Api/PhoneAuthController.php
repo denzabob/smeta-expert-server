@@ -33,7 +33,21 @@ class PhoneAuthController extends Controller
         ]);
 
         $phone = VerificationCodeService::normalizePhone((string) $request->input('phone'));
-        $existingUser = User::where('phone', $phone)->first();
+        $existingUser = User::withTrashed()->where('phone', $phone)->first();
+
+        // Check if account is deleted or blocked
+        if ($existingUser && $existingUser->trashed()) {
+            return response()->json([
+                'message' => 'Ваша учетная запись удалена. Обратитесь к администратору для восстановления.',
+                'error' => 'account_deleted',
+            ], 403);
+        }
+        if ($existingUser && $existingUser->isBlocked()) {
+            return response()->json([
+                'message' => 'Ваша учетная запись заблокирована.' . ($existingUser->blocked_reason ? ' Причина: ' . $existingUser->blocked_reason : ''),
+                'error' => 'account_blocked',
+            ], 403);
+        }
 
         $result = $this->verificationService->createChallenge(
             $phone,
@@ -306,7 +320,11 @@ class PhoneAuthController extends Controller
             ], 422);
         }
 
-        [$user] = $this->resolveOrCreatePhoneUser($challenge);
+        [$user, $isNew, $error] = $this->resolveOrCreatePhoneUser($challenge);
+
+        if ($error || !$user) {
+            return $this->accountBlockedOrDeletedResponse($error ?? 'account_deleted');
+        }
 
         return $this->loginUser($user, $request, 'phone');
     }
@@ -365,7 +383,12 @@ class PhoneAuthController extends Controller
 
     protected function finalizeCallChallengeAndRespond(AuthVerificationChallenge $challenge, Request $request): JsonResponse
     {
-        [$user] = $this->resolveOrCreatePhoneUser($challenge);
+        [$user, $isNew, $error] = $this->resolveOrCreatePhoneUser($challenge);
+
+        if ($error || !$user) {
+            return $this->accountBlockedOrDeletedResponse($error ?? 'account_deleted');
+        }
+
         $authPayload = $this->buildAuthenticatedPayload($user, $request, 'phone');
 
         return response()->json([
@@ -379,15 +402,24 @@ class PhoneAuthController extends Controller
     }
 
     /**
-     * @return array{0: User, 1: bool}
+     * @return array{0: User|null, 1: bool, 2: string|null}
      */
     protected function resolveOrCreatePhoneUser(AuthVerificationChallenge $challenge): array
     {
         $phone = (string) $challenge->phone;
 
+        // Check withTrashed first to detect deleted accounts
         $user = $challenge->user;
         if (!$user) {
-            $user = User::where('phone', $phone)->first();
+            $user = User::withTrashed()->where('phone', $phone)->first();
+        }
+
+        // If user is soft-deleted, don't create a new one — return error
+        if ($user && $user->trashed()) {
+            return [null, false, 'account_deleted'];
+        }
+        if ($user && $user->isBlocked()) {
+            return [null, false, 'account_blocked'];
         }
 
         $isNew = false;
@@ -414,7 +446,7 @@ class PhoneAuthController extends Controller
             $challenge->update(['user_id' => $user->id]);
         }
 
-        return [$user->fresh(), $isNew];
+        return [$user->fresh(), $isNew, null];
     }
 
     protected function loginUser(User $user, Request $request, string $channel, bool $forceOnboarding = false): JsonResponse
@@ -425,6 +457,18 @@ class PhoneAuthController extends Controller
     /**
      * @return array<string,mixed>
      */
+    protected function accountBlockedOrDeletedResponse(string $error): JsonResponse
+    {
+        $message = $error === 'account_blocked'
+            ? 'Ваша учетная запись заблокирована. Обратитесь к администратору.'
+            : 'Ваша учетная запись удалена. Обратитесь к администратору для восстановления.';
+
+        return response()->json([
+            'message' => $message,
+            'error' => $error,
+        ], 403);
+    }
+
     protected function buildAuthenticatedPayload(User $user, Request $request, string $channel, bool $forceOnboarding = false): array
     {
         Auth::login($user);

@@ -32,6 +32,24 @@ class AuthController extends Controller
 
         $user = Auth::user();
 
+        // Check if account is blocked or deleted
+        if ($user->trashed()) {
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            return response()->json([
+                'message' => 'Ваша учетная запись удалена. Обратитесь к администратору для восстановления.',
+                'error' => 'account_deleted',
+            ], 403);
+        }
+        if ($user->isBlocked()) {
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            return response()->json([
+                'message' => 'Ваша учетная запись заблокирована.' . ($user->blocked_reason ? ' Причина: ' . $user->blocked_reason : ''),
+                'error' => 'account_blocked',
+            ], 403);
+        }
+
         // Regenerate session for security
         $request->session()->regenerate();
 

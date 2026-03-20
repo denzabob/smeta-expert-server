@@ -84,6 +84,20 @@ class PinAuthController extends Controller
 
         $user = $device->user;
 
+        // Check if account is blocked or deleted
+        if ($user->trashed()) {
+            return response()->json([
+                'message' => 'Ваша учетная запись удалена. Обратитесь к администратору для восстановления.',
+                'error' => 'account_deleted',
+            ], 403);
+        }
+        if ($user->isBlocked()) {
+            return response()->json([
+                'message' => 'Ваша учетная запись заблокирована.' . ($user->blocked_reason ? ' Причина: ' . $user->blocked_reason : ''),
+                'error' => 'account_blocked',
+            ], 403);
+        }
+
         // Проверка блокировки PIN
         if ($user->isPinLocked()) {
             $minutes = now()->diffInMinutes($user->pin_locked_until);

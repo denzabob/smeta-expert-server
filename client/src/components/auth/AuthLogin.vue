@@ -124,8 +124,14 @@ const submit = async () => {
 
     // Если родитель не обработал (нет слушателя) — навигация по умолчанию
     // LoginView обрабатывает этот emit и управляет навигацией
-  } catch (e) {
-    errorMessage.value = 'Неверные учетные данные'
+  } catch (e: any) {
+    const status = e.response?.status
+    const data = e.response?.data
+    if (status === 403) {
+      errorMessage.value = data?.message || 'Ваша учетная запись деактивирована. Обратитесь к администратору.'
+    } else {
+      errorMessage.value = 'Неверные учетные данные'
+    }
   } finally {
     loading.value = false
   }

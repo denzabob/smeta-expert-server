@@ -270,6 +270,8 @@ async function requestCallChallenge() {
       phoneError.value = data?.errors?.phone?.[0] || data?.message || 'Некорректный номер телефона'
     } else if (status === 429) {
       generalError.value = 'Слишком много запросов. Подождите немного.'
+    } else if (status === 403) {
+      generalError.value = data?.message || 'Ваша учетная запись деактивирована. Обратитесь к администратору.'
     } else {
       generalError.value = data?.message || 'Не удалось запросить номер для звонка.'
     }
