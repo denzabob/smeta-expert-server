@@ -27,6 +27,7 @@ class YandexAuthTest extends TestCase
             'services.yandex.client_id' => 'test-client-id',
             'services.yandex.client_secret' => 'test-secret',
             'services.yandex.redirect_uri' => 'http://localhost/api/auth/yandex/callback',
+            'services.yandex.force_confirm' => false,
         ]);
 
         $response = $this->getJson('/api/auth/yandex/redirect');
@@ -37,6 +38,25 @@ class YandexAuthTest extends TestCase
         $url = $response->json('redirect_url');
         $this->assertStringContainsString('oauth.yandex.ru', $url);
         $this->assertStringContainsString('test-client-id', $url);
+        $this->assertStringNotContainsString('force_confirm=', $url);
+    }
+
+    public function test_redirect_includes_force_confirm_when_enabled(): void
+    {
+        config([
+            'services.yandex.client_id' => 'test-client-id',
+            'services.yandex.client_secret' => 'test-secret',
+            'services.yandex.redirect_uri' => 'http://localhost/api/auth/yandex/callback',
+            'services.yandex.force_confirm' => true,
+        ]);
+
+        $response = $this->getJson('/api/auth/yandex/redirect');
+
+        $response->assertOk()
+            ->assertJsonStructure(['redirect_url']);
+
+        $url = $response->json('redirect_url');
+        $this->assertStringContainsString('force_confirm=yes', $url);
     }
 
     public function test_redirect_returns_503_when_not_configured(): void
@@ -339,5 +359,31 @@ class YandexAuthTest extends TestCase
         $response->assertRedirect();
         $this->assertStringContainsString('oauth_link=already_linked_to_other_user', (string) $response->headers->get('Location'));
         $this->assertAuthenticatedAs($currentUser);
+    }
+
+    public function test_callback_redirects_with_server_error_on_unhandled_exception(): void
+    {
+        config([
+            'services.yandex.client_id' => 'test-client-id',
+            'services.yandex.client_secret' => 'test-secret',
+            'services.yandex.redirect_uri' => 'http://localhost/api/auth/yandex/callback',
+        ]);
+
+        $service = Mockery::mock(YandexAuthService::class);
+        $service->shouldReceive('exchangeCode')->with('test-code')->andReturn(['access_token' => 'token']);
+        $service->shouldReceive('getUserProfile')->with('token')->andReturn([
+            'id' => 'yandex-err-1',
+            'default_email' => 'error@example.com',
+            'login' => 'error-user',
+        ]);
+        $service->shouldReceive('findOrCreateUser')->andThrow(new \RuntimeException('boom'));
+        $this->app->instance(YandexAuthService::class, $service);
+
+        $response = $this->withSession(['yandex_oauth_state' => 'valid-state'])
+            ->get('/api/auth/yandex/callback?state=valid-state&code=test-code');
+
+        $response->assertRedirect();
+        $this->assertStringContainsString('error=oauth_server_error', (string) $response->headers->get('Location'));
+        $this->assertGuest();
     }
 }

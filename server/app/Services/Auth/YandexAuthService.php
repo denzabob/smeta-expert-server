@@ -13,12 +13,14 @@ class YandexAuthService
     protected string $clientId;
     protected string $clientSecret;
     protected string $redirectUri;
+    protected bool $forceConfirm;
 
     public function __construct()
     {
         $this->clientId = config('services.yandex.client_id') ?? '';
         $this->clientSecret = config('services.yandex.client_secret') ?? '';
         $this->redirectUri = config('services.yandex.redirect_uri') ?? '';
+        $this->forceConfirm = filter_var(config('services.yandex.force_confirm', false), FILTER_VALIDATE_BOOLEAN);
     }
 
     /**
@@ -26,13 +28,18 @@ class YandexAuthService
      */
     public function getRedirectUrl(string $state): string
     {
-        return 'https://oauth.yandex.ru/authorize?' . http_build_query([
+        $query = [
             'response_type' => 'code',
             'client_id' => $this->clientId,
             'redirect_uri' => $this->redirectUri,
             'state' => $state,
-            'force_confirm' => 'yes',
-        ]);
+        ];
+
+        if ($this->forceConfirm) {
+            $query['force_confirm'] = 'yes';
+        }
+
+        return 'https://oauth.yandex.ru/authorize?' . http_build_query($query);
     }
 
     /**

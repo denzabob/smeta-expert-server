@@ -83,6 +83,7 @@ return [
         'client_id' => env('YANDEX_ID_CLIENT_ID'),
         'client_secret' => env('YANDEX_ID_CLIENT_SECRET'),
         'redirect_uri' => env('YANDEX_ID_REDIRECT_URI'),
+        'force_confirm' => env('YANDEX_ID_FORCE_CONFIRM', false),
     ],
 
 ];
