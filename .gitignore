@@ -43,3 +43,6 @@ server/storage/logs/
 
 # If you really do not need these generated trees in git
 server/server/storage/
+.deploy.env
+backups/
+*.sql
