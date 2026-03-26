@@ -7,6 +7,7 @@
       :total-sum="projectTotalSum"
       :warnings-count="healthIssues.length"
       :latest-revision="latestRevision ? { number: latestRevision.number, status: latestRevision.status } : null"
+      :loading="!loadingReady"
     >
       <template #actions>
         <div class="toolbar-actions">
@@ -63,11 +64,32 @@
       <WorkspaceSidebar
         :modules="sidebarModules"
         :active-module="activeModule"
+        :loading="!loadingReady"
         @update:active-module="activeModule = $event"
       />
 
       <!-- Main module area -->
       <div class="workspace-module-area">
+
+    <!-- Loading overlay -->
+    <Transition name="loading-fade">
+      <div v-if="!loadingReady" class="project-loading-overlay">
+        <div class="project-loading-card">
+          <div class="project-loading-icon">
+            <v-icon size="48" color="primary" class="project-loading-pulse">mdi-briefcase-outline</v-icon>
+          </div>
+          <p class="project-loading-message">{{ loadingMessage }}</p>
+          <div class="project-loading-dots">
+            <span class="dot" /><span class="dot" /><span class="dot" />
+          </div>
+          <div class="project-loading-skeletons">
+            <div class="skeleton-row"><div class="skeleton-block" /><div class="skeleton-block skeleton-block--short" /></div>
+            <div class="skeleton-row"><div class="skeleton-block skeleton-block--wide" /><div class="skeleton-block" /></div>
+            <div class="skeleton-row"><div class="skeleton-block skeleton-block--short" /><div class="skeleton-block skeleton-block--wide" /></div>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Компонент настроек проекта -->
     <ProjectSettingsDrawer
@@ -3576,6 +3598,10 @@ const autoSaveInProgress = ref(false)
 const suppressAutoSave = ref(false)
 const isProjectLoaded = ref(false)
 
+// === Loading state для дружелюбного прогресса ===
+const loadingMessage = ref('Собираем данные проекта…')
+const loadingReady = ref(false) // true после финального fade-out
+
 // === Snackbar уведомления ===
 const snackbar = ref({
   show: false,
@@ -4816,6 +4842,7 @@ const loadSelectableMaterials = async (force = false): Promise<Material[]> => {
 // === Загрузка данных ===
 const loadReferences = async () => {
   try {
+    loadingMessage.value = 'Подтягиваем материалы и справочники…'
     loadingStates.value.materials = true
     const [types, mats, ops, unitsList, regionsData, profiles] = await Promise.all([
       api.get('/api/detail-types').then(r => r.data),
@@ -4843,6 +4870,7 @@ const fetchData = async (): Promise<boolean> => {
   try {
     suppressAutoSave.value = true
     isProjectLoaded.value = false
+    loadingMessage.value = 'Загружаем проект…'
     loadingStates.value.positions = true
     loadingStates.value.fittings = true
     loadingStates.value.expenses = true
@@ -4922,6 +4950,7 @@ const fetchData = async (): Promise<boolean> => {
       }
     }
     
+    loadingMessage.value = 'Считаем позиции и суммы…'
     positions.value = (await api.get(`/api/projects/${projectId}/positions`)).data
     fittings.value = (await api.get(`/api/projects/${projectId}/fittings`)).data
     expenses.value = (await api.get(`/api/projects/${projectId}/expenses`)).data
@@ -4940,6 +4969,7 @@ const fetchData = async (): Promise<boolean> => {
     })
     console.log('📝 Text blocks loaded:', project.value.text_blocks)
 
+    loadingMessage.value = 'Подтягиваем операции и работы…'
     // Загрузка операций через встроенную функцию
     await recalcOperations()
     
@@ -7297,13 +7327,20 @@ const manualOperationsCount = computed(() => {
   return operations.value.filter(o => o.is_manual).length
 })
 
+const facadesTotalCost = computed(() => {
+  return positions.value
+    .filter((position) => position.kind === 'facade')
+    .reduce((sum, position) => sum + getPositionTotalPrice(position), 0)
+})
+
 const projectTotalSum = computed(() => {
   const matCost = materialsTotalCost.value || 0
   const opsCost = operationsTotal.value || 0
+  const facCost = facadesTotalCost.value || 0
   const fitCost = fittings.value.reduce((s, f) => s + (f.quantity * f.unit_price), 0)
   const labCost = typeof laborWorksTotal.value === 'number' ? laborWorksTotal.value : 0
   const expCost = Array.isArray(expenses.value) ? expenses.value.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0) : 0
-  return matCost + opsCost + fitCost + labCost + expCost
+  return matCost + opsCost + facCost + fitCost + labCost + expCost
 })
 
 const sidebarModules = computed<SidebarModule[]>(() => [
@@ -8158,6 +8195,7 @@ onMounted(async () => {
     return
   }
 
+  loadingMessage.value = 'Почти готово…'
   await fetchLatestRevision()
   await fetchRevisions(1)
 
@@ -8179,6 +8217,9 @@ onMounted(async () => {
       revisionRunItems.value = []
     }
   }
+
+  // Плавно показываем готовый интерфейс
+  loadingReady.value = true
 })
 
 watch(manualCloseDialog, (isOpen) => {
@@ -8216,6 +8257,108 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow: hidden;
 }
+
+/* === Project Loading Overlay === */
+.project-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--v-theme-background));
+}
+
+.project-loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px 48px;
+  max-width: 380px;
+  text-align: center;
+}
+
+.project-loading-icon {
+  margin-bottom: 4px;
+}
+
+.project-loading-pulse {
+  animation: lp-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes lp-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.project-loading-message {
+  font-size: 1rem;
+  font-weight: 500;
+  color: rgba(var(--v-theme-on-surface), 0.8);
+  margin: 0;
+  min-height: 1.5em;
+}
+
+.project-loading-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.project-loading-dots .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-primary));
+  opacity: 0.3;
+  animation: lp-dot 1.4s ease-in-out infinite;
+}
+.project-loading-dots .dot:nth-child(2) { animation-delay: 0.2s; }
+.project-loading-dots .dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes lp-dot {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.1); }
+}
+
+.project-loading-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.skeleton-row {
+  display: flex;
+  gap: 10px;
+}
+
+.skeleton-block {
+  flex: 1;
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(90deg,
+    rgba(var(--v-theme-on-surface), 0.05) 25%,
+    rgba(var(--v-theme-on-surface), 0.10) 50%,
+    rgba(var(--v-theme-on-surface), 0.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: lp-shimmer 1.5s ease-in-out infinite;
+}
+.skeleton-block--short { max-width: 30%; }
+.skeleton-block--wide  { max-width: 65%; }
+
+@keyframes lp-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Fade transition for overlay */
+.loading-fade-enter-active { transition: opacity 0.3s ease; }
+.loading-fade-leave-active { transition: opacity 0.45s ease; }
+.loading-fade-enter-from,
+.loading-fade-leave-to { opacity: 0; }
 
 .workspace-module-area {
   flex: 1;

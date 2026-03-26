@@ -13,20 +13,25 @@
       >
         <v-icon size="20">{{ mod.icon }}</v-icon>
         <span class="sidebar-module-btn__label">{{ mod.label }}</span>
-        <v-badge
-          v-if="mod.count != null && mod.count > 0"
-          :content="mod.count > 99 ? '99+' : String(mod.count)"
-          color="primary"
-          inline
-          class="sidebar-module-btn__badge"
-        />
-        <v-badge
-          v-if="mod.warnings && mod.warnings > 0"
-          :content="String(mod.warnings)"
-          color="warning"
-          inline
-          class="sidebar-module-btn__warning"
-        />
+        <template v-if="loading">
+          <span class="sidebar-badge-shimmer" />
+        </template>
+        <template v-else>
+          <v-badge
+            v-if="mod.count != null && mod.count > 0"
+            :content="mod.count > 99 ? '99+' : String(mod.count)"
+            color="primary"
+            inline
+            class="sidebar-module-btn__badge"
+          />
+          <v-badge
+            v-if="mod.warnings && mod.warnings > 0"
+            :content="String(mod.warnings)"
+            color="warning"
+            inline
+            class="sidebar-module-btn__warning"
+          />
+        </template>
       </button>
     </div>
   </nav>
@@ -44,6 +49,7 @@ export interface SidebarModule {
 defineProps<{
   modules: SidebarModule[]
   activeModule: string
+  loading?: boolean
 }>()
 
 defineEmits<{
@@ -115,6 +121,25 @@ defineEmits<{
 
 .sidebar-module-btn__warning {
   margin-left: 2px;
+}
+
+.sidebar-badge-shimmer {
+  width: 28px;
+  height: 18px;
+  border-radius: 9px;
+  margin-left: auto;
+  background: linear-gradient(90deg,
+    rgba(var(--v-theme-on-surface), 0.06) 25%,
+    rgba(var(--v-theme-on-surface), 0.12) 50%,
+    rgba(var(--v-theme-on-surface), 0.06) 75%
+  );
+  background-size: 200% 100%;
+  animation: sidebar-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes sidebar-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 @media (max-width: 960px) {
