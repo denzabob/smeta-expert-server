@@ -10,6 +10,7 @@ use App\Services\LLM\Parsing\LLMJsonParser;
 use App\Services\LLM\Prompts\DecompositionPromptBuilder;
 use App\Services\LLM\Providers\DeepSeekProvider;
 use App\Services\LLM\Providers\OpenRouterProvider;
+use App\Services\LLM\Providers\RouterAiProvider;
 use Illuminate\Support\ServiceProvider;
 
 class LLMServiceProvider extends ServiceProvider
@@ -50,6 +51,11 @@ class LLMServiceProvider extends ServiceProvider
             return DeepSeekProvider::fromSettings($settings->getProviderSettings('deepseek'));
         });
 
+        $this->app->bind(RouterAiProvider::class, function ($app) {
+            $settings = $app->make(LLMSettingsRepository::class);
+            return RouterAiProvider::fromSettings($settings->getProviderSettings('routerai'));
+        });
+
         // Default provider binding (based on primary setting)
         $this->app->bind(LLMProviderInterface::class, function ($app) {
             $settings = $app->make(LLMSettingsRepository::class);
@@ -58,6 +64,7 @@ class LLMServiceProvider extends ServiceProvider
             return match ($primary) {
                 'openrouter' => $app->make(OpenRouterProvider::class),
                 'deepseek' => $app->make(DeepSeekProvider::class),
+                'routerai' => $app->make(RouterAiProvider::class),
                 default => $app->make(OpenRouterProvider::class),
             };
         });

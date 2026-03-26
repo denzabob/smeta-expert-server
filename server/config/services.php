@@ -76,6 +76,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | RouterAI Service
+    |--------------------------------------------------------------------------
+    */
+    'routerai' => [
+        'key' => env('ROUTERAI_API_KEY'),
+        'model' => env('ROUTERAI_MODEL', 'openai/gpt-4o'),
+        'base_url' => env('ROUTERAI_BASE_URL', 'https://routerai.ru/api/v1'),
+        'temperature' => env('ROUTERAI_TEMPERATURE', 0.2),
+        'max_tokens' => env('ROUTERAI_MAX_TOKENS', 4096),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Yandex ID OAuth
     |--------------------------------------------------------------------------
     */

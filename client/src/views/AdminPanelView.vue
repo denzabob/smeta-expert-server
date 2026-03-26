@@ -1045,12 +1045,14 @@ const providerColors: Record<string, string> = {
   openrouter: 'purple',
   deepseek: 'blue',
   mistral: 'orange',
+  routerai: 'teal',
 }
 
 const providerIcons: Record<string, string> = {
   openrouter: 'mdi-cloud',
   deepseek: 'mdi-brain',
   mistral: 'mdi-weather-windy',
+  routerai: 'mdi-router-network',
 }
 
 function getProviderColor(name: string): string {
@@ -1099,6 +1101,7 @@ function getProviderColorHex(name: string): string {
     openrouter: '#9c27b0',
     deepseek: '#2196f3',
     mistral: '#ff9800',
+    routerai: '#009688',
   }
   return colors[name] || '#9e9e9e'
 }

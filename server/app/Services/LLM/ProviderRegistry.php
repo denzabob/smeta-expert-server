@@ -8,6 +8,7 @@ use App\Services\LLM\Contracts\LLMProviderInterface;
 use App\Services\LLM\Providers\DeepSeekProvider;
 use App\Services\LLM\Providers\MistralProvider;
 use App\Services\LLM\Providers\OpenRouterProvider;
+use App\Services\LLM\Providers\RouterAiProvider;
 
 /**
  * Реестр LLM провайдеров
@@ -50,6 +51,15 @@ class ProviderRegistry
             'default_model' => 'mistral-small-latest',
             'supports_json_mode' => true,
             'docs_url' => 'https://docs.mistral.ai/api/',
+        ],
+        'routerai' => [
+            'name' => 'RouterAI',
+            'description' => 'RouterAI — OpenAI-совместимый роутер моделей',
+            'icon' => 'mdi-router-network',
+            'default_base_url' => 'https://routerai.ru/api/v1',
+            'default_model' => 'openai/gpt-4o',
+            'supports_json_mode' => true,
+            'docs_url' => 'https://routerai.ru/docs',
         ],
     ];
 
@@ -94,6 +104,7 @@ class ProviderRegistry
             'openrouter' => OpenRouterProvider::class,
             'deepseek' => DeepSeekProvider::class,
             'mistral' => MistralProvider::class,
+            'routerai' => RouterAiProvider::class,
             default => null,
         };
     }
