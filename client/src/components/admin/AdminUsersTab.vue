@@ -11,8 +11,8 @@
     </v-row>
 
     <!-- Toolbar: Search + Filters + Actions -->
-    <v-card variant="outlined" class="mb-4">
-      <v-card-text class="d-flex flex-wrap align-center ga-3">
+    <TableToolbar class="mb-4">
+      <template #search>
         <v-text-field
           v-model="search"
           prepend-inner-icon="mdi-magnify"
@@ -25,7 +25,9 @@
           @keyup.enter="loadUsers"
           @click:clear="search = ''; loadUsers()"
         />
+      </template>
 
+      <template #filters>
         <v-select
           v-model="filterStatus"
           :items="statusOptions"
@@ -49,9 +51,9 @@
           style="max-width: 180px"
           @update:model-value="loadUsers"
         />
+      </template>
 
-        <v-spacer />
-
+      <template #actions>
         <v-btn
           v-if="selectedUsers.length > 0"
           color="warning"
@@ -64,8 +66,8 @@
         </v-btn>
 
         <v-btn icon="mdi-refresh" variant="text" :loading="loading" @click="loadUsers" />
-      </v-card-text>
-    </v-card>
+      </template>
+    </TableToolbar>
 
     <!-- Users Table -->
     <v-card variant="outlined" :loading="loading">
@@ -529,6 +531,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api/axios'
 import AdminUsersLlmStats from './AdminUsersLlmStats.vue'
 import { useAuthStore } from '@/stores/auth'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
 
 // ----- Types -----
 interface UserItem {

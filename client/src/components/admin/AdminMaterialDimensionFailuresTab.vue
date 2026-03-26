@@ -9,6 +9,7 @@
               prepend-inner-icon="mdi-magnify"
               label="Поиск кейсов"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="debouncedLoad"
@@ -20,6 +21,7 @@
               :items="materialTypeOptions"
               label="Тип материала"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="loadList"
@@ -31,6 +33,7 @@
               :items="statusOptions"
               label="Статус"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="loadList"
@@ -41,6 +44,7 @@
               v-model="sourceFilter"
               label="Источник"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="debouncedLoad"
@@ -63,6 +67,7 @@
         :loading="loading"
         :page="page"
         :items-per-page="perPage"
+        variant="outlined"
         density="compact"
         no-data-text="Нет неразобранных кейсов"
         @update:page="page = $event; loadList()"
@@ -162,8 +167,8 @@
               <v-text-field
                 v-model.number="resolution.resolved_length_mm"
                 label="resolved_length_mm"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 type="number"
                 min="1"
               />
@@ -172,8 +177,8 @@
               <v-text-field
                 v-model.number="resolution.resolved_width_mm"
                 label="resolved_width_mm"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 type="number"
                 min="1"
               />
@@ -182,8 +187,8 @@
               <v-text-field
                 v-model.number="resolution.resolved_thickness_mm"
                 label="resolved_thickness_mm"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 type="number"
                 min="0.1"
                 step="0.1"
@@ -193,8 +198,8 @@
               <v-textarea
                 v-model="resolution.resolution_note"
                 label="resolution_note"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 rows="2"
                 auto-grow
               />

@@ -42,30 +42,26 @@
                 <div class="section-title">Регион и режим расчёта</div>
                 <div class="section-hint">Используются при создании новых проектов</div>
 
-                <v-card variant="outlined" class="content-card">
-                  <v-card-text>
-                    <v-row dense>
-                      <v-col cols="12" md="6">
-                        <v-select
-                          v-model="form.region_id"
-                          :items="regions"
-                          item-title="name"
-                          item-value="id"
-                          clearable
-                          label="Регион по умолчанию"
-                        />
-                      </v-col>
-                      <v-col cols="12" md="6">
-                        <v-switch
-                        color="primary"
-                          v-model="form.use_area_calc_mode"
-                          label="Режим расчёта по площади"
-                          hide-details
-                        />
-                      </v-col>
-                    </v-row>
-                  </v-card-text>
-                </v-card>
+                <v-row dense>
+                  <v-col cols="12" md="6">
+                    <v-select
+                      v-model="form.region_id"
+                      :items="regions"
+                      item-title="name"
+                      item-value="id"
+                      clearable
+                      label="Регион по умолчанию"
+                    />
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-switch
+                    color="primary"
+                      v-model="form.use_area_calc_mode"
+                      label="Режим расчёта по площади"
+                      hide-details
+                    />
+                  </v-col>
+                </v-row>
               </div>
 
               <!-- 1. Общие коэффициенты -->
@@ -73,30 +69,26 @@
                 <div class="section-title">Общие коэффициенты</div>
                 <div class="section-hint">Применяются к новым проектам, если клиент явно не передал значения</div>
 
-                <v-card variant="outlined" class="content-card">
-                  <v-card-text>
-                    <v-row dense>
-                      <v-col cols="12" md="6">
-                        <v-text-field
-                          v-model.number="form.waste_coefficient"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          label="Коэффициент отходов (общий)"
-                        />
-                      </v-col>
-                      <v-col cols="12" md="6">
-                        <v-text-field
-                          v-model.number="form.repair_coefficient"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          label="Коэффициент ремонтопригодности"
-                        />
-                      </v-col>
-                    </v-row>
-                  </v-card-text>
-                </v-card>
+                <v-row dense>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model.number="form.waste_coefficient"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      label="Коэффициент отходов (общий)"
+                    />
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model.number="form.repair_coefficient"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      label="Коэффициент ремонтопригодности"
+                    />
+                  </v-col>
+                </v-row>
               </div>
 
               <!-- 2. Материалы по умолчанию -->
@@ -104,32 +96,28 @@
                 <div class="section-title">Материалы по умолчанию</div>
                 <div class="section-hint">Будут подставляться в новые проекты</div>
 
-                <v-card variant="outlined" class="content-card">
-                  <v-card-text>
-                    <v-row dense>
-                      <v-col cols="12" md="6">
-                        <v-select
-                          v-model="form.default_plate_material_id"
-                          :items="plateMaterials"
-                          item-title="name"
-                          item-value="id"
-                          clearable
-                          label="Листовой материал по умолчанию"
-                        />
-                      </v-col>
-                      <v-col cols="12" md="6">
-                        <v-select
-                          v-model="form.default_edge_material_id"
-                          :items="edgeMaterials"
-                          item-title="name"
-                          item-value="id"
-                          clearable
-                          label="Кромочный материал по умолчанию"
-                        />
-                      </v-col>
-                    </v-row>
-                  </v-card-text>
-                </v-card>
+                <v-row dense>
+                  <v-col cols="12" md="6">
+                    <v-select
+                      v-model="form.default_plate_material_id"
+                      :items="plateMaterials"
+                      item-title="name"
+                      item-value="id"
+                      clearable
+                      label="Листовой материал по умолчанию"
+                    />
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-select
+                      v-model="form.default_edge_material_id"
+                      :items="edgeMaterials"
+                      item-title="name"
+                      item-value="id"
+                      clearable
+                      label="Кромочный материал по умолчанию"
+                    />
+                  </v-col>
+                </v-row>
               </div>
 
               <!-- 3. Отходы -->
@@ -137,10 +125,8 @@
                 <div class="section-title">Коэффициенты отходов</div>
                 <div class="section-hint">Специфичные коэффициенты для каждого типа материала</div>
 
-                <v-card variant="outlined" class="content-card">
-                  <v-card-text>
-                    <div class="d-flex flex-column gap-4">
-                      <!-- Плитные -->
+                <div class="d-flex flex-column gap-4">
+                  <!-- Плитные -->
                       <div class="d-flex align-center gap-3" style="flex-wrap: nowrap;">
                         <span class="text-subtitle-2 font-weight-bold" style="min-width: 80px;">Плитные</span>
                         <v-text-field
@@ -155,19 +141,23 @@
                           hint="1.00 = без изменения"
                           persistent-hint
                         />
-                        <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                          <v-switch color="primary" v-model="form.apply_waste_to_plate" hide-details density="compact" />
-                          <span class="text-caption" style="min-width: max-content;">Применять</span>
-                        </div>
-                        <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                          <v-switch
-                            v-model="form.show_waste_plate_description"
-                            :disabled="!plateDesc.title && !plateDesc.text"
-                            hide-details
-                            density="compact"
-                           color="primary" />
-                          <span class="text-caption" style="min-width: max-content;">В отчёте</span>
-                        </div>
+                        <v-switch
+                          v-model="form.apply_waste_to_plate"
+                          hide-details
+                          density="compact"
+                          color="#86e975"
+                          label="Применять"
+                          style="flex-shrink: 0;"
+                        />
+                        <v-switch
+                          v-model="form.show_waste_plate_description"
+                          :disabled="!plateDesc.title && !plateDesc.text"
+                          hide-details
+                          density="compact"
+                          color="#86e975"
+                          label="В отчёте"
+                          style="flex-shrink: 0;"
+                        />
                         <div style="flex-grow: 1;"></div>
                         <v-btn
                           size="small"
@@ -196,19 +186,23 @@
                           hint="1.00 = без изменения"
                           persistent-hint
                         />
-                        <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                          <v-switch color="primary" v-model="form.apply_waste_to_edge" hide-details density="compact" />
-                          <span class="text-caption" style="min-width: max-content;">Применять</span>
-                        </div>
-                        <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                          <v-switch
-                            v-model="form.show_waste_edge_description"
-                            :disabled="!edgeDesc.title && !edgeDesc.text"
-                            hide-details
-                            density="compact"
-                           color="primary" />
-                          <span class="text-caption" style="min-width: max-content;">В отчёте</span>
-                        </div>
+                        <v-switch
+                          v-model="form.apply_waste_to_edge"
+                          hide-details
+                          density="compact"
+                          color="#86e975"
+                          label="Применять"
+                          style="flex-shrink: 0;"
+                        />
+                        <v-switch
+                          v-model="form.show_waste_edge_description"
+                          :disabled="!edgeDesc.title && !edgeDesc.text"
+                          hide-details
+                          density="compact"
+                          color="#86e975"
+                          label="В отчёте"
+                          style="flex-shrink: 0;"
+                        />
                         <div style="flex-grow: 1;"></div>
                         <v-btn
                           size="small"
@@ -237,19 +231,23 @@
                           hint="1.00 = без изменения"
                           persistent-hint
                         />
-                        <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                          <v-switch color="primary" v-model="form.apply_waste_to_operations" hide-details density="compact" />
-                          <span class="text-caption" style="min-width: max-content;">Применять</span>
-                        </div>
-                        <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                          <v-switch
-                            v-model="form.show_waste_operations_description"
-                            :disabled="!opsDesc.title && !opsDesc.text"
-                            hide-details
-                            density="compact"
-                           color="primary" />
-                          <span class="text-caption" style="min-width: max-content;">В отчёте</span>
-                        </div>
+                        <v-switch
+                          v-model="form.apply_waste_to_operations"
+                          hide-details
+                          density="compact"
+                          color="#86e975"
+                          label="Применять"
+                          style="flex-shrink: 0;"
+                        />
+                        <v-switch
+                          v-model="form.show_waste_operations_description"
+                          :disabled="!opsDesc.title && !opsDesc.text"
+                          hide-details
+                          density="compact"
+                          color="#86e975"
+                          label="В отчёте"
+                          style="flex-shrink: 0;"
+                        />
                         <div style="flex-grow: 1;"></div>
                         <v-btn
                           size="small"
@@ -262,9 +260,7 @@
                           Описание
                         </v-btn>
                       </div>
-                    </div>
-                  </v-card-text>
-                </v-card>
+                </div>
 
                 <!-- Description dialogs -->
                 <v-dialog v-model="showPlateDescDialog" max-width="500">
@@ -315,9 +311,7 @@
                 <div class="section-title">Справочные блоки</div>
                 <div class="section-hint">UI как в настройках проекта: список, reorder, enable, edit</div>
 
-                <v-card variant="outlined" class="content-card">
-                  <v-card-text>
-                    <div class="d-flex align-center justify-space-between mb-3">
+                <div class="d-flex align-center justify-space-between mb-3">
                       <div class="text-subtitle-2">Блоки</div>
                       <v-btn size="small" variant="flat" color="primary" @click="addTextBlock" :disabled="(form.text_blocks?.length || 0) >= 10">
                         Добавить блок
@@ -363,8 +357,6 @@
                         </v-row>
                       </v-card>
                     </div>
-                  </v-card-text>
-                </v-card>
               </div>
 
               <!-- 5. Безопасность -->
@@ -741,10 +733,6 @@ onBeforeUnmount(() => {
   font-size: 0.875rem;
   opacity: 0.75;
   margin-bottom: 12px;
-}
-
-.content-card {
-  border-radius: 12px;
 }
 
 .gap-1 { gap: 4px; }

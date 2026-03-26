@@ -1,20 +1,16 @@
 <template>
-  <div class="admin-ideas-view">
-    <div class="view-header">
-      <div>
-        <h2 class="text-h5 font-weight-medium mb-1">Модерация идей</h2>
-        <p class="text-body-2 text-medium-emphasis">
-          Управление статусами, идеями и комментариями пользователей
-        </p>
-      </div>
-    </div>
+  <PageContainer>
+    <PageHeader
+      title="Модерация идей"
+      subtitle="Управление статусами, идеями и комментариями пользователей"
+    />
 
     <v-row>
       <v-col cols="12" md="3" lg="2">
         <v-card variant="outlined" class="status-menu-card">
           <v-card-title class="text-subtitle-1">Статусы</v-card-title>
           <v-card-text>
-            <v-list nav density="compact" class="status-menu-list pa-0">
+            <v-list nav variant="outlined" density="compact" class="status-menu-list pa-0">
               <v-list-item
                 v-for="item in statusMenuItems"
                 :key="item.value || 'all'"
@@ -46,6 +42,7 @@
                   v-model="search"
                   prepend-inner-icon="mdi-magnify"
                   label="Поиск по идеям"
+                  variant="outlined"
                   density="compact"
                   hide-details
                   clearable
@@ -57,6 +54,7 @@
                   v-model="sort"
                   :items="sortOptions"
                   label="Сортировка"
+                  variant="outlined"
                   density="compact"
                   hide-details
                   @update:model-value="handleFiltersChange"
@@ -160,13 +158,15 @@
         </v-card-text>
       </v-card>
     </v-dialog>
-  </div>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import AdminIdeaControls from '@/components/admin/AdminIdeaControls.vue'
 import { IDEA_STATUS_LABELS, formatIdeaStatus, ideasApi, type IdeaItem, type IdeaSort, type IdeaStatus } from '@/api/ideas'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
 
 const loading = ref(false)
 const ideas = ref<IdeaItem[]>([])
@@ -323,14 +323,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.admin-ideas-view {
-  max-width: 1400px;
-}
-
-.view-header {
-  margin-bottom: 20px;
-}
-
 .status-menu-card {
   position: sticky;
   top: 84px;

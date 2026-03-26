@@ -1,15 +1,11 @@
 <template>
-  <v-container fluid>
-    <v-row align="center" class="mb-6">
-      <v-col cols="12" md="8">
-        <div class="text-h5 font-weight-medium">Админ‑панель</div>
-        <div class="text-body-2 text-medium-emphasis">
-          Настройки приложения, статистика и управление пользователями.
-        </div>
-      </v-col>
-    </v-row>
+  <PageContainer>
+    <PageHeader
+      title="Админ‑панель"
+      subtitle="Настройки приложения, статистика и управление пользователями."
+    />
 
-    <v-tabs v-model="activeTab" color="primary" class="mb-6" align-tabs="start">
+    <v-tabs v-model="activeTab" color="primary" class="mb-4">
       <v-tab value="llm" prepend-icon="mdi-robot">LLM Провайдеры</v-tab>
       <v-tab value="llm-prompts" prepend-icon="mdi-text-box-edit">Промпты</v-tab>
       <v-tab value="llm-stats" prepend-icon="mdi-chart-line">LLM Статистика</v-tab>
@@ -213,7 +209,7 @@
 
               <v-card-actions>
                 <v-spacer />
-                <v-btn color="primary" variant="elevated" :loading="llmSaving" @click="saveLLMSettings">
+                <v-btn color="primary" variant="flat" :loading="llmSaving" @click="saveLLMSettings">
                   <v-icon start>mdi-content-save</v-icon>
                   Сохранить
                 </v-btn>
@@ -381,7 +377,7 @@
                 <v-spacer />
                 <v-btn
                   color="primary"
-                  variant="elevated"
+                  variant="flat"
                   :loading="promptsSaving"
                   @click="savePrompts"
                 >
@@ -758,12 +754,14 @@
         <AdminMaterialTypePatternsTab />
       </v-window-item>
     </v-window>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api/axios'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
 import AdminNotificationsTab from '@/components/notifications/AdminNotificationsTab.vue'
 import AdminSystemLogsTab from '@/components/admin/AdminSystemLogsTab.vue'
 import AdminMaterialDimensionRulesTab from '@/components/admin/AdminMaterialDimensionRulesTab.vue'

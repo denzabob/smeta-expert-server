@@ -1,34 +1,3 @@
-
-html,
-body,
-#app {
-  width: 100%;
-  min-height: 100%;
-}
-
-body {
-  display: block;
-  background: var(--v-theme-background);
-  color: var(--v-theme-on-surface);
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-/* Keep desktop drawers fixed, but do not override temporary mobile/tablet drawers. */
-.v-navigation-drawer:not(.v-navigation-drawer--temporary),
-.v-navigation-drawer--permanent,
-.v-navigation-drawer--left:not(.v-navigation-drawer--temporary) {
-  position: fixed !important;
-  top: 0 !important;
-  height: 100vh !important;
-  max-height: 100vh !important;
-  bottom: auto !important;
-}
-
-.v-layout > .v-navigation-drawer:not(.v-navigation-drawer--temporary) {
-  position: fixed !important;
-  height: 100vh !important;
-}
+/* All layout rules, resets, and drawer fixes have been merged into
+   styles/design-system.scss. This file is intentionally empty.
+   It can be safely deleted once import references are verified. */

@@ -1,9 +1,9 @@
 <template>
-  <v-container fluid class="session-monitor">
+  <PageContainer class="session-monitor">
     <v-row v-if="session">
       <!-- Header -->
       <v-col cols="12">
-        <v-card class="session-header" elevation="2">
+        <v-card class="session-header">
           <v-card-title class="d-flex align-center justify-space-between">
             <div class="d-flex align-center">
               <v-btn
@@ -34,7 +34,7 @@
               <v-btn
                 v-if="session.status === 'running'"
                 color="error"
-                variant="elevated"
+                variant="flat"
                 prepend-icon="mdi-stop"
                 @click="forceStop"
                 :loading="stopping"
@@ -54,7 +54,7 @@
 
       <!-- Progress Metrics -->
       <v-col cols="12">
-        <v-card class="metrics-card" elevation="2">
+        <v-card class="metrics-card">
           <v-card-text>
             <v-row align="center">
               <!-- Progress Bar -->
@@ -119,7 +119,7 @@
 
       <!-- Queue Statistics -->
       <v-col cols="12">
-        <v-card class="queue-stats-card" elevation="2">
+        <v-card class="queue-stats-card">
           <v-card-title class="d-flex align-center justify-space-between">
             <div class="d-flex align-center">
               <v-icon icon="mdi-database" class="mr-2" />
@@ -214,7 +214,7 @@
 
       <!-- Logs Terminal -->
       <v-col cols="12">
-        <v-card class="logs-terminal" elevation="2">
+        <v-card class="logs-terminal">
           <v-card-title class="d-flex align-center justify-space-between">
             <div class="d-flex align-center">
               <v-icon icon="mdi-console" class="mr-2" />
@@ -319,13 +319,14 @@
         </v-alert>
       </v-col>
     </v-row>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { parserApi, type ParsingSession, type ParsingLog, type QueueStats } from '@/api/parser'
+import PageContainer from '@/components/layout/PageContainer.vue'
 import { formatDistanceToNow, format, differenceInSeconds } from 'date-fns'
 
 const router = useRouter()

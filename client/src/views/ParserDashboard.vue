@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="parser-dashboard">
+  <PageContainer class="parser-dashboard">
     <!-- System Health Status Bar -->
     <v-alert
       :type="systemStatus?.scheduler_running ? 'success' : 'error'"
@@ -41,7 +41,6 @@
         <v-card
           class="supplier-card"
           :class="getSupplierCardClass(supplier)"
-          elevation="2"
         >
           <!-- Card Header -->
           <v-card-title class="d-flex align-center justify-space-between">
@@ -127,7 +126,7 @@
             <v-btn
               v-if="!supplier.current_pid"
               color="primary"
-              variant="elevated"
+              variant="flat"
               prepend-icon="mdi-play"
               @click="openRunDialog(supplier.supplier)"
               :disabled="!supplier.active"
@@ -139,7 +138,7 @@
             <v-btn
               v-else
               color="error"
-              variant="elevated"
+              variant="flat"
               prepend-icon="mdi-stop-circle"
               @click="stopSupplier(supplier)"
               :loading="loading.stop?.[supplier.supplier]"
@@ -210,7 +209,7 @@
           </v-btn>
           <v-btn
             color="primary"
-            variant="elevated"
+            variant="flat"
             @click="runParser"
             :loading="loading.run[runDialog.supplier]"
           >
@@ -253,12 +252,13 @@
     <v-snackbar v-model="snackbar.show" :color="snackbar.color">
       {{ snackbar.message }}
     </v-snackbar>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import PageContainer from '@/components/layout/PageContainer.vue'
 import { parserApi, type SystemStatus, type SupplierHealth } from '@/api/parser'
 import { formatDistanceToNow } from 'date-fns'
 

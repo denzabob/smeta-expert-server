@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="supplier-config">
+  <PageContainer class="supplier-config">
     <v-row>
       <v-col cols="12">
         <div class="d-flex align-center">
@@ -12,7 +12,7 @@
           <v-chip v-if="configSource" size="small" class="mr-3" color="info" variant="tonal">
             Источник: {{ configSource === 'db' ? 'БД' : 'Файл' }}
           </v-chip>
-          <v-btn color="primary" variant="elevated" :loading="saving" :disabled="!form" @click="save">
+          <v-btn color="primary" variant="flat" :loading="saving" :disabled="!form" @click="save">
             Сохранить
           </v-btn>
         </div>
@@ -23,7 +23,7 @@
       </v-col>
 
       <v-col cols="12" md="6" v-if="form">
-        <v-card elevation="2">
+        <v-card>
           <v-card-title>Основные параметры</v-card-title>
           <v-divider />
           <v-card-text>
@@ -51,7 +51,7 @@
       </v-col>
 
       <v-col cols="12" md="6" v-if="form">
-        <v-card elevation="2">
+        <v-card>
           <v-card-title>Типы и единицы</v-card-title>
           <v-divider />
           <v-card-text>
@@ -94,7 +94,7 @@
       </v-col>
 
       <v-col cols="12" v-if="form">
-        <v-card elevation="2">
+        <v-card>
           <v-card-title>Селекторы</v-card-title>
           <v-divider />
           <v-card-text>
@@ -111,7 +111,7 @@
       </v-col>
 
       <v-col cols="12" md="6" v-if="form">
-        <v-card elevation="2">
+        <v-card>
           <v-card-title>Тайминги и сеть</v-card-title>
           <v-divider />
           <v-card-text>
@@ -153,7 +153,7 @@
       </v-col>
 
       <v-col cols="12" md="6" v-if="form">
-        <v-card elevation="2">
+        <v-card>
           <v-card-title>Скриншоты</v-card-title>
           <v-divider />
           <v-card-text>
@@ -186,7 +186,7 @@
       </v-col>
 
       <v-col cols="12" md="6" v-if="form">
-        <v-card elevation="2">
+        <v-card>
           <v-card-title>Валидация</v-card-title>
           <v-divider />
           <v-card-text>
@@ -219,7 +219,7 @@
       </v-col>
 
       <v-col cols="12" md="6" v-if="form">
-        <v-card elevation="2">
+        <v-card>
           <v-card-title>User Agents</v-card-title>
           <v-divider />
           <v-card-text>
@@ -236,7 +236,7 @@
       </v-col>
 
       <v-col cols="12" v-if="form">
-        <v-card elevation="2">
+        <v-card>
           <v-card-title>Сбор URL</v-card-title>
           <v-divider />
           <v-card-text>
@@ -303,7 +303,7 @@
       </v-col>
 
       <v-col cols="12" md="6" v-if="form">
-        <v-card elevation="2">
+        <v-card>
           <v-card-title>Материалы</v-card-title>
           <v-divider />
           <v-card-text>
@@ -336,7 +336,7 @@
       </v-col>
 
       <v-col cols="12" v-if="form">
-        <v-card elevation="2">
+        <v-card>
           <v-card-title class="d-flex align-center justify-space-between">
             <span>Профили collect-urls</span>
             <v-btn size="small" variant="text" prepend-icon="mdi-plus" @click="addProfile">
@@ -365,7 +365,7 @@
                 />
                 <v-switch v-model="profile.is_default" label="Профиль по умолчанию"  color="primary" />
                 <div class="d-flex gap-2">
-                  <v-btn size="small" color="primary" variant="elevated" :loading="profile.saving" @click="saveProfile(profile)">
+                  <v-btn size="small" color="primary" variant="flat" :loading="profile.saving" @click="saveProfile(profile)">
                     Сохранить
                   </v-btn>
                   <v-btn size="small" color="error" variant="text" :loading="profile.deleting" @click="deleteProfile(profile)">
@@ -388,13 +388,14 @@
         </v-card>
       </v-col>
     </v-row>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { parserApi } from '@/api/parser'
+import PageContainer from '@/components/layout/PageContainer.vue'
 
 type KeyValuePair = { key: string; value: string }
 

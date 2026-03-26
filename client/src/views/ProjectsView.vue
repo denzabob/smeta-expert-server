@@ -15,26 +15,33 @@
     <!-- ── Table card ────────────────────────────────────────────────────── -->
     <SectionCard>
       <!-- Search + filter controls inside the card, above the table -->
-      <div class="pj-controls">
-        <v-text-field
-          v-model="searchQuery"
-          prepend-inner-icon="mdi-magnify"
-          placeholder="Поиск по номеру дела или адресу…"
-          clearable
-          hide-details
-          class="pj-controls__search"
-        />
-        <v-select
-          v-model="statusFilter"
-          :items="statusFilterOptions"
-          item-title="label"
-          item-value="value"
-          hide-details
-          clearable
-          placeholder="Все статусы"
-          class="pj-controls__status"
-        />
-      </div>
+      <TableToolbar>
+        <template #search>
+          <v-text-field
+            v-model="searchQuery"
+            prepend-inner-icon="mdi-magnify"
+            placeholder="Поиск по номеру дела или адресу…"
+            variant="outlined"
+            density="compact"
+            clearable
+            hide-details
+          />
+        </template>
+        <template #filters>
+          <v-select
+            v-model="statusFilter"
+            :items="statusFilterOptions"
+            item-title="label"
+            item-value="value"
+            variant="outlined"
+            density="compact"
+            hide-details
+            clearable
+            placeholder="Все статусы"
+            style="max-width: 200px"
+          />
+        </template>
+      </TableToolbar>
 
       <v-data-table
         :headers="headers"
@@ -109,22 +116,30 @@
 
         <!-- Empty / no-results state ────────────────────────────────────── -->
         <template #no-data>
-          <div v-if="!loading" class="pj-empty">
-            <template v-if="projects.length === 0">
-              <v-icon size="48" color="on-surface-variant">mdi-folder-multiple-outline</v-icon>
-              <p class="pj-empty__title">Проектов пока нет</p>
-              <p class="pj-empty__sub">Создайте первый проект, чтобы начать работу</p>
-              <v-btn prepend-icon="mdi-plus" color="primary" variant="flat" :loading="creating" class="mt-5" @click="createProject">
-                Создать проект
-              </v-btn>
-            </template>
-            <template v-else>
-              <v-icon size="44" color="on-surface-variant">mdi-magnify-remove-outline</v-icon>
-              <p class="pj-empty__title">Ничего не найдено</p>
-              <p class="pj-empty__sub">Попробуйте изменить запрос или сбросить фильтры</p>
-              <v-btn variant="outlined" class="mt-4" @click="resetFilters">Сбросить фильтры</v-btn>
-            </template>
-          </div>
+          <template v-if="!loading">
+            <EmptyState
+              v-if="projects.length === 0"
+              icon="mdi-folder-multiple-outline"
+              title="Проектов пока нет"
+              description="Создайте первый проект, чтобы начать работу"
+            >
+              <template #actions>
+                <v-btn prepend-icon="mdi-plus" color="primary" variant="flat" :loading="creating" @click="createProject">
+                  Создать проект
+                </v-btn>
+              </template>
+            </EmptyState>
+            <EmptyState
+              v-else
+              icon="mdi-magnify-remove-outline"
+              title="Ничего не найдено"
+              description="Попробуйте изменить запрос или сбросить фильтры"
+            >
+              <template #actions>
+                <v-btn variant="outlined" @click="resetFilters">Сбросить фильтры</v-btn>
+              </template>
+            </EmptyState>
+          </template>
         </template>
       </v-data-table>
     </SectionCard>
@@ -178,6 +193,8 @@ import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
+import EmptyState from '@/components/layout/EmptyState.vue'
 
 const router = useRouter()
 
@@ -376,23 +393,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* ── Controls bar (inside SectionCard, above the table) ─────────────────── */
-.pj-controls {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-.pj-controls__search {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-.pj-controls__status {
-  flex: 0 0 200px;
-}
-
 /* ── Case number: primary anchor ─────────────────────────────────────────── */
 .pj-case-link {
   font-weight: 700;
@@ -507,30 +507,6 @@ onMounted(async () => {
   align-items: center;
   gap: 0;
   justify-content: flex-end;
-}
-
-/* ── Empty / no-results state ────────────────────────────────────────────── */
-.pj-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 52px 24px;
-  text-align: center;
-}
-
-.pj-empty__title {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: rgb(var(--v-theme-on-surface));
-  margin-top: 14px;
-}
-
-.pj-empty__sub {
-  font-size: 0.8125rem;
-  color: rgb(var(--v-theme-on-surface-variant));
-  margin-top: 5px;
-  max-width: 300px;
-  line-height: 1.55;
 }
 
 /* ── Delete dialog inline code ───────────────────────────────────────────── */

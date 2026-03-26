@@ -27,7 +27,7 @@
           <v-btn
             color="primary"
             prepend-icon="mdi-plus"
-            variant="elevated"
+            variant="flat"
             @click="openCreateDialog()"
           >
             Новый тип
@@ -729,7 +729,7 @@ watch(addComponentDialog, (val) => {
 </script>
 
 <style scoped>
-@import '@/assets/soft-cards.css';
+/* soft-cards classes now live globally in design-system.scss */
 
 .operation-chip {
   background: rgb(var(--v-theme-surface));

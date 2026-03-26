@@ -6,7 +6,7 @@
     />
 
     <!-- Вкладки -->
-    <v-tabs v-model="activeTab" class="page-tabs">
+    <v-tabs v-model="activeTab" color="primary" class="mb-4">
       <v-tab value="sources">
         <v-icon class="mr-2">mdi-chart-box-outline</v-icon>
         Источники нормо-часов
@@ -38,54 +38,59 @@
 
         <!-- Фильтры и поиск -->
         <SectionCard class="content-card filters-card" variant="outlined">
-          <div class="filters-row">
-            <v-text-field
-              v-model="searchQuery"
-              placeholder="Поиск по источнику..."
-              prepend-inner-icon="mdi-magnify"
-              variant="outlined"
-              density="compact"
-              hide-details
-              style="max-width: 250px;"
-              @input="applyFilters"
-            />
-            <v-select
-              v-model="selectedRegion"
-              :items="regions"
-              item-title="region_name"
-              item-value="id"
-              placeholder="Фильтр по регионам"
-              variant="outlined"
-              density="compact"
-              hide-details
-              clearable
-              style="max-width: 250px;"
-              @update:modelValue="applyFilters"
-            />
-            <v-checkbox
-              v-model="showOnlyActive"
-              label="Только активные"
-              density="compact"
-              hide-details
-              @change="applyFilters"
-            />
-            <v-spacer />
-            <v-btn
-              icon
-              size="small"
-              variant="text"
-              @click="loadWorkProfiles"
-              title="Обновить"
-            >
-              <v-icon>mdi-refresh</v-icon>
-            </v-btn>
-          </div>
+          <TableToolbar>
+            <template #search>
+              <v-text-field
+                v-model="searchQuery"
+                placeholder="Поиск по источнику..."
+                prepend-inner-icon="mdi-magnify"
+                variant="outlined"
+                density="compact"
+                hide-details
+                style="max-width: 250px;"
+                @input="applyFilters"
+              />
+            </template>
+            <template #filters>
+              <v-select
+                v-model="selectedRegion"
+                :items="regions"
+                item-title="region_name"
+                item-value="id"
+                placeholder="Фильтр по регионам"
+                variant="outlined"
+                density="compact"
+                hide-details
+                clearable
+                style="max-width: 250px;"
+                @update:modelValue="applyFilters"
+              />
+              <v-checkbox
+                v-model="showOnlyActive"
+                label="Только активные"
+                density="compact"
+                hide-details
+                @change="applyFilters"
+              />
+            </template>
+            <template #actions>
+              <v-btn
+                icon
+                size="small"
+                variant="text"
+                @click="loadWorkProfiles"
+                title="Обновить"
+              >
+                <v-icon>mdi-refresh</v-icon>
+              </v-btn>
+            </template>
+          </TableToolbar>
         </SectionCard>
 
     <!-- Статистика -->
     <v-row class="stats-grid">
       <v-col cols="12" sm="6" md="3">
-        <v-card class="content-card stat-card" elevation="0" variant="outlined">
+        <v-card class="content-card stat-card" variant="outlined">
           <v-card-text>
             <div class="text-caption text-grey">Всего источников</div>
             <div class="text-h6">{{ workProfiles.length }}</div>
@@ -93,7 +98,7 @@
         </v-card>
       </v-col>
       <v-col cols="12" sm="6" md="3">
-        <v-card class="content-card stat-card" elevation="0" variant="outlined">
+        <v-card class="content-card stat-card" variant="outlined">
           <v-card-text>
             <div class="text-caption text-grey">Активных</div>
             <div class="text-h6">{{ workProfiles.filter(p => p.is_active).length }}</div>
@@ -101,7 +106,7 @@
         </v-card>
       </v-col>
       <v-col cols="12" sm="6" md="3">
-        <v-card class="content-card stat-card" elevation="0" variant="outlined">
+        <v-card class="content-card stat-card" variant="outlined">
           <v-card-text>
             <div class="text-caption text-grey">Регионов</div>
             <div class="text-h6">{{ uniqueRegions.size }}</div>
@@ -109,7 +114,7 @@
         </v-card>
       </v-col>
       <v-col cols="12" sm="6" md="3">
-        <v-card class="content-card stat-card" elevation="0" variant="outlined">
+        <v-card class="content-card stat-card" variant="outlined">
           <v-card-text>
             <div class="text-caption text-grey">Профилей должностей</div>
             <div class="text-h6">{{ uniqueProfiles.size }}</div>
@@ -759,7 +764,7 @@
           </v-btn>
           <v-btn
             color="primary"
-            variant="elevated"
+            variant="flat"
             :loading="savingProfile"
             @click="savePositionProfile"
           >
@@ -784,7 +789,7 @@
           </v-btn>
           <v-btn
             color="error"
-            variant="elevated"
+            variant="flat"
             :loading="deletingProfile_"
             @click="confirmDeleteProfile"
           >
@@ -802,6 +807,7 @@ import api from '@/api/axios'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
 
 // === Интерфейсы ===
 interface WorkProfile {
@@ -1377,26 +1383,7 @@ onMounted(async () => {
   gap: 16px;
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
 
-.page-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 4px;
-}
-
-.page-subtitle {
-  font-size: 13px;
-  color: rgba(var(--v-theme-on-surface), 0.6);
-}
-
-.page-tabs {
-  margin-bottom: 4px;
-}
 
 .section-header {
   display: flex;
@@ -1432,12 +1419,7 @@ onMounted(async () => {
   padding: 4px 4px 0;
 }
 
-.filters-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-}
+
 
 .stats-grid {
   margin-top: 4px;

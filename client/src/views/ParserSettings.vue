@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="system-settings">
+  <PageContainer class="system-settings">
     <v-row>
       <!-- Header -->
       <v-col cols="12">
@@ -16,7 +16,7 @@
 
       <!-- Security Settings -->
       <v-col cols="12" md="6">
-        <v-card class="settings-card" elevation="2">
+        <v-card class="settings-card">
           <v-card-title class="card-header">
             <v-icon icon="mdi-shield-lock" class="mr-2" />
             Callback Security
@@ -45,7 +45,7 @@
               <div class="mt-2">
                 <v-btn
                   color="warning"
-                  variant="elevated"
+                  variant="flat"
                   prepend-icon="mdi-refresh"
                   @click="regenerateTokenDialog = true"
                   :loading="loading.regenerateToken"
@@ -73,7 +73,7 @@
                   closable
                   @click:close="removeIP(index)"
                   color="primary"
-                  variant="elevated"
+                  variant="flat"
                 >
                   {{ ip }}
                 </v-chip>
@@ -92,7 +92,7 @@
                 />
                 <v-btn
                   color="primary"
-                  variant="elevated"
+                  variant="flat"
                   icon="mdi-plus"
                   @click="addIP"
                   :disabled="!isValidIP(newIP)"
@@ -102,7 +102,7 @@
               <div class="mt-3">
                 <v-btn
                   color="success"
-                  variant="elevated"
+                  variant="flat"
                   prepend-icon="mdi-content-save"
                   @click="saveAllowedIPs"
                   :loading="loading.saveIPs"
@@ -118,7 +118,7 @@
 
       <!-- Log Rotation Settings -->
       <v-col cols="12" md="6">
-        <v-card class="settings-card" elevation="2">
+        <v-card class="settings-card">
           <v-card-title class="card-header">
             <v-icon icon="mdi-database" class="mr-2" />
             Log Management
@@ -194,7 +194,7 @@
 
             <v-btn
               color="success"
-              variant="elevated"
+              variant="flat"
               prepend-icon="mdi-content-save"
               @click="saveSettings"
               :loading="loading.saveSettings"
@@ -208,7 +208,7 @@
 
       <!-- System Information -->
       <v-col cols="12">
-        <v-card class="settings-card" elevation="2">
+        <v-card class="settings-card">
           <v-card-title class="card-header">
             <v-icon icon="mdi-information" class="mr-2" />
             System Information
@@ -270,7 +270,7 @@
 
       <!-- Danger Zone -->
       <v-col cols="12">
-        <v-card class="settings-card danger-zone" elevation="2">
+        <v-card class="settings-card danger-zone">
           <v-card-title class="card-header">
             <v-icon icon="mdi-alert" class="mr-2" />
             Danger Zone
@@ -283,7 +283,7 @@
               <v-col cols="12" md="4">
                 <v-btn
                   color="warning"
-                  variant="elevated"
+                  variant="flat"
                   prepend-icon="mdi-database-remove"
                   @click="runCleanup"
                   :loading="loading.cleanup"
@@ -299,7 +299,7 @@
               <v-col cols="12" md="4">
                 <v-btn
                   color="warning"
-                  variant="elevated"
+                  variant="flat"
                   prepend-icon="mdi-delete-sweep"
                   @click="runPruning"
                   :loading="loading.pruning"
@@ -315,7 +315,7 @@
               <v-col cols="12" md="4">
                 <v-btn
                   color="error"
-                  variant="elevated"
+                  variant="flat"
                   prepend-icon="mdi-delete-forever"
                   @click="clearAllLogsDialog = true"
                   block
@@ -349,7 +349,7 @@
           <v-btn variant="text" @click="regenerateTokenDialog = false">Cancel</v-btn>
           <v-btn
             color="warning"
-            variant="elevated"
+            variant="flat"
             @click="regenerateToken"
             :loading="loading.regenerateToken"
           >
@@ -382,7 +382,7 @@
           <v-btn variant="text" @click="clearAllLogsDialog = false">Cancel</v-btn>
           <v-btn
             color="error"
-            variant="elevated"
+            variant="flat"
             :disabled="clearLogsConfirmation !== 'DELETE ALL LOGS'"
             @click="clearAllLogs"
           >
@@ -396,12 +396,13 @@
     <v-snackbar v-model="snackbar.show" :color="snackbar.color">
       {{ snackbar.message }}
     </v-snackbar>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { parserApi } from '@/api/parser'
+import PageContainer from '@/components/layout/PageContainer.vue'
 
 // Флаг для предотвращения обновления состояния при размонтировании
 let isUnmounted = false

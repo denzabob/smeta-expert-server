@@ -1,14 +1,9 @@
 <template>
-  <div class="admin-dashboard">
-    <!-- Welcome Section -->
-    <div class="dashboard-header">
-      <div>
-        <h2 class="text-h5 font-weight-medium mb-1">Рабочий стол</h2>
-        <p class="text-body-2 text-medium-emphasis">
-          Управление материалами и правилами распознавания
-        </p>
-      </div>
-    </div>
+  <PageContainer>
+    <PageHeader
+      title="Рабочий стол"
+      subtitle="Управление материалами и правилами распознавания"
+    />
 
     <!-- Quick Stats -->
     <v-row class="mb-6">
@@ -238,7 +233,7 @@
         </template>
       </v-data-table>
     </v-card>
-  </div>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -246,6 +241,8 @@ import { ref, onMounted, inject, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { adminMaterialDimensionsApi } from '@/api/materialDimensions'
 import { ideasApi } from '@/api/ideas'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
 
 const router = useRouter()
 
@@ -345,14 +342,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.admin-dashboard {
-  max-width: 1400px;
-}
-
-.dashboard-header {
-  margin-bottom: 24px;
-}
-
 .stat-card {
   cursor: pointer;
   transition: all 0.2s ease;

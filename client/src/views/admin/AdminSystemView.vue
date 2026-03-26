@@ -1,13 +1,9 @@
 <template>
-  <div class="system-view">
-    <div class="view-header">
-      <div>
-        <h2 class="text-h5 font-weight-medium mb-1">Системные настройки</h2>
-        <p class="text-body-2 text-medium-emphasis">
-          LLM провайдеры, пользователи и системные журналы
-        </p>
-      </div>
-    </div>
+  <PageContainer>
+    <PageHeader
+      title="Системные настройки"
+      subtitle="LLM провайдеры, пользователи и системные журналы"
+    />
 
     <v-tabs v-model="activeTab" color="primary" class="mb-4">
       <v-tab value="llm" prepend-icon="mdi-robot">LLM</v-tab>
@@ -43,7 +39,7 @@
         <AdminSystemLogsTab />
       </v-window-item>
     </v-window>
-  </div>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -55,6 +51,8 @@ import AdminLlmStats from '@/components/admin/AdminLlmStats.vue'
 import AdminUsersTab from '@/components/admin/AdminUsersTab.vue'
 import AdminSystemLogsTab from '@/components/admin/AdminSystemLogsTab.vue'
 import AdminNotificationsTab from '@/components/notifications/AdminNotificationsTab.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -121,12 +119,4 @@ watch(() => route.query.tab, (tab) => {
 })
 </script>
 
-<style scoped>
-.system-view {
-  height: 100%;
-}
 
-.view-header {
-  margin-bottom: 20px;
-}
-</style>

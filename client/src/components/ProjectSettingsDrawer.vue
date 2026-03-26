@@ -237,19 +237,23 @@
                             hint="1.00 = без изменения"
                             persistent-hint
                           />
-                          <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                            <v-switch v-model="projectData.apply_waste_to_plate" hide-details density="compact"  color="primary" />
-                            <span class="text-caption" style="min-width: max-content;">Применять</span>
-                          </div>
-                          <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                            <v-switch
-                              v-model="projectData.show_waste_plate_description"
-                              :disabled="!projectData.waste_plate_description || (!projectData.waste_plate_description.title && !projectData.waste_plate_description.text)"
-                              hide-details
-                              density="compact"
-                             color="primary" />
-                            <span class="text-caption" style="min-width: max-content;">В отчёте</span>
-                          </div>
+                          <v-switch
+                            v-model="projectData.apply_waste_to_plate"
+                            hide-details
+                            density="compact"
+                            color="#86e975"
+                            label="Применять"
+                            style="flex-shrink: 0;"
+                          />
+                          <v-switch
+                            v-model="projectData.show_waste_plate_description"
+                            :disabled="!projectData.waste_plate_description || (!projectData.waste_plate_description.title && !projectData.waste_plate_description.text)"
+                            hide-details
+                            density="compact"
+                            color="#86e975"
+                            label="В отчёте"
+                            style="flex-shrink: 0;"
+                          />
                           <div style="flex-grow: 1;"></div>
                           <v-btn
                             size="small"
@@ -278,19 +282,23 @@
                             hint="1.00 = без изменения"
                             persistent-hint
                           />
-                          <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                            <v-switch v-model="projectData.apply_waste_to_edge" hide-details density="compact"  color="primary" />
-                            <span class="text-caption" style="min-width: max-content;">Применять</span>
-                          </div>
-                          <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                            <v-switch
-                              v-model="projectData.show_waste_edge_description"
-                              :disabled="!projectData.waste_edge_description || (!projectData.waste_edge_description.title && !projectData.waste_edge_description.text)"
-                              hide-details
-                              density="compact"
-                             color="primary" />
-                            <span class="text-caption" style="min-width: max-content;">В отчёте</span>
-                          </div>
+                          <v-switch
+                            v-model="projectData.apply_waste_to_edge"
+                            hide-details
+                            density="compact"
+                            color="#86e975"
+                            label="Применять"
+                            style="flex-shrink: 0;"
+                          />
+                          <v-switch
+                            v-model="projectData.show_waste_edge_description"
+                            :disabled="!projectData.waste_edge_description || (!projectData.waste_edge_description.title && !projectData.waste_edge_description.text)"
+                            hide-details
+                            density="compact"
+                            color="#86e975"
+                            label="В отчёте"
+                            style="flex-shrink: 0;"
+                          />
                           <div style="flex-grow: 1;"></div>
                           <v-btn
                             size="small"
@@ -319,19 +327,23 @@
                             hint="1.00 = без изменения"
                             persistent-hint
                           />
-                          <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                            <v-switch v-model="projectData.apply_waste_to_operations" hide-details density="compact"  color="primary" />
-                            <span class="text-caption" style="min-width: max-content;">Применять</span>
-                          </div>
-                          <div class="d-flex align-center gap-1" style="flex-shrink: 0;">
-                            <v-switch
-                              v-model="projectData.show_waste_operations_description"
-                              :disabled="!projectData.waste_operations_description || (!projectData.waste_operations_description.title && !projectData.waste_operations_description.text)"
-                              hide-details
-                              density="compact"
-                             color="primary" />
-                            <span class="text-caption" style="min-width: max-content;">В отчёте</span>
-                          </div>
+                          <v-switch
+                            v-model="projectData.apply_waste_to_operations"
+                            hide-details
+                            density="compact"
+                            color="#86e975"
+                            label="Применять"
+                            style="flex-shrink: 0;"
+                          />
+                          <v-switch
+                            v-model="projectData.show_waste_operations_description"
+                            :disabled="!projectData.waste_operations_description || (!projectData.waste_operations_description.title && !projectData.waste_operations_description.text)"
+                            hide-details
+                            density="compact"
+                            color="#86e975"
+                            label="В отчёте"
+                            style="flex-shrink: 0;"
+                          />
                           <div style="flex-grow: 1;"></div>
                           <v-btn
                             size="small"

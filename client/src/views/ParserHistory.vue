@@ -1,9 +1,9 @@
 <template>
-  <v-container fluid class="parser-history">
+  <PageContainer class="parser-history">
     <v-row>
       <!-- Header & Filters -->
       <v-col cols="12">
-        <v-card class="filters-card" elevation="2">
+        <v-card class="filters-card">
           <v-card-title>
             <v-icon icon="mdi-history" class="mr-2" />
             Parsing History & Analytics
@@ -56,7 +56,7 @@
               <v-col cols="12" class="text-right">
                 <v-btn
                   color="primary"
-                  variant="elevated"
+                  variant="flat"
                   prepend-icon="mdi-filter"
                   @click="applyFilters"
                   :loading="loading.sessions"
@@ -79,7 +79,7 @@
 
       <!-- Charts -->
       <v-col cols="12" md="6">
-        <v-card class="chart-card" elevation="2">
+        <v-card class="chart-card">
           <v-card-title>Processed Items Over Time</v-card-title>
           <v-card-text>
             <apexchart
@@ -93,7 +93,7 @@
       </v-col>
 
       <v-col cols="12" md="6">
-        <v-card class="chart-card" elevation="2">
+        <v-card class="chart-card">
           <v-card-title>Error Trends</v-card-title>
           <v-card-text>
             <apexchart
@@ -108,7 +108,7 @@
 
       <!-- Sessions Table -->
       <v-col cols="12">
-        <v-card class="sessions-table" elevation="2">
+        <v-card class="sessions-table">
           <v-card-title>
             <div class="d-flex align-center justify-space-between w-100">
               <span>Sessions ({{ total }} total)</span>
@@ -190,7 +190,7 @@
                             <div class="detail-title">Actions</div>
                             <v-btn
                               color="primary"
-                              variant="elevated"
+                              variant="flat"
                               prepend-icon="mdi-eye"
                               @click="viewSession(item.id)"
                               block
@@ -269,12 +269,13 @@
         </v-card>
       </v-col>
     </v-row>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import PageContainer from '@/components/layout/PageContainer.vue'
 import { parserApi, type ParsingSession, type ChartDataPoint } from '@/api/parser'
 import { differenceInSeconds, format } from 'date-fns'
 import VueApexCharts from 'vue3-apexcharts'

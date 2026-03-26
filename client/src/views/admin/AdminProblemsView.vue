@@ -1,24 +1,23 @@
 <template>
-  <div class="problems-view">
-    <div class="problems-main" :class="{ 'problems-main--with-panel': selectedItem }">
-      <!-- Header -->
-      <div class="view-header">
-        <div>
-          <h2 class="text-h5 font-weight-medium mb-1">Проблемные случаи</h2>
-          <p class="text-body-2 text-medium-emphasis">
-            Материалы, которые не удалось распознать автоматически
-          </p>
-        </div>
-        <v-spacer />
-        <v-btn
-          v-if="selectedItem"
-          variant="text"
-          @click="closeInspector"
+  <PageContainer>
+    <div class="problems-view">
+      <div class="problems-main" :class="{ 'problems-main--with-panel': selectedItem }">
+        <!-- Header -->
+        <PageHeader
+          title="Проблемные случаи"
+          subtitle="Материалы, которые не удалось распознать автоматически"
         >
-          <v-icon icon="mdi-close" class="mr-1" />
-          Закрыть панель
-        </v-btn>
-      </div>
+          <template #actions>
+            <v-btn
+              v-if="selectedItem"
+              variant="text"
+              @click="closeInspector"
+            >
+              <v-icon icon="mdi-close" class="mr-1" />
+              Закрыть панель
+            </v-btn>
+          </template>
+        </PageHeader>
 
       <!-- Filters -->
       <v-card variant="outlined" class="mb-4">
@@ -30,6 +29,7 @@
                 prepend-inner-icon="mdi-magnify"
                 label="Поиск по тексту"
                 hide-details
+                variant="outlined"
                 density="compact"
                 clearable
                 @update:model-value="debouncedLoad"
@@ -41,6 +41,7 @@
                 :items="materialTypeOptions"
                 label="Тип материала"
                 hide-details
+                variant="outlined"
                 density="compact"
                 clearable
                 @update:model-value="loadList"
@@ -52,6 +53,7 @@
                 :items="statusOptions"
                 label="Статус"
                 hide-details
+                variant="outlined"
                 density="compact"
                 @update:model-value="loadList"
               />
@@ -61,6 +63,7 @@
                 v-model="sourceFilter"
                 label="Источник"
                 hide-details
+                variant="outlined"
                 density="compact"
                 clearable
                 @update:model-value="debouncedLoad"
@@ -292,8 +295,8 @@
                   v-model.number="resolution.length"
                   label="Длина, мм"
                   type="number"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   hide-details
                 />
               </v-col>
@@ -302,8 +305,8 @@
                   v-model.number="resolution.width"
                   label="Ширина, мм"
                   type="number"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   hide-details
                 />
               </v-col>
@@ -312,8 +315,8 @@
                   v-model.number="resolution.thickness"
                   label="Толщина, мм"
                   type="number"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   hide-details
                   step="0.1"
                 />
@@ -322,8 +325,8 @@
             <v-textarea
               v-model="resolution.note"
               label="Примечание"
-              density="compact"
               variant="outlined"
+              density="compact"
               rows="2"
               hide-details
               class="mt-2"
@@ -398,6 +401,7 @@
       </v-card>
     </v-dialog>
   </div>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -409,6 +413,8 @@ import {
   type MaterialDimensionMaterialType
 } from '@/api/materialDimensions'
 import AdminRuleCreator from '@/components/admin/AdminRuleCreator.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -652,12 +658,6 @@ onMounted(() => {
 
 .problems-main--with-panel {
   max-width: calc(100% - 420px);
-}
-
-.view-header {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 20px;
 }
 
 .raw-text-cell {

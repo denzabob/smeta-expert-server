@@ -9,6 +9,7 @@
               prepend-inner-icon="mdi-magnify"
               label="Поиск паттернов"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="debouncedLoad"
@@ -20,6 +21,7 @@
               :items="materialTypeOptions"
               label="Тип"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="loadList"
@@ -31,6 +33,7 @@
               :items="targetFieldOptions"
               label="Поле"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="loadList"
@@ -42,6 +45,7 @@
               :items="statusOptions"
               label="Статус"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="loadList"
@@ -52,6 +56,7 @@
               v-model="sourceFilter"
               label="Источник"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="debouncedLoad"
@@ -72,6 +77,7 @@
         :loading="loading"
         :page="page"
         :items-per-page="perPage"
+        variant="outlined"
         density="compact"
         no-data-text="Нет паттернов"
         @update:page="page = $event; loadList()"
@@ -142,23 +148,23 @@
 
           <v-row>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.name" label="Название *" density="compact" variant="outlined" />
+              <v-text-field v-model="form.name" label="Название *" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" md="3">
               <v-select
                 v-model="form.material_type"
                 :items="materialTypeOptions"
                 label="Тип материала *"
-                density="compact"
                 variant="outlined"
+                density="compact"
               />
             </v-col>
             <v-col cols="12" md="3">
               <v-text-field
                 v-model="form.source"
                 label="Source (опционально)"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 placeholder="chrome_ext"
               />
             </v-col>
@@ -166,8 +172,8 @@
               <v-textarea
                 v-model="form.description"
                 label="Описание"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 rows="2"
                 auto-grow
               />
@@ -176,14 +182,14 @@
               <v-text-field
                 v-model.number="form.priority"
                 label="Priority"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 type="number"
                 min="1"
               />
             </v-col>
             <v-col cols="6" md="2" class="d-flex align-center">
-              <v-switch v-model="form.is_active" label="Активен" density="compact" color="success" hide-details />
+              <v-switch v-model="form.is_active" label="Активен" variant="outlined" density="compact" color="success" hide-details />
             </v-col>
           </v-row>
 
@@ -195,16 +201,16 @@
                 v-model="form.target_field"
                 :items="targetFieldOptions"
                 label="Где искать *"
-                density="compact"
                 variant="outlined"
+                density="compact"
               />
             </v-col>
             <v-col cols="12" md="4">
               <v-text-field
                 v-model="form.flags"
                 label="Regex flags"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 placeholder="iu"
               />
             </v-col>
@@ -212,6 +218,7 @@
               <v-switch
                 v-model="form.use_normalized_text"
                 label="Нормализовать текст"
+                variant="outlined"
                 density="compact"
                 color="primary"
                 hide-details
@@ -221,8 +228,8 @@
               <v-textarea
                 v-model="form.pattern"
                 label="Regex паттерн *"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 rows="2"
                 auto-grow
               />
@@ -231,8 +238,8 @@
               <v-text-field
                 v-model="form.example_input"
                 label="Пример входной строки"
-                density="compact"
                 variant="outlined"
+                density="compact"
               />
             </v-col>
           </v-row>
@@ -245,8 +252,8 @@
               <v-textarea
                 v-model="previewTitle"
                 label="test_title"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 rows="2"
                 auto-grow
               />
@@ -255,8 +262,8 @@
               <v-textarea
                 v-model="previewUrl"
                 label="test_url"
-                density="compact"
                 variant="outlined"
+                density="compact"
                 rows="2"
                 auto-grow
               />

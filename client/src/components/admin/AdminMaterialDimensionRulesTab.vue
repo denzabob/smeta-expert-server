@@ -9,6 +9,7 @@
               prepend-inner-icon="mdi-magnify"
               label="Поиск правил"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="debouncedLoad"
@@ -20,6 +21,7 @@
               :items="materialTypeOptions"
               label="Тип материала"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="loadList"
@@ -31,6 +33,7 @@
               :items="statusOptions"
               label="Статус"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="loadList"
@@ -41,6 +44,7 @@
               v-model="sourceFilter"
               label="Источник"
               hide-details
+              variant="outlined"
               density="compact"
               clearable
               @update:model-value="debouncedLoad"
@@ -63,6 +67,7 @@
         :loading="loading"
         :page="page"
         :items-per-page="perPage"
+        variant="outlined"
         density="compact"
         no-data-text="Нет правил"
         @update:page="page = $event; loadList()"
@@ -171,8 +176,8 @@
                 <v-text-field
                   v-model="form.name"
                   label="Название правила *"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   placeholder="plate_auto_rule_01"
                   :bg-color="fieldBg('name')"
                 />
@@ -182,8 +187,8 @@
                   v-model="form.material_type"
                   :items="materialTypeOptions"
                   label="Тип материала"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   clearable
                   :bg-color="fieldBg('material_type')"
                 />
@@ -192,8 +197,8 @@
                 <v-text-field
                   v-model="form.source"
                   label="Источник"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   placeholder="chrome_ext"
                   :bg-color="fieldBg('source')"
                 />
@@ -202,8 +207,8 @@
                 <v-textarea
                   v-model="form.description"
                   label="Описание"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   rows="2"
                   auto-grow
                   placeholder="Для строк с размерами в формате 2750*1830 и толщиной в мм"
@@ -214,6 +219,7 @@
                 <v-switch
                   v-model="form.is_active"
                   label="Правило активно"
+                  variant="outlined"
                   density="compact"
                   color="success"
                   hide-details
@@ -233,8 +239,8 @@
                 <v-text-field
                   v-model="form.example_input"
                   label="Пример названия материала *"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   placeholder="Тэффи 594 КМ 2750*1830 16 мм СФ"
                   :bg-color="fieldBg('example_input')"
                   @blur="analyzeExampleIfNeeded"
@@ -264,8 +270,8 @@
                     v-model="block.role"
                     :items="roleOptions"
                     label="Назначение"
-                    density="compact"
                     variant="outlined"
+                    density="compact"
                     hide-details
                     @update:model-value="syncTechnicalFromSimple"
                   />
@@ -315,8 +321,8 @@
                 <v-textarea
                   v-model="previewTestText"
                   label="Тестовый кейс для проверки"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   rows="2"
                   auto-grow
                   placeholder="Если пусто, будет использован пример строки выше"
@@ -399,8 +405,8 @@
                     <v-text-field
                       v-model.number="form.priority"
                       label="Priority"
-                      density="compact"
                       variant="outlined"
+                      density="compact"
                       type="number"
                       min="1"
                       placeholder="500"
@@ -412,8 +418,8 @@
                      <v-text-field
                        v-model.number="form.confidence"
                        label="Confidence"
-                       density="compact"
                        variant="outlined"
+                       density="compact"
                        type="number"
                        min="0"
                        max="1"
@@ -433,8 +439,8 @@
                      <v-text-field
                        v-model="form.pattern"
                        label="Regex pattern"
-                       density="compact"
                        variant="outlined"
+                       density="compact"
                        placeholder="(\\d{3,5})\\s*(?:x|х|/|\\*)\\s*(\\d{3,5})..."
                        hint="Основной шаблон поиска размеров."
                        persistent-hint
@@ -444,8 +450,8 @@
                      <v-text-field
                        v-model.number="form.capture_length_mm"
                        label="Capture length_mm"
-                       density="compact"
                        variant="outlined"
+                       density="compact"
                        type="number"
                        min="1"
                        placeholder="1"
@@ -455,8 +461,8 @@
                      <v-text-field
                        v-model.number="form.capture_width_mm"
                        label="Capture width_mm"
-                       density="compact"
                        variant="outlined"
+                       density="compact"
                        type="number"
                        min="1"
                        placeholder="2"
@@ -466,8 +472,8 @@
                      <v-text-field
                        v-model.number="form.capture_thickness_mm"
                        label="Capture thickness_mm"
-                       density="compact"
                        variant="outlined"
+                       density="compact"
                        type="number"
                        min="1"
                        placeholder="3"

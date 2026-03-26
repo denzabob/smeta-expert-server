@@ -3009,7 +3009,6 @@ import { finishedProductsApi } from '@/api/finishedProducts'
 import laborWorksApi, { type LaborWork } from '@/api/laborWorks'
 import { revisionRunApi, type RevisionRun, type RevisionRunItem } from '@/api/revisionRun'
 import { consumePrefetchedProject, setProjectsFlashMessage } from '@/router/projectAccess'
-import IosToggle from '@/components/IosToggle.vue'
 import ProfileRatesSection from '@/components/ProfileRatesSection.vue'
 import ProjectSettingsDrawer from '@/components/ProjectSettingsDrawer.vue'
 import ImportPositionsDialog from '@/components/ImportPositionsDialog.vue'
@@ -8431,6 +8430,7 @@ onBeforeUnmount(() => {
   background: rgb(var(--v-theme-surface));
   border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   border-radius: 10px;
+  margin-inline: -5px;
   margin-bottom: 6px;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0);
   transition: box-shadow 0.25s ease;
@@ -9036,29 +9036,31 @@ onBeforeUnmount(() => {
   border-color: #117e43 !important;
 }
 
-.position-toolbar-toggle :deep(.v-btn-group__content) {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
 .position-toolbar-toggle {
   height: auto !important;
   overflow: visible !important;
 }
 
 .position-toolbar-toggle :deep(.v-btn) {
-  border-radius: 8px !important;
+  border-radius: 0 !important;
   border-inline-start-width: 1px !important;
+  border-inline-end-width: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+
+.position-toolbar-toggle :deep(.v-btn:first-child) {
+  border-radius: 8px 0 0 8px !important;
+}
+
+.position-toolbar-toggle :deep(.v-btn:last-child) {
+  border-radius: 0 8px 8px 0 !important;
   border-inline-end-width: 1px !important;
 }
 
-.position-kind-toggle :deep(.v-btn-group__content) {
-  display: flex;
-  flex-wrap: wrap;
-  padding-right: 8px;
-  padding-bottom: 8px;
+.position-toolbar-toggle :deep(.v-btn:only-child) {
+  border-radius: 8px !important;
+  border-inline-end-width: 1px !important;
 }
 
 .position-kind-toggle {
@@ -9069,6 +9071,7 @@ onBeforeUnmount(() => {
 .position-kind-toggle :deep(.v-btn) {
   margin-right: 8px;
   margin-bottom: 8px;
+  border-radius: 8px !important;
   border-inline-start-width: 1px !important;
   border-inline-end-width: 1px !important;
 }

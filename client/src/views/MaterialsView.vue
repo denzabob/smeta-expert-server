@@ -34,49 +34,54 @@
     </PageHeader>
 
     <SectionCard>
-      <v-row class="mb-3" align="center" dense>
-        <v-col cols="12" md="4">
+      <TableToolbar>
+        <template #search>
           <v-text-field
               v-model="search"
               label="Поиск по названию или артикулу"
               prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              density="compact"
               hide-details
               clearable
               @click:clear="search = ''"
           />
-        </v-col>
-        <v-col cols="12" md="3" v-if="!lockType">
+        </template>
+        <template #filters>
           <v-select
+              v-if="!lockType"
               v-model="typeFilter"
               :items="typeOptions"
               item-title="label"
               item-value="value"
               label="Тип"
+              variant="outlined"
+              density="compact"
               clearable
               hide-details
           />
-        </v-col>
-        <v-col cols="12" md="2">
           <v-select
               v-model="unitFilter"
               :items="unitOptions"
               label="Ед. изм."
+              variant="outlined"
+              density="compact"
               clearable
               hide-details
           />
-        </v-col>
-        <v-col cols="12" md="3">
           <v-select
               v-model="originFilter"
               :items="originOptions"
               item-title="label"
               item-value="value"
               label="Источник"
+              variant="outlined"
+              density="compact"
               clearable
               hide-details
           />
-        </v-col>
-      </v-row>
+        </template>
+      </TableToolbar>
 
         <v-data-table
           :headers="dynamicHeaders"
@@ -240,15 +245,17 @@
 
         <!-- Нет данных -->
         <template #no-data>
-          <div class="text-center pa-8">
-            <div class="text-subtitle-1 mb-2">Нет материалов</div>
-            <div class="text-medium-emphasis mb-4">
-              Добавьте материал вручную или запустите парсер
-            </div>
-            <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreateDialog">
-              Добавить материал
-            </v-btn>
-          </div>
+          <EmptyState
+            icon="mdi-package-variant"
+            title="Нет материалов"
+            description="Добавьте материал вручную или запустите парсер"
+          >
+            <template #actions>
+              <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreateDialog">
+                Добавить материал
+              </v-btn>
+            </template>
+          </EmptyState>
         </template>
       </v-data-table>
     </SectionCard>
@@ -561,9 +568,10 @@
               <span v-else>—</span>
             </template>
             <template #no-data>
-              <div class="text-center pa-4 text-medium-emphasis">
-                Нет записей истории цен
-              </div>
+              <EmptyState
+                icon="mdi-history"
+                title="Нет записей истории цен"
+              />
             </template>
           </v-data-table>
         </v-card-text>
@@ -591,6 +599,8 @@ import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
+import EmptyState from '@/components/layout/EmptyState.vue'
 import PriceImportDialog from '@/components/PriceImportDialog.vue'
 
 const props = withDefaults(defineProps<{

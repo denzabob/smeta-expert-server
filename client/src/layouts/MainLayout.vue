@@ -38,7 +38,7 @@
     <!-- Основной контент -->
     <v-main>
       <!-- App Bar -->
-      <v-app-bar elevation="2" color="surface">
+      <v-app-bar elevation="0" color="surface" border="b">
         <!-- Кнопка меню на мобильных -->
         <v-app-bar-nav-icon @click="drawer = !drawer" class="d-lg-none"></v-app-bar-nav-icon>
 

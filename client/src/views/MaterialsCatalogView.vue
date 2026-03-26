@@ -32,6 +32,8 @@
             v-model="searchInput"
             label="Поиск по названию или артикулу"
             prepend-inner-icon="mdi-magnify"
+            variant="outlined"
+            density="compact"
             hide-details
             clearable
             @click:clear="searchInput = ''"
@@ -45,6 +47,8 @@
             item-title="label"
             item-value="value"
             label="Тип"
+            variant="outlined"
+            density="compact"
             clearable
             hide-details
           />
@@ -56,6 +60,8 @@
             item-title="label"
             item-value="value"
             label="Регион"
+            variant="outlined"
+            density="compact"
             clearable
             hide-details
           />
@@ -83,6 +89,8 @@
               item-title="label"
               item-value="value"
               label="Надежность"
+              variant="outlined"
+              density="compact"
               clearable
               hide-details
             />
@@ -94,6 +102,8 @@
               item-title="label"
               item-value="value"
               label="Актуальность цены"
+              variant="outlined"
+              density="compact"
               clearable
               hide-details
             />

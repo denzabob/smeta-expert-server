@@ -1,18 +1,15 @@
 <template>
-  <div class="rules-view">
-    <!-- Header -->
-    <div class="view-header">
-      <div>
-        <h2 class="text-h5 font-weight-medium mb-1">Правила распознавания</h2>
-        <p class="text-body-2 text-medium-emphasis">
-          Управление правилами парсинга размеров и типов материалов
-        </p>
-      </div>
-      <v-spacer />
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreateDialog">
-        Новое правило
-      </v-btn>
-    </div>
+  <PageContainer>
+    <PageHeader
+      title="Правила распознавания"
+      subtitle="Управление правилами парсинга размеров и типов материалов"
+    >
+      <template #actions>
+        <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreateDialog">
+          Новое правило
+        </v-btn>
+      </template>
+    </PageHeader>
 
     <!-- Rule type toggle -->
     <v-btn-toggle
@@ -46,6 +43,7 @@
                 prepend-inner-icon="mdi-magnify"
                 label="Поиск правил"
                 hide-details
+                variant="outlined"
                 density="compact"
                 clearable
                 @update:model-value="debouncedLoadDimensions"
@@ -57,6 +55,7 @@
                 :items="materialTypeOptions"
                 label="Тип материала"
                 hide-details
+                variant="outlined"
                 density="compact"
                 clearable
                 @update:model-value="loadDimensionRules"
@@ -68,6 +67,7 @@
                 :items="statusOptions"
                 label="Статус"
                 hide-details
+                variant="outlined"
                 density="compact"
                 clearable
                 @update:model-value="loadDimensionRules"
@@ -160,6 +160,7 @@
                 prepend-inner-icon="mdi-magnify"
                 label="Поиск паттернов"
                 hide-details
+                variant="outlined"
                 density="compact"
                 clearable
                 @update:model-value="debouncedLoadTypes"
@@ -171,6 +172,7 @@
                 :items="materialTypeOptions"
                 label="Тип материала"
                 hide-details
+                variant="outlined"
                 density="compact"
                 clearable
                 @update:model-value="loadTypePatterns"
@@ -182,6 +184,7 @@
                 :items="statusOptions"
                 label="Статус"
                 hide-details
+                variant="outlined"
                 density="compact"
                 clearable
                 @update:model-value="loadTypePatterns"
@@ -289,8 +292,8 @@
                 <v-text-field
                   v-model="typeForm.name"
                   label="Название *"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   placeholder="plate_ldsp_pattern"
                 />
               </v-col>
@@ -299,16 +302,16 @@
                   v-model="typeForm.material_type"
                   :items="materialTypeOptions"
                   label="Тип материала *"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                 />
               </v-col>
               <v-col cols="12" md="8">
                 <v-text-field
                   v-model="typeForm.pattern"
                   label="Regex паттерн *"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   placeholder="(?:ЛДСП|КДСП)"
                 />
               </v-col>
@@ -317,16 +320,16 @@
                   v-model="typeForm.target_field"
                   :items="[{ title: 'Название', value: 'title' }, { title: 'URL', value: 'url' }, { title: 'Оба', value: 'title_or_url' }]"
                   label="Поле для поиска"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                 />
               </v-col>
               <v-col cols="12" md="8">
                 <v-textarea
                   v-model="typeForm.description"
                   label="Описание"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                   rows="2"
                 />
               </v-col>
@@ -335,8 +338,8 @@
                   v-model.number="typeForm.priority"
                   label="Приоритет"
                   type="number"
-                  density="compact"
                   variant="outlined"
+                  density="compact"
                 />
               </v-col>
               <v-col cols="12">
@@ -378,7 +381,7 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </div>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -390,6 +393,8 @@ import {
   type MaterialDimensionMaterialType
 } from '@/api/materialDimensions'
 import AdminMaterialDimensionRulesTab from '@/components/admin/AdminMaterialDimensionRulesTab.vue'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
 
 // Toggle between dimension rules and type patterns
 const ruleType = ref<'dimensions' | 'types'>('dimensions')
@@ -671,16 +676,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.rules-view {
-  height: 100%;
-}
-
-.view-header {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 20px;
-}
-
 .gap-1 {
   gap: 4px;
 }

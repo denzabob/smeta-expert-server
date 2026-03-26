@@ -28,8 +28,8 @@
     </PageHeader>
 
     <SectionCard>
-      <v-row class="mb-3" align="center" dense>
-        <v-col cols="12" md="6">
+      <TableToolbar>
+        <template #search>
           <v-text-field
             v-model="search"
             label="Поиск по названию или контактам"
@@ -40,8 +40,8 @@
             clearable
             @click:clear="search = ''"
           />
-        </v-col>
-        <v-col cols="12" md="3">
+        </template>
+        <template #filters>
           <v-select
             v-model="statusFilter"
             :items="statusOptions"
@@ -53,15 +53,13 @@
             clearable
             hide-details
           />
-        </v-col>
-        <v-col cols="12" md="3">
-          <v-btn-toggle v-model="typeFilter" color="primary" density="compact" class="w-100">
-            <v-btn :value="null" size="small" class="flex-grow-1">Все</v-btn>
-            <v-btn value="operations" size="small" class="flex-grow-1">Операции</v-btn>
-            <v-btn value="materials" size="small" class="flex-grow-1">Материалы</v-btn>
+          <v-btn-toggle v-model="typeFilter" color="primary" density="compact">
+            <v-btn :value="null" size="small">Все</v-btn>
+            <v-btn value="operations" size="small">Операции</v-btn>
+            <v-btn value="materials" size="small">Материалы</v-btn>
           </v-btn-toggle>
-        </v-col>
-      </v-row>
+        </template>
+      </TableToolbar>
 
       <v-data-table
         :headers="headers"
@@ -272,6 +270,7 @@ import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
 
 // State
 const loading = ref(false)

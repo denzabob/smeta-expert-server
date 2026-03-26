@@ -103,6 +103,8 @@
             v-model="search"
             label="Поиск по названию или артикулу"
             prepend-inner-icon="mdi-magnify"
+            variant="outlined"
+            density="compact"
             hide-details
             clearable
             @click:clear="search = ''"
@@ -115,6 +117,8 @@
             item-title="label"
             item-value="value"
             label="Тип позиции"
+            variant="outlined"
+            density="compact"
             clearable
             hide-details
           />
@@ -126,6 +130,8 @@
             item-title="label"
             item-value="value"
             label="Привязка"
+            variant="outlined"
+            density="compact"
             hide-details
           />
         </v-col>
