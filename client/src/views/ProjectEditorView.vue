@@ -119,172 +119,175 @@
         <v-chip size="small" variant="tonal" color="deep-purple">Фасады: {{ positions.filter(p => p.kind === 'facade').length }}</v-chip>
         <v-chip v-if="positionsWithoutMaterial > 0" size="small" variant="tonal" color="warning">Без материала: {{ positionsWithoutMaterial }}</v-chip>
         <v-chip v-if="positionsWithPriceIssues > 0" size="small" variant="tonal" color="error">Без цен: {{ positionsWithPriceIssues }}</v-chip>
-        <v-divider vertical class="mx-1" />
-        <v-btn size="x-small" variant="tonal" prepend-icon="mdi-checkbox-multiple-outline" @click="selectPositionsByKind('panel')" :disabled="positions.filter(p => p.kind === 'panel').length === 0">Выбрать панели</v-btn>
-        <v-btn size="x-small" variant="tonal" color="deep-purple" prepend-icon="mdi-checkbox-multiple-outline" @click="selectPositionsByKind('facade')" :disabled="positions.filter(p => p.kind === 'facade').length === 0">Выбрать фасады</v-btn>
       </div>
-        <v-card-title>Позиции</v-card-title>
-        <div class="toolbar-actions">
-          <v-btn prepend-icon="mdi-plus" @click="openPositionDialog">Добавить позицию</v-btn>
-          <v-btn prepend-icon="mdi-file-import" variant="outlined" class="excel-import-btn" @click="importDialog = true">Импорт из Excel</v-btn>
-        </div>
-        
-        <!-- Toolbar с пресетами и настройками отображения -->
-        <div class="d-flex align-center gap-2 mt-3 flex-wrap">
-          <!-- Пресеты колонок -->
-          <v-btn-toggle
-            v-model="columnPreset"
-            mandatory
-            density="compact"
-            color="primary"
-            variant="outlined"
-            class="position-toolbar-toggle"
-          >
-            <v-btn v-for="preset in columnPresets" :key="preset.value" :value="preset.value" size="small">
-              <v-icon start size="small">{{ preset.icon }}</v-icon>
-              {{ preset.label }}
-            </v-btn>
-          </v-btn-toggle>
-        </div>
 
-        <!-- Bulk actions toolbar -->
-        <v-slide-y-transition>
-          <v-card v-if="selectedPositionIds.length > 0" class="bulk-toolbar mt-3" variant="outlined">
-            <v-card-text class="py-2">
-              <div class="d-flex align-center flex-wrap bulk-toolbar-row">
-                <v-chip size="small" color="primary" variant="tonal">
-                  Выбрано: {{ selectedPositionIds.length }}
-                </v-chip>
-                <v-btn size="small" variant="text" @click="selectAllVisiblePositions">Выбрать все</v-btn>
-                <v-btn size="small" variant="text" @click="clearSelection">Снять выбор</v-btn>
-                <v-spacer />
-                <div class="d-flex align-center bulk-actions-row">
-                  <v-select
-                    v-model="bulkAction"
-                    :items="bulkActionItems"
-                    label="Действия"
-                    density="compact"
-                    variant="outlined"
-                    hide-details
-                  />
-                  <v-btn-toggle
-                    v-model="bulkApplyMode"
-                    density="compact"
-                    mandatory
-                    color="primary"
-                    variant="outlined"
-                  >
-                    <v-btn value="strict" size="small">Строго</v-btn>
-                    <v-btn value="partial" size="small">Частично</v-btn>
-                  </v-btn-toggle>
-                  <template v-if="bulkAction === 'replace_material'">
-                    <v-autocomplete
-                      v-model="bulkMaterialId"
-                      :items="materialsPlate"
-                      item-title="name"
-                      item-value="id"
-                      label="Материал"
-                      density="compact"
-                      variant="outlined"
-                      hide-details
-                    />
+        <!-- Sticky sentinel: becomes unobsered when toolbar sticks -->
+        <div ref="toolbarSentinelRef" class="toolbar-sentinel" />
+
+        <!-- Unified Positions Toolbar -->
+        <div class="positions-unified-toolbar" ref="positionsToolbarRef">
+          <!-- Default mode: no rows selected -->
+          <template v-if="selectedPositionIds.length === 0">
+            <div class="toolbar-zone toolbar-zone--left">
+              <v-btn size="small" prepend-icon="mdi-plus" @click="openPositionDialog">Добавить позицию</v-btn>
+              <v-btn size="small" prepend-icon="mdi-file-import" variant="outlined" class="excel-import-btn" @click="importDialog = true">Импорт из Excel</v-btn>
+            </div>
+            <div class="toolbar-zone toolbar-zone--middle">
+              <v-btn size="x-small" variant="tonal" prepend-icon="mdi-checkbox-multiple-outline" @click="selectPositionsByKind('panel')" :disabled="positions.filter(p => p.kind === 'panel').length === 0">Выбрать панели</v-btn>
+              <v-btn size="x-small" variant="tonal" color="deep-purple" prepend-icon="mdi-checkbox-multiple-outline" @click="selectPositionsByKind('facade')" :disabled="positions.filter(p => p.kind === 'facade').length === 0">Выбрать фасады</v-btn>
+            </div>
+            <div class="toolbar-zone toolbar-zone--right">
+              <v-btn-toggle
+                v-model="columnPreset"
+                mandatory
+                density="compact"
+                color="primary"
+                variant="outlined"
+                class="position-toolbar-toggle"
+              >
+                <v-btn v-for="preset in columnPresets" :key="preset.value" :value="preset.value" size="small">
+                  <v-icon start size="small">{{ preset.icon }}</v-icon>
+                  {{ preset.label }}
+                </v-btn>
+              </v-btn-toggle>
+            </div>
+          </template>
+
+          <!-- Bulk mode: rows selected -->
+          <template v-else>
+            <div class="toolbar-zone toolbar-zone--left">
+              <v-chip size="small" color="primary" variant="tonal">
+                Выбрано: {{ selectedPositionIds.length }}
+              </v-chip>
+              <v-btn size="small" variant="text" @click="selectAllVisiblePositions">Выбрать все</v-btn>
+              <v-btn size="small" variant="text" @click="clearSelection">Снять выбор</v-btn>
+            </div>
+            <div class="toolbar-zone toolbar-zone--right bulk-actions-row">
+              <v-select
+                v-model="bulkAction"
+                :items="bulkActionItems"
+                label="Действия"
+                density="compact"
+                variant="outlined"
+                hide-details
+              />
+              <v-btn-toggle
+                v-model="bulkApplyMode"
+                density="compact"
+                mandatory
+                color="primary"
+                variant="outlined"
+              >
+                <v-btn value="strict" size="small">Строго</v-btn>
+                <v-btn value="partial" size="small">Частично</v-btn>
+              </v-btn-toggle>
+              <template v-if="bulkAction === 'replace_material'">
+                <v-autocomplete
+                  v-model="bulkMaterialId"
+                  :items="materialsPlate"
+                  item-title="name"
+                  item-value="id"
+                  label="Материал"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                />
+              </template>
+              <template v-else-if="bulkAction === 'replace_edge'">
+                <v-autocomplete
+                  v-model="bulkEdgeMaterialId"
+                  :items="materialsEdge"
+                  item-title="name"
+                  item-value="id"
+                  label="Кромка"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                />
+              </template>
+              <template v-else-if="bulkAction === 'set_edge_scheme'">
+                <v-select
+                  v-model="bulkEdgeScheme"
+                  :items="edgeSchemeOptions"
+                  item-title="label"
+                  item-value="value"
+                  label="Обработка торцов"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                />
+              </template>
+              <template v-else-if="bulkAction === 'clear_field'">
+                <v-select
+                  v-model="bulkClearField"
+                  :items="bulkClearFieldItems"
+                  label="Поле"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                />
+              </template>
+              <template v-else-if="bulkAction === 'replace_facade_material'">
+                <v-autocomplete
+                  v-model="bulkFacadeMaterialId"
+                  :items="facadeMaterials"
+                  item-title="name"
+                  item-value="id"
+                  label="Фасад"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  :loading="loadingFacades"
+                  @update:search="onFacadeSearch"
+                  no-filter
+                >
+                  <template #item="{ props: itemProps, item }">
+                    <v-list-item v-bind="itemProps">
+                      <v-list-item-subtitle>
+                        {{ item.raw.thickness_mm }}мм | {{ item.raw.finish_name || '—' }}
+                        <span v-if="item.raw.price_per_m2" class="text-green"> | {{ formatNumber(item.raw.price_per_m2, 2) }} ₽/м²</span>
+                      </v-list-item-subtitle>
+                    </v-list-item>
                   </template>
-                  <template v-else-if="bulkAction === 'replace_edge'">
-                    <v-autocomplete
-                      v-model="bulkEdgeMaterialId"
-                      :items="materialsEdge"
-                      item-title="name"
-                      item-value="id"
-                      label="Кромка"
-                      density="compact"
-                      variant="outlined"
-                      hide-details
-                    />
-                  </template>
-                  <template v-else-if="bulkAction === 'set_edge_scheme'">
-                    <v-select
-                      v-model="bulkEdgeScheme"
-                      :items="edgeSchemeOptions"
-                      item-title="label"
-                      item-value="value"
-                      label="Обработка торцов"
-                      density="compact"
-                      variant="outlined"
-                      hide-details
-                    />
-                  </template>
-                  <template v-else-if="bulkAction === 'clear_field'">
-                    <v-select
-                      v-model="bulkClearField"
-                      :items="bulkClearFieldItems"
-                      label="Поле"
-                      density="compact"
-                      variant="outlined"
-                      hide-details
-                    />
-                  </template>
-                  <template v-else-if="bulkAction === 'replace_facade_material'">
-                    <v-autocomplete
-                      v-model="bulkFacadeMaterialId"
-                      :items="facadeMaterials"
-                      item-title="name"
-                      item-value="id"
-                      label="Фасад"
-                      density="compact"
-                      variant="outlined"
-                      hide-details
-                      :loading="loadingFacades"
-                      @update:search="onFacadeSearch"
-                      no-filter
-                    >
-                      <template #item="{ props: itemProps, item }">
-                        <v-list-item v-bind="itemProps">
-                          <v-list-item-subtitle>
-                            {{ item.raw.thickness_mm }}мм | {{ item.raw.finish_name || '—' }}
-                            <span v-if="item.raw.price_per_m2" class="text-green"> | {{ formatNumber(item.raw.price_per_m2, 2) }} ₽/м²</span>
-                          </v-list-item-subtitle>
-                        </v-list-item>
-                      </template>
-                    </v-autocomplete>
-                    <v-select
-                      v-model="bulkPriceMethod"
-                      :items="priceMethodOptions"
-                      item-title="title"
-                      item-value="value"
-                      label="Тип расчёта"
-                      density="compact"
-                      variant="outlined"
-                      hide-details
-                      class="ml-2"
-                      style="max-width: 200px;"
-                    />
-                  </template>
-                  <v-chip
-                    v-if="bulkAction"
-                    size="small"
-                    :color="bulkSkippedCount > 0 ? (bulkApplyMode === 'strict' ? 'warning' : 'info') : 'success'"
-                    variant="tonal"
-                  >
-                    Доступно: {{ bulkApplicableCount }} / {{ selectedPositionIds.length }}
-                  </v-chip>
-                  <v-btn
-                    color="primary"
-                    :disabled="!bulkActionReady || bulkApplicableCount === 0 || (bulkApplyMode === 'strict' && bulkSkippedCount > 0)"
-                    @click="confirmBulkDialog = true"
-                    class="ml-2"
-                  >
-                    Применить
-                  </v-btn>
-                </div>
-              </div>
-              <div v-if="bulkAction && bulkSkippedCount > 0" class="text-caption text-medium-emphasis mt-2">
-                {{ bulkApplyMode === 'strict'
-                  ? `В строгом режиме операция заблокирована: несовместимых позиций ${bulkSkippedCount}.`
-                  : `В частичном режиме несовместимые позиции будут пропущены: ${bulkSkippedCount}.` }}
-              </div>
-            </v-card-text>
-          </v-card>
-        </v-slide-y-transition>
+                </v-autocomplete>
+                <v-select
+                  v-model="bulkPriceMethod"
+                  :items="priceMethodOptions"
+                  item-title="title"
+                  item-value="value"
+                  label="Тип расчёта"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  style="max-width: 200px;"
+                />
+              </template>
+              <v-chip
+                v-if="bulkAction"
+                size="small"
+                :color="bulkSkippedCount > 0 ? (bulkApplyMode === 'strict' ? 'warning' : 'info') : 'success'"
+                variant="tonal"
+              >
+                Доступно: {{ bulkApplicableCount }} / {{ selectedPositionIds.length }}
+              </v-chip>
+              <v-btn
+                color="primary"
+                size="small"
+                :disabled="!bulkActionReady || bulkApplicableCount === 0 || (bulkApplyMode === 'strict' && bulkSkippedCount > 0)"
+                @click="confirmBulkDialog = true"
+              >
+                Применить
+              </v-btn>
+            </div>
+          </template>
+
+          <!-- Bulk mode: skip info -->
+          <div v-if="selectedPositionIds.length > 0 && bulkAction && bulkSkippedCount > 0" class="toolbar-bulk-hint text-caption text-medium-emphasis">
+            {{ bulkApplyMode === 'strict'
+              ? `В строгом режиме операция заблокирована: несовместимых позиций ${bulkSkippedCount}.`
+              : `В частичном режиме несовместимые позиции будут пропущены: ${bulkSkippedCount}.` }}
+          </div>
+        </div>
         <div
           class="positions-table-wrap"
           :class="{ 'density-comfortable': tableDensity === 'comfortable' }"
@@ -305,7 +308,7 @@
             fixed-header
             class="positions-table positions-table-hover"
             :loading="loadingStates.positions"
-            :header-props="{ style: 'z-index: 100; position: sticky; top: 0px;' }"
+
             :items-per-page="-1"
             :hide-default-footer="true"
           >
@@ -3345,26 +3348,11 @@ const drawerDimensionCalc = ref<{ width: DimensionCalcState; length: DimensionCa
 })
 
 const positionsTableWrap = ref<HTMLElement | null>(null)
+const positionsToolbarRef = ref<HTMLElement | null>(null)
+const toolbarSentinelRef = ref<HTMLElement | null>(null)
+let toolbarSentinelObserver: IntersectionObserver | null = null
 
-const applyHeaderZIndex = () => {
-  nextTick(() => {
-    const wrap = positionsTableWrap.value
-    if (!wrap) return
-    const thead = wrap.querySelector('table thead') as HTMLElement | null
-    if (thead) {
-      thead.style.zIndex = '100'
-      thead.style.position = 'sticky'
-      thead.style.top = '0px'
-    }
-    const ths = wrap.querySelectorAll('table thead th')
-    ths.forEach((th) => {
-      const el = th as HTMLElement
-      el.style.zIndex = '100'
-      el.style.position = 'sticky'
-      el.style.top = '0px'
-    })
-  })
-}
+
 
 // === Пресеты колонок и настройки отображения ===
 
@@ -3374,10 +3362,6 @@ const tableDensity = ref<'compact' | 'comfortable'>(
 )
 watch(tableDensity, (val) => {
   localStorage.setItem('positions_table_density', val)
-})
-
-onMounted(() => {
-  applyHeaderZIndex()
 })
 
 // Текущий пресет колонок (сохраняется в localStorage)
@@ -3435,10 +3419,6 @@ const currentPositionHeaders = computed(() => {
   const columns = presetColumns[preset] ?? presetColumns.basic ?? []
   return columns.map(key => allPositionColumns[key as keyof typeof allPositionColumns]).filter(Boolean)
 })
-
-watch([currentPositionHeaders, positions], () => {
-  applyHeaderZIndex()
-}, { deep: true })
 
 // === Inline Row Actions (hover-панель действий) ===
 const hoveredPositionId = ref<number | null>(null)
@@ -8248,6 +8228,23 @@ onMounted(async () => {
 
   // Плавно показываем готовый интерфейс
   loadingReady.value = true
+
+  // ResizeObserver & IntersectionObserver for toolbar
+  nextTick(() => {
+    const el = positionsToolbarRef.value
+
+    // IntersectionObserver on sentinel to toggle shadow when toolbar is stuck
+    const sentinel = toolbarSentinelRef.value
+    if (sentinel && el) {
+      toolbarSentinelObserver = new IntersectionObserver(
+        ([entry]) => {
+          el.classList.toggle('is-stuck', !entry.isIntersecting)
+        },
+        { root: sentinel.closest('.workspace-module-area'), threshold: 0 }
+      )
+      toolbarSentinelObserver.observe(sentinel)
+    }
+  })
 })
 
 watch(manualCloseDialog, (isOpen) => {
@@ -8265,6 +8262,10 @@ onBeforeUnmount(() => {
   // Восстанавливаем сохранённое состояние sidebar
   window.dispatchEvent(new CustomEvent('app-sidebar:restore'))
 
+  if (toolbarSentinelObserver) {
+    toolbarSentinelObserver.disconnect()
+    toolbarSentinelObserver = null
+  }
   if (fittingSearchTimeout) {
     clearTimeout(fittingSearchTimeout)
   }
@@ -8407,9 +8408,64 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 16px;
+  margin-bottom: 0;
   padding: 8px 0;
 }
+
+.toolbar-sentinel {
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+/* === Unified Positions Toolbar === */
+.positions-unified-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 102;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0);
+  transition: box-shadow 0.25s ease;
+}
+
+.positions-unified-toolbar.is-stuck {
+  box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
+  border-color: rgba(var(--v-theme-on-surface), 0.16);
+}
+
+.toolbar-zone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.toolbar-zone--left {
+  flex-shrink: 0;
+}
+
+.toolbar-zone--middle {
+  flex-shrink: 0;
+}
+
+.toolbar-zone--right {
+  margin-left: auto;
+}
+
+.toolbar-bulk-hint {
+  width: 100%;
+  padding: 2px 0 0;
+}
+
+
 
 @media (max-width: 960px) {
   .workspace-module-area {
@@ -8963,22 +9019,16 @@ onBeforeUnmount(() => {
   height: auto !important;
 }
 
-.bulk-toolbar-row {
-  gap: 12px;
-}
-
 .bulk-actions-row {
+  display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  column-gap: 12px;
-  row-gap: 10px;
-}
-
-.bulk-actions-row > * {
-  margin: 0 !important;
+  column-gap: 10px;
+  row-gap: 8px;
 }
 
 .bulk-actions-row :deep(.v-input) {
-  min-width: 190px;
+  min-width: 180px;
 }
 
 .excel-import-btn {
@@ -8990,8 +9040,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  padding-right: 8px;
-  padding-bottom: 8px;
+  gap: 6px;
 }
 
 .position-toolbar-toggle {
@@ -9000,9 +9049,7 @@ onBeforeUnmount(() => {
 }
 
 .position-toolbar-toggle :deep(.v-btn) {
-  border-radius: 10px !important;
-  margin-right: 8px;
-  margin-bottom: 8px;
+  border-radius: 8px !important;
   border-inline-start-width: 1px !important;
   border-inline-end-width: 1px !important;
 }

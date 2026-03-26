@@ -233,6 +233,32 @@
       white-space: nowrap;
     }
 
+    /* --- Compact mode: summary card --- */
+    .summary-wrap.compact {
+      padding: 2.5mm 3mm;
+      margin-bottom: 3.5mm;
+    }
+    .summary-wrap.compact .summary-title {
+      font-size: 9.5pt;
+      margin-bottom: 2mm;
+    }
+    .summary-wrap.compact .summary-table {
+      font-size: 9pt;
+    }
+    .summary-wrap.compact .summary-table td {
+      padding: 1.2mm 0;
+    }
+    .summary-wrap.compact .summary-grand {
+      margin-top: 2.5mm;
+      padding-top: 2.5mm;
+    }
+    .summary-wrap.compact .grand-label {
+      font-size: 10pt;
+    }
+    .summary-wrap.compact .grand-value {
+      font-size: 11.5pt;
+    }
+
     /* ---------------- Cards / detail blocks ---------------- */
     .card {
       border: 1px solid #d7d7d7;
@@ -385,6 +411,40 @@
       font-weight: 900;
       font-family: "DejaVu Sans Mono","Courier New",monospace;
       white-space: nowrap;
+    }
+
+    /* --- Compact mode: totals section --- */
+    .totals-section.compact {
+      padding: 3.5mm 4mm;
+      margin-top: 4mm;
+    }
+    .totals-section.compact .totals-head {
+      margin-bottom: 1.5mm;
+    }
+    .totals-section.compact .totals-head .title {
+      font-size: 9.5pt;
+    }
+    .totals-section.compact .totals-grid {
+      margin-top: 2mm;
+    }
+    .totals-section.compact .total-row {
+      padding: 1.4mm 0;
+      font-size: 9pt;
+    }
+    .totals-section.compact .total-final {
+      margin-top: 2.5mm;
+      padding-top: 2.5mm;
+    }
+    .totals-section.compact .total-final .label {
+      font-size: 10pt;
+    }
+    .totals-section.compact .total-final .value {
+      font-size: 12pt;
+    }
+    .totals-section.compact .total-words {
+      margin-top: 2.5mm;
+      font-size: 9.5pt;
+      line-height: 1.4;
     }
 
     /* Small tables */
@@ -585,8 +645,34 @@ a { color: inherit; text-decoration: underline; }
 </div>
 
 
+    {{--
+      Compact-mode heuristic for semantic summary blocks.
+      DomPDF cannot detect remaining page space, so we estimate whether
+      the document is "heavy" and likely to push summary blocks near
+      page boundaries. When total content row count is high, the final
+      totals section (rendered after all tables) gets compact mode.
+      The summary card at the top of the document rarely needs it,
+      but we respect an explicit flag if passed from the controller.
+    --}}
+    @php
+      $rowCount = count($report['positions'] ?? [])
+                + count($report['plates'] ?? [])
+                + count($report['edges'] ?? [])
+                + count($report['facades'] ?? [])
+                + count($report['labor_works'] ?? [])
+                + count($report['operations'] ?? [])
+                + count($report['fittings'] ?? [])
+                + count($report['expenses'] ?? []);
+
+      // Summary card (top of page) — compact only when explicitly requested
+      $summaryCompact = !empty($report['compact_summary']) || ($rowCount > 80);
+
+      // Final totals (after all tables) — compact when the document is content-heavy
+      $totalsCompact  = !empty($report['compact_totals'])  || ($rowCount > 35);
+    @endphp
+
     <!-- === 1A. СВОДНАЯ ТАБЛИЦА ИТОГОВ === -->
-    <div class="summary-wrap">
+    <div class="summary-wrap{{ $summaryCompact ? ' compact' : '' }}">
       <div class="summary-title">Сводные итоги</div>
 
       <table class="summary-table table-nobreak">
@@ -1360,7 +1446,7 @@ a { color: inherit; text-decoration: underline; }
     @endif
 
     <!-- === 8. ИТОГИ === -->
-    <div class="totals-section">
+    <div class="totals-section{{ $totalsCompact ? ' compact' : '' }}">
       <div class="totals-head">
         <div class="title">Итоговая стоимость</div>
         <div class="meta">Валюта: руб.</div>
@@ -1400,7 +1486,7 @@ a { color: inherit; text-decoration: underline; }
       </div>
 
       @if(!empty($report['totals']['grand_total']))
-        <div style="margin-top: 4mm; font-size: 10pt; line-height: 1.6; color: #222;">
+        <div class="total-words" style="margin-top: 4mm; font-size: 10pt; line-height: 1.6; color: #222;">
           <strong>Прописью:</strong> {{ ucfirst(\App\Helpers\NumberToWords::convert($report['totals']['grand_total'])) }}.
         </div>
       @endif
