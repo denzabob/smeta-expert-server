@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Services\LLM\CircuitBreaker;
 use App\Services\LLM\Contracts\LLMProviderInterface;
+use App\Services\LLM\LLMErrorClassifier;
+use App\Services\LLM\LLMProviderStateService;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
 use App\Services\LLM\Parsing\LLMJsonParser;
@@ -32,11 +34,23 @@ class LLMServiceProvider extends ServiceProvider
         // Singleton for prompt builder (stateless)
         $this->app->singleton(DecompositionPromptBuilder::class);
 
+        // Singleton for error classifier (stateless)
+        $this->app->singleton(LLMErrorClassifier::class);
+
+        // Singleton for provider state service
+        $this->app->singleton(LLMProviderStateService::class, function ($app) {
+            return new LLMProviderStateService(
+                $app->make(LLMSettingsRepository::class),
+                $app->make(CircuitBreaker::class),
+            );
+        });
+
         // Singleton for LLM Router
         $this->app->singleton(LLMRouter::class, function ($app) {
             return new LLMRouter(
                 $app->make(CircuitBreaker::class),
-                $app->make(LLMSettingsRepository::class)
+                $app->make(LLMSettingsRepository::class),
+                $app->make(LLMErrorClassifier::class),
             );
         });
 

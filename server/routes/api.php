@@ -453,6 +453,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // ========== Admin LLM Settings API ==========
     Route::get('admin/llm-providers', [AdminLLMController::class, 'providers']);
+    Route::get('admin/llm-provider-states', [AdminLLMController::class, 'providerStates']);
     Route::get('admin/llm-settings', [AdminLLMController::class, 'index']);
     Route::put('admin/llm-settings', [AdminLLMController::class, 'update']);
     Route::post('admin/llm-test', [AdminLLMController::class, 'test']);

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\LLM\CircuitBreaker;
+use App\Services\LLM\LLMProviderStateService;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
 use App\Services\LLM\ProviderRegistry;
@@ -22,7 +23,8 @@ class AdminLLMController extends Controller
     public function __construct(
         private LLMSettingsRepository $settings,
         private LLMRouter $router,
-        private CircuitBreaker $circuitBreaker
+        private CircuitBreaker $circuitBreaker,
+        private LLMProviderStateService $stateService,
     ) {}
 
     /**
@@ -36,6 +38,27 @@ class AdminLLMController extends Controller
 
         return response()->json([
             'providers' => ProviderRegistry::getForUI(),
+        ]);
+    }
+
+    /**
+     * Агрегированное состояние всех LLM-провайдеров.
+     *
+     * GET /api/admin/llm-provider-states
+     */
+    public function providerStates(Request $request): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        $states = $this->stateService->getAllStates();
+        $validation = $this->stateService->validateConfiguration();
+        $executionPlan = $this->stateService->getExecutionPlan();
+
+        return response()->json([
+            'providers' => array_map(fn($s) => $s->toArray(), $states),
+            'execution_plan' => $executionPlan,
+            'mode' => $this->settings->getMode(),
+            'validation' => $validation,
         ]);
     }
 
@@ -94,7 +117,20 @@ class AdminLLMController extends Controller
 
         $validated = $request->validate($rules);
 
+        // Backend validation: primary не должен быть в fallback_providers
+        if (isset($validated['primary_provider'], $validated['fallback_providers'])) {
+            if (in_array($validated['primary_provider'], $validated['fallback_providers'], true)) {
+                return response()->json([
+                    'message' => 'Fallback list must not contain the primary provider.',
+                    'errors' => ['fallback_providers' => ['Primary provider cannot be in fallback list.']],
+                ], 422);
+            }
+        }
+
         $this->settings->saveFromAdmin($validated);
+
+        // Post-save validation
+        $validation = $this->stateService->validateConfiguration();
 
         Log::info('LLM settings updated by admin', [
             'user_id' => $request->user()->id,
@@ -104,6 +140,7 @@ class AdminLLMController extends Controller
         return response()->json([
             'message' => 'Settings updated successfully',
             'settings' => $this->settings->getAllForAdmin(),
+            'validation' => $validation,
         ]);
     }
 
@@ -132,6 +169,7 @@ class AdminLLMController extends Controller
 
         return response()->json([
             'results' => $results,
+            'execution_plan' => $this->stateService->getExecutionPlan(),
             'tested_at' => now()->toIso8601String(),
         ]);
     }

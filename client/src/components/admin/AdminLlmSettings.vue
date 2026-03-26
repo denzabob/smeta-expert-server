@@ -2,7 +2,7 @@
   <v-card variant="outlined" :loading="loading">
     <v-card-title class="d-flex align-center">
       <v-icon class="mr-2">mdi-robot</v-icon>
-      Настройки LLM провайдеров
+      Управление LLM провайдерами
       <v-spacer />
       <v-btn
         color="primary"
@@ -10,20 +10,148 @@
         size="small"
         :loading="testing"
         @click="testProviders"
+        class="mr-2"
       >
         <v-icon start>mdi-connection</v-icon>
         Тест подключения
       </v-btn>
+      <v-btn
+        color="secondary"
+        variant="tonal"
+        size="small"
+        :loading="loadingStates"
+        @click="loadProviderStates"
+      >
+        <v-icon start>mdi-refresh</v-icon>
+        Обновить
+      </v-btn>
     </v-card-title>
 
     <v-card-text>
-      <!-- Mode Toggle -->
+      <!-- Validation Errors -->
+      <v-alert
+        v-if="validation && !validation.valid"
+        type="error"
+        variant="tonal"
+        class="mb-4"
+        density="compact"
+      >
+        <div class="font-weight-medium mb-1">Ошибки конфигурации:</div>
+        <ul class="pl-4">
+          <li v-for="err in validation.errors" :key="err">{{ err }}</li>
+        </ul>
+      </v-alert>
+
+      <!-- Execution Chain -->
+      <v-card variant="tonal" color="blue-lighten-5" class="mb-4 pa-3" v-if="executionPlan.length">
+        <div class="text-subtitle-2 font-weight-medium mb-2">
+          <v-icon size="small" class="mr-1">mdi-transit-connection-variant</v-icon>
+          Цепочка выполнения
+          <v-chip size="x-small" class="ml-2" :color="settings.mode === 'auto' ? 'success' : 'warning'">
+            {{ settings.mode === 'auto' ? 'Auto (failover)' : 'Manual' }}
+          </v-chip>
+        </div>
+        <div class="d-flex align-center flex-wrap ga-1">
+          <template v-for="(name, idx) in executionPlan" :key="name">
+            <v-chip
+              :color="getProviderChipColor(name)"
+              variant="flat"
+              size="small"
+            >
+              <v-icon start size="small">{{ getStatusIcon(name) }}</v-icon>
+              {{ getDisplayName(name) }}
+            </v-chip>
+            <v-icon v-if="idx < executionPlan.length - 1" size="small" color="grey">mdi-arrow-right</v-icon>
+          </template>
+        </div>
+      </v-card>
+
+      <!-- Provider Status Cards -->
+      <div class="text-subtitle-1 font-weight-medium mb-3">Статус провайдеров</div>
+
+      <v-row>
+        <v-col
+          v-for="ps in providerStates"
+          :key="ps.provider"
+          cols="12"
+          md="6"
+          lg="3"
+        >
+          <v-card
+            variant="outlined"
+            :class="{'border-opacity-100': ps.used_in_chain}"
+            :style="ps.used_in_chain ? 'border-color: rgb(var(--v-theme-primary))' : ''"
+          >
+            <v-card-title class="d-flex align-center text-body-1 pb-1">
+              {{ ps.display_name }}
+              <v-spacer />
+              <v-chip
+                :color="statusColor(ps.status)"
+                size="x-small"
+                variant="flat"
+              >
+                {{ statusLabel(ps.status) }}
+              </v-chip>
+            </v-card-title>
+            <v-card-text class="pt-1">
+              <div class="d-flex flex-column ga-1 text-body-2">
+                <div class="d-flex justify-space-between">
+                  <span class="text-medium-emphasis">Источник ключа</span>
+                  <v-chip size="x-small" :color="ps.source === 'db' ? 'info' : ps.source === 'env' ? 'warning' : 'grey'">
+                    {{ ps.source === 'db' ? 'DB' : ps.source === 'env' ? 'ENV' : '—' }}
+                  </v-chip>
+                </div>
+                <div class="d-flex justify-space-between">
+                  <span class="text-medium-emphasis">Модель</span>
+                  <span class="font-weight-medium text-truncate ml-2" style="max-width: 160px" :title="ps.model">{{ ps.model }}</span>
+                </div>
+                <div class="d-flex justify-space-between">
+                  <span class="text-medium-emphasis">Circuit</span>
+                  <v-chip size="x-small" :color="circuitColor(ps.circuit)">{{ ps.circuit }}</v-chip>
+                </div>
+                <div class="d-flex justify-space-between" v-if="ps.latency_ms != null">
+                  <span class="text-medium-emphasis">Latency (avg)</span>
+                  <span>{{ ps.latency_ms }} ms</span>
+                </div>
+                <div class="d-flex justify-space-between" v-if="ps.error_rate != null">
+                  <span class="text-medium-emphasis">Error rate</span>
+                  <span :class="ps.error_rate > 0.1 ? 'text-error' : ''">{{ (ps.error_rate * 100).toFixed(1) }}%</span>
+                </div>
+                <div class="d-flex justify-space-between" v-if="ps.last_error">
+                  <span class="text-medium-emphasis">Последняя ошибка</span>
+                  <span class="text-error text-truncate ml-2" style="max-width: 120px" :title="ps.last_error">{{ ps.last_error }}</span>
+                </div>
+              </div>
+
+              <!-- Circuit breaker reset -->
+              <v-btn
+                v-if="ps.circuit !== 'closed'"
+                color="warning"
+                variant="tonal"
+                size="x-small"
+                class="mt-2"
+                block
+                @click="resetCircuit(ps.provider)"
+              >
+                <v-icon start size="small">mdi-restart</v-icon>
+                Сбросить Circuit Breaker
+              </v-btn>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <v-divider class="my-5" />
+
+      <!-- Routing Settings -->
+      <div class="text-subtitle-1 font-weight-medium mb-3">Маршрутизация</div>
+
       <v-row class="mb-4">
-        <v-col cols="12" md="6">
+        <v-col cols="12" md="4">
           <v-select
             v-model="settings.mode"
             :items="modeOptions"
-            label="Режим работы"
+            label="Режим маршрутизации"
             variant="outlined"
             density="comfortable"
             hint="Auto = автоматический failover при ошибках"
@@ -31,40 +159,36 @@
             @update:model-value="saveSettings"
           />
         </v-col>
-        <v-col cols="12" md="6">
+        <v-col cols="12" md="4">
           <v-select
             v-model="settings.primary_provider"
-            :items="providerOptions"
+            :items="providerSelectOptions"
             label="Primary провайдер"
             variant="outlined"
             density="comfortable"
             @update:model-value="saveSettings"
           />
         </v-col>
-      </v-row>
-
-      <!-- Fallback Providers -->
-      <v-row class="mb-4">
-        <v-col cols="12" md="6">
+        <v-col cols="12" md="4">
           <v-select
             v-model="settings.fallback_providers"
             :items="fallbackProviderOptions"
-            label="Fallback провайдеры (по приоритету)"
+            label="Fallback (по приоритету)"
             variant="outlined"
             density="comfortable"
             multiple
             chips
             closable-chips
-            hint="Будут использованы при недоступности primary"
+            hint="Используются при недоступности primary"
             persistent-hint
             @update:model-value="saveSettings"
           />
         </v-col>
       </v-row>
 
-      <v-divider class="my-4" />
+      <v-divider class="my-5" />
 
-      <!-- Provider Settings -->
+      <!-- Provider Settings (Expandable) -->
       <div class="text-subtitle-1 font-weight-medium mb-3">Настройки провайдеров</div>
 
       <v-expansion-panels variant="accordion">
@@ -151,11 +275,13 @@
         closable
         @click:close="testResults = null"
       >
+        <div class="font-weight-medium mb-2">Результаты тестирования</div>
         <div v-for="(result, provider) in testResults" :key="provider" class="mb-1">
           <strong>{{ provider }}:</strong>
-          <span :class="result.success ? 'text-success' : 'text-error'">
-            {{ result.success ? 'OK' : result.error }}
+          <span v-if="result.available" class="text-success">
+            OK <span class="text-medium-emphasis">({{ result.latency_ms }}ms)</span>
           </span>
+          <span v-else class="text-error">{{ result.error || 'Недоступен' }}</span>
         </div>
       </v-alert>
     </v-card-text>
@@ -172,14 +298,40 @@ interface ProviderForm {
   base_url: string
 }
 
+interface ProviderStateItem {
+  provider: string
+  display_name: string
+  status: string
+  configured: boolean
+  healthy: boolean
+  available: boolean
+  circuit: string
+  fail_count: number
+  last_error: string | null
+  last_error_at: string | null
+  last_success_at: string | null
+  source: string
+  model: string
+  base_url: string
+  priority: number
+  used_in_chain: boolean
+  latency_ms: number | null
+  error_rate: number | null
+}
+
 const loading = ref(false)
+const loadingStates = ref(false)
 const testing = ref(false)
 const savingProvider = ref<string | null>(null)
-const testResults = ref<Record<string, { success: boolean; error?: string }> | null>(null)
+const testResults = ref<Record<string, { available: boolean; error?: string; latency_ms?: number }> | null>(null)
+
+const providerStates = ref<ProviderStateItem[]>([])
+const executionPlan = ref<string[]>([])
+const validation = ref<{ valid: boolean; errors: string[] } | null>(null)
 
 const settings = ref({
   mode: 'auto',
-  primary_provider: 'openai',
+  primary_provider: 'openrouter',
   fallback_providers: [] as string[],
   available_providers: [] as Array<{ value: string; title: string; icon: string; description: string }>,
   providers: {} as Record<string, {
@@ -191,52 +343,105 @@ const settings = ref({
   }>
 })
 
-const providerForms = reactive<Record<string, ProviderForm>>({
-  openai: { api_key: '', model: '', base_url: '' },
-  anthropic: { api_key: '', model: '', base_url: '' },
-  gemini: { api_key: '', model: '', base_url: '' },
-  openrouter: { api_key: '', model: '', base_url: '' }
-})
+const providerForms = reactive<Record<string, ProviderForm>>({})
 
 const modeOptions = [
-  { title: 'Auto (failover)', value: 'auto' },
-  { title: 'Manual', value: 'manual' }
+  { title: 'Automatic (рекомендуется)', value: 'auto' },
+  { title: 'Manual (без failover)', value: 'manual' }
 ]
 
-const providerOptions = [
-  { title: 'OpenAI', value: 'openai' },
-  { title: 'Anthropic', value: 'anthropic' },
-  { title: 'Gemini', value: 'gemini' },
-  { title: 'OpenRouter', value: 'openrouter' }
-]
+const providerSelectOptions = computed(() => {
+  if (settings.value.available_providers?.length) {
+    return settings.value.available_providers.map(p => ({
+      title: p.title,
+      value: p.value,
+    }))
+  }
+  return []
+})
 
 const fallbackProviderOptions = computed(() => {
-  return providerOptions.filter(p => p.value !== settings.value.primary_provider)
+  return providerSelectOptions.value.filter(p => p.value !== settings.value.primary_provider)
 })
 
 const availableProviders = computed(() => {
-  return settings.value.available_providers?.length
-    ? settings.value.available_providers
-    : providerOptions.map(p => ({
-        value: p.value,
-        title: p.title,
-        icon: 'mdi-robot',
-        description: ''
-      }))
+  return settings.value.available_providers || []
 })
 
 const testResultsType = computed(() => {
   if (!testResults.value) return 'info'
-  const allSuccess = Object.values(testResults.value).every(r => r.success)
-  const anySuccess = Object.values(testResults.value).some(r => r.success)
-  return allSuccess ? 'success' : anySuccess ? 'warning' : 'error'
+  const vals = Object.values(testResults.value)
+  const allOk = vals.every(r => r.available)
+  const anyOk = vals.some(r => r.available)
+  return allOk ? 'success' : anyOk ? 'warning' : 'error'
 })
+
+function getDisplayName(provider: string): string {
+  const ps = providerStates.value.find(s => s.provider === provider)
+  return ps?.display_name || provider
+}
+
+function getStatusIcon(provider: string): string {
+  const ps = providerStates.value.find(s => s.provider === provider)
+  if (!ps) return 'mdi-help-circle-outline'
+  switch (ps.status) {
+    case 'healthy': return 'mdi-check-circle'
+    case 'down': return 'mdi-close-circle'
+    case 'recovering': return 'mdi-timer-sand'
+    case 'misconfigured': return 'mdi-alert-circle'
+    default: return 'mdi-help-circle-outline'
+  }
+}
+
+function getProviderChipColor(provider: string): string {
+  const ps = providerStates.value.find(s => s.provider === provider)
+  return ps ? statusColor(ps.status) : 'grey'
+}
+
+function statusColor(status: string): string {
+  switch (status) {
+    case 'healthy': return 'success'
+    case 'down': return 'error'
+    case 'recovering': return 'warning'
+    case 'misconfigured': return 'grey'
+    default: return 'grey'
+  }
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'healthy': return 'Работает'
+    case 'down': return 'Недоступен'
+    case 'recovering': return 'Восстановление'
+    case 'misconfigured': return 'Не настроен'
+    default: return status
+  }
+}
+
+function circuitColor(circuit: string): string {
+  switch (circuit) {
+    case 'closed': return 'success'
+    case 'open': return 'error'
+    case 'half_open': return 'warning'
+    default: return 'grey'
+  }
+}
+
+function initProviderForms() {
+  const providers = settings.value.available_providers || []
+  for (const p of providers) {
+    if (!providerForms[p.value]) {
+      providerForms[p.value] = { api_key: '', model: '', base_url: '' }
+    }
+  }
+}
 
 async function loadSettings() {
   loading.value = true
   try {
     const response = await api.get('/api/admin/llm-settings')
     settings.value = response.data
+    initProviderForms()
   } catch (error) {
     console.error('Failed to load LLM settings:', error)
   } finally {
@@ -244,13 +449,32 @@ async function loadSettings() {
   }
 }
 
+async function loadProviderStates() {
+  loadingStates.value = true
+  try {
+    const response = await api.get('/api/admin/llm-provider-states')
+    providerStates.value = response.data.providers || []
+    executionPlan.value = response.data.execution_plan || []
+    validation.value = response.data.validation || null
+  } catch (error) {
+    console.error('Failed to load provider states:', error)
+  } finally {
+    loadingStates.value = false
+  }
+}
+
 async function saveSettings() {
   try {
-    await api.put('/api/admin/llm-settings', {
+    const response = await api.put('/api/admin/llm-settings', {
       mode: settings.value.mode,
       primary_provider: settings.value.primary_provider,
       fallback_providers: settings.value.fallback_providers
     })
+    if (response.data.validation) {
+      validation.value = response.data.validation
+    }
+    // Reload states after settings change
+    await loadProviderStates()
   } catch (error) {
     console.error('Failed to save settings:', error)
   }
@@ -277,7 +501,7 @@ async function saveProviderSettings(provider: string) {
     })
 
     await loadSettings()
-    // Clear form after save
+    await loadProviderStates()
     providerForms[provider] = { api_key: '', model: '', base_url: '' }
   } catch (error) {
     console.error('Failed to save provider settings:', error)
@@ -292,6 +516,8 @@ async function testProviders() {
   try {
     const response = await api.post('/api/admin/llm-test')
     testResults.value = response.data.results
+    // Refresh states after testing
+    await loadProviderStates()
   } catch (error) {
     console.error('Failed to test providers:', error)
   } finally {
@@ -299,7 +525,17 @@ async function testProviders() {
   }
 }
 
-onMounted(() => {
-  loadSettings()
+async function resetCircuit(provider: string) {
+  try {
+    await api.post('/api/admin/llm-reset-circuit', { provider })
+    await loadProviderStates()
+  } catch (error) {
+    console.error('Failed to reset circuit breaker:', error)
+  }
+}
+
+onMounted(async () => {
+  await loadSettings()
+  await loadProviderStates()
 })
 </script>
