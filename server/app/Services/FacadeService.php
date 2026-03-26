@@ -90,6 +90,7 @@ class FacadeService
         $data['type'] = Material::TYPE_FACADE;
         $data['unit'] = 'м²';
         $data['is_active'] = $data['is_active'] ?? true;
+        $data['price_per_unit'] = $data['price_per_unit'] ?? 0;
 
         // Auto-generate name if not provided or if auto_name flag is set
         if (empty($data['name']) || !empty($data['auto_name'])) {

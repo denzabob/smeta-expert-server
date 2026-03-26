@@ -1,22 +1,13 @@
 <template>
-  <PageContainer no-padding class="project-editor-page">
-    <PageHeader
-      class="mb-4 project-toolbar"
-      :class="{ 'project-toolbar--compact': compactLayout }"
+  <div class="workspace-root">
+    <!-- Workspace Header -->
+    <WorkspaceHeader
       :title="`Проект #${project.number}`"
+      :positions-count="positions.length"
+      :total-sum="projectTotalSum"
+      :warnings-count="healthIssues.length"
+      :latest-revision="latestRevision ? { number: latestRevision.number, status: latestRevision.status } : null"
     >
-      <template #title-extra>
-        <v-chip
-          v-if="latestRevision"
-          size="small"
-          color="success"
-          variant="outlined"
-          prepend-icon="mdi-check-circle"
-        >
-          Ревизия #{{ latestRevision.number }}
-        </v-chip>
-      </template>
-
       <template #actions>
         <div class="toolbar-actions">
           <v-btn
@@ -53,13 +44,30 @@
           <v-btn
             size="small"
             prepend-icon="mdi-cog"
-            @click="openSettingsDrawer"
+            @click="activeModule = 'settings'"
           >
             Настройки
           </v-btn>
         </div>
       </template>
-    </PageHeader>
+    </WorkspaceHeader>
+
+    <!-- Health / Issues Bar -->
+    <ProjectHealthBar
+      :issues="healthIssues"
+      @navigate="handleHealthNavigate"
+    />
+
+    <div class="workspace-body">
+      <!-- Sidebar -->
+      <WorkspaceSidebar
+        :modules="sidebarModules"
+        :active-module="activeModule"
+        @update:active-module="activeModule = $event"
+      />
+
+      <!-- Main module area -->
+      <div class="workspace-module-area">
 
     <!-- Компонент настроек проекта -->
     <ProjectSettingsDrawer
@@ -80,10 +88,16 @@
       @imported="handlePositionsImported"
     />
 
-    <!-- Основной контент -->
-    <SectionCard title="Содержимое проекта">
-
-        <v-divider class="my-4" />
+    <!-- ======================== MODULE: POSITIONS ======================== -->
+    <div v-show="activeModule === 'positions'" class="module-content">
+      <!-- Positions Summary -->
+      <div class="module-summary">
+        <v-chip size="small" variant="tonal" color="primary">Всего: {{ positions.length }}</v-chip>
+        <v-chip size="small" variant="tonal">Панели: {{ positions.filter(p => p.kind === 'panel').length }}</v-chip>
+        <v-chip size="small" variant="tonal" color="deep-purple">Фасады: {{ positions.filter(p => p.kind === 'facade').length }}</v-chip>
+        <v-chip v-if="positionsWithoutMaterial > 0" size="small" variant="tonal" color="warning">Без материала: {{ positionsWithoutMaterial }}</v-chip>
+        <v-chip v-if="positionsWithPriceIssues > 0" size="small" variant="tonal" color="error">Без цен: {{ positionsWithPriceIssues }}</v-chip>
+      </div>
         <v-card-title>Позиции</v-card-title>
         <div class="toolbar-actions">
           <v-btn prepend-icon="mdi-plus" @click="openPositionDialog">Добавить позицию</v-btn>
@@ -638,9 +652,17 @@
             </v-card-actions>
           </v-card>
         </v-dialog>
+    </div><!-- /MODULE: POSITIONS -->
 
+    <!-- ======================== MODULE: MATERIALS ======================== -->
+    <div v-show="activeModule === 'materials'" class="module-content">
+      <!-- Materials Summary -->
+      <div class="module-summary">
+        <v-chip size="small" variant="tonal" color="primary">Плитных: {{ plateData.length }}</v-chip>
+        <v-chip size="small" variant="tonal">Кромка: {{ edgeData.length }}</v-chip>
+        <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-currency-rub">Итого: {{ materialsTotalCost.toFixed(2) }} ₽</v-chip>
+      </div>
         <!-- Материалы -->
-        <v-divider class="my-4" />
         <v-card-title>
           Материалы
           <v-spacer />
@@ -881,9 +903,17 @@
             </tr>
           </template>
         </v-data-table>
+    </div><!-- /MODULE: MATERIALS -->
 
+    <!-- ======================== MODULE: OPERATIONS ======================== -->
+    <div v-show="activeModule === 'operations'" class="module-content">
+      <!-- Operations Summary -->
+      <div class="module-summary">
+        <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-currency-rub">Итого авто: {{ autoOperationsTotal.toFixed(2) }} ₽</v-chip>
+        <v-chip size="small" variant="tonal" color="primary">Ручных: {{ manualOperationsCount }}</v-chip>
+        <v-chip size="small" variant="tonal" color="info" prepend-icon="mdi-currency-rub">Всего: {{ operationsTotal.toFixed(2) }} ₽</v-chip>
+      </div>
         <!-- Операции -->
-        <v-divider class="my-4" />
         <v-card-title>
           Операции
           <v-spacer />
@@ -1081,9 +1111,18 @@
             </tr>
           </template>
         </v-data-table>
+    </div><!-- /MODULE: OPERATIONS -->
 
-        <!-- Фурнитура (отдельно!) -->
-        <v-divider class="my-4" />
+    <!-- ======================== MODULE: FITTINGS ======================== -->
+    <div v-show="activeModule === 'fittings'" class="module-content">
+      <!-- Fittings Summary -->
+      <div class="module-summary">
+        <v-chip size="small" variant="tonal" color="primary">Позиций: {{ fittings.length }}</v-chip>
+        <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-currency-rub">
+          Итого: {{ fittings.reduce((sum, f) => sum + (f.quantity * f.unit_price), 0).toFixed(2) }} ₽
+        </v-chip>
+      </div>
+        <!-- Фурнитура -->
         <v-card-title>Фурнитура</v-card-title>
         <v-btn prepend-icon="mdi-plus" @click="openFittingDialog">Добавить фурнитуру</v-btn>
         <v-skeleton-loader v-if="loadingStates.fittings" type="table" class="mt-3" />
@@ -1093,9 +1132,17 @@
             <v-icon @click.stop="deleteFitting(item)">mdi-delete</v-icon>
           </template>
         </v-data-table>
+    </div><!-- /MODULE: FITTINGS -->
 
+    <!-- ======================== MODULE: LABOR ======================== -->
+    <div v-show="activeModule === 'labor'" class="module-content">
+      <!-- Labor Summary -->
+      <div class="module-summary">
+        <v-chip size="small" variant="tonal" color="primary">Работ: {{ laborWorks.length }}</v-chip>
+        <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-currency-rub">Итого: {{ (typeof laborWorksTotal === 'number' ? laborWorksTotal : 0).toFixed(2) }} ₽</v-chip>
+        <v-chip v-if="hasMissingLaborRates" size="small" variant="tonal" color="warning" prepend-icon="mdi-alert">Нет ставок</v-chip>
+      </div>
         <!-- Монтажно-сборочные работы (нормо-час) -->
-        <v-divider class="my-4" />
         <v-card-title>
           Нормируемые работы
           <v-spacer />
@@ -1227,8 +1274,18 @@
           </table>
         </div>
 
+    </div><!-- /MODULE: LABOR -->
+
+    <!-- ======================== MODULE: EXPENSES ======================== -->
+    <div v-show="activeModule === 'expenses'" class="module-content">
+      <!-- Expenses Summary -->
+      <div class="module-summary">
+        <v-chip size="small" variant="tonal" color="primary">Расходов: {{ expenses.length }}</v-chip>
+        <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-currency-rub">
+          Итого: {{ (Array.isArray(expenses) ? expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0) : 0).toFixed(2) }} ₽
+        </v-chip>
+      </div>
         <!-- Накладные расходы -->
-        <v-divider class="my-4" />
         <v-card-title>Накладные расходы
         <div>Итого: {{ (Array.isArray(expenses) ? expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0) : 0).toFixed(2) }} ₽</div>
         </v-card-title>
@@ -1245,11 +1302,21 @@
             <v-icon @click.stop="deleteExpense(item)">mdi-delete</v-icon>
           </template>
         </v-data-table>
+    </div><!-- /MODULE: EXPENSES -->
 
-       
-
+    <!-- ======================== MODULE: REVISIONS ======================== -->
+    <div v-show="activeModule === 'revisions'" class="module-content">
+      <!-- Revisions Summary -->
+      <div class="module-summary">
+        <v-chip v-if="latestRevision" size="small" variant="tonal" :color="getRevisionStatusColor(latestRevision.status)" prepend-icon="mdi-check-circle">
+          Последняя: #{{ latestRevision.number }} — {{ formatRevisionStatus(latestRevision.status) }}
+        </v-chip>
+        <v-chip v-else size="small" variant="tonal" color="grey">Нет ревизий</v-chip>
+        <v-chip v-if="activeRevisionRun" size="small" variant="tonal" color="info" prepend-icon="mdi-progress-clock">
+          Сессия #{{ activeRevisionRun.id }}: {{ formatRunStatus(activeRevisionRun.status) }}
+        </v-chip>
+      </div>
         <!-- Ревизии -->
-        <v-divider class="my-4" />
         <v-card-title>Ревизии</v-card-title>
         <v-card-subtitle class="mb-2">
           Последняя ревизия:
@@ -1525,7 +1592,15 @@
         <!-- PDF -->
         <v-divider class="my-4" />
         <v-btn color="secondary" @click="generatePdf" :loading="pdfLoading" :disabled="pdfLoading">Генерировать PDF</v-btn>
-    </SectionCard>
+    </div><!-- /MODULE: REVISIONS -->
+
+    <!-- ======================== MODULE: SETTINGS ======================== -->
+    <div v-show="activeModule === 'settings'" class="module-content">
+      <!-- Empty module area by design: entering this module opens ProjectSettingsDrawer immediately. -->
+    </div><!-- /MODULE: SETTINGS -->
+
+      </div><!-- /workspace-module-area -->
+    </div><!-- /workspace-body -->
 
     <!-- Диалог просмотра ревизии -->
     <v-dialog v-model="revisionDialog" max-width="900">
@@ -2087,6 +2162,9 @@
             density="comfortable"
             clearable
             required
+            :loading="hardwareMaterialsLoading"
+            no-filter
+            @update:search="onFittingSearch"
             @update:model-value="onFittingMaterialChange"
           />
           <v-text-field v-model="fittingForm.article" label="Артикул" readonly />
@@ -2233,7 +2311,7 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </PageContainer>
+  </div><!-- /workspace-root -->
 
   <!-- Диалог ручной операции -->
   <v-dialog v-model="operationDialog" max-width="600">
@@ -2906,12 +2984,31 @@ import ProfileRatesSection from '@/components/ProfileRatesSection.vue'
 import ProjectSettingsDrawer from '@/components/ProjectSettingsDrawer.vue'
 import ImportPositionsDialog from '@/components/ImportPositionsDialog.vue'
 import RowHoverActions, { type RowAction } from '@/components/RowHoverActions.vue'
-import PageContainer from '@/components/layout/PageContainer.vue'
-import PageHeader from '@/components/layout/PageHeader.vue'
-import SectionCard from '@/components/layout/SectionCard.vue'
+import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
+import WorkspaceSidebar, { type SidebarModule } from '@/components/workspace/WorkspaceSidebar.vue'
+import ProjectHealthBar, { type HealthIssue } from '@/components/workspace/ProjectHealthBar.vue'
 
 const { smAndDown } = useDisplay()
 const compactLayout = computed(() => smAndDown.value)
+
+// === Workspace Module Navigation ===
+const activeModule = ref<string>(
+  localStorage.getItem('editor_active_module') || 'positions'
+)
+watch(activeModule, (val) => {
+  localStorage.setItem('editor_active_module', val)
+  // Open settings drawer when navigating to settings module
+  if (val === 'settings') {
+    settingsDrawer.value = true
+  }
+})
+
+// Forward-declared refs for workspace computeds (actual declarations below)
+// Vue <script setup> hoists all declarations, computed callbacks are lazy
+
+const handleHealthNavigate = (target: string) => {
+  activeModule.value = target
+}
 
 // === Типы ===
 interface Project { 
@@ -3668,6 +3765,9 @@ const handleSettingsSaved = async (updatedProject: any) => {
 
 const handleSettingsDrawerClosed = () => {
   settingsDrawer.value = false
+  if (activeModule.value === 'settings') {
+    activeModule.value = 'positions'
+  }
   // Показываем уведомление об применении всех изменений
   showNotification('Все изменения в настройках применены', 'success')
 }
@@ -3689,11 +3789,6 @@ const handlePositionsImported = async (result: { created_count: number; skipped_
   } finally {
     loadingStates.value.positions = false
   }
-}
-
-const openSettingsDrawer = () => {
-  console.log('🔓 Opening settings drawer. Text blocks:', project.value.text_blocks)
-  settingsDrawer.value = true
 }
 
 const scheduleAutoSave = () => {
@@ -4138,18 +4233,105 @@ const fittingForm = ref<Fitting>({
   material_id: null, name: '', article: '', unit: 'шт', quantity: 1, unit_price: 0, source_url: null, note: ''
 })
 
-const hardwareMaterials = computed(() => {
-  return materials.value
-    .filter((material) => material.type === 'hardware')
-    .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+const hardwareMaterials = ref<Material[]>([])
+const hardwareMaterialsLoading = ref(false)
+const fittingSearchQuery = ref('')
+let fittingSearchTimeout: ReturnType<typeof setTimeout> | null = null
+let fittingSearchRequestId = 0
+
+const mergedHardwareMaterials = computed(() => {
+  const byId = new Map<number, Material>()
+  for (const material of materials.value) {
+    if (material.type === 'hardware') byId.set(material.id, material)
+  }
+  for (const material of hardwareMaterials.value) {
+    byId.set(material.id, material)
+  }
+
+  return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru'))
 })
+
+const fetchHardwareModeMaterials = async (
+  mode: 'own' | 'public' | 'curated',
+  search: string
+): Promise<any[]> => {
+  const rows: any[] = []
+  let page = 1
+  let lastPage = 1
+
+  do {
+    const response = await api.get('/api/materials/catalog', {
+      params: {
+        mode,
+        type: 'hardware',
+        search: search || undefined,
+        per_page: 100,
+        page,
+      },
+    })
+
+    const pageRows = response?.data?.data
+    if (Array.isArray(pageRows)) {
+      rows.push(...pageRows)
+    }
+
+    lastPage = Number(response?.data?.meta?.last_page || 1)
+    page += 1
+  } while (page <= lastPage)
+
+  return rows
+}
+
+const refreshHardwareMaterials = async (searchRaw = '') => {
+  const search = String(searchRaw || '').trim()
+  const requestId = ++fittingSearchRequestId
+  hardwareMaterialsLoading.value = true
+
+  try {
+    const byId = new Map<number, Material>()
+    const modes: Array<'own' | 'public' | 'curated'> = ['own', 'public', 'curated']
+
+    for (const mode of modes) {
+      try {
+        const rows = await fetchHardwareModeMaterials(mode, search)
+        mergeMaterialOptions(byId, rows)
+      } catch (error) {
+        console.warn(`Failed to load hardware materials mode: ${mode}`, error)
+      }
+    }
+
+    if (requestId !== fittingSearchRequestId) return
+
+    hardwareMaterials.value = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+  } catch (error) {
+    if (requestId === fittingSearchRequestId) {
+      showNotification('Не удалось загрузить список фурнитуры', 'error')
+    }
+    console.error('Failed to refresh hardware materials', error)
+  } finally {
+    if (requestId === fittingSearchRequestId) {
+      hardwareMaterialsLoading.value = false
+    }
+  }
+}
+
+const onFittingSearch = (value: string) => {
+  fittingSearchQuery.value = value || ''
+  if (fittingSearchTimeout) {
+    clearTimeout(fittingSearchTimeout)
+  }
+
+  fittingSearchTimeout = setTimeout(() => {
+    refreshHardwareMaterials(fittingSearchQuery.value)
+  }, 350)
+}
 
 const selectedFittingMaterial = computed(() => {
   if (!fittingForm.value.material_id) {
     return null
   }
 
-  return hardwareMaterials.value.find((material) => material.id === fittingForm.value.material_id) || null
+  return mergedHardwareMaterials.value.find((material) => material.id === fittingForm.value.material_id) || null
 })
 
 const resolveFittingMaterialId = (item: Fitting): number | null => {
@@ -4157,14 +4339,14 @@ const resolveFittingMaterialId = (item: Fitting): number | null => {
     return Number(item.material_id)
   }
 
-  const byArticle = hardwareMaterials.value.find((material) => {
+  const byArticle = mergedHardwareMaterials.value.find((material) => {
     return !!item.article && !!material.article && String(material.article).trim() === String(item.article).trim()
   })
   if (byArticle) {
     return byArticle.id
   }
 
-  const byName = hardwareMaterials.value.find((material) => String(material.name).trim() === String(item.name).trim())
+  const byName = mergedHardwareMaterials.value.find((material) => String(material.name).trim() === String(item.name).trim())
   return byName?.id || null
 }
 
@@ -4174,7 +4356,7 @@ const onFittingMaterialChange = (materialId: number | string | null) => {
     ? normalizedMaterialId
     : null
 
-  const material = hardwareMaterials.value.find((entry) => entry.id === fittingForm.value.material_id)
+  const material = mergedHardwareMaterials.value.find((entry) => entry.id === fittingForm.value.material_id)
   if (!material) {
     fittingForm.value.name = ''
     fittingForm.value.article = ''
@@ -5476,6 +5658,8 @@ const applyBulkAction = async () => {
 
 // === Фурнитура ===
 const openFittingDialog = () => {
+  fittingSearchQuery.value = ''
+  refreshHardwareMaterials('')
   editingFitting.value = false
   const defaultUnit = units.value[0] || 'шт'
   fittingForm.value = {
@@ -5494,6 +5678,8 @@ const openFittingDialog = () => {
 }
 
 const editFitting = (item: Fitting) => {
+  fittingSearchQuery.value = ''
+  refreshHardwareMaterials('')
   editingFitting.value = true
   const defaultUnit = units.value[0] || 'шт'
   const materialId = resolveFittingMaterialId(item)
@@ -5521,7 +5707,7 @@ const saveFitting = async () => {
   fittingSaving.value = true
 
   try {
-    const material = hardwareMaterials.value.find((entry) => entry.id === fittingForm.value.material_id)
+    const material = mergedHardwareMaterials.value.find((entry) => entry.id === fittingForm.value.material_id)
     const payload = {
       material_id: fittingForm.value.material_id,
       name: material?.name || fittingForm.value.name,
@@ -7089,6 +7275,120 @@ const operationsTotal = computed(() => {
   }, 0)
 })
 
+// === Workspace computeds ===
+const positionsWithoutMaterial = computed(() => {
+  return positions.value.filter(p => {
+    if (p.kind === 'facade') return !p.facade_material_id
+    return !p.material_id
+  }).length
+})
+
+const positionsWithPriceIssues = computed(() => {
+  return positions.value.filter(p => hasMissingMainMaterialPrice(p)).length
+})
+
+const autoOperationsTotal = computed(() => {
+  if (!operations.value) return 0
+  return operations.value.filter(o => !o.is_manual).reduce((sum, o) => sum + (parseFloat(o.total_cost) || 0), 0)
+})
+
+const manualOperationsCount = computed(() => {
+  if (!operations.value) return 0
+  return operations.value.filter(o => o.is_manual).length
+})
+
+const projectTotalSum = computed(() => {
+  const matCost = materialsTotalCost.value || 0
+  const opsCost = operationsTotal.value || 0
+  const fitCost = fittings.value.reduce((s, f) => s + (f.quantity * f.unit_price), 0)
+  const labCost = typeof laborWorksTotal.value === 'number' ? laborWorksTotal.value : 0
+  const expCost = Array.isArray(expenses.value) ? expenses.value.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0) : 0
+  return matCost + opsCost + fitCost + labCost + expCost
+})
+
+const sidebarModules = computed<SidebarModule[]>(() => [
+  {
+    key: 'positions',
+    label: 'Позиции',
+    icon: 'mdi-table',
+    count: positions.value.length,
+    warnings: positionsWithoutMaterial.value + positionsWithPriceIssues.value
+  },
+  {
+    key: 'materials',
+    label: 'Материалы',
+    icon: 'mdi-package-variant',
+    count: plateData.value.length + edgeData.value.length,
+    warnings: plateData.value.filter(p => hasPlateMaterialIssue(p)).length
+  },
+  {
+    key: 'operations',
+    label: 'Операции',
+    icon: 'mdi-cog-outline',
+    count: operations.value.length,
+  },
+  {
+    key: 'fittings',
+    label: 'Фурнитура',
+    icon: 'mdi-screw-machine-flat-top',
+    count: fittings.value.length,
+  },
+  {
+    key: 'labor',
+    label: 'Работы',
+    icon: 'mdi-hammer-wrench',
+    count: laborWorks.value.length,
+    warnings: hasMissingLaborRates.value ? 1 : 0
+  },
+  {
+    key: 'expenses',
+    label: 'Расходы',
+    icon: 'mdi-cash-multiple',
+    count: expenses.value.length,
+  },
+  {
+    key: 'revisions',
+    label: 'Ревизии',
+    icon: 'mdi-shield-check-outline',
+    count: revisions.value.length,
+    warnings: activeRevisionRun.value && (activeRevisionRun.value.status === 'NEEDS_MANUAL' || activeRevisionRun.value.status === 'FAILED') ? 1 : 0
+  },
+  {
+    key: 'settings',
+    label: 'Настройки',
+    icon: 'mdi-cog',
+  },
+])
+
+const healthIssues = computed<HealthIssue[]>(() => {
+  const issues: HealthIssue[] = []
+  
+  const noMat = positionsWithoutMaterial.value
+  if (noMat > 0) {
+    issues.push({ severity: 'warning', message: `${noMat} позиций без назначенного материала`, action: 'positions', actionLabel: 'Позиции' })
+  }
+  
+  const noPrice = positionsWithPriceIssues.value
+  if (noPrice > 0) {
+    issues.push({ severity: 'warning', message: `${noPrice} позиций без цены материала`, action: 'materials', actionLabel: 'Материалы' })
+  }
+
+  const problemPlates = plateData.value.filter(p => hasPlateMaterialIssue(p)).length
+  if (problemPlates > 0) {
+    issues.push({ severity: 'warning', message: `${problemPlates} плитных материалов с проблемами (цена/лист)`, action: 'materials', actionLabel: 'Материалы' })
+  }
+
+  if (hasMissingLaborRates.value) {
+    issues.push({ severity: 'warning', message: 'Не все профили имеют установленные ставки', action: 'labor', actionLabel: 'Работы' })
+  }
+
+  if (activeRevisionRun.value?.status === 'NEEDS_MANUAL') {
+    issues.push({ severity: 'info', message: 'Ревизия: есть позиции без подтверждения цены', action: 'revisions', actionLabel: 'Ревизии' })
+  }
+
+  return issues
+})
+
 // === Ручные операции ===
 const openOperationDialog = () => {
   editingOperation.value = false
@@ -7893,12 +8193,57 @@ watch(manualCloseDialog, (isOpen) => {
 })
 
 onBeforeUnmount(() => {
+  if (fittingSearchTimeout) {
+    clearTimeout(fittingSearchTimeout)
+  }
   window.removeEventListener('paste', onWindowPasteForManualClose)
   stopRevisionRunPolling()
 })
 </script>
 
 <style scoped>
+/* === Workspace Layout === */
+.workspace-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: rgb(var(--v-theme-background));
+}
+
+.workspace-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.workspace-module-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 24px;
+  position: relative;
+}
+
+.module-content {
+  max-width: 1360px;
+}
+
+.module-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 8px 0;
+}
+
+@media (max-width: 960px) {
+  .workspace-module-area {
+    padding: 12px 12px;
+  }
+}
+
+/* === Original styles below === */
 .steps-dialog-card {
   display: flex;
   flex-direction: column;
