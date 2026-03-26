@@ -30,6 +30,7 @@ class CircuitBreaker
     private const FAILURE_THRESHOLD = 3;
     private const RECOVERY_TIME_SECONDS = 120;
     private const STATE_TTL_SECONDS = 3600;
+    private const HALF_OPEN_SUCCESS_THRESHOLD = 2;
 
     /**
      * Проверить, доступен ли провайдер для запроса.
@@ -94,9 +95,10 @@ class CircuitBreaker
         $state['last_failure_at'] = time();
 
         if ($currentCircuit === CircuitState::HALF_OPEN) {
-            // Проба провалилась → обратно в OPEN
+            // Проба провалилась → обратно в OPEN, сбросить счётчик успехов
             $state['circuit'] = CircuitState::OPEN->value;
             $state['down_until'] = time() + self::RECOVERY_TIME_SECONDS;
+            $state['half_open_successes'] = 0;
             Log::warning("CircuitBreaker: {$provider} HALF_OPEN → OPEN (probe failed)", [
                 'error_type' => $errorType,
             ]);
@@ -124,19 +126,30 @@ class CircuitBreaker
         }
 
         $prev = $state['circuit'] ?? CircuitState::CLOSED->value;
-
-        $state['fail_count'] = 0;
-        $state['down_until'] = 0;
-        $state['circuit'] = CircuitState::CLOSED->value;
         $state['last_success_at'] = time();
 
-        $this->setRawState($provider, $state);
-
         if ($prev === CircuitState::HALF_OPEN->value) {
-            Log::info("CircuitBreaker: {$provider} HALF_OPEN → CLOSED (probe succeeded)");
+            $halfOpenSuccesses = ($state['half_open_successes'] ?? 0) + 1;
+            $state['half_open_successes'] = $halfOpenSuccesses;
+
+            if ($halfOpenSuccesses >= self::HALF_OPEN_SUCCESS_THRESHOLD) {
+                // Достаточно последовательных успехов → полное восстановление
+                $state['fail_count'] = 0;
+                $state['down_until'] = 0;
+                $state['half_open_successes'] = 0;
+                $state['circuit'] = CircuitState::CLOSED->value;
+                Log::info("CircuitBreaker: {$provider} HALF_OPEN → CLOSED ({$halfOpenSuccesses} consecutive successes)");
+            } else {
+                Log::info("CircuitBreaker: {$provider} HALF_OPEN probe success ({$halfOpenSuccesses}/" . self::HALF_OPEN_SUCCESS_THRESHOLD . ")");
+            }
         } else {
+            $state['fail_count'] = 0;
+            $state['down_until'] = 0;
+            $state['circuit'] = CircuitState::CLOSED->value;
             Log::debug("CircuitBreaker: {$provider} marked HEALTHY");
         }
+
+        $this->setRawState($provider, $state);
     }
 
     /**
@@ -194,6 +207,7 @@ class CircuitBreaker
             'circuit' => CircuitState::CLOSED->value,
             'fail_count' => 0,
             'down_until' => 0,
+            'half_open_successes' => 0,
             'last_error' => null,
             'last_failure_at' => null,
             'last_success_at' => null,

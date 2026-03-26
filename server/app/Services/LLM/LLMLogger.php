@@ -24,9 +24,9 @@ class LLMLogger
 {
     private string $correlationId;
 
-    public function __construct()
+    public function __construct(?string $correlationId = null)
     {
-        $this->correlationId = (string) Str::uuid();
+        $this->correlationId = $correlationId ?? (string) Str::uuid();
     }
 
     public function getCorrelationId(): string

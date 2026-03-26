@@ -7,6 +7,7 @@ namespace App\Services\LLM;
 use App\Models\AiLog;
 use App\Services\LLM\DTO\LLMProviderState;
 use App\Services\LLM\Enums\CircuitState;
+use App\Services\LLM\Enums\UnavailableReason;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -58,11 +59,12 @@ class LLMProviderStateService
     /**
      * Валидация текущей конфигурации.
      *
-     * @return array{valid: bool, errors: string[]}
+     * @return array{valid: bool, errors: string[], warnings: string[]}
      */
     public function validateConfiguration(): array
     {
         $errors = [];
+        $warnings = [];
 
         $primary = $this->settings->getPrimaryProvider();
         $fallbacks = $this->settings->getFallbackProviders();
@@ -83,30 +85,112 @@ class LLMProviderStateService
             $errors[] = "Fallback list must not contain the primary provider '{$primary}'.";
         }
 
+        // дубликаты в fallback
+        if (count($fallbacks) !== count(array_unique($fallbacks))) {
+            $errors[] = 'Fallback list contains duplicates.';
+        }
+
+        // все fallback существуют в реестре
+        foreach ($fallbacks as $fb) {
+            if (!ProviderRegistry::exists($fb)) {
+                $errors[] = "Fallback provider '{$fb}' is not registered.";
+            }
+        }
+
         // хотя бы один валидный провайдер
         $validCount = 0;
-        foreach (array_merge([$primary], $fallbacks) as $name) {
+        $validFallbackCount = 0;
+        foreach (array_merge([$primary], $fallbacks) as $idx => $name) {
             $s = $this->settings->getProviderSettings($name);
             if (!empty($s['api_key'])) {
                 $validCount++;
+                if ($idx > 0) {
+                    $validFallbackCount++;
+                }
             }
         }
+
         if ($validCount === 0) {
             $errors[] = 'No configured providers with a valid API key.';
+        }
+
+        // Предупреждение: все fallback-ы невалидны
+        if (count($fallbacks) > 0 && $validFallbackCount === 0) {
+            $warnings[] = 'None of the fallback providers have a valid API key configured.';
+        }
+
+        // Circuit breaker для primary открыт
+        $primaryCircuit = $this->circuitBreaker->getCircuitState($primary);
+        if ($primaryCircuit === CircuitState::OPEN) {
+            $warnings[] = "Primary provider '{$primary}' circuit breaker is OPEN.";
+        }
+
+        // mode=manual но primary не работает
+        if ($this->settings->getMode() === 'manual' && !empty($primarySettings['api_key'])
+            && $primaryCircuit === CircuitState::OPEN) {
+            $warnings[] = "Manual mode is active but primary provider '{$primary}' is down. Consider switching to auto mode.";
         }
 
         return [
             'valid' => empty($errors),
             'errors' => $errors,
+            'warnings' => $warnings,
         ];
     }
 
     /**
      * Получить execution plan: primary + fallback в порядке приоритета.
+     * Фильтрует недоступных провайдеров (не настроены, circuit OPEN).
      *
      * @return string[]
      */
     public function getExecutionPlan(): array
+    {
+        $mode = $this->settings->getMode();
+        $primary = $this->settings->getPrimaryProvider();
+
+        if ($mode === 'manual') {
+            return [$primary];
+        }
+
+        $fallbacks = $this->settings->getFallbackProviders();
+        $fullPlan = array_values(array_unique(array_merge([$primary], $fallbacks)));
+
+        // Фильтр: убираем провайдеров с circuit OPEN или без ключа
+        $healthyPlan = [];
+        $skippedReasons = [];
+
+        foreach ($fullPlan as $name) {
+            $settings = $this->settings->getProviderSettings($name);
+            $circuit = $this->circuitBreaker->getCircuitState($name);
+
+            if (empty($settings['api_key'])) {
+                $skippedReasons[$name] = 'not_configured';
+                continue;
+            }
+
+            if ($circuit === CircuitState::OPEN) {
+                $skippedReasons[$name] = 'circuit_open';
+                continue;
+            }
+
+            $healthyPlan[] = $name;
+        }
+
+        // Всегда хотя бы primary (даже если down — пусть попробует)
+        if (empty($healthyPlan) && !empty($fullPlan)) {
+            $healthyPlan = [$primary];
+        }
+
+        return $healthyPlan;
+    }
+
+    /**
+     * Полный (нефильтрованный) execution plan для отображения в UI.
+     *
+     * @return string[]
+     */
+    public function getFullExecutionPlan(): array
     {
         $mode = $this->settings->getMode();
         $primary = $this->settings->getPrimaryProvider();
@@ -139,6 +223,20 @@ class LLMProviderStateService
         $isAvailable = $isConfigured && $isHealthy;
         $usedInChain = in_array($name, $executionPlan, true);
 
+        // Determine unavailable reason
+        $unavailableReason = UnavailableReason::NONE;
+        if (!$isAvailable) {
+            if (!ProviderRegistry::exists($name)) {
+                $unavailableReason = UnavailableReason::NOT_CONFIGURED;
+            } elseif (empty($providerSettings['api_key'])) {
+                $unavailableReason = UnavailableReason::NO_API_KEY;
+            } elseif ($circuitState === CircuitState::OPEN) {
+                $unavailableReason = UnavailableReason::CIRCUIT_OPEN;
+            } else {
+                $unavailableReason = UnavailableReason::INVALID_CONFIG;
+            }
+        }
+
         // Source: откуда ключ
         $allDbProviders = $this->getDbProviderKeys();
         $source = 'none';
@@ -167,16 +265,18 @@ class LLMProviderStateService
             baseUrl: $providerSettings['base_url'] ?? ProviderRegistry::getDefaultBaseUrl($name),
             priority: (int) $priority,
             usedInChain: $usedInChain,
+            unavailableReason: $unavailableReason,
             avgLatencyMs: $m['avg_latency'] ?? null,
             errorRate: $m['error_rate'] ?? null,
             lastSuccessAt: $cbStats['last_success_at'] ?? null,
+            usagePercentage: $m['usage_percentage'] ?? null,
         );
     }
 
     /**
      * Получить метрики из ai_logs за последние 24 ч.
      *
-     * @return array<string, array{avg_latency: float, error_rate: float}>
+     * @return array<string, array{avg_latency: float, error_rate: float, usage_percentage: float}>
      */
     private function loadRecentMetrics(): array
     {
@@ -190,12 +290,16 @@ class LLMProviderStateService
             ->groupBy('provider_name')
             ->get();
 
+        // Считаем общее количество запросов для usage_percentage
+        $grandTotal = $rows->sum('total');
+
         $metrics = [];
         foreach ($rows as $row) {
             $total = (int) $row->total;
             $metrics[$row->provider_name] = [
                 'avg_latency' => $row->avg_latency !== null ? (float) $row->avg_latency : null,
                 'error_rate' => $total > 0 ? (float) $row->failures / $total : 0.0,
+                'usage_percentage' => $grandTotal > 0 ? (float) $total / $grandTotal : 0.0,
             ];
         }
 

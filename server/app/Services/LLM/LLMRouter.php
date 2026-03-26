@@ -33,12 +33,15 @@ class LLMRouter
 {
     private const MAX_ATTEMPTS_PER_PROVIDER = 2;
     private const MAX_JSON_RETRY_ATTEMPTS = 1;
+    private const RETRY_BASE_DELAY_MS = 200;
+    private const RETRY_JITTER_MAX_MS = 100;
 
     private CircuitBreaker $circuitBreaker;
     private LLMSettingsRepository $settings;
     private LLMErrorClassifier $errorClassifier;
 
     private ?int $currentUserId = null;
+    private ?string $lastCorrelationId = null;
 
     /** @var array<string, LLMProviderInterface> */
     private array $providerInstances = [];
@@ -63,13 +66,22 @@ class LLMRouter
     }
 
     /**
+     * Получить correlation_id последнего запроса.
+     */
+    public function getLastCorrelationId(): ?string
+    {
+        return $this->lastCorrelationId;
+    }
+
+    /**
      * Сгенерировать декомпозицию через LLM.
      *
      * @throws LLMUnavailableException
      */
-    public function generateDecomposition(DecompositionPrompt $prompt): LLMResponse
+    public function generateDecomposition(DecompositionPrompt $prompt, ?string $correlationId = null): LLMResponse
     {
-        $logger = new LLMLogger();
+        $logger = new LLMLogger($correlationId);
+        $this->lastCorrelationId = $logger->getCorrelationId();
         $executionPlan = $this->buildExecutionPlan();
 
         $failoverChain = [];
@@ -153,7 +165,7 @@ class LLMRouter
                     break; // next provider
 
                 } catch (LLMProviderException $e) {
-                    $errorType = $this->errorClassifier->classify($e);
+                    $errorType = $this->errorClassifier->classify($e, $e->getHttpStatus());
                     $latency = (int) ((microtime(true) - $startTime) * 1000);
                     $failoverChain[] = "{$providerName}:{$errorType->value}";
 
@@ -192,7 +204,9 @@ class LLMRouter
                     // Retry для retryable ошибок
                     if ($errorType->isRetryable() && $attempt + 1 < $maxAttempts) {
                         $retryCount++;
-                        Log::info("LLMRouter: retrying {$providerName} (attempt " . ($attempt + 2) . ")");
+                        $delayMs = (int) (self::RETRY_BASE_DELAY_MS * (2 ** $attempt) + random_int(0, self::RETRY_JITTER_MAX_MS));
+                        Log::info("LLMRouter: retrying {$providerName} (attempt " . ($attempt + 2) . ") after {$delayMs}ms");
+                        usleep($delayMs * 1000);
                         continue; // повторить цикл for
                     }
 

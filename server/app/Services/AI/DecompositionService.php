@@ -7,6 +7,7 @@ use App\Services\LLM\LLMRouter;
 use App\Services\LLM\Prompts\DecompositionPromptBuilder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Сервис декомпозиции работ (Tier 1 -> Tier 3)
@@ -71,13 +72,15 @@ class DecompositionService
         $this->llmRouter->setUserId($userId);
         
         $prompt = $this->promptBuilder->build($title, $hashableContext, $desiredHours, $note);
+        $correlationId = (string) Str::uuid();
 
         try {
-            $llmResponse = $this->llmRouter->generateDecomposition($prompt);
+            $llmResponse = $this->llmRouter->generateDecomposition($prompt, $correlationId);
         } catch (LLMUnavailableException $e) {
             Log::warning('DecompositionService: LLM unavailable, using local fallback', [
                 'title' => $title,
                 'context_hash' => $contextHash,
+                'correlation_id' => $correlationId,
                 'failover_chain' => $e->getFailoverChain(),
                 'error' => $e->getMessage(),
             ]);
@@ -90,6 +93,7 @@ class DecompositionService
                 meta: [
                     'context_hash' => $contextHash,
                     'is_draft' => true,
+                    'correlation_id' => $correlationId,
                     'fallback_reason' => 'llm_unavailable',
                     'failover_chain' => $e->getFailoverChain(),
                 ]
@@ -102,6 +106,7 @@ class DecompositionService
             meta: [
                 'context_hash' => $contextHash,
                 'is_draft' => true,
+                'correlation_id' => $correlationId,
                 'provider' => $llmResponse->provider,
                 'model' => $llmResponse->model,
                 'latency_ms' => $llmResponse->latencyMs,

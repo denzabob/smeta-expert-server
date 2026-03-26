@@ -18,15 +18,20 @@ class LLMErrorClassifier
 {
     /**
      * Классифицировать исключение в LLMErrorType.
+     *
+     * @param \Throwable $e          Исключение
+     * @param int|null   $httpCode   HTTP статус-код (если известен)
+     * @param string|null $responseBody Тело ответа (для уточнения 429/5xx)
      */
-    public function classify(\Throwable $e): LLMErrorType
+    public function classify(\Throwable $e, ?int $httpCode = null, ?string $responseBody = null): LLMErrorType
     {
         if ($e instanceof InvalidLLMJsonException) {
             return LLMErrorType::INVALID_RESPONSE;
         }
 
         if ($e instanceof LLMProviderException) {
-            return $this->classifyProviderException($e);
+            $httpCode = $httpCode ?? $e->getHttpStatus();
+            return $this->classifyProviderException($e, $httpCode, $responseBody);
         }
 
         if ($e instanceof ConnectionException) {
@@ -36,15 +41,21 @@ class LLMErrorClassifier
             return LLMErrorType::NETWORK;
         }
 
+        // Classify by httpCode if available
+        if ($httpCode !== null) {
+            return $this->classifyByHttpCode($httpCode);
+        }
+
         return LLMErrorType::UNKNOWN;
     }
 
     /**
      * Классифицировать LLMProviderException по errorType string → enum.
      */
-    private function classifyProviderException(LLMProviderException $e): LLMErrorType
+    private function classifyProviderException(LLMProviderException $e, ?int $httpCode, ?string $responseBody): LLMErrorType
     {
-        return match ($e->getErrorType()) {
+        // First try by explicit errorType string
+        $byType = match ($e->getErrorType()) {
             'auth' => LLMErrorType::AUTH,
             'config' => LLMErrorType::CONFIG,
             'timeout' => LLMErrorType::TIMEOUT,
@@ -52,6 +63,36 @@ class LLMErrorClassifier
             'http_5xx' => LLMErrorType::SERVER_ERROR,
             'network' => LLMErrorType::NETWORK,
             'invalid_json' => LLMErrorType::INVALID_RESPONSE,
+            default => null,
+        };
+
+        if ($byType !== null) {
+            return $byType;
+        }
+
+        // Refine by HTTP code
+        if ($httpCode !== null) {
+            return $this->classifyByHttpCode($httpCode);
+        }
+
+        // Check response body for auth-related patterns
+        if ($responseBody !== null && preg_match('/invalid.?api.?key|unauthorized|authentication/i', $responseBody)) {
+            return LLMErrorType::AUTH;
+        }
+
+        return LLMErrorType::UNKNOWN;
+    }
+
+    /**
+     * Классифицировать по HTTP status code.
+     */
+    private function classifyByHttpCode(int $httpCode): LLMErrorType
+    {
+        return match (true) {
+            $httpCode === 401, $httpCode === 403 => LLMErrorType::AUTH,
+            $httpCode === 429 => LLMErrorType::RATE_LIMIT,
+            $httpCode === 408 => LLMErrorType::TIMEOUT,
+            $httpCode >= 500 => LLMErrorType::SERVER_ERROR,
             default => LLMErrorType::UNKNOWN,
         };
     }

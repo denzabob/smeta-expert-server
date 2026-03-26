@@ -42,8 +42,22 @@
         </ul>
       </v-alert>
 
+      <!-- Validation Warnings -->
+      <v-alert
+        v-if="validation && validation.warnings?.length"
+        type="warning"
+        variant="tonal"
+        class="mb-4"
+        density="compact"
+      >
+        <div class="font-weight-medium mb-1">Предупреждения:</div>
+        <ul class="pl-4">
+          <li v-for="warn in validation.warnings" :key="warn">{{ warn }}</li>
+        </ul>
+      </v-alert>
+
       <!-- Execution Chain -->
-      <v-card variant="tonal" color="blue-lighten-5" class="mb-4 pa-3" v-if="executionPlan.length">
+      <v-card variant="tonal" color="blue-lighten-5" class="mb-4 pa-3" v-if="fullExecutionPlan.length">
         <div class="text-subtitle-2 font-weight-medium mb-2">
           <v-icon size="small" class="mr-1">mdi-transit-connection-variant</v-icon>
           Цепочка выполнения
@@ -52,16 +66,24 @@
           </v-chip>
         </div>
         <div class="d-flex align-center flex-wrap ga-1">
-          <template v-for="(name, idx) in executionPlan" :key="name">
-            <v-chip
-              :color="getProviderChipColor(name)"
-              variant="flat"
-              size="small"
-            >
-              <v-icon start size="small">{{ getStatusIcon(name) }}</v-icon>
-              {{ getDisplayName(name) }}
-            </v-chip>
-            <v-icon v-if="idx < executionPlan.length - 1" size="small" color="grey">mdi-arrow-right</v-icon>
+          <template v-for="(name, idx) in fullExecutionPlan" :key="name">
+            <v-tooltip :text="getChainTooltip(name)" location="bottom">
+              <template #activator="{ props }">
+                <v-chip
+                  v-bind="props"
+                  :color="getProviderChipColor(name)"
+                  :variant="isInHealthyPlan(name) ? 'flat' : 'outlined'"
+                  size="small"
+                >
+                  <v-icon start size="small">{{ getStatusIcon(name) }}</v-icon>
+                  {{ getDisplayName(name) }}
+                  <span v-if="!isInHealthyPlan(name)" class="ml-1 text-caption">
+                    ({{ getSkipReason(name) }})
+                  </span>
+                </v-chip>
+              </template>
+            </v-tooltip>
+            <v-icon v-if="idx < fullExecutionPlan.length - 1" size="small" color="grey">mdi-arrow-right</v-icon>
           </template>
         </div>
       </v-card>
@@ -116,6 +138,14 @@
                 <div class="d-flex justify-space-between" v-if="ps.error_rate != null">
                   <span class="text-medium-emphasis">Error rate</span>
                   <span :class="ps.error_rate > 0.1 ? 'text-error' : ''">{{ (ps.error_rate * 100).toFixed(1) }}%</span>
+                </div>
+                <div class="d-flex justify-space-between" v-if="ps.usage_percentage != null">
+                  <span class="text-medium-emphasis">Использование</span>
+                  <span>{{ (ps.usage_percentage * 100).toFixed(1) }}%</span>
+                </div>
+                <div class="d-flex justify-space-between" v-if="ps.unavailable_reason">
+                  <span class="text-medium-emphasis">Причина</span>
+                  <span class="text-error text-truncate ml-2" style="max-width: 160px" :title="ps.unavailable_reason_label">{{ ps.unavailable_reason_label }}</span>
                 </div>
                 <div class="d-flex justify-space-between" v-if="ps.last_error">
                   <span class="text-medium-emphasis">Последняя ошибка</span>
@@ -305,6 +335,8 @@ interface ProviderStateItem {
   configured: boolean
   healthy: boolean
   available: boolean
+  unavailable_reason: string | null
+  unavailable_reason_label: string | null
   circuit: string
   fail_count: number
   last_error: string | null
@@ -317,6 +349,7 @@ interface ProviderStateItem {
   used_in_chain: boolean
   latency_ms: number | null
   error_rate: number | null
+  usage_percentage: number | null
 }
 
 const loading = ref(false)
@@ -327,7 +360,8 @@ const testResults = ref<Record<string, { available: boolean; error?: string; lat
 
 const providerStates = ref<ProviderStateItem[]>([])
 const executionPlan = ref<string[]>([])
-const validation = ref<{ valid: boolean; errors: string[] } | null>(null)
+const fullExecutionPlan = ref<string[]>([])
+const validation = ref<{ valid: boolean; errors: string[]; warnings: string[] } | null>(null)
 
 const settings = ref({
   mode: 'auto',
@@ -398,6 +432,33 @@ function getProviderChipColor(provider: string): string {
   return ps ? statusColor(ps.status) : 'grey'
 }
 
+function isInHealthyPlan(provider: string): boolean {
+  return executionPlan.value.includes(provider)
+}
+
+function getSkipReason(provider: string): string {
+  const ps = providerStates.value.find(s => s.provider === provider)
+  if (!ps) return 'unknown'
+  if (ps.unavailable_reason === 'no_api_key') return 'нет ключа'
+  if (ps.unavailable_reason === 'circuit_open') return 'circuit open'
+  if (ps.unavailable_reason === 'not_configured') return 'не настроен'
+  if (ps.unavailable_reason === 'invalid_config') return 'ошибка конфига'
+  if (!ps.configured) return 'нет ключа'
+  if (ps.circuit === 'open') return 'circuit open'
+  return 'пропущен'
+}
+
+function getChainTooltip(provider: string): string {
+  const ps = providerStates.value.find(s => s.provider === provider)
+  if (!ps) return provider
+  const parts = [`${ps.display_name} — ${statusLabel(ps.status)}`]
+  if (ps.unavailable_reason_label) parts.push(`Причина: ${ps.unavailable_reason_label}`)
+  if (ps.latency_ms != null) parts.push(`Latency: ${ps.latency_ms}ms`)
+  if (ps.usage_percentage != null) parts.push(`Использование: ${(ps.usage_percentage * 100).toFixed(1)}%`)
+  if (ps.last_error) parts.push(`Ошибка: ${ps.last_error}`)
+  return parts.join('\n')
+}
+
 function statusColor(status: string): string {
   switch (status) {
     case 'healthy': return 'success'
@@ -455,6 +516,7 @@ async function loadProviderStates() {
     const response = await api.get('/api/admin/llm-provider-states')
     providerStates.value = response.data.providers || []
     executionPlan.value = response.data.execution_plan || []
+    fullExecutionPlan.value = response.data.full_execution_plan || []
     validation.value = response.data.validation || null
   } catch (error) {
     console.error('Failed to load provider states:', error)

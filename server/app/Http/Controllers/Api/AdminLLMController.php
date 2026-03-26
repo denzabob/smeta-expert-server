@@ -53,10 +53,12 @@ class AdminLLMController extends Controller
         $states = $this->stateService->getAllStates();
         $validation = $this->stateService->validateConfiguration();
         $executionPlan = $this->stateService->getExecutionPlan();
+        $fullExecutionPlan = $this->stateService->getFullExecutionPlan();
 
         return response()->json([
             'providers' => array_map(fn($s) => $s->toArray(), $states),
             'execution_plan' => $executionPlan,
+            'full_execution_plan' => $fullExecutionPlan,
             'mode' => $this->settings->getMode(),
             'validation' => $validation,
         ]);
