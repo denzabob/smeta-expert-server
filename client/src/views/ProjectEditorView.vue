@@ -119,6 +119,9 @@
         <v-chip size="small" variant="tonal" color="deep-purple">Фасады: {{ positions.filter(p => p.kind === 'facade').length }}</v-chip>
         <v-chip v-if="positionsWithoutMaterial > 0" size="small" variant="tonal" color="warning">Без материала: {{ positionsWithoutMaterial }}</v-chip>
         <v-chip v-if="positionsWithPriceIssues > 0" size="small" variant="tonal" color="error">Без цен: {{ positionsWithPriceIssues }}</v-chip>
+        <v-divider vertical class="mx-1" />
+        <v-btn size="x-small" variant="tonal" prepend-icon="mdi-checkbox-multiple-outline" @click="selectPositionsByKind('panel')" :disabled="positions.filter(p => p.kind === 'panel').length === 0">Выбрать панели</v-btn>
+        <v-btn size="x-small" variant="tonal" color="deep-purple" prepend-icon="mdi-checkbox-multiple-outline" @click="selectPositionsByKind('facade')" :disabled="positions.filter(p => p.kind === 'facade').length === 0">Выбрать фасады</v-btn>
       </div>
         <v-card-title>Позиции</v-card-title>
         <div class="toolbar-actions">
@@ -1566,8 +1569,9 @@
                 size="x-small"
                 variant="text"
                 icon="mdi-file-pdf-box"
-                title="PDF"
-                :disabled="item.status === 'stale'"
+                title="PDF сметы"
+                :loading="revisionPdfLoading.has(item.number)"
+                :disabled="item.status === 'stale' || revisionPdfLoading.has(item.number)"
                 @click="downloadRevisionPdf(item)"
               />
               <v-btn
@@ -1575,7 +1579,8 @@
                 variant="text"
                 icon="mdi-file-document-outline"
                 title="PDF обоснований цен"
-                :disabled="item.status === 'stale'"
+                :loading="revisionJustPdfLoading.has(item.number)"
+                :disabled="item.status === 'stale' || revisionJustPdfLoading.has(item.number)"
                 @click="downloadPriceJustificationPdf(item)"
               />
               <v-btn
@@ -4179,6 +4184,8 @@ const normohourSourceSaving = ref(false)
 const operationSaving = ref(false)
 const pdfLoading = ref(false) // ← loader для PDF
 const snapshotLoading = ref(false) // ← loader для snapshot
+const revisionPdfLoading = ref<Set<number>>(new Set())
+const revisionJustPdfLoading = ref<Set<number>>(new Set())
 const latestRevision = ref<any>(null) // ← последняя ревизия
 const revisions = ref<any[]>([])
 const revisionsLoading = ref(false)
@@ -5579,6 +5586,12 @@ const clearSelection = () => {
   selectedPositionsRaw.value = []
 }
 
+const selectPositionsByKind = (kind: 'panel' | 'facade') => {
+  selectedPositionsRaw.value = positions.value
+    .filter(p => p.kind === kind && p.id != null)
+    .map(p => p.id!)
+}
+
 // Auto-load facade materials when bulk action requires them
 watch(bulkAction, (val) => {
   if (val === 'replace_facade_material') {
@@ -6432,6 +6445,9 @@ const openRevisionView = async (rev: any) => {
 }
 
 const downloadRevisionPdf = async (rev: any) => {
+  const num = rev.number as number
+  revisionPdfLoading.value.add(num)
+  revisionPdfLoading.value = new Set(revisionPdfLoading.value)
   try {
     const res = await api.get(`/api/projects/${projectId}/revisions/${rev.number}/pdf`, { responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
@@ -6444,10 +6460,16 @@ const downloadRevisionPdf = async (rev: any) => {
     console.error('❌ Revision PDF error:', error)
     const serverError = error.response?.data?.error || error.response?.data?.details
     showNotification(`Ошибка PDF из ревизии: ${serverError || error.response?.data?.message || error.message}`, 'error')
+  } finally {
+    revisionPdfLoading.value.delete(num)
+    revisionPdfLoading.value = new Set(revisionPdfLoading.value)
   }
 }
 
 const downloadPriceJustificationPdf = async (rev: any) => {
+  const num = rev.number as number
+  revisionJustPdfLoading.value.add(num)
+  revisionJustPdfLoading.value = new Set(revisionJustPdfLoading.value)
   try {
     const res = await api.get(`/api/projects/${projectId}/revisions/${rev.number}/price-justification.pdf`, { responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
@@ -6459,6 +6481,9 @@ const downloadPriceJustificationPdf = async (rev: any) => {
   } catch (error: any) {
     console.error('❌ Revision price justification PDF error:', error)
     showNotification(`Ошибка PDF обоснований: ${error.response?.data?.message || error.message}`, 'error')
+  } finally {
+    revisionJustPdfLoading.value.delete(num)
+    revisionJustPdfLoading.value = new Set(revisionJustPdfLoading.value)
   }
 }
 
@@ -8189,6 +8214,9 @@ const openDetailTypesInNewTab = () => {
 }
 
 onMounted(async () => {
+  // Сворачиваем основной sidebar приложения для фокуса на редакторе
+  window.dispatchEvent(new CustomEvent('app-sidebar:request-rail'))
+
   await loadReferences()
   const projectLoaded = await fetchData()
   if (!projectLoaded) {
@@ -8234,6 +8262,9 @@ watch(manualCloseDialog, (isOpen) => {
 })
 
 onBeforeUnmount(() => {
+  // Восстанавливаем сохранённое состояние sidebar
+  window.dispatchEvent(new CustomEvent('app-sidebar:restore'))
+
   if (fittingSearchTimeout) {
     clearTimeout(fittingSearchTimeout)
   }

@@ -302,6 +302,21 @@ function handleOpenNotifications() {
 }
 
 // Восстановление режима из localStorage
+let savedModeBeforeOverride: 'wide' | 'rail' | null = null
+
+function handleRequestRail() {
+  if (mobile.value) return
+  savedModeBeforeOverride = sidebarMode.value
+  sidebarMode.value = 'rail'
+}
+
+function handleRestore() {
+  if (savedModeBeforeOverride) {
+    sidebarMode.value = savedModeBeforeOverride
+    savedModeBeforeOverride = null
+  }
+}
+
 onMounted(() => {
   const saved = localStorage.getItem(STORAGE_KEY) as 'wide' | 'rail' | null
   if (saved === 'wide' || saved === 'rail') {
@@ -311,10 +326,14 @@ onMounted(() => {
   if (authStore.isAuthenticated) {
     notificationsStore.startPolling()
   }
+  window.addEventListener('app-sidebar:request-rail', handleRequestRail)
+  window.addEventListener('app-sidebar:restore', handleRestore)
 })
 
 onBeforeUnmount(() => {
   notificationsStore.stopPolling()
+  window.removeEventListener('app-sidebar:request-rail', handleRequestRail)
+  window.removeEventListener('app-sidebar:restore', handleRestore)
 })
 
 // На мобильных всегда wide
