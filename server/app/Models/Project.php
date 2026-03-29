@@ -107,6 +107,11 @@ class Project extends Model
         return $this->hasMany(RevisionRun::class)->latest('id');
     }
 
+    public function evidenceRuns()
+    {
+        return $this->hasMany(EstimateEvidenceRun::class)->latest('id');
+    }
+
     public function latestRevision()
     {
         return $this->hasOne(ProjectRevision::class)->latestOfMany('number');

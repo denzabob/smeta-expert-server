@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Evidence\CostDriverType;
 use App\Models\RevisionRun;
 use App\Models\RevisionRunItem;
 use Illuminate\Bus\Queueable;
@@ -35,6 +36,14 @@ class RunRevisionUpdateJob implements ShouldQueue
         $query = RevisionRunItem::where('revision_run_id', $run->id);
         if ($this->retryOnly) {
             $query->where('status', '!=', RevisionRunItem::STATUS_OK);
+        }
+        // Preserve manual-only items (e.g. facades) — they must not be reset or auto-processed
+        $query->where('status', '!=', RevisionRunItem::STATUS_NEEDS_MANUAL);
+        // Internal-only items (e.g. operations) are pre-resolved at creation —
+        // they must not be reset to PENDING or dispatched into the scraping pipeline.
+        $internalOnly = CostDriverType::internalOnlyTypes();
+        if (!empty($internalOnly)) {
+            $query->whereNotIn('cost_driver_type', $internalOnly);
         }
         $items = $query->get();
 

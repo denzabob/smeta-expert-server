@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\RegionController;
 use App\Http\Controllers\Api\UserSettingsController;
 use App\Http\Controllers\Api\ProjectRevisionController;
 use App\Http\Controllers\Api\RevisionRunController;
+use App\Http\Controllers\Api\EvidenceRunController;
 use App\Http\Controllers\Api\ProjectProfileRateController;
 use App\Http\Controllers\Api\WorkDecomposeController;
 use App\Http\Controllers\Api\AdminLLMController;
@@ -176,7 +177,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('chrome/extract', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'extract']);
         Route::post('chrome/find-template', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'findTemplate']);
         Route::post('chrome/validate', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'validateFields']);
+        Route::get('chrome/revision-items', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'listRevisionItems']);
+        Route::post('chrome/revision-items/{itemId}/evidence', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'submitItemEvidence']);
         Route::post('chrome/auth/revoke', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'revokeToken']);
+
+        // ========== Generic Evidence Capture (Block G3) ==========
+        Route::get('chrome/generic-items', [\App\Http\Controllers\Api\GenericChromeController::class, 'listGenericItems']);
+        Route::post('chrome/capture-observation', [\App\Http\Controllers\Api\GenericChromeController::class, 'captureObservation']);
+        Route::post('chrome/generic-items/{itemId}/capture', [\App\Http\Controllers\Api\GenericChromeController::class, 'captureGenericItem']);
+        Route::post('chrome/extract-with-evidence', [\App\Http\Controllers\Api\GenericChromeController::class, 'extractWithEvidence']);
     });
     
     // ========== Material Catalog (Block 1) ==========
@@ -343,7 +352,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('projects/{project}/revisions/run/{runId}', [RevisionRunController::class, 'show']);
     Route::post('projects/{project}/revisions/run/{runId}/retry', [RevisionRunController::class, 'retry']);
     Route::post('revisions/run/{runId}/items/{itemId}/manual', [RevisionRunController::class, 'manual']);
+    Route::post('revisions/run/{runId}/items/{itemId}/attach-document', [RevisionRunController::class, 'attachDocument']);
     Route::post('projects/{project}/revisions/run/{runId}/finalize', [RevisionRunController::class, 'finalize']);
+
+    // ========== Evidence Assets API ==========
+    Route::get('evidence-assets/{assetId}/file', [\App\Http\Controllers\Api\EvidenceAssetController::class, 'file']);
+
+    // ========== Generic Evidence Domain (Block G1) ==========
+    Route::get('projects/{project}/evidence-runs', [EvidenceRunController::class, 'index']);
+    Route::post('projects/{project}/evidence-runs', [EvidenceRunController::class, 'store']);
+    Route::get('projects/{project}/evidence-runs/{runId}', [EvidenceRunController::class, 'show']);
+    Route::post('projects/{project}/evidence-runs/{runId}/finalize', [EvidenceRunController::class, 'finalize']);
+    Route::post('projects/{project}/evidence-runs/{runId}/items/{itemId}/resolve', [EvidenceRunController::class, 'resolveItem']);
+    Route::post('projects/{project}/evidence-runs/{runId}/items/{itemId}/skip', [EvidenceRunController::class, 'skipItem']);
+    Route::get('projects/{project}/evidence-runs/{runId}/pdf', [EvidenceRunController::class, 'pdf']);
+    Route::post('evidence-records', [EvidenceRunController::class, 'createRecord']);
+    Route::post('evidence-records/{id}/assets', [EvidenceRunController::class, 'uploadAsset']);
     
     // ========== Position Import API ==========
     // Upload file and create import session

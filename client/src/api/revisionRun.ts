@@ -15,6 +15,33 @@ export interface RevisionRun {
   last_error?: string | null
 }
 
+export type CostDriverType = 'plate' | 'edge' | 'facade' | 'fitting' | 'operation' | 'labor_work' | 'expense'
+export type CaptureSourceType = 'auto' | 'manual' | 'chrome_ext' | 'internal'
+
+export interface EvidenceAssetDetail {
+  id: number
+  evidence_artifact_id: number
+  asset_type: string
+  mime_type: string | null
+  original_filename: string | null
+  file_size: number | null
+}
+
+export interface EvidenceArtifactDetail {
+  id: number
+  revision_run_item_id: number
+  capture_source: CaptureSourceType | null
+  mode: string | null
+  extracted_price: string | null
+  currency: string | null
+  source_url_raw: string | null
+  source_domain: string | null
+  captured_at: string | null
+  created_at: string | null
+  trust_score: number | null
+  assets: EvidenceAssetDetail[]
+}
+
 export interface RevisionRunItem {
   id: number
   revision_run_id: number
@@ -30,6 +57,14 @@ export interface RevisionRunItem {
   projectFitting?: Record<string, unknown>
   price_history?: Record<string, unknown>
   priceHistory?: Record<string, unknown>
+  cost_driver_type?: CostDriverType | null
+  resolved_capture_source?: CaptureSourceType | null
+  has_evidence?: boolean
+  evidence_artifacts?: EvidenceArtifactDetail[]
+}
+
+export function evidenceAssetFileUrl(assetId: number): string {
+  return `/api/evidence-assets/${assetId}/file`
 }
 
 export interface StartRunResponse {
@@ -104,6 +139,15 @@ export const revisionRunApi = {
 
   async finalize(projectId: string | number, runId: string | number): Promise<FinalizeRunResponse> {
     const { data } = await api.post(`/api/projects/${projectId}/revisions/run/${runId}/finalize`)
+    return data
+  },
+
+  async attachDocument(runId: string | number, itemId: string | number, file: File) {
+    const formData = new FormData()
+    formData.append('document_file', file)
+    const { data } = await api.post(`/api/revisions/run/${runId}/items/${itemId}/attach-document`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
     return data
   },
 }

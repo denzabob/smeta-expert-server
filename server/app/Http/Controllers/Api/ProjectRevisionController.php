@@ -430,13 +430,21 @@ class ProjectRevisionController extends Controller
                 'screenshot_path' => $j['screenshot_path'] ?? null,
                 'true_score' => $j['true_score'] ?? null,
                 'source_type' => $j['source_type'] ?? null,
+                'capture_source' => $j['capture_source'] ?? null,
+                'cost_driver_type' => $j['cost_driver_type'] ?? null,
+                'source_domain' => $j['source_domain'] ?? null,
             ];
         })->values()->all();
+
+        $evidenceSummary = is_array($snapshot['evidence_summary'] ?? null)
+            ? $snapshot['evidence_summary']
+            : null;
 
         $pdf = Pdf::loadView('reports.price_justification', [
             'project' => $project,
             'revision' => $revision,
             'rows' => $rows,
+            'evidenceSummary' => $evidenceSummary,
         ])
             ->setPaper('a4')
             ->setOption('isHtml5ParserEnabled', true)

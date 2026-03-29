@@ -2,14 +2,24 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Evidence\CaptureSource;
+use App\Evidence\EvidenceFeatures;
 use App\Http\Controllers\Controller;
+use App\Models\EvidenceArtifact;
+use App\Models\EvidenceAsset;
+use App\Models\MaterialPriceHistory;
 use App\Models\ParserSupplierCollectProfile;
+use App\Models\RevisionRun;
+use App\Models\RevisionRunItem;
 use App\Models\User;
 use App\Services\ChromeExtractService;
+use App\Services\UrlNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class ChromeExtensionController extends Controller
 {
@@ -509,5 +519,204 @@ class ChromeExtensionController extends Controller
             'preview' => $preview,
             'type_resolution' => $typeResolution,
         ]);
+    }
+
+    // ── Revision items list (Block C1) ──────────────────────────
+
+    /**
+     * GET /api/chrome/revision-items
+     * List open revision run items that the authenticated user can close from the extension.
+     */
+    public function listRevisionItems(Request $request): JsonResponse
+    {
+        if (!EvidenceFeatures::chromeRevisionEnabled()) {
+            abort(404);
+        }
+
+        $userId = $request->user()->id;
+
+        $items = RevisionRunItem::whereHas('run.project', function ($q) use ($userId) {
+                $q->where('user_id', $userId);
+            })
+            ->whereHas('run', function ($q) {
+                $q->whereIn('status', [
+                    RevisionRun::STATUS_NEEDS_MANUAL,
+                    RevisionRun::STATUS_IN_PROGRESS,
+                ]);
+            })
+            ->whereIn('status', [
+                RevisionRunItem::STATUS_NEEDS_MANUAL,
+                RevisionRunItem::STATUS_BLOCKED,
+                RevisionRunItem::STATUS_TIMEOUT,
+                RevisionRunItem::STATUS_PARSE_ERROR,
+                RevisionRunItem::STATUS_NO_TEMPLATE,
+            ])
+            ->with([
+                'material:id,name',
+                'run:id,project_id,status',
+                'run.project:id,number,expert_name',
+            ])
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get();
+
+        $mapped = $items->map(function (RevisionRunItem $item) {
+            return [
+                'id'               => $item->id,
+                'revision_run_id'  => $item->revision_run_id,
+                'cost_driver_type' => $item->cost_driver_type,
+                'status'           => $item->status,
+                'material_name'    => $item->material?->name,
+                'material_id'      => $item->material_id,
+                'source_url'       => $item->source_url,
+                'project_name'     => $item->run?->project?->number
+                    ? ($item->run->project->number . ' — ' . ($item->run->project->expert_name ?? ''))
+                    : null,
+                'run_status'       => $item->run?->status,
+            ];
+        });
+
+        return response()->json([
+            'items' => $mapped->values(),
+            'total' => $mapped->count(),
+        ]);
+    }
+
+    // ── Revision item evidence (Block B2b) ────────────────────────
+
+    /**
+     * POST /api/chrome/revision-items/{itemId}/evidence
+     * Submit price evidence for a specific revision run item from the chrome extension.
+     */
+    public function submitItemEvidence(Request $request, int $itemId): JsonResponse
+    {
+        if (!EvidenceFeatures::chromeRevisionEnabled()) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'price_per_unit' => 'required|numeric|min:0.01',
+            'currency' => 'required|string|max:10',
+            'source_url' => 'required|url|max:2048',
+            'screenshot_file' => 'required|file|image|max:10240',
+            'region_id' => 'nullable|integer',
+        ]);
+
+        $item = RevisionRunItem::with([
+            'run.project',
+            'material',
+            'projectFitting.material',
+            'position.material',
+            'position.edgeMaterial',
+            'position.facadeMaterial',
+        ])->findOrFail($itemId);
+
+        if ($item->run->project->user_id !== $request->user()->id) {
+            return response()->json(['error' => 'Нет доступа к проекту'], 403);
+        }
+
+        if ($item->status === RevisionRunItem::STATUS_OK) {
+            return response()->json(['error' => 'Позиция уже закрыта', 'item_id' => $item->id], 409);
+        }
+
+        $material = $item->material
+            ?: $item->projectFitting?->material
+            ?: $item->position?->facadeMaterial
+            ?: $item->position?->edgeMaterial
+            ?: $item->position?->material;
+
+        if (!$material) {
+            return response()->json(['error' => 'Материал позиции не найден'], 422);
+        }
+
+        $uploadedFile = $validated['screenshot_file'];
+        // File upload is non-transactional; DB writes below are atomic.
+        // If the transaction fails the uploaded file remains as an orphan on disk.
+        $path = $uploadedFile->store('screenshots/chrome/' . now()->format('Y/m'), 'public');
+
+        $urlNormalizer = app(UrlNormalizer::class);
+        $rawUrl = $validated['source_url'];
+        $normalized = $urlNormalizer->normalize($rawUrl);
+
+        $result = DB::transaction(function () use ($item, $material, $validated, $path, $rawUrl, $normalized, $uploadedFile) {
+            $artifact = EvidenceArtifact::create([
+                'uuid'                  => (string) Str::uuid(),
+                'material_id'           => $material->id,
+                'revision_run_id'       => $item->revision_run_id,
+                'revision_run_item_id'  => $item->id,
+                'mode'                  => EvidenceArtifact::MODE_MANUAL,
+                'capture_source'        => CaptureSource::CHROME_EXT,
+                'cost_driver_type'      => $item->cost_driver_type,
+                'source_url_raw'        => $rawUrl,
+                'source_url_normalized' => $normalized,
+                'source_domain'         => $normalized ? (parse_url($normalized, PHP_URL_HOST) ?: null) : null,
+                'extracted_price'       => (float) $validated['price_per_unit'],
+                'currency'              => strtoupper((string) $validated['currency']),
+                'screenshot_path'       => $path,
+                'trust_score'           => 60,
+                'captured_at'           => now(),
+                'created_by'            => auth()->id(),
+            ]);
+
+            EvidenceAsset::create([
+                'uuid'                 => (string) Str::uuid(),
+                'evidence_artifact_id' => $artifact->id,
+                'asset_type'           => 'screenshot',
+                'file_path'            => $path,
+                'original_filename'    => $uploadedFile->getClientOriginalName(),
+                'mime_type'            => $uploadedFile->getClientMimeType(),
+                'file_size'            => $uploadedFile->getSize(),
+            ]);
+
+            $history = MaterialPriceHistory::create([
+                'material_id' => $material->id,
+                'version' => (int) ($material->version ?? 1),
+                'valid_from' => now()->toDateString(),
+                'price_per_unit' => (float) $validated['price_per_unit'],
+                'source_url' => $normalized,
+                'raw_source_url' => $rawUrl,
+                'normalized_source_url' => $normalized,
+                'screenshot_path' => $path,
+                'observed_at' => now(),
+                'region_id' => $validated['region_id'] ?? $item->run->project->region_id,
+                'source_type' => MaterialPriceHistory::SOURCE_CHROME_EXT,
+                'is_verified' => false,
+                'true_score' => 0,
+                'currency' => strtoupper((string) $validated['currency']),
+                'evidence_artifact_id' => $artifact->id,
+                'evidence_mode' => EvidenceArtifact::MODE_MANUAL,
+            ]);
+
+            $item->update([
+                'status' => RevisionRunItem::STATUS_OK,
+                'message' => 'Закрыто через расширение',
+                'source_url' => $normalized,
+                'price_history_id' => $history->id,
+            ]);
+
+            // Refresh run counters
+            $run = $item->run;
+            $total = $run->items()->count();
+            $ok = $run->items()->where('status', RevisionRunItem::STATUS_OK)->count();
+            $failed = $total - $ok;
+
+            $run->update([
+                'status' => $failed === 0 ? RevisionRun::STATUS_READY : RevisionRun::STATUS_NEEDS_MANUAL,
+                'total_items' => $total,
+                'ok_items' => $ok,
+                'failed_items' => $failed,
+                'finished_at' => $failed === 0 ? now() : null,
+            ]);
+
+            return ['artifact' => $artifact, 'history' => $history];
+        });
+
+        return response()->json([
+            'success' => true,
+            'item_id' => $item->id,
+            'status' => RevisionRunItem::STATUS_OK,
+            'price_history_id' => $result['history']->id,
+            'artifact_id' => $result['artifact']->id,
+        ], 201);
     }
 }

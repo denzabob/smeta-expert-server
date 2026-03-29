@@ -130,6 +130,52 @@ class PrizmAPI {
     return this.request('POST', '/chrome/extract', body);
   }
 
+  // --- Revision Evidence ---
+
+  async getRevisionItems() {
+    return this.request('GET', '/chrome/revision-items');
+  }
+
+  /**
+   * Submit evidence for a revision item using multipart/form-data.
+   * Must be called directly from popup (not through service-worker message passing)
+   * because FormData/Blob cannot be serialized via chrome.runtime.sendMessage.
+   */
+  async submitItemEvidence(itemId, formData) {
+    await this.ready();
+
+    if (!this.token) {
+      throw new Error('Не авторизован. Подключите API-токен в настройках расширения.');
+    }
+
+    const url = `${this.baseUrl}/chrome/revision-items/${itemId}/evidence`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${this.token}`,
+      },
+      body: formData,
+    });
+
+    if (response.status === 401) {
+      await chrome.storage.local.remove('authToken');
+      this.token = null;
+      throw new Error('Сессия истекла. Войдите заново.');
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      const message = data.error || data.message || `Ошибка сервера (${response.status})`;
+      const err = new Error(message);
+      err.status = response.status;
+      throw err;
+    }
+
+    return data;
+  }
+
   /**
    * Login with email/password and obtain a Sanctum token.
    */
@@ -169,6 +215,84 @@ class PrizmAPI {
     } catch {
       return false;
     }
+  }
+
+  // ── Generic Evidence Capture (Block G3) ─────────────────────────
+
+  /**
+   * GET /api/chrome/generic-items
+   * List open generic evidence items for the current user.
+   */
+  async getGenericItems() {
+    return this.request('/chrome/generic-items');
+  }
+
+  /**
+   * POST /api/chrome/capture-observation
+   * Create a standalone evidence record (not tied to a run item).
+   * Must be called directly from popup (FormData cannot be serialized).
+   */
+  async captureObservation(formData) {
+    await this.ready();
+    if (!this.token) {
+      throw new Error('Не авторизован. Подключите API-токен в настройках расширения.');
+    }
+    const url = `${this.baseUrl}/chrome/capture-observation`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${this.token}`,
+      },
+      body: formData,
+    });
+    if (response.status === 401) {
+      await chrome.storage.local.remove('authToken');
+      this.token = null;
+      throw new Error('Сессия истекла. Войдите заново.');
+    }
+    const data = await response.json();
+    if (!response.ok) {
+      const message = data.error || data.message || `Ошибка сервера (${response.status})`;
+      const err = new Error(message);
+      err.status = response.status;
+      throw err;
+    }
+    return data;
+  }
+
+  /**
+   * POST /api/chrome/generic-items/{itemId}/capture
+   * Submit evidence for a specific generic evidence item.
+   * Must be called directly from popup (FormData cannot be serialized).
+   */
+  async captureGenericItem(itemId, formData) {
+    await this.ready();
+    if (!this.token) {
+      throw new Error('Не авторизован. Подключите API-токен в настройках расширения.');
+    }
+    const url = `${this.baseUrl}/chrome/generic-items/${itemId}/capture`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${this.token}`,
+      },
+      body: formData,
+    });
+    if (response.status === 401) {
+      await chrome.storage.local.remove('authToken');
+      this.token = null;
+      throw new Error('Сессия истекла. Войдите заново.');
+    }
+    const data = await response.json();
+    if (!response.ok) {
+      const message = data.error || data.message || `Ошибка сервера (${response.status})`;
+      const err = new Error(message);
+      err.status = response.status;
+      throw err;
+    }
+    return data;
   }
 }
 

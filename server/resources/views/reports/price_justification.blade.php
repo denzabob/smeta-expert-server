@@ -198,6 +198,65 @@
       font-size: 9pt;
       margin-top: 6mm;
     }
+
+    .evidence-summary {
+      border: 1px solid #d7d7d7;
+      background: #f9f9f9;
+      padding: 2.5mm 3mm;
+      margin: 0 0 4mm 0;
+      page-break-inside: avoid;
+    }
+
+    .evidence-summary-title {
+      font-size: 8.6pt;
+      font-weight: 700;
+      margin: 0 0 1.5mm 0;
+      color: #333;
+    }
+
+    .evidence-summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 7.9pt;
+    }
+
+    .evidence-summary-table td {
+      padding: 0.4mm 2mm 0.4mm 0;
+      vertical-align: top;
+      line-height: 1.2;
+    }
+
+    .source-badge {
+      display: inline-block;
+      padding: 0.3mm 1.5mm;
+      border: 1px solid #cfcfcf;
+      background: #f0f0f0;
+      font-size: 7pt;
+      line-height: 1.1;
+      color: #555;
+      white-space: nowrap;
+    }
+
+    .type-badge {
+      display: inline-block;
+      padding: 0.3mm 1.5mm;
+      border: 1px solid #c5d5c5;
+      background: #eef5ee;
+      font-size: 7pt;
+      line-height: 1.1;
+      color: #446644;
+      white-space: nowrap;
+    }
+
+    .score-indicator {
+      display: inline-block;
+      padding: 0.3mm 1.5mm;
+      border: 1px solid #cfcfcf;
+      background: #f5f5f5;
+      font-size: 7pt;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -207,21 +266,82 @@
       Источники и скриншоты, подтверждающие стоимость материалов, включенных в ревизию сметы.
     </div>
 
+    @if(isset($evidenceSummary) && is_array($evidenceSummary))
+      @php
+        $sourceLabels = [
+          'auto' => 'Автоматически',
+          'manual' => 'Вручную',
+          'chrome_ext' => 'Chrome расширение',
+          'internal' => 'Внутренний',
+        ];
+      @endphp
+      <div class="evidence-summary">
+        <div class="evidence-summary-title">Покрытие обоснованиями</div>
+        <table class="evidence-summary-table">
+          <tr>
+            <td class="bold">Позиций с обоснованием:</td>
+            <td>{{ $evidenceSummary['with_evidence'] ?? 0 }} / {{ $evidenceSummary['total_items'] ?? 0 }} ({{ $evidenceSummary['coverage_pct'] ?? 0 }}%)</td>
+          </tr>
+          @if(!empty($evidenceSummary['by_capture_source']))
+            <tr>
+              <td class="bold">По источнику:</td>
+              <td>
+                @foreach($evidenceSummary['by_capture_source'] as $src => $cnt)
+                  {{ $sourceLabels[$src] ?? $src }}: {{ $cnt }}@if(!$loop->last), @endif
+                @endforeach
+              </td>
+            </tr>
+          @endif
+        </table>
+      </div>
+    @endif
+
     @forelse($rows as $row)
       <div class="item">
         <div class="item-head">
           <div class="item-title">
             {{ $row['name'] ?? ('Позиция #' . ($row['project_position_id'] ?? $row['project_fitting_id'] ?? '—')) }}
+            @if(!empty($row['capture_source']))
+              @php
+                $capLabels = ['auto' => 'Авто', 'manual' => 'Вручную', 'chrome_ext' => 'Chrome', 'internal' => 'Внутр.'];
+              @endphp
+              <span class="source-badge">{{ $capLabels[$row['capture_source']] ?? $row['capture_source'] }}</span>
+            @endif
           </div>
         </div>
 
         <div class="item-body">
           <table class="meta-table">
+            @if(!empty($row['article']) || !empty($row['unit']))
+              <tr>
+                <td class="meta-label">Артикул</td>
+                <td class="meta-value">
+                  {{ $row['article'] ?? '—' }}@if(!empty($row['unit'])), {{ $row['unit'] }}@endif
+                </td>
+              </tr>
+            @endif
+
+            @if(!empty($row['cost_driver_type']))
+              @php
+                $driverLabels = [
+                  'plate' => 'Плита', 'edge' => 'Кромка', 'facade' => 'Фасад',
+                  'fitting' => 'Фурнитура', 'operation' => 'Операция',
+                  'labor_work' => 'Работа', 'expense' => 'Расход',
+                ];
+              @endphp
+              <tr>
+                <td class="meta-label">Тип</td>
+                <td class="meta-value">
+                  <span class="type-badge">{{ $driverLabels[$row['cost_driver_type']] ?? $row['cost_driver_type'] }}</span>
+                </td>
+              </tr>
+            @endif
+
             @if(!empty($row['source_url']))
               <tr>
                 <td class="meta-label">Источник</td>
                 <td class="meta-value compact-source">
-                  <a href="{{ $row['source_url'] }}">{{ $row['source_url'] }}</a>
+                  <a href="{{ $row['source_url'] }}">{{ $row['source_domain'] ?? $row['source_url'] }}</a>
                 </td>
               </tr>
             @endif
@@ -231,6 +351,84 @@
                 <td class="meta-label">Цена</td>
                 <td class="meta-value">
                   <span class="price-badge">{{ $row['price_per_unit'] }} {{ $row['currency'] }}</span>
+                </td>
+              </tr>
+            @endif
+
+            @if(!empty($row['observed_at']))
+              <tr>
+                <td class="meta-label">Дата</td>
+                <td class="meta-value">{{ date('d.m.Y H:i', strtotime($row['observed_at'])) }}</td>
+              </tr>
+            @endif
+
+            @if($row['true_score'] !== null)
+              <tr>
+                <td class="meta-label">Оценка</td>
+                <td class="meta-value">
+                  <span class="score-indicator">{{ $row['true_score'] }} / 100</span>
+                </td>
+              </tr>
+            @endif
+
+            @if(!empty($row['cost_driver_type']) && $row['cost_driver_type'] === 'labor_work')
+              @if(isset($row['labor_work_hours']))
+                <tr>
+                  <td class="meta-label">Трудозатраты</td>
+                  <td class="meta-value">
+                    {{ $row['labor_work_hours'] }} н/ч
+                    @if(!empty($row['price_per_unit']) && isset($row['labor_work_total_cost']))
+                      &times; {{ $row['price_per_unit'] }} ₽/н/ч = <span class="bold">{{ $row['labor_work_total_cost'] }} ₽</span>
+                    @endif
+                  </td>
+                </tr>
+              @endif
+              @if(!empty($row['labor_work_basis']))
+                <tr>
+                  <td class="meta-label">Основание</td>
+                  <td class="meta-value">{{ $row['labor_work_basis'] }}</td>
+                </tr>
+              @endif
+              @if(!empty($row['labor_work_note']))
+                <tr>
+                  <td class="meta-label">Примечание</td>
+                  <td class="meta-value">{{ $row['labor_work_note'] }}</td>
+                </tr>
+              @endif
+              @if(!empty($row['labor_work_steps']))
+                <tr>
+                  <td class="meta-label" style="vertical-align:top;">Подоперации</td>
+                  <td class="meta-value">
+                    <table style="width:100%;border-collapse:collapse;font-size:7.8pt;">
+                      <thead>
+                        <tr style="border-bottom:1px solid #ddd;">
+                          <th style="text-align:left;padding:0.5mm 1mm;font-weight:600;">Наименование</th>
+                          <th style="text-align:right;padding:0.5mm 1mm;font-weight:600;white-space:nowrap;">н/ч</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @foreach($row['labor_work_steps'] as $step)
+                          <tr>
+                            <td style="padding:0.5mm 1mm;">{{ $step['title'] ?? '—' }}</td>
+                            <td style="text-align:right;padding:0.5mm 1mm;white-space:nowrap;">{{ $step['hours'] ?? 0 }}</td>
+                          </tr>
+                        @endforeach
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              @endif
+            @endif
+
+            @if(!empty($row['cost_driver_type']) && $row['cost_driver_type'] === 'expense' && !empty($row['expense_document_path']))
+              <tr>
+                <td class="meta-label">Документ</td>
+                <td class="meta-value">
+                  @if(str_starts_with($row['expense_document_mime'] ?? '', 'image/') && file_exists(storage_path('app/public/' . $row['expense_document_path'])))
+                    <img src="{{ storage_path('app/public/' . $row['expense_document_path']) }}" alt="document" style="max-width:100%;max-height:120mm;" />
+                  @else
+                    Приложен ({{ basename($row['expense_document_path']) }})
+                  @endif
                 </td>
               </tr>
             @endif

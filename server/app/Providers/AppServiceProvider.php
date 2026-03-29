@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Gate;
 use App\Models\MaterialDimensionParseFailure;
@@ -32,6 +33,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Relation::morphMap([
+            'project_position'  => \App\Models\ProjectPosition::class,
+            'project_fitting'   => \App\Models\ProjectFitting::class,
+            'operation'         => \App\Models\Operation::class,
+            'project_labor_work' => \App\Models\ProjectLaborWork::class,
+            'expense'           => \App\Models\Expense::class,
+            'evidence_record'   => \App\Models\EvidenceRecord::class,
+            'material_price_history' => \App\Models\MaterialPriceHistory::class,
+        ]);
+
         Gate::policy(MaterialDimensionRule::class, MaterialDimensionRulePolicy::class);
         Gate::policy(MaterialDimensionParseFailure::class, MaterialDimensionParseFailurePolicy::class);
         Gate::policy(MaterialTypePattern::class, MaterialTypePatternPolicy::class);

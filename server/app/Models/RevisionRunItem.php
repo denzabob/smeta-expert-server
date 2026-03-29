@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class RevisionRunItem extends Model
 {
@@ -40,6 +41,9 @@ class RevisionRunItem extends Model
         'diagnostics_json',
         'message',
         'price_history_id',
+        'cost_driver_type',
+        'evidence_subject_type',
+        'evidence_subject_id',
     ];
 
     protected $casts = [
@@ -76,6 +80,15 @@ class RevisionRunItem extends Model
     public function evidenceArtifacts(): HasMany
     {
         return $this->hasMany(EvidenceArtifact::class, 'revision_run_item_id');
+    }
+
+    /**
+     * Polymorphic relation to the cost driver entity being justified.
+     * Subject type uses short morph map keys registered in AppServiceProvider.
+     */
+    public function evidenceSubject(): MorphTo
+    {
+        return $this->morphTo();
     }
 
     /**

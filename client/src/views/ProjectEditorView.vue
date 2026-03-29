@@ -1375,6 +1375,24 @@
             <v-chip v-if="(activeRevisionRun.failed_items || 0) > 0" size="small" variant="outlined" color="warning">
               Проблемных: {{ activeRevisionRun.failed_items || 0 }}
             </v-chip>
+            <v-chip
+              v-if="evidenceCoverage.total > 0"
+              size="small"
+              variant="tonal"
+              :color="evidenceCoverage.withEvidence === evidenceCoverage.total ? 'success' : undefined"
+              prepend-icon="mdi-camera"
+            >
+              Обоснования: {{ evidenceCoverage.withEvidence }} / {{ evidenceCoverage.total }}
+            </v-chip>
+            <v-chip
+              v-if="Object.keys(resolutionBreakdown).length > 0"
+              size="small"
+              variant="outlined"
+            >
+              <template v-for="(count, src) in resolutionBreakdown" :key="src">
+                <v-icon size="14" class="mr-1" :class="{ 'ml-2': src !== Object.keys(resolutionBreakdown)[0] }">{{ getResolutionIcon(src as string) }}</v-icon>{{ count }}
+              </template>
+            </v-chip>
             <v-spacer />
             <v-btn
               v-if="activeRevisionRun.status !== 'IN_PROGRESS' && activeRevisionRun.status !== 'PENDING'"
@@ -1453,6 +1471,7 @@
                 <tr>
                   <th style="width:40px">№</th>
                   <th>Материал</th>
+                  <th style="width:60px">Тип</th>
                   <th>Статус</th>
                   <th>Сообщение</th>
                   <th>Источник</th>
@@ -1465,13 +1484,42 @@
                   <td class="text-medium-emphasis text-caption">{{ idx + 1 }}</td>
                   <td>{{ getRevisionRunItemName(runItem) }}</td>
                   <td>
-                    <div v-if="runItem.status === 'PENDING'" class="d-flex align-center ga-1">
-                      <v-progress-circular indeterminate size="14" width="2" color="primary" />
-                      <span class="text-caption text-medium-emphasis">обработка...</span>
-                    </div>
-                    <v-chip v-else size="x-small" :color="getRunItemStatusColor(runItem.status)" variant="tonal">
-                      {{ formatRunItemStatus(runItem.status) }}
+                    <v-chip v-if="runItem.cost_driver_type" size="x-small" color="blue-grey" variant="tonal">
+                      {{ formatCostDriverType(runItem.cost_driver_type) }}
                     </v-chip>
+                    <span v-else class="text-medium-emphasis">—</span>
+                  </td>
+                  <td>
+                    <div class="d-flex align-center ga-1">
+                      <template v-if="runItem.status === 'PENDING'">
+                        <v-progress-circular indeterminate size="14" width="2" color="primary" />
+                        <span class="text-caption text-medium-emphasis">обработка...</span>
+                      </template>
+                      <template v-else>
+                        <v-chip size="x-small" :color="getRunItemStatusColor(runItem.status)" variant="tonal">
+                          {{ formatRunItemStatus(runItem.status) }}
+                        </v-chip>
+                        <v-tooltip v-if="runItem.resolved_capture_source" location="top">
+                          <template #activator="{ props }">
+                            <v-icon v-bind="props" :icon="getResolutionIcon(runItem.resolved_capture_source)" size="14" />
+                          </template>
+                          {{ getResolutionLabel(runItem.resolved_capture_source) }}
+                        </v-tooltip>
+                        <v-tooltip v-if="runItem.has_evidence" location="top">
+                          <template #activator="{ props }">
+                            <v-icon
+                              v-bind="props"
+                              icon="mdi-camera"
+                              size="14"
+                              color="success"
+                              style="cursor:pointer"
+                              @click.stop="openEvidenceDetail(runItem)"
+                            />
+                          </template>
+                          Показать обоснование
+                        </v-tooltip>
+                      </template>
+                    </div>
                   </td>
                   <td>{{ runItem.message || '—' }}</td>
                   <td>
@@ -1510,7 +1558,7 @@
                   </td>
                 </tr>
                 <tr v-if="revisionRunItems.length === 0">
-                  <td colspan="7" class="text-center py-4 text-medium-emphasis">
+                  <td colspan="8" class="text-center py-4 text-medium-emphasis">
                     Нет позиций, требующих обоснования.
                   </td>
                 </tr>
@@ -1623,6 +1671,14 @@
         <v-divider class="my-4" />
         <v-btn color="secondary" @click="generatePdf" :loading="pdfLoading" :disabled="pdfLoading">Генерировать PDF</v-btn>
     </div><!-- /MODULE: REVISIONS -->
+
+    <!-- ======================== MODULE: EVIDENCE ======================== -->
+    <div v-show="activeModule === 'evidence'" class="module-content">
+      <div class="module-summary">
+        <v-chip size="small" variant="tonal" color="primary" prepend-icon="mdi-shield-search">Доказательства (generic)</v-chip>
+      </div>
+      <EvidenceRunPanel :project-id="project.id" />
+    </div><!-- /MODULE: EVIDENCE -->
 
     <!-- ======================== MODULE: SETTINGS ======================== -->
     <div v-show="activeModule === 'settings'" class="module-content">
@@ -1750,6 +1806,135 @@
           <v-btn color="primary" :loading="manualCloseLoading" @click="submitManualClose">
             Сохранить
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Диалог деталей обоснования (Block D2) -->
+    <v-dialog v-model="evidenceDetailDialog" max-width="700">
+      <v-card v-if="evidenceDetailItem">
+        <v-card-title class="d-flex align-center">
+          <v-icon icon="mdi-shield-check" class="mr-2" />
+          Детали обоснования
+        </v-card-title>
+        <v-card-text>
+          <div class="text-body-2 mb-3">
+            <strong>{{ getRevisionRunItemName(evidenceDetailItem) }}</strong>
+            <v-chip v-if="evidenceDetailItem.cost_driver_type" size="x-small" color="blue-grey" variant="tonal" class="ml-2">
+              {{ formatCostDriverType(evidenceDetailItem.cost_driver_type) }}
+            </v-chip>
+            <v-chip size="x-small" :color="getRunItemStatusColor(evidenceDetailItem.status)" variant="tonal" class="ml-1">
+              {{ formatRunItemStatus(evidenceDetailItem.status) }}
+            </v-chip>
+          </div>
+
+          <template v-if="evidenceDetailArtifact">
+            <div v-if="evidenceDetailItem.resolved_capture_source" class="text-body-2 mb-2">
+              <v-icon :icon="getResolutionIcon(evidenceDetailItem.resolved_capture_source)" size="16" class="mr-1" />
+              {{ getResolutionLabel(evidenceDetailItem.resolved_capture_source) }}
+            </div>
+
+            <!-- Screenshot preview -->
+            <template v-for="asset in evidenceDetailArtifact.assets" :key="asset.id">
+              <div v-if="asset.mime_type && asset.mime_type.startsWith('image/')" class="mb-3">
+                <div class="text-caption text-medium-emphasis mb-1">{{ asset.asset_type === 'document' ? 'Документ' : 'Скриншот' }}</div>
+                <img
+                  :src="evidenceAssetFileUrl(asset.id)"
+                  :alt="asset.original_filename || 'screenshot'"
+                  style="max-width:100%;max-height:400px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:4px"
+                />
+                <div class="text-caption text-medium-emphasis mt-1">
+                  {{ asset.original_filename }}
+                  <span v-if="asset.file_size">({{ Math.round(asset.file_size / 1024) }} КБ)</span>
+                </div>
+              </div>
+              <div v-else-if="asset.asset_type === 'document'" class="mb-3">
+                <div class="text-caption text-medium-emphasis mb-1">Документ</div>
+                <v-chip
+                  :href="evidenceAssetFileUrl(asset.id)"
+                  target="_blank"
+                  color="primary"
+                  variant="tonal"
+                  size="small"
+                  prepend-icon="mdi-file-document-outline"
+                >
+                  {{ asset.original_filename || 'document' }}
+                  <span v-if="asset.file_size" class="ml-1 text-caption">({{ Math.round(asset.file_size / 1024) }} КБ)</span>
+                </v-chip>
+              </div>
+            </template>
+
+            <!-- Price -->
+            <div v-if="evidenceDetailArtifact.extracted_price" class="text-body-2 mb-2">
+              <strong>Цена:</strong> {{ evidenceDetailArtifact.extracted_price }} {{ evidenceDetailArtifact.currency || '' }}
+            </div>
+
+            <!-- Trust score badge -->
+            <div v-if="evidenceDetailArtifact.trust_score != null" class="text-body-2 mb-2">
+              <v-chip
+                size="small"
+                variant="tonal"
+                :color="evidenceDetailArtifact.trust_score >= 90 ? 'success' : evidenceDetailArtifact.trust_score >= 70 ? 'info' : evidenceDetailArtifact.trust_score >= 50 ? 'warning' : 'error'"
+                :prepend-icon="evidenceDetailArtifact.trust_score >= 70 ? 'mdi-shield-check' : 'mdi-shield-alert'"
+              >
+                Достоверность: {{ evidenceDetailArtifact.trust_score }}%
+              </v-chip>
+            </div>
+
+            <!-- Source URL -->
+            <div v-if="evidenceDetailArtifact.source_url_raw" class="text-body-2 mb-2">
+              <strong>Источник:</strong>
+              <a :href="evidenceDetailArtifact.source_url_raw" target="_blank" rel="noopener noreferrer">
+                {{ evidenceDetailArtifact.source_domain || evidenceDetailArtifact.source_url_raw }}
+                <v-icon icon="mdi-open-in-new" size="12" />
+              </a>
+            </div>
+
+            <!-- Timestamps -->
+            <div v-if="evidenceDetailArtifact.captured_at" class="text-caption text-medium-emphasis mb-1">
+              Дата захвата: {{ new Date(evidenceDetailArtifact.captured_at).toLocaleString('ru-RU') }}
+            </div>
+            <div v-if="evidenceDetailArtifact.created_at" class="text-caption text-medium-emphasis">
+              Создано: {{ new Date(evidenceDetailArtifact.created_at).toLocaleString('ru-RU') }}
+            </div>
+          </template>
+
+          <v-alert v-else type="info" variant="tonal" density="compact">
+            Нет данных обоснования для этой позиции.
+          </v-alert>
+
+          <!-- Block C2: Expense document upload -->
+          <template v-if="evidenceDetailItem?.cost_driver_type === 'expense' && activeRevisionRun && activeRevisionRun.status !== 'FINALIZED'">
+            <v-divider class="my-3" />
+            <div class="text-body-2 font-weight-medium mb-2">Прикрепить документ / чек</div>
+            <div class="d-flex align-center ga-2">
+              <v-file-input
+                v-model="expenseDocFile"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                label="Файл (JPEG, PNG, WebP, PDF)"
+                variant="outlined"
+                density="compact"
+                prepend-icon="mdi-paperclip"
+                show-size
+                hide-details="auto"
+                style="flex:1"
+                :disabled="expenseDocLoading"
+              />
+              <v-btn
+                color="primary"
+                size="small"
+                :loading="expenseDocLoading"
+                :disabled="!expenseDocFile || (Array.isArray(expenseDocFile) && expenseDocFile.length === 0)"
+                @click="submitExpenseDocument"
+              >
+                Загрузить
+              </v-btn>
+            </div>
+          </template>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="evidenceDetailDialog = false">Закрыть</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -3007,7 +3192,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/axios'
 import { finishedProductsApi } from '@/api/finishedProducts'
 import laborWorksApi, { type LaborWork } from '@/api/laborWorks'
-import { revisionRunApi, type RevisionRun, type RevisionRunItem } from '@/api/revisionRun'
+import { revisionRunApi, evidenceAssetFileUrl, type RevisionRun, type RevisionRunItem, type EvidenceArtifactDetail } from '@/api/revisionRun'
 import { consumePrefetchedProject, setProjectsFlashMessage } from '@/router/projectAccess'
 import ProfileRatesSection from '@/components/ProfileRatesSection.vue'
 import ProjectSettingsDrawer from '@/components/ProjectSettingsDrawer.vue'
@@ -3016,6 +3201,7 @@ import RowHoverActions, { type RowAction } from '@/components/RowHoverActions.vu
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceSidebar, { type SidebarModule } from '@/components/workspace/WorkspaceSidebar.vue'
 import ProjectHealthBar, { type HealthIssue } from '@/components/workspace/ProjectHealthBar.vue'
+import EvidenceRunPanel from '@/components/evidence/EvidenceRunPanel.vue'
 
 const { smAndDown } = useDisplay()
 const compactLayout = computed(() => smAndDown.value)
@@ -4181,6 +4367,14 @@ const revisionRunFinalizeLoading = ref(false)
 const revisionRunPdfLinks = ref<{ smeta: string; price_justification: string } | null>(null)
 const revisionRunPollTimer = ref<number | null>(null)
 const lastKnownRunStatus = ref<string | null>(null)
+const evidenceDetailDialog = ref(false)
+const evidenceDetailItem = ref<RevisionRunItem | null>(null)
+const evidenceDetailArtifact = computed<EvidenceArtifactDetail | null>(() => {
+  const artifacts = evidenceDetailItem.value?.evidence_artifacts
+  return artifacts && artifacts.length > 0 ? artifacts[0] : null
+})
+const expenseDocFile = ref<File[] | File | null>(null)
+const expenseDocLoading = ref(false)
 const manualCloseDialog = ref(false)
 const manualCloseLoading = ref(false)
 const manualCloseItem = ref<RevisionRunItem | null>(null)
@@ -6197,6 +6391,86 @@ const getRevisionRunItemName = (item: RevisionRunItem | any): string => {
     || `Материал #${item.material_id || item.project_fitting_id || item.project_position_id || '—'}`
 }
 
+const costDriverLabels: Record<string, string> = {
+  plate: 'Плита',
+  edge: 'Кромка',
+  facade: 'Фасад',
+  fitting: 'Фурн.',
+  operation: 'Опер.',
+  labor_work: 'Раб.',
+  expense: 'Расх.',
+}
+
+const formatCostDriverType = (type?: string | null): string => {
+  return (type && costDriverLabels[type]) || type || '—'
+}
+
+const resolutionIcons: Record<string, string> = {
+  auto: 'mdi-robot',
+  manual: 'mdi-pencil',
+  chrome_ext: 'mdi-puzzle-outline',
+  internal: 'mdi-cog',
+}
+
+const resolutionLabels: Record<string, string> = {
+  auto: 'Автоматически',
+  manual: 'Вручную',
+  chrome_ext: 'Chrome расширение',
+  internal: 'Внутренний',
+}
+
+const getResolutionIcon = (source?: string | null): string => {
+  return (source && resolutionIcons[source]) || 'mdi-help-circle-outline'
+}
+
+const getResolutionLabel = (source?: string | null): string => {
+  return (source && resolutionLabels[source]) || source || '—'
+}
+
+const evidenceCoverage = computed(() => {
+  const total = revisionRunItems.value.length
+  const withEvidence = revisionRunItems.value.filter(i => i.has_evidence).length
+  return { total, withEvidence }
+})
+
+const resolutionBreakdown = computed(() => {
+  const counts: Record<string, number> = {}
+  for (const item of revisionRunItems.value) {
+    const src = item.resolved_capture_source
+    if (src) counts[src] = (counts[src] || 0) + 1
+  }
+  return counts
+})
+
+const openEvidenceDetail = (item: RevisionRunItem) => {
+  evidenceDetailItem.value = item
+  expenseDocFile.value = null
+  evidenceDetailDialog.value = true
+}
+
+const submitExpenseDocument = async () => {
+  if (!activeRevisionRun.value || !evidenceDetailItem.value) return
+
+  const file = Array.isArray(expenseDocFile.value) ? expenseDocFile.value[0] : expenseDocFile.value
+  if (!file) return
+
+  expenseDocLoading.value = true
+  try {
+    await revisionRunApi.attachDocument(activeRevisionRun.value.id, evidenceDetailItem.value.id, file)
+    showNotification('Документ прикреплён', 'success')
+    expenseDocFile.value = null
+    await refreshRevisionRun(true)
+    // Update dialog item from refreshed data
+    const updated = revisionRunItems.value.find(i => i.id === evidenceDetailItem.value?.id)
+    if (updated) evidenceDetailItem.value = updated
+  } catch (error: any) {
+    const msg = error.response?.data?.error || error.response?.data?.message || error.message
+    showNotification(`Ошибка загрузки документа: ${msg}`, 'error')
+  } finally {
+    expenseDocLoading.value = false
+  }
+}
+
 const getMaterialCatalogLink = (materialId?: number | string | null): string => {
   const id = Number(materialId)
   if (!Number.isFinite(id) || id <= 0) {
@@ -7393,6 +7667,11 @@ const sidebarModules = computed<SidebarModule[]>(() => [
     icon: 'mdi-shield-check-outline',
     count: revisions.value.length,
     warnings: activeRevisionRun.value && (activeRevisionRun.value.status === 'NEEDS_MANUAL' || activeRevisionRun.value.status === 'FAILED') ? 1 : 0
+  },
+  {
+    key: 'evidence',
+    label: 'Доказательства',
+    icon: 'mdi-shield-search',
   },
   {
     key: 'settings',
@@ -8618,9 +8897,6 @@ onBeforeUnmount(() => {
 /* Drag-and-drop таблица нормируемых работ */
 .labor-works-table {
   margin-bottom: 16px;
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 4px;
-  overflow: hidden;
 }
 
 .lw-table {
@@ -8628,20 +8904,31 @@ onBeforeUnmount(() => {
   border-collapse: collapse;
 }
 
+.lw-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .lw-th {
   text-align: left;
-  padding: 4px 12px;
-  font-size: 0.7rem;
+  padding: 0 var(--ds-space-16);
+  height: var(--ds-table-row-height);
+  min-height: var(--ds-table-row-height);
+  font-size: 0.8125rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.6);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  background: rgba(var(--v-theme-on-surface), 0.02);
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgb(var(--v-theme-surface));
+  vertical-align: middle;
 }
 
 .lw-th-drag {
-  padding: 4px 4px 4px 8px;
+  padding: 0 var(--ds-space-8);
+  width: 40px;
 }
 
 .lw-th-right {
@@ -8651,10 +8938,11 @@ onBeforeUnmount(() => {
 .lw-row {
   transition: background 0.15s;
   cursor: grab;
+  height: var(--ds-table-row-height);
 }
 
 .lw-row:hover {
-  background: rgba(var(--v-theme-on-surface), 0.04);
+  background: var(--ds-hover-bg);
 }
 
 .lw-row-dragging {
@@ -8667,13 +8955,16 @@ onBeforeUnmount(() => {
 }
 
 .lw-td {
-  padding: 2px 12px;
+  padding: 0 var(--ds-space-16);
   font-size: 0.8125rem;
-  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  height: var(--ds-table-row-height);
+  min-height: var(--ds-table-row-height);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  vertical-align: middle;
 }
 
 .lw-td-drag {
-  padding: 2px 4px 2px 8px;
+  padding: 0 var(--ds-space-8);
   width: 40px;
 }
 

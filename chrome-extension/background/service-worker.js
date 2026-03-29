@@ -57,6 +57,12 @@ async function handleMessage(message, sender) {
     case 'EXTRACT':
       return await prizmApi.extract(data.url, data.extracted, data.template_id, data.region_id, data.data_sources);
 
+    case 'GET_REVISION_ITEMS':
+      return await prizmApi.getRevisionItems();
+
+    case 'GET_GENERIC_ITEMS':
+      return await prizmApi.getGenericItems();
+
     case 'CHECK_AUTH':
       return { authenticated: await prizmApi.isAuthenticated() };
 

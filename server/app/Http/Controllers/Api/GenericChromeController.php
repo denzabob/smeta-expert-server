@@ -1,0 +1,254 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Evidence\CostComponent;
+use App\Evidence\EvidenceFeatures;
+use App\Evidence\EvidenceItemStatus;
+use App\Evidence\EvidenceRunStatus;
+use App\Http\Controllers\Controller;
+use App\Models\ChromeExtLog;
+use App\Models\EstimateEvidenceItem;
+use App\Models\EstimateEvidenceRun;
+use App\Services\GenericChromeCaptureService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class GenericChromeController extends Controller
+{
+    public function __construct(
+        private GenericChromeCaptureService $captureService,
+    ) {}
+
+    /**
+     * GET /api/chrome/generic-items
+     * List open evidence items across the user's active runs.
+     */
+    public function listGenericItems(Request $request): JsonResponse
+    {
+        if (!EvidenceFeatures::genericChromeEnabled()) {
+            abort(404);
+        }
+
+        $userId = $request->user()->id;
+
+        $items = EstimateEvidenceItem::whereHas('run', function ($q) use ($userId) {
+                $q->where('initiated_by', $userId)
+                  ->whereNotIn('status', EvidenceRunStatus::terminalStatuses());
+            })
+            ->whereNotIn('status', EvidenceItemStatus::terminalStatuses())
+            ->with([
+                'run:id,project_id,status,uuid',
+                'run.project:id,number,expert_name',
+            ])
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get();
+
+        $mapped = $items->map(function (EstimateEvidenceItem $item) {
+            return [
+                'id'             => $item->id,
+                'uuid'           => $item->uuid,
+                'evidence_run_id' => $item->evidence_run_id,
+                'cost_component' => $item->cost_component,
+                'label'          => $item->label,
+                'status'         => $item->status,
+                'source_url'     => $item->source_url,
+                'effective_value' => $item->effective_value,
+                'currency'       => $item->currency,
+                'project_name'   => $item->run?->project?->number
+                    ? ($item->run->project->number . ' — ' . ($item->run->project->expert_name ?? ''))
+                    : null,
+                'run_status'     => $item->run?->status,
+            ];
+        });
+
+        return response()->json([
+            'items' => $mapped->values(),
+            'total' => $mapped->count(),
+        ]);
+    }
+
+    /**
+     * POST /api/chrome/capture-observation
+     * Create a standalone evidence record from Chrome capture (not tied to any run item).
+     */
+    public function captureObservation(Request $request): JsonResponse
+    {
+        if (!EvidenceFeatures::genericChromeEnabled()) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'cost_component'     => 'required|string|in:' . implode(',', CostComponent::all()),
+            'source_url'         => 'required|url|max:2048',
+            'observed_price'     => 'nullable|numeric|min:0',
+            'currency'           => 'nullable|string|max:10',
+            'extracted_name'     => 'nullable|string|max:500',
+            'extracted_article'  => 'nullable|string|max:255',
+            'confidence_score'   => 'nullable|integer|min:0|max:100',
+            'capture_mode'       => 'nullable|string|max:50',
+            'template_id'        => 'nullable|integer',
+            'screenshot_file'    => 'nullable|file|image|max:10240',
+            'field_sources_json' => 'nullable|json',
+            'selectors_json'     => 'nullable|json',
+            'browser_context_json' => 'nullable|json',
+            'annotation_map_json'  => 'nullable|json',
+        ]);
+
+        $screenshot = $request->file('screenshot_file');
+        $userId = $request->user()->id;
+
+        $result = $this->captureService->captureObservation($validated, $userId, $screenshot);
+
+        $this->logChromeAction($request, 'capture_observation', $result['duplicate'] ? 'duplicate' : 'ok', $result['record']);
+
+        $status = $result['duplicate'] ? 200 : 201;
+
+        return response()->json([
+            'success'   => true,
+            'duplicate' => $result['duplicate'],
+            'data'      => [
+                'record_id' => $result['record']->id,
+                'record_uuid' => $result['record']->uuid,
+                'asset_id' => $result['asset']?->id,
+            ],
+        ], $status);
+    }
+
+    /**
+     * POST /api/chrome/generic-items/{itemId}/capture
+     * Submit evidence for a specific generic evidence item from the extension.
+     */
+    public function captureGenericItem(Request $request, int $itemId): JsonResponse
+    {
+        if (!EvidenceFeatures::genericChromeEnabled()) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'source_url'         => 'required|url|max:2048',
+            'observed_price'     => 'nullable|numeric|min:0',
+            'currency'           => 'nullable|string|max:10',
+            'extracted_name'     => 'nullable|string|max:500',
+            'extracted_article'  => 'nullable|string|max:255',
+            'confidence_score'   => 'nullable|integer|min:0|max:100',
+            'capture_mode'       => 'nullable|string|max:50',
+            'template_id'        => 'nullable|integer',
+            'screenshot_file'    => 'nullable|file|image|max:10240',
+            'field_sources_json' => 'nullable|json',
+            'selectors_json'     => 'nullable|json',
+            'browser_context_json' => 'nullable|json',
+            'annotation_map_json'  => 'nullable|json',
+        ]);
+
+        $item = EstimateEvidenceItem::with('run.project')->findOrFail($itemId);
+
+        // Access check: only the run initiator can capture for their items
+        if ($item->run->initiated_by !== $request->user()->id) {
+            return response()->json(['success' => false, 'error' => 'Access denied.'], 403);
+        }
+
+        $screenshot = $request->file('screenshot_file');
+        $userId = $request->user()->id;
+
+        $result = $this->captureService->captureForItem($item, $validated, $userId, $screenshot);
+
+        if (isset($result['error'])) {
+            return response()->json([
+                'success' => false,
+                'error'   => $result['error'],
+            ], 422);
+        }
+
+        $this->logChromeAction($request, 'capture_generic_item', $result['duplicate'] ? 'duplicate' : 'ok', $result['record']);
+
+        $status = $result['duplicate'] ? 200 : 201;
+
+        return response()->json([
+            'success'   => true,
+            'duplicate' => $result['duplicate'],
+            'item_id'   => $item->id,
+            'data'      => [
+                'record_id'   => $result['record']->id,
+                'record_uuid' => $result['record']->uuid,
+                'asset_id'    => $result['asset']?->id,
+                'item_status' => $item->fresh()->status,
+            ],
+        ], $status);
+    }
+
+    /**
+     * POST /api/chrome/extract-with-evidence
+     * Extract material data and simultaneously create an evidence record.
+     * Delegates extraction to the existing ChromeExtractService via ChromeExtensionController,
+     * then wraps the capture into an evidence record.
+     */
+    public function extractWithEvidence(Request $request): JsonResponse
+    {
+        if (!EvidenceFeatures::genericChromeEnabled()) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'cost_component'     => 'required|string|in:' . implode(',', CostComponent::all()),
+            'source_url'         => 'required|url|max:2048',
+            'observed_price'     => 'nullable|numeric|min:0',
+            'currency'           => 'nullable|string|max:10',
+            'extracted_name'     => 'nullable|string|max:500',
+            'extracted_article'  => 'nullable|string|max:255',
+            'extracted_fields'   => 'nullable|array',
+            'confidence_score'   => 'nullable|integer|min:0|max:100',
+            'capture_mode'       => 'nullable|string|max:50',
+            'template_id'        => 'nullable|integer',
+            'screenshot_file'    => 'nullable|file|image|max:10240',
+        ]);
+
+        $screenshot = $request->file('screenshot_file');
+        $userId = $request->user()->id;
+
+        $result = $this->captureService->captureObservation($validated, $userId, $screenshot);
+
+        $this->logChromeAction($request, 'extract_with_evidence', $result['duplicate'] ? 'duplicate' : 'ok', $result['record']);
+
+        $status = $result['duplicate'] ? 200 : 201;
+
+        return response()->json([
+            'success'   => true,
+            'duplicate' => $result['duplicate'],
+            'data'      => [
+                'record_id'   => $result['record']->id,
+                'record_uuid' => $result['record']->uuid,
+                'asset_id'    => $result['asset']?->id,
+            ],
+        ], $status);
+    }
+
+    /**
+     * Log chrome extension action using existing enum values.
+     */
+    private function logChromeAction(Request $request, string $action, string $status, $record = null): void
+    {
+        // Map new action names to existing enum('capture','save_template','extract','error')
+        $actionMap = [
+            'capture_observation'   => 'capture',
+            'capture_generic_item'  => 'capture',
+            'extract_with_evidence' => 'extract',
+        ];
+
+        // Map new status names to existing enum('success','partial','failed')
+        $statusMap = [
+            'ok'        => 'success',
+            'duplicate' => 'partial',
+            'error'     => 'failed',
+        ];
+
+        ChromeExtLog::create([
+            'user_id' => $request->user()->id,
+            'url'     => $request->input('source_url', ''),
+            'domain'  => $record?->source_domain ?? '',
+            'action'  => $actionMap[$action] ?? 'capture',
+            'status'  => $statusMap[$status] ?? 'success',
+        ]);
+    }
+}

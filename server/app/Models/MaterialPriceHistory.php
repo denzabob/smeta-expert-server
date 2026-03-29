@@ -40,6 +40,7 @@ class MaterialPriceHistory extends Model
         'evidence_mode',
         'is_auto_verified',
         'validation_confidence',
+        'evidence_record_id',
     ];
 
     protected $casts = [
@@ -71,6 +72,11 @@ class MaterialPriceHistory extends Model
     public function evidenceArtifact(): BelongsTo
     {
         return $this->belongsTo(EvidenceArtifact::class, 'evidence_artifact_id');
+    }
+
+    public function evidenceRecord(): BelongsTo
+    {
+        return $this->belongsTo(EvidenceRecord::class, 'evidence_record_id');
     }
 
     // --- Scopes ---

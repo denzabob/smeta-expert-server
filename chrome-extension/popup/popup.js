@@ -290,6 +290,8 @@
     }
 
     setupEventListeners();
+    setupRevisionListeners();
+    setupGenericEvidenceListeners();
   }
 
   function showAuthUI() {
@@ -306,6 +308,8 @@
     statusText.textContent = me.user?.name || 'Подключено';
     setSimpleStatus('Откройте карточку товара. Мы попробуем заполнить поля автоматически.');
     maybeShowOnboarding().catch(() => {});
+    loadRevisionItems().catch(() => {});
+    loadGenericItems().catch(() => {});
 
     // Settings
     settingsUserName.textContent = me.user?.name || '—';
@@ -1809,6 +1813,350 @@
     } finally {
       if (schemaRefs.apply) schemaRefs.apply.disabled = false;
       if (schemaRefs.apply) schemaRefs.apply.textContent = 'Заполнить выбранные поля';
+    }
+  }
+
+  // ============================================================
+  // Revision Evidence (Block C1)
+  // ============================================================
+
+  let revisionItems = [];
+  let selectedRevisionItemId = null;
+
+  const revisionPanel = $('#revision-panel');
+  const revisionHeader = $('#revision-header');
+  const revisionBody = $('#revision-body');
+  const revisionBadge = $('#revision-badge');
+  const revisionList = $('#revision-list');
+  const revisionForm = $('#revision-form');
+  const revisionSelectedLabel = $('#revision-selected-label');
+  const revisionPrice = $('#revision-price');
+  const revisionCurrency = $('#revision-currency');
+  const btnRevisionSubmit = $('#btn-revision-submit');
+  const btnRevisionRefresh = $('#btn-revision-refresh');
+  const revisionResult = $('#revision-result');
+
+  const COST_DRIVER_LABELS = {
+    plate: 'Плита',
+    edge: 'Кромка',
+    facade: 'Фасад',
+    fitting: 'Фурн.',
+    operation: 'Опер.',
+    labor_work: 'Раб.',
+    expense: 'Расх.',
+  };
+
+  function setupRevisionListeners() {
+    revisionHeader?.addEventListener('click', toggleRevisionPanel);
+    btnRevisionRefresh?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      loadRevisionItems();
+    });
+    btnRevisionSubmit?.addEventListener('click', handleRevisionSubmit);
+  }
+
+  function toggleRevisionPanel() {
+    const isHidden = revisionBody.classList.toggle('hidden');
+    const toggle = revisionHeader.querySelector('.revision-toggle');
+    if (toggle) toggle.textContent = isHidden ? '\u25B6' : '\u25BC';
+  }
+
+  async function loadRevisionItems() {
+    try {
+      const result = await sendToBackground('GET_REVISION_ITEMS');
+      revisionItems = result.items || [];
+    } catch {
+      // 404 = feature off, or network error — hide panel silently
+      revisionItems = [];
+    }
+
+    if (revisionItems.length === 0) {
+      revisionPanel?.classList.add('hidden');
+      return;
+    }
+
+    revisionPanel?.classList.remove('hidden');
+    revisionBadge.textContent = String(revisionItems.length);
+    revisionBadge.classList.remove('hidden');
+    renderRevisionList();
+  }
+
+  function renderRevisionList() {
+    if (!revisionList) return;
+
+    revisionList.innerHTML = revisionItems.map((item) => {
+      const typeLabel = COST_DRIVER_LABELS[item.cost_driver_type] || item.cost_driver_type || '—';
+      const name = item.material_name || 'Без материала';
+      const project = item.project_name || '';
+      const checked = item.id === selectedRevisionItemId ? ' checked' : '';
+      return `<label class="revision-item">
+        <input type="radio" name="revision-item" value="${item.id}"${checked}>
+        <div class="revision-item-info">
+          <div class="revision-item-name">${truncate(name, 40)} <span class="revision-type-badge">${typeLabel}</span></div>
+          <div class="revision-item-project">${truncate(project, 50)}</div>
+        </div>
+      </label>`;
+    }).join('');
+
+    // Bind radio change
+    revisionList.querySelectorAll('input[name="revision-item"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        selectedRevisionItemId = parseInt(radio.value);
+        showRevisionForm();
+      });
+    });
+
+    // If selection is no longer valid, clear it
+    if (selectedRevisionItemId && !revisionItems.find((i) => i.id === selectedRevisionItemId)) {
+      selectedRevisionItemId = null;
+      revisionForm?.classList.add('hidden');
+    }
+  }
+
+  function showRevisionForm() {
+    const item = revisionItems.find((i) => i.id === selectedRevisionItemId);
+    if (!item) return;
+
+    revisionSelectedLabel.textContent = item.material_name || 'Без материала';
+
+    // Pre-fill price from current captured fields
+    if (capturedFields.price?.value && !revisionPrice.value) {
+      revisionPrice.value = capturedFields.price.value;
+    }
+
+    revisionForm?.classList.remove('hidden');
+    revisionResult?.classList.add('hidden');
+  }
+
+  async function handleRevisionSubmit() {
+    if (!selectedRevisionItemId) return;
+
+    const price = revisionPrice.value.trim().replace(',', '.');
+    const currency = revisionCurrency.value.trim() || 'RUB';
+    const sourceUrl = pageInfo?.url || currentTab?.url;
+
+    if (!price || isNaN(parseFloat(price)) || parseFloat(price) <= 0) {
+      showResult(revisionResult, 'Введите корректную цену', 'error');
+      return;
+    }
+
+    if (!sourceUrl) {
+      showResult(revisionResult, 'URL страницы не определён', 'error');
+      return;
+    }
+
+    btnRevisionSubmit.disabled = true;
+    btnRevisionSubmit.innerHTML = '<span class="spinner"></span> Отправка...';
+
+    try {
+      // Capture viewport screenshot
+      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
+      const screenshotBlob = await (await fetch(dataUrl)).blob();
+
+      const formData = new FormData();
+      formData.append('price_per_unit', price);
+      formData.append('currency', currency);
+      formData.append('source_url', sourceUrl);
+      formData.append('screenshot_file', screenshotBlob, 'screenshot.jpg');
+      if (userInfo?.region_id) {
+        formData.append('region_id', String(userInfo.region_id));
+      }
+
+      // Direct call — FormData cannot go through chrome.runtime.sendMessage
+      const result = await prizmApi.submitItemEvidence(selectedRevisionItemId, formData);
+
+      if (result.success) {
+        // Remove closed item from local list
+        revisionItems = revisionItems.filter((i) => i.id !== selectedRevisionItemId);
+        selectedRevisionItemId = null;
+        revisionForm?.classList.add('hidden');
+        revisionPrice.value = '';
+
+        if (revisionItems.length === 0) {
+          revisionPanel?.classList.add('hidden');
+        } else {
+          revisionBadge.textContent = String(revisionItems.length);
+          renderRevisionList();
+        }
+
+        showResult(revisionResult, 'Доказательство отправлено', 'success');
+      }
+    } catch (err) {
+      if (err.status === 409) {
+        // Already closed — remove from list
+        revisionItems = revisionItems.filter((i) => i.id !== selectedRevisionItemId);
+        selectedRevisionItemId = null;
+        revisionForm?.classList.add('hidden');
+        renderRevisionList();
+        if (revisionItems.length === 0) revisionPanel?.classList.add('hidden');
+        else revisionBadge.textContent = String(revisionItems.length);
+        showResult(revisionResult, 'Позиция уже была закрыта', 'success');
+      } else {
+        showResult(revisionResult, err.message || 'Ошибка отправки', 'error');
+      }
+    } finally {
+      btnRevisionSubmit.disabled = false;
+      btnRevisionSubmit.textContent = 'Отправить доказательство';
+    }
+  }
+
+  // ============================================================
+  // Generic Evidence (Block G3)
+  // ============================================================
+
+  let genericEvidenceItems = [];
+  let selectedGenericItemId = null;
+
+  const genericPanel = $('#generic-evidence-panel');
+  const genericHeader = $('#generic-evidence-header');
+  const genericBody = $('#generic-evidence-body');
+  const genericBadge = $('#generic-evidence-badge');
+  const genericList = $('#generic-evidence-list');
+  const genericForm = $('#generic-evidence-form');
+  const genericSelectedLabel = $('#generic-evidence-selected-label');
+  const genericPrice = $('#generic-evidence-price');
+  const genericCurrency = $('#generic-evidence-currency');
+  const btnGenericSubmit = $('#btn-generic-evidence-submit');
+  const btnGenericRefresh = $('#btn-generic-evidence-refresh');
+  const genericResult = $('#generic-evidence-result');
+
+  function setupGenericEvidenceListeners() {
+    genericHeader?.addEventListener('click', toggleGenericPanel);
+    btnGenericRefresh?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      loadGenericItems();
+    });
+    btnGenericSubmit?.addEventListener('click', handleGenericCapture);
+  }
+
+  function toggleGenericPanel() {
+    const isHidden = genericBody.classList.toggle('hidden');
+    const toggle = genericHeader.querySelector('.revision-toggle');
+    if (toggle) toggle.textContent = isHidden ? '\u25B6' : '\u25BC';
+  }
+
+  async function loadGenericItems() {
+    try {
+      const result = await sendToBackground('GET_GENERIC_ITEMS');
+      genericEvidenceItems = result.items || [];
+    } catch {
+      genericEvidenceItems = [];
+    }
+
+    if (genericEvidenceItems.length === 0) {
+      genericPanel?.classList.add('hidden');
+      return;
+    }
+
+    genericPanel?.classList.remove('hidden');
+    genericBadge.textContent = String(genericEvidenceItems.length);
+    genericBadge.classList.remove('hidden');
+    renderGenericList();
+  }
+
+  function renderGenericList() {
+    if (!genericList) return;
+
+    genericList.innerHTML = genericEvidenceItems.map((item) => {
+      const typeLabel = COST_DRIVER_LABELS[item.cost_component] || item.cost_component || '—';
+      const name = item.label || 'Без названия';
+      const project = item.project_name || '';
+      const checked = item.id === selectedGenericItemId ? ' checked' : '';
+      return `<label class="revision-item">
+        <input type="radio" name="generic-item" value="${item.id}"${checked}>
+        <div class="revision-item-info">
+          <div class="revision-item-name">${truncate(name, 40)} <span class="revision-type-badge">${typeLabel}</span></div>
+          <div class="revision-item-project">${truncate(project, 50)}</div>
+        </div>
+      </label>`;
+    }).join('');
+
+    genericList.querySelectorAll('input[name="generic-item"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        selectedGenericItemId = parseInt(radio.value);
+        showGenericForm();
+      });
+    });
+
+    if (selectedGenericItemId && !genericEvidenceItems.find((i) => i.id === selectedGenericItemId)) {
+      selectedGenericItemId = null;
+      genericForm?.classList.add('hidden');
+    }
+  }
+
+  function showGenericForm() {
+    const item = genericEvidenceItems.find((i) => i.id === selectedGenericItemId);
+    if (!item) return;
+
+    genericSelectedLabel.textContent = item.label || 'Без названия';
+
+    if (capturedFields.price?.value && !genericPrice.value) {
+      genericPrice.value = capturedFields.price.value;
+    }
+
+    genericForm?.classList.remove('hidden');
+    genericResult?.classList.add('hidden');
+  }
+
+  async function handleGenericCapture() {
+    if (!selectedGenericItemId) return;
+
+    const price = genericPrice.value.trim().replace(',', '.');
+    const currency = genericCurrency.value.trim() || 'RUB';
+    const sourceUrl = pageInfo?.url || currentTab?.url;
+
+    if (!price || isNaN(parseFloat(price)) || parseFloat(price) <= 0) {
+      showResult(genericResult, 'Введите корректную цену', 'error');
+      return;
+    }
+
+    if (!sourceUrl) {
+      showResult(genericResult, 'URL страницы не определён', 'error');
+      return;
+    }
+
+    btnGenericSubmit.disabled = true;
+    btnGenericSubmit.innerHTML = '<span class="spinner"></span> Отправка...';
+
+    try {
+      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
+      const screenshotBlob = await (await fetch(dataUrl)).blob();
+
+      const formData = new FormData();
+      formData.append('observed_price', price);
+      formData.append('currency', currency);
+      formData.append('source_url', sourceUrl);
+      formData.append('screenshot_file', screenshotBlob, 'screenshot.jpg');
+
+      if (capturedFields.name?.value) {
+        formData.append('extracted_name', capturedFields.name.value);
+      }
+      if (capturedFields.article?.value) {
+        formData.append('extracted_article', capturedFields.article.value);
+      }
+
+      const result = await prizmApi.captureGenericItem(selectedGenericItemId, formData);
+
+      if (result.success) {
+        genericEvidenceItems = genericEvidenceItems.filter((i) => i.id !== selectedGenericItemId);
+        selectedGenericItemId = null;
+        genericForm?.classList.add('hidden');
+        genericPrice.value = '';
+
+        if (genericEvidenceItems.length === 0) {
+          genericPanel?.classList.add('hidden');
+        } else {
+          genericBadge.textContent = String(genericEvidenceItems.length);
+          renderGenericList();
+        }
+
+        showResult(genericResult, result.duplicate ? 'Уже существует (дубликат)' : 'Доказательство отправлено', 'success');
+      }
+    } catch (err) {
+      showResult(genericResult, err.message || 'Ошибка отправки', 'error');
+    } finally {
+      btnGenericSubmit.disabled = false;
+      btnGenericSubmit.textContent = 'Отправить доказательство';
     }
   }
 

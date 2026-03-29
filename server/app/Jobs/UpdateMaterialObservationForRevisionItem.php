@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Evidence\CostDriverType;
 use App\Evidence\EvidenceFeatures;
 use App\Models\MaterialPriceHistory;
 use App\Models\RevisionRun;
@@ -29,6 +30,12 @@ class UpdateMaterialObservationForRevisionItem implements ShouldQueue
         MaterialParseService $parseService,
         ScreenshotCaptureService $captureService
     ): void {
+        // ── Safety guard: internal-only items must never reach scraping ──
+        $item = RevisionRunItem::find($this->revisionRunItemId);
+        if ($item && in_array($item->cost_driver_type, CostDriverType::internalOnlyTypes(), true)) {
+            return;
+        }
+
         // ── Feature flag gate: delegate to new pipeline ──
         if (EvidenceFeatures::pipelineV2Enabled()) {
             $pipeline = app(EvidencePipelineService::class);

@@ -20,6 +20,8 @@ class EvidenceArtifact extends Model
         'revision_run_id',
         'revision_run_item_id',
         'mode',
+        'capture_source',
+        'cost_driver_type',
         'source_url_raw',
         'source_url_normalized',
         'source_domain',
@@ -85,6 +87,11 @@ class EvidenceArtifact extends Model
     public function materialPriceHistories(): HasMany
     {
         return $this->hasMany(MaterialPriceHistory::class, 'evidence_artifact_id');
+    }
+
+    public function assets(): HasMany
+    {
+        return $this->hasMany(EvidenceAsset::class);
     }
 }
 

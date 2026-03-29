@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Dto\EvidencePipelineResult;
+use App\Evidence\CaptureSource;
 use App\Evidence\EvidenceFeatures;
 use App\Evidence\EvidenceItemState;
 use App\Evidence\EvidenceReasonCode;
 use App\Evidence\EvidenceStage;
 use App\Models\EvidenceArtifact;
+use App\Models\EvidenceAsset;
 use App\Models\Material;
 use App\Models\MaterialPriceHistory;
 use App\Models\ProjectPosition;
@@ -435,6 +437,8 @@ class EvidencePipelineService
             'revision_run_id'       => $item->revision_run_id,
             'revision_run_item_id'  => $item->id,
             'mode'                  => EvidenceArtifact::MODE_AUTO,
+            'capture_source'        => CaptureSource::AUTO,
+            'cost_driver_type'      => $item->cost_driver_type,
             'source_url_raw'        => $rawUrl,
             'source_url_normalized' => $normalizedUrl,
             'source_domain'         => $domain,
@@ -445,8 +449,20 @@ class EvidencePipelineService
             'extracted_article'     => $extractResult['article'] ?? null,
             'screenshot_path'       => $captureResult['screenshotPath'],
             'confidence_score'      => $extractResult['parseConfidence'] ?? null,
+            'trust_score'           => 60,
             'captured_at'           => now(),
         ]);
+
+        // Create EvidenceAsset for the screenshot file
+        if (!empty($captureResult['screenshotPath'])) {
+            EvidenceAsset::create([
+                'uuid'                 => (string) Str::uuid(),
+                'evidence_artifact_id' => $artifact->id,
+                'asset_type'           => 'screenshot',
+                'file_path'            => $captureResult['screenshotPath'],
+                'mime_type'            => 'image/jpeg',
+            ]);
+        }
 
         $this->diagnostics['artifact_id'] = $artifact->id;
         $this->completeStage(EvidenceStage::PERSIST_ARTIFACT, $start);

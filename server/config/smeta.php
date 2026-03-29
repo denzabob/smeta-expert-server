@@ -42,5 +42,12 @@ return [
     */
     'evidence' => [
         'pipeline_v2' => env('EVIDENCE_PIPELINE_V2', false),
+        'facade_enabled' => env('EVIDENCE_FACADE_ENABLED', false),
+        'chrome_revision_enabled' => env('EVIDENCE_CHROME_REVISION_ENABLED', false),
+        'operations_enabled' => env('EVIDENCE_OPERATIONS_ENABLED', false),
+        'labor_work_enabled' => env('EVIDENCE_LABOR_WORK_ENABLED', false),
+        'expenses_enabled' => env('EVIDENCE_EXPENSES_ENABLED', false),
+        'expenses_document_enabled' => env('EVIDENCE_EXPENSES_DOCUMENT_ENABLED', false),
+        'generic_chrome_enabled' => env('EVIDENCE_GENERIC_CHROME_ENABLED', false),
     ],
 ];
