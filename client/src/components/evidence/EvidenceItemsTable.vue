@@ -92,6 +92,21 @@
             >
               Пропустить
             </v-btn>
+            <v-tooltip v-if="item.source_url" location="top">
+              <template #activator="{ props: tp }">
+                <v-btn
+                  v-bind="tp"
+                  size="x-small"
+                  variant="text"
+                  color="blue-grey"
+                  icon="mdi-google-chrome"
+                  :href="item.source_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              </template>
+              <span>Открыть и захватить через Chrome-расширение</span>
+            </v-tooltip>
           </template>
           <template v-else-if="item.status === 'skipped'">
             <v-chip size="x-small" variant="tonal" color="warning">

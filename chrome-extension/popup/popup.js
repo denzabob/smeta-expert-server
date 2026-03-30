@@ -2019,6 +2019,11 @@
   const btnGenericSubmit = $('#btn-generic-evidence-submit');
   const btnGenericRefresh = $('#btn-generic-evidence-refresh');
   const genericResult = $('#generic-evidence-result');
+  const genericComponent = $('#generic-evidence-component');
+  const genericSourceUrl = $('#generic-evidence-source-url');
+  const genericScreenshotStatus = $('#generic-evidence-screenshot-status');
+  const genericScreenshotIcon = $('#generic-evidence-screenshot-icon');
+  const genericScreenshotText = $('#generic-evidence-screenshot-text');
 
   function setupGenericEvidenceListeners() {
     genericHeader?.addEventListener('click', toggleGenericPanel);
@@ -2062,11 +2067,14 @@
       const name = item.label || 'Без названия';
       const project = item.project_name || '';
       const checked = item.id === selectedGenericItemId ? ' checked' : '';
+      const sourceHint = item.source_url ? `<div class="ge-list-source" title="${escapeHtml(item.source_url)}">${truncate(item.source_url, 45)}</div>` : '';
+      const priceHint = item.effective_value ? `<span class="ge-list-price">${item.effective_value} ${item.currency || '₽'}</span>` : '';
       return `<label class="revision-item">
         <input type="radio" name="generic-item" value="${item.id}"${checked}>
         <div class="revision-item-info">
-          <div class="revision-item-name">${truncate(name, 40)} <span class="revision-type-badge">${typeLabel}</span></div>
+          <div class="revision-item-name">${truncate(name, 40)} <span class="revision-type-badge">${typeLabel}</span> ${priceHint}</div>
           <div class="revision-item-project">${truncate(project, 50)}</div>
+          ${sourceHint}
         </div>
       </label>`;
     }).join('');
@@ -2090,12 +2098,50 @@
 
     genericSelectedLabel.textContent = item.label || 'Без названия';
 
+    // Show component type
+    const typeLabel = COST_DRIVER_LABELS[item.cost_component] || item.cost_component || '';
+    if (genericComponent) genericComponent.textContent = typeLabel;
+
+    // Show source URL if known
+    if (genericSourceUrl) {
+      if (item.source_url) {
+        genericSourceUrl.textContent = truncate(item.source_url, 50);
+        genericSourceUrl.title = item.source_url;
+        genericSourceUrl.classList.remove('hidden');
+      } else {
+        genericSourceUrl.classList.add('hidden');
+      }
+    }
+
     if (capturedFields.price?.value && !genericPrice.value) {
       genericPrice.value = capturedFields.price.value;
     }
 
+    // Reset screenshot status
+    resetScreenshotStatus();
+
     genericForm?.classList.remove('hidden');
     genericResult?.classList.add('hidden');
+  }
+
+  function resetScreenshotStatus() {
+    genericScreenshotStatus?.classList.add('hidden');
+    if (genericScreenshotIcon) genericScreenshotIcon.textContent = '';
+    if (genericScreenshotText) genericScreenshotText.textContent = '';
+  }
+
+  function setScreenshotStatus(success, message) {
+    genericScreenshotStatus?.classList.remove('hidden');
+    if (genericScreenshotIcon) genericScreenshotIcon.textContent = success ? '✓' : '✗';
+    if (genericScreenshotText) genericScreenshotText.textContent = message;
+    genericScreenshotStatus?.classList.toggle('ge-screenshot-ok', success);
+    genericScreenshotStatus?.classList.toggle('ge-screenshot-fail', !success);
+  }
+
+  function escapeHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
   }
 
   async function handleGenericCapture() {
@@ -2116,17 +2162,33 @@
     }
 
     btnGenericSubmit.disabled = true;
+    btnGenericSubmit.innerHTML = '<span class="spinner"></span> Захват скриншота...';
+    resetScreenshotStatus();
+
+    // Phase 1: screenshot capture
+    let screenshotBlob = null;
+    try {
+      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
+      screenshotBlob = await (await fetch(dataUrl)).blob();
+      setScreenshotStatus(true, 'Скриншот получен');
+    } catch (screenshotErr) {
+      console.warn('Screenshot capture failed:', screenshotErr);
+      setScreenshotStatus(false, 'Не удалось сделать скриншот');
+    }
+
+    // Phase 2: send to server
     btnGenericSubmit.innerHTML = '<span class="spinner"></span> Отправка...';
 
     try {
-      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
-      const screenshotBlob = await (await fetch(dataUrl)).blob();
-
       const formData = new FormData();
       formData.append('observed_price', price);
       formData.append('currency', currency);
       formData.append('source_url', sourceUrl);
-      formData.append('screenshot_file', screenshotBlob, 'screenshot.jpg');
+      formData.append('capture_mode', 'viewport');
+
+      if (screenshotBlob) {
+        formData.append('screenshot_file', screenshotBlob, 'screenshot.jpg');
+      }
 
       if (capturedFields.name?.value) {
         formData.append('extracted_name', capturedFields.name.value);
@@ -2150,13 +2212,17 @@
           renderGenericList();
         }
 
-        showResult(genericResult, result.duplicate ? 'Уже существует (дубликат)' : 'Доказательство отправлено', 'success');
+        if (result.duplicate) {
+          showResult(genericResult, '⚠ Уже существует (дубликат)', 'duplicate');
+        } else {
+          showResult(genericResult, '✓ Доказательство отправлено', 'success');
+        }
       }
     } catch (err) {
       showResult(genericResult, err.message || 'Ошибка отправки', 'error');
     } finally {
       btnGenericSubmit.disabled = false;
-      btnGenericSubmit.textContent = 'Отправить доказательство';
+      btnGenericSubmit.textContent = '📸 Захватить и отправить';
     }
   }
 

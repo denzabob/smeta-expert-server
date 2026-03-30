@@ -226,7 +226,7 @@
         </div>
       </div>
 
-      <!-- Generic Evidence Panel (Block G3) -->
+      <!-- Generic Evidence Panel (Block G3 → G6 hardened) -->
       <div id="generic-evidence-panel" class="revision-panel hidden">
         <div class="revision-header" id="generic-evidence-header">
           <span class="revision-toggle">&#9654;</span>
@@ -237,7 +237,14 @@
         <div class="revision-body hidden" id="generic-evidence-body">
           <div class="revision-list" id="generic-evidence-list"></div>
           <div id="generic-evidence-form" class="revision-form hidden">
-            <div class="revision-selected" id="generic-evidence-selected-label"></div>
+            <!-- Item context -->
+            <div class="ge-item-context" id="generic-evidence-context">
+              <div class="ge-item-label" id="generic-evidence-selected-label"></div>
+              <div class="ge-item-meta">
+                <span class="ge-item-component" id="generic-evidence-component"></span>
+                <span class="ge-item-source" id="generic-evidence-source-url"></span>
+              </div>
+            </div>
             <div class="form-group">
               <label for="generic-evidence-price">Цена</label>
               <input type="text" id="generic-evidence-price" placeholder="напр. 2345.50" inputmode="decimal">
@@ -246,7 +253,16 @@
               <label for="generic-evidence-currency">Валюта</label>
               <input type="text" id="generic-evidence-currency" value="RUB" maxlength="10">
             </div>
-            <button id="btn-generic-evidence-submit" class="btn btn-primary btn-full">Отправить доказательство</button>
+            <!-- Screenshot status -->
+            <div class="ge-screenshot-status hidden" id="generic-evidence-screenshot-status">
+              <span class="ge-screenshot-icon" id="generic-evidence-screenshot-icon"></span>
+              <span class="ge-screenshot-text" id="generic-evidence-screenshot-text"></span>
+            </div>
+            <!-- Capture mode indicator -->
+            <div class="ge-capture-mode">
+              <span class="ge-capture-mode-badge">viewport</span> Скриншот видимой области
+            </div>
+            <button id="btn-generic-evidence-submit" class="btn btn-primary btn-full">📸 Захватить и отправить</button>
           </div>
           <div id="generic-evidence-result" class="result-message hidden"></div>
         </div>

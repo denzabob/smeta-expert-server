@@ -224,7 +224,7 @@ class PrizmAPI {
    * List open generic evidence items for the current user.
    */
   async getGenericItems() {
-    return this.request('/chrome/generic-items');
+    return this.request('GET', '/chrome/generic-items');
   }
 
   /**

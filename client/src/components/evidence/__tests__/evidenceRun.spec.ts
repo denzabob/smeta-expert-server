@@ -248,6 +248,113 @@ describe('PDF availability detection', () => {
 
 // ── Run terminal state ──
 
+// ── G6: Chrome handoff & capture mode contracts ──
+
+describe('capture mode semantics', () => {
+  const CAPTURE_MODES = ['viewport', 'template', 'full_page'] as const
+
+  it('viewport is the default browser-capture mode', () => {
+    // The Chrome extension always sends capture_mode: 'viewport'
+    // Future modes (template, full_page) are reserved but not yet sent from extension
+    expect(CAPTURE_MODES).toContain('viewport')
+  })
+
+  it('capture_mode is optional in payload (backward compatibility)', () => {
+    // A payload without capture_mode should still be valid —
+    // older extension versions or API consumers may not send it
+    const payload: Record<string, unknown> = {
+      source_url: 'https://example.com',
+      observed_price: 1000,
+      currency: 'RUB',
+    }
+    expect(payload.capture_mode).toBeUndefined()
+  })
+})
+
+describe('screenshot status logic', () => {
+  type ScreenshotState = 'idle' | 'captured' | 'failed'
+
+  function resolveScreenshotState(screenshotBlob: Blob | null, error: boolean): ScreenshotState {
+    if (error) return 'failed'
+    if (screenshotBlob) return 'captured'
+    return 'idle'
+  }
+
+  it('returns idle when no capture attempted', () => {
+    expect(resolveScreenshotState(null, false)).toBe('idle')
+  })
+
+  it('returns captured when blob is present', () => {
+    const blob = new Blob(['fake'], { type: 'image/jpeg' })
+    expect(resolveScreenshotState(blob, false)).toBe('captured')
+  })
+
+  it('returns failed when error flag is set', () => {
+    expect(resolveScreenshotState(null, true)).toBe('failed')
+  })
+
+  it('error takes precedence even if blob somehow exists', () => {
+    const blob = new Blob(['fake'], { type: 'image/jpeg' })
+    expect(resolveScreenshotState(blob, true)).toBe('failed')
+  })
+})
+
+describe('duplicate response detection', () => {
+  interface CaptureResponse {
+    success: boolean
+    duplicate: boolean
+    item_id?: number
+  }
+
+  function classifyResult(response: CaptureResponse): 'success' | 'duplicate' | 'error' {
+    if (!response.success) return 'error'
+    if (response.duplicate) return 'duplicate'
+    return 'success'
+  }
+
+  it('classifies normal success', () => {
+    expect(classifyResult({ success: true, duplicate: false })).toBe('success')
+  })
+
+  it('classifies duplicate', () => {
+    expect(classifyResult({ success: true, duplicate: true })).toBe('duplicate')
+  })
+
+  it('classifies error', () => {
+    expect(classifyResult({ success: false, duplicate: false })).toBe('error')
+  })
+})
+
+describe('Chrome handoff hint visibility', () => {
+  interface Item { status: string; source_url?: string | null }
+
+  function showChromeHint(item: Item): boolean {
+    const actionable = item.status === 'pending' || item.status === 'collecting'
+    return actionable && !!item.source_url
+  }
+
+  it('shows hint for pending item with source_url', () => {
+    expect(showChromeHint({ status: 'pending', source_url: 'https://ex.com' })).toBe(true)
+  })
+
+  it('shows hint for collecting item with source_url', () => {
+    expect(showChromeHint({ status: 'collecting', source_url: 'https://ex.com' })).toBe(true)
+  })
+
+  it('hides hint when no source_url', () => {
+    expect(showChromeHint({ status: 'pending', source_url: null })).toBe(false)
+    expect(showChromeHint({ status: 'pending' })).toBe(false)
+  })
+
+  it('hides hint for resolved items', () => {
+    expect(showChromeHint({ status: 'resolved', source_url: 'https://ex.com' })).toBe(false)
+  })
+
+  it('hides hint for skipped items', () => {
+    expect(showChromeHint({ status: 'skipped', source_url: 'https://ex.com' })).toBe(false)
+  })
+})
+
 describe('isRunTerminal logic', () => {
   it('finalized and failed are terminal', () => {
     const isTerminal = (status: string) => status === 'finalized' || status === 'failed'

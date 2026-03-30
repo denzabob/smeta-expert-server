@@ -681,6 +681,12 @@ body {
   border: 1px solid #FECACA;
 }
 
+.result-message.duplicate {
+  background: #FFFBEB;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+}
+
 .error-text {
   color: var(--danger);
   font-size: 12px;
@@ -1122,4 +1128,111 @@ hr {
   font-weight: 600;
   color: var(--text);
   margin-bottom: 6px;
+}
+
+/* ================================================
+   Generic Evidence – richer capture UX (G6)
+   ================================================ */
+
+.ge-item-context {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: var(--bg-card, #F9FAFB);
+  border: 1px solid var(--border, #E5E7EB);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.ge-item-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #111827);
+  margin-bottom: 4px;
+}
+
+.ge-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ge-item-component {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-radius: 3px;
+  background: #EEF2FF;
+  color: #4338CA;
+}
+
+.ge-item-source {
+  font-size: 11px;
+  color: var(--text-muted, #6B7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+/* Screenshot status indicator */
+.ge-screenshot-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.ge-screenshot-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.ge-screenshot-ok .ge-screenshot-icon { color: #059669; }
+.ge-screenshot-ok .ge-screenshot-text { color: #065F46; }
+
+.ge-screenshot-fail .ge-screenshot-icon { color: #DC2626; }
+.ge-screenshot-fail .ge-screenshot-text { color: #991B1B; }
+
+/* Capture mode badge */
+.ge-capture-mode {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted, #6B7280);
+}
+
+.ge-capture-mode-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 3px;
+  background: #F3F4F6;
+  color: #374151;
+  border: 1px solid #E5E7EB;
+}
+
+/* Generic list enhancements */
+.ge-list-source {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted, #6B7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.ge-list-price {
+  display: block;
+  font-size: 10px;
+  color: #059669;
+  font-weight: 500;
+  margin-top: 1px;
 }
