@@ -1,4 +1,4 @@
-import { ref, computed, type Ref } from 'vue'
+import { ref, computed, type Ref, onUnmounted } from 'vue'
 import {
   evidenceRunApi,
   type EvidenceRun,
@@ -227,6 +227,84 @@ export function useEvidenceRun(projectId: Ref<number>) {
     error.value = null
   }
 
+  // ── Manual resolve (upload proof + resolve in one step) ──
+
+  async function manualResolveItem(itemId: number, formData: FormData) {
+    if (!projectId.value || !selectedRun.value) return
+    actionLoading.value = true
+    error.value = null
+    try {
+      await evidenceRunApi.manualResolveItem(
+        projectId.value,
+        selectedRun.value.id,
+        itemId,
+        formData,
+      )
+      await selectRun(selectedRun.value.id)
+    } catch (err: unknown) {
+      const axErr = err as AxiosError<{ message?: string }>
+      error.value = axErr.response?.data?.message ?? 'Не удалось загрузить обоснование.'
+    } finally {
+      actionLoading.value = false
+    }
+  }
+
+  // ── Chrome handoff polling ──
+  // After user clicks Chrome link, poll for run changes for up to 2 minutes.
+
+  let pollingTimer: ReturnType<typeof setInterval> | null = null
+  let pollingTimeout: ReturnType<typeof setTimeout> | null = null
+  const isPolling = ref(false)
+
+  function startChromePolling() {
+    if (pollingTimer || !selectedRun.value) return
+    isPolling.value = true
+
+    const runId = selectedRun.value.id
+    const previousPending = coverage.value.pending
+
+    pollingTimer = setInterval(async () => {
+      if (!projectId.value || !selectedRun.value || selectedRun.value.id !== runId) {
+        stopChromePolling()
+        return
+      }
+      try {
+        const res = await evidenceRunApi.show(projectId.value, runId)
+        selectedRun.value = res.data
+        // Update in the list
+        const idx = runs.value.findIndex((r) => r.id === runId)
+        if (idx !== -1) runs.value[idx] = { ...runs.value[idx], ...res.data }
+        // Stop if pending count changed (capture happened) or no more pending
+        const newPending = res.data.items?.filter(
+          (i: EvidenceItem) => i.status === 'pending' || i.status === 'collecting',
+        ).length ?? 0
+        if (newPending !== previousPending || newPending === 0) {
+          stopChromePolling()
+        }
+      } catch {
+        // Ignore polling errors silently
+      }
+    }, 5000)
+
+    // Auto-stop after 2 minutes
+    pollingTimeout = setTimeout(() => stopChromePolling(), 120_000)
+  }
+
+  function stopChromePolling() {
+    if (pollingTimer) {
+      clearInterval(pollingTimer)
+      pollingTimer = null
+    }
+    if (pollingTimeout) {
+      clearTimeout(pollingTimeout)
+      pollingTimeout = null
+    }
+    isPolling.value = false
+  }
+
+  // Cleanup on unmount
+  onUnmounted(() => stopChromePolling())
+
   return {
     // State
     pdfAvailable,
@@ -248,8 +326,12 @@ export function useEvidenceRun(projectId: Ref<number>) {
     selectRun,
     resolveItem,
     skipItem,
+    manualResolveItem,
     finalizeRun,
     downloadPdf,
     clearSelection,
+    startChromePolling,
+    stopChromePolling,
+    isPolling,
   }
 }

@@ -1195,7 +1195,7 @@
   }
 
   // ============================================================
-  // Add Material
+  // Add Material (one-click: material upsert + screenshot + evidence + auto-link)
   // ============================================================
 
   async function handleAddMaterial() {
@@ -1212,24 +1212,48 @@
     }
 
     btnAddMaterial.disabled = true;
-    btnAddMaterial.innerHTML = '<span class="spinner"></span> Добавление...';
+    btnAddMaterial.innerHTML = '<span class="spinner"></span> Скриншот...';
+
+    // Phase 1: capture screenshot (non-blocking failure)
+    let screenshotBlob = null;
+    try {
+      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
+      screenshotBlob = await (await fetch(dataUrl)).blob();
+    } catch (screenshotErr) {
+      console.warn('Screenshot capture failed:', screenshotErr);
+    }
+
+    // Phase 2: build FormData and send
+    btnAddMaterial.innerHTML = '<span class="spinner"></span> Сохранение...';
 
     try {
-      const result = await sendToBackground('EXTRACT', {
-        url: pageInfo.url,
-        extracted,
-        data_sources,
-        template_id: currentTemplate?.id || null,
-        region_id: userInfo?.region_id || null,
-      });
+      const formData = new FormData();
+      formData.append('url', pageInfo.url);
+
+      // Append extracted fields as nested keys
+      for (const [key, val] of Object.entries(extracted)) {
+        if (val != null) formData.append(`extracted[${key}]`, val);
+      }
+      for (const [key, val] of Object.entries(data_sources)) {
+        if (val != null) formData.append(`data_sources[${key}]`, val);
+      }
+
+      if (currentTemplate?.id) formData.append('template_id', currentTemplate.id);
+      if (userInfo?.region_id) formData.append('region_id', userInfo.region_id);
+      if (screenshotBlob) formData.append('screenshot_file', screenshotBlob, 'screenshot.jpg');
+
+      const result = await prizmApi.extractWithEvidence(formData);
 
       if (result.success) {
-        const msg = result.is_new
-          ? 'Материал успешно добавлен в Призму.'
-          : 'Найден похожий материал. Карточка обновлена.';
-        showResult(captureResult, msg, 'success');
+        const resultHtml = buildOneClickResultHtml(result, !screenshotBlob);
+        showRichResult(captureResult, resultHtml, 'success');
         setSimpleStatus('Материал сохранен. Можно переходить к следующей карточке.', 'success');
         await bumpSuccessCounterForDomain();
+
+        // Refresh generic items list if auto-link resolved an item
+        if (result.auto_link?.linked) {
+          loadGenericItems().catch(() => {});
+        }
       } else {
         showResult(captureResult, result.message || 'Не удалось добавить материал.', 'error');
         setSimpleStatus('Не удалось добавить материал. Проверьте обязательные поля.', 'error');
@@ -1242,6 +1266,59 @@
       btnAddMaterial.textContent = 'Добавить материал';
       updateActionButtons();
     }
+  }
+
+  /**
+   * Build structured HTML for the one-click result, covering all response axes.
+   */
+  function buildOneClickResultHtml(result, screenshotMissing) {
+    const parts = [];
+
+    // Material axis
+    if (result.material_status === 'created') {
+      parts.push('<span class="result-detail result-material">✓ Материал добавлен</span>');
+    } else if (result.material_status === 'updated') {
+      parts.push('<span class="result-detail result-material">✓ Материал обновлён</span>');
+    }
+
+    // Evidence axis
+    if (result.evidence_status === 'created') {
+      parts.push('<span class="result-detail result-evidence">✓ Доказательство сохранено</span>');
+    } else if (result.evidence_status === 'duplicate') {
+      parts.push('<span class="result-detail result-evidence">⚠ Доказательство (дубликат)</span>');
+    } else if (result.evidence_status === 'skipped_feature_disabled') {
+      parts.push('<span class="result-detail result-evidence-off">— Доказательство не создано (отключено)</span>');
+    } else if (result.evidence_status === 'skipped_unmapped_type') {
+      parts.push('<span class="result-detail result-evidence-off">— Доказательство не создано (тип не распознан)</span>');
+    }
+
+    // Screenshot axis — only relevant when evidence was actually attempted
+    const evidenceAttempted = result.evidence_status === 'created' || result.evidence_status === 'duplicate';
+    if (evidenceAttempted) {
+      if (result.screenshot_status === 'captured') {
+        parts.push('<span class="result-detail result-screenshot">✓ Скриншот</span>');
+      } else if (result.screenshot_status === 'failed' || screenshotMissing) {
+        parts.push('<span class="result-detail result-screenshot-fail">✗ Скриншот не удался</span>');
+      }
+    }
+
+    // Auto-link axis
+    if (result.auto_link?.linked) {
+      const label = result.auto_link.item_label || ('#' + result.auto_link.item_id);
+      parts.push('<span class="result-detail result-autolink">⚡ Привязано к «' + escapeHtml(label) + '»</span>');
+    }
+
+    return parts.join('');
+  }
+
+  /**
+   * Show rich HTML result in the result element (extended timeout for multi-line).
+   */
+  function showRichResult(el, html, type = 'success') {
+    el.innerHTML = html;
+    el.className = `result-message result-rich ${type}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 8000);
   }
 
   // ============================================================
@@ -2054,6 +2131,7 @@
     }
 
     genericPanel?.classList.remove('hidden');
+
     genericBadge.textContent = String(genericEvidenceItems.length);
     genericBadge.classList.remove('hidden');
     renderGenericList();
@@ -2125,17 +2203,15 @@
   }
 
   function resetScreenshotStatus() {
-    genericScreenshotStatus?.classList.add('hidden');
-    if (genericScreenshotIcon) genericScreenshotIcon.textContent = '';
-    if (genericScreenshotText) genericScreenshotText.textContent = '';
+    if (!genericScreenshotStatus) return;
+    genericScreenshotStatus.classList.add('hidden');
   }
 
   function setScreenshotStatus(success, message) {
-    genericScreenshotStatus?.classList.remove('hidden');
+    if (!genericScreenshotStatus) return;
+    genericScreenshotStatus.classList.remove('hidden');
     if (genericScreenshotIcon) genericScreenshotIcon.textContent = success ? '✓' : '✗';
     if (genericScreenshotText) genericScreenshotText.textContent = message;
-    genericScreenshotStatus?.classList.toggle('ge-screenshot-ok', success);
-    genericScreenshotStatus?.classList.toggle('ge-screenshot-fail', !success);
   }
 
   function escapeHtml(str) {
@@ -2170,7 +2246,7 @@
     try {
       const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
       screenshotBlob = await (await fetch(dataUrl)).blob();
-      setScreenshotStatus(true, 'Скриншот получен');
+      setScreenshotStatus(true, 'Скриншот получен ✓');
     } catch (screenshotErr) {
       console.warn('Screenshot capture failed:', screenshotErr);
       setScreenshotStatus(false, 'Не удалось сделать скриншот');

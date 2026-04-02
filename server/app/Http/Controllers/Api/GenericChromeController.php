@@ -10,14 +10,27 @@ use App\Http\Controllers\Controller;
 use App\Models\ChromeExtLog;
 use App\Models\EstimateEvidenceItem;
 use App\Models\EstimateEvidenceRun;
+use App\Services\ChromeExtractService;
 use App\Services\GenericChromeCaptureService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class GenericChromeController extends Controller
 {
+    /**
+     * Whitelist mapping: Material::TYPE_* → CostComponent::*.
+     * Only these stable mappings are used for auto-link derivation.
+     */
+    private const MATERIAL_TYPE_TO_COST_COMPONENT = [
+        'plate'    => CostComponent::PLATE,
+        'edge'     => CostComponent::EDGE,
+        'facade'   => CostComponent::FACADE,
+        'hardware' => CostComponent::FITTING,
+    ];
+
     public function __construct(
         private GenericChromeCaptureService $captureService,
+        private ChromeExtractService $extractService,
     ) {}
 
     /**
@@ -180,54 +193,173 @@ class GenericChromeController extends Controller
 
     /**
      * POST /api/chrome/extract-with-evidence
-     * Extract material data and simultaneously create an evidence record.
-     * Delegates extraction to the existing ChromeExtractService via ChromeExtensionController,
-     * then wraps the capture into an evidence record.
+     * One-click material upsert + evidence record + screenshot + auto-link.
+     *
+     * Accepts the same material fields as POST /chrome/extract, plus an optional
+     * screenshot_file. Always performs material upsert. If generic evidence feature
+     * is enabled, also creates an EvidenceRecord (with screenshot when provided)
+     * and attempts deterministic auto-link to a matching unresolved evidence item.
+     *
+     * Response contract axes:
+     *  - material_status: 'created' | 'updated'
+     *  - evidence_status: 'created' | 'duplicate' | 'skipped_feature_disabled'
+     *  - screenshot_status: 'captured' | 'failed' | 'skipped'
+     *  - auto_link: { linked: bool, item_id?: int, item_label?: string } | null
      */
     public function extractWithEvidence(Request $request): JsonResponse
     {
-        if (!EvidenceFeatures::genericChromeEnabled()) {
-            abort(404);
-        }
-
         $validated = $request->validate([
-            'cost_component'     => 'required|string|in:' . implode(',', CostComponent::all()),
-            'source_url'         => 'required|url|max:2048',
-            'observed_price'     => 'nullable|numeric|min:0',
-            'currency'           => 'nullable|string|max:10',
-            'extracted_name'     => 'nullable|string|max:500',
-            'extracted_article'  => 'nullable|string|max:255',
-            'extracted_fields'   => 'nullable|array',
-            'confidence_score'   => 'nullable|integer|min:0|max:100',
-            'capture_mode'       => 'nullable|string|max:50',
-            'template_id'        => 'nullable|integer',
-            'screenshot_file'    => 'nullable|file|image|max:10240',
+            'url'                  => 'required|url|max:2048',
+            'extracted'            => 'required|array',
+            'extracted.title'      => 'required|string|max:500',
+            'extracted.price'      => 'required|string|max:100',
+            'extracted.article'    => 'nullable|string|max:255',
+            'extracted.thickness'  => 'nullable|string|max:20',
+            'extracted.length'     => 'nullable|string|max:20',
+            'extracted.width'      => 'nullable|string|max:20',
+            'data_sources'         => 'nullable|array',
+            'data_sources.*'       => 'nullable|string|in:auto,capture,schema,manual',
+            'template_id'          => 'nullable|integer|exists:parser_supplier_collect_profiles,id',
+            'region_id'            => 'nullable|integer|exists:regions,id',
+            'screenshot_file'      => 'nullable|file|image|max:10240',
         ]);
 
-        $screenshot = $request->file('screenshot_file');
-        $userId = $request->user()->id;
+        $user = $request->user();
+        $regionId = $validated['region_id'] ?? $user->settings?->region_id;
 
-        $result = $this->captureService->captureObservation($validated, $userId, $screenshot);
+        // ── Phase 1: Material upsert (always runs) ──
+        $materialResult = $this->extractService->createOrUpdateMaterial(
+            userId: $user->id,
+            url: $validated['url'],
+            extractedFields: $validated['extracted'],
+            regionId: $regionId,
+            templateId: $validated['template_id'] ?? null,
+            dataSources: $validated['data_sources'] ?? [],
+        );
 
-        $this->logChromeAction($request, 'extract_with_evidence', $result['duplicate'] ? 'duplicate' : 'ok', $result['record']);
+        if ($materialResult['status'] === 'failed') {
+            return response()->json([
+                'success'           => false,
+                'material_status'   => 'failed',
+                'evidence_status'   => 'skipped',
+                'screenshot_status' => 'skipped',
+                'auto_link'         => null,
+                'errors'            => $materialResult['errors'],
+                'message'           => 'Не удалось создать материал: ' . implode('; ', $materialResult['errors']),
+            ], 422);
+        }
 
-        $status = $result['duplicate'] ? 200 : 201;
+        $material = $materialResult['material'];
+        $materialStatus = $materialResult['is_new'] ? 'created' : 'updated';
+        $screenshotStatus = 'skipped';
+        $evidenceStatus = 'skipped_feature_disabled';
+        $autoLink = null;
+        $evidenceData = null;
+
+        // ── Phase 2: Evidence + screenshot (only when feature enabled) ──
+        if (EvidenceFeatures::genericChromeEnabled()) {
+            $derivedComponent = self::MATERIAL_TYPE_TO_COST_COMPONENT[$material->type] ?? null;
+
+            if ($derivedComponent) {
+                $screenshot = $request->file('screenshot_file');
+                $screenshotStatus = $screenshot ? 'captured' : 'failed';
+
+                $price = ChromeExtractService::parsePrice($validated['extracted']['price'] ?? null);
+
+                $evidencePayload = [
+                    'cost_component'    => $derivedComponent,
+                    'source_url'        => $validated['url'],
+                    'observed_price'    => $price,
+                    'currency'          => ChromeExtractService::parseCurrency($validated['extracted']['price'] ?? null),
+                    'extracted_name'    => $validated['extracted']['title'] ?? null,
+                    'extracted_article' => $validated['extracted']['article'] ?? null,
+                    'capture_mode'      => 'one_click',
+                ];
+
+                $evidenceResult = $this->captureService->captureObservation(
+                    $evidencePayload,
+                    $user->id,
+                    $screenshot
+                );
+
+                $evidenceStatus = $evidenceResult['duplicate'] ? 'duplicate' : 'created';
+                $evidenceData = [
+                    'record_id'   => $evidenceResult['record']->id,
+                    'record_uuid' => $evidenceResult['record']->uuid,
+                    'asset_id'    => $evidenceResult['asset']?->id,
+                ];
+
+                // ── Phase 3: Deterministic auto-link ──
+                if (!$evidenceResult['duplicate']) {
+                    $autoLink = $this->captureService->autoLinkToEvidenceItem(
+                        $evidenceResult['record'],
+                        $user->id,
+                        $derivedComponent,
+                        $validated['url']
+                    );
+                }
+            } else {
+                // Cost component not derivable — evidence still skipped, material saved
+                // Screenshot is irrelevant when evidence is intentionally skipped
+                $evidenceStatus = 'skipped_unmapped_type';
+                $screenshotStatus = 'skipped';
+            }
+        }
+
+        $this->logChromeAction($request, 'extract_with_evidence', 'ok', null, $validated['url']);
 
         return response()->json([
-            'success'   => true,
-            'duplicate' => $result['duplicate'],
-            'data'      => [
-                'record_id'   => $result['record']->id,
-                'record_uuid' => $result['record']->uuid,
-                'asset_id'    => $result['asset']?->id,
-            ],
-        ], $status);
+            'success'           => true,
+            'material'          => $material,
+            'observation'       => $materialResult['observation'],
+            'is_new'            => $materialResult['is_new'],
+            'dedup_match'       => $materialResult['dedup_match'],
+            'type_resolution'   => $materialResult['type_resolution'] ?? null,
+            'material_status'   => $materialStatus,
+            'evidence_status'   => $evidenceStatus,
+            'screenshot_status' => $screenshotStatus,
+            'auto_link'         => $autoLink,
+            'evidence'          => $evidenceData,
+            'errors'            => $materialResult['errors'],
+            'message'           => $this->buildResultMessage($materialStatus, $evidenceStatus, $screenshotStatus, $autoLink),
+        ], 201);
+    }
+
+    /**
+     * Build a human-readable result message covering all axes.
+     */
+    private function buildResultMessage(string $materialStatus, string $evidenceStatus, string $screenshotStatus, ?array $autoLink): string
+    {
+        $parts = [];
+
+        $parts[] = $materialStatus === 'created'
+            ? 'Материал создан'
+            : 'Материал обновлён';
+
+        if ($evidenceStatus === 'created') {
+            $parts[] = $screenshotStatus === 'captured'
+                ? 'доказательство + скриншот сохранены'
+                : 'доказательство сохранено (скриншот не удался)';
+        } elseif ($evidenceStatus === 'duplicate') {
+            $parts[] = 'доказательство найдено (дубликат)';
+        } elseif ($evidenceStatus === 'skipped_feature_disabled') {
+            $parts[] = 'доказательство не создано (функция отключена)';
+        } elseif ($evidenceStatus === 'skipped_unmapped_type') {
+            $parts[] = 'доказательство не создано (тип не распознан)';
+        }
+
+        if ($autoLink && $autoLink['linked']) {
+            $label = $autoLink['item_label'] ?? '#' . $autoLink['item_id'];
+            $parts[] = 'привязано к «' . $label . '»';
+        }
+
+        return implode('; ', $parts) . '.';
     }
 
     /**
      * Log chrome extension action using existing enum values.
      */
-    private function logChromeAction(Request $request, string $action, string $status, $record = null): void
+    private function logChromeAction(Request $request, string $action, string $status, $record = null, ?string $url = null): void
     {
         // Map new action names to existing enum('capture','save_template','extract','error')
         $actionMap = [
@@ -243,10 +375,13 @@ class GenericChromeController extends Controller
             'error'     => 'failed',
         ];
 
+        $logUrl = $url ?? $request->input('source_url', '');
+        $domain = $record?->source_domain ?? (parse_url($logUrl, PHP_URL_HOST) ?: '');
+
         ChromeExtLog::create([
             'user_id' => $request->user()->id,
-            'url'     => $request->input('source_url', ''),
-            'domain'  => $record?->source_domain ?? '',
+            'url'     => $logUrl,
+            'domain'  => $domain,
             'action'  => $actionMap[$action] ?? 'capture',
             'status'  => $statusMap[$status] ?? 'success',
         ]);

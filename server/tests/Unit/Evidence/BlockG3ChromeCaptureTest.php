@@ -470,10 +470,13 @@ class BlockG3ChromeCaptureTest extends TestCase
             'source_url' => 'https://example.com/test',
         ])->assertStatus(404);
 
-        $this->actingAs($user)->postJson('/api/chrome/extract-with-evidence', [
-            'cost_component' => CostComponent::PLATE,
-            'source_url'     => 'https://example.com/test',
-        ])->assertStatus(404);
+        // extract-with-evidence no longer 404s when gate is off:
+        // material upsert always proceeds, evidence creation is skipped explicitly
+        $this->actingAs($user, 'sanctum')->postJson('/api/chrome/extract-with-evidence', [
+            'url' => 'https://example.com/test-gate-off',
+            'extracted' => ['title' => 'Gate off test', 'price' => '100 ₽'],
+        ])->assertStatus(201)
+          ->assertJsonPath('evidence_status', 'skipped_feature_disabled');
     }
 
     // ──────────────────────────────────────────────────────────────

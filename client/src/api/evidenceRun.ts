@@ -34,6 +34,33 @@ export interface EvidenceRecord {
   created_at: string | null
 }
 
+// ── Evidence record picker item (shaped for search endpoint) ──
+export interface EvidenceRecordPickerItem {
+  id: number
+  uuid: string
+  extracted_name: string | null
+  source_url: string | null
+  source_domain: string | null
+  observed_price: string | null
+  currency: string | null
+  cost_component: string | null
+  capture_method: string | null
+  observed_at: string | null
+  created_at: string | null
+  has_screenshot: boolean
+}
+
+export interface EvidenceRecordSearchResponse {
+  success: boolean
+  data: EvidenceRecordPickerItem[]
+  meta: {
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+  }
+}
+
 // ── Evidence item ──
 export interface EvidenceItem {
   id: number
@@ -163,6 +190,32 @@ export const evidenceRunApi = {
     const { data } = await api.get(
       `/api/projects/${projectId}/evidence-runs/${runId}/pdf`,
       { responseType: 'blob' },
+    )
+    return data
+  },
+
+  /** GET /api/evidence-records/search — paginated search for picker */
+  async searchRecords(params: {
+    q?: string
+    cost_component?: string
+    per_page?: number
+    page?: number
+  }): Promise<EvidenceRecordSearchResponse> {
+    const { data } = await api.get('/api/evidence-records/search', { params })
+    return data
+  },
+
+  /** POST /api/projects/{project}/evidence-runs/{runId}/items/{itemId}/manual-resolve */
+  async manualResolveItem(
+    projectId: number | string,
+    runId: number | string,
+    itemId: number | string,
+    formData: FormData,
+  ): Promise<EvidenceRunActionResponse> {
+    const { data } = await api.post(
+      `/api/projects/${projectId}/evidence-runs/${runId}/items/${itemId}/manual-resolve`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
     )
     return data
   },

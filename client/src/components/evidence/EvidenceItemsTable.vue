@@ -103,6 +103,7 @@
                   :href="item.source_url"
                   target="_blank"
                   rel="noopener noreferrer"
+                  @click="$emit('chrome-click')"
                 />
               </template>
               <span>Открыть и захватить через Chrome-расширение</span>
@@ -140,6 +141,7 @@ defineProps<{
 defineEmits<{
   resolve: [item: EvidenceItem]
   skip: [item: EvidenceItem]
+  'chrome-click': []
 }>()
 
 function statusLabel(status: string): string {

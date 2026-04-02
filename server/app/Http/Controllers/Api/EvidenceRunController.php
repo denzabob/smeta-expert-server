@@ -2,9 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Evidence\CaptureMethod;
+use App\Evidence\CostComponent;
 use App\Evidence\EvidenceItemStatus;
 use App\Evidence\EvidenceRunStatus;
 use App\Evidence\EvidenceFeatures;
+use App\Evidence\SourceType;
+use App\Evidence\VerificationStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreEvidenceRecordRequest;
 use App\Http\Requests\StoreEvidenceRunRequest;
@@ -19,6 +23,7 @@ use App\Services\EstimateEvidencePdfBuilder;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -276,6 +281,159 @@ class EvidenceRunController extends Controller
             'success' => true,
             'data'    => $asset,
         ], 201);
+    }
+
+    /**
+     * GET /api/evidence-records/search
+     * Searchable list of evidence records for the picker UI.
+     */
+    public function searchRecords(Request $request): JsonResponse
+    {
+        $request->validate([
+            'q'              => 'nullable|string|max:200',
+            'cost_component' => 'nullable|string|in:' . implode(',', CostComponent::all()),
+            'per_page'       => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $userId = auth()->id();
+        $query  = EvidenceRecord::where('created_by', $userId)
+            ->orderByDesc('created_at');
+
+        if ($cc = $request->input('cost_component')) {
+            $query->where('cost_component', $cc);
+        }
+
+        if ($q = $request->input('q')) {
+            $query->where(function ($sub) use ($q) {
+                $sub->where('extracted_name', 'LIKE', "%{$q}%")
+                    ->orWhere('source_url', 'LIKE', "%{$q}%")
+                    ->orWhere('source_domain', 'LIKE', "%{$q}%")
+                    ->orWhere('extracted_article', 'LIKE', "%{$q}%");
+            });
+        }
+
+        $perPage = (int) $request->input('per_page', 20);
+        $records = $query->with(['assets' => function ($q) {
+            $q->select('id', 'evidence_record_id', 'asset_type', 'file_path')
+              ->limit(1);
+        }])->paginate($perPage);
+
+        // Shape output: add has_screenshot flag, hide internal fields
+        $items = collect($records->items())->map(function (EvidenceRecord $r) {
+            return [
+                'id'              => $r->id,
+                'uuid'            => $r->uuid,
+                'extracted_name'  => $r->extracted_name,
+                'source_url'      => $r->source_url,
+                'source_domain'   => $r->source_domain,
+                'observed_price'  => $r->observed_price,
+                'currency'        => $r->currency,
+                'cost_component'  => $r->cost_component,
+                'capture_method'  => $r->capture_method,
+                'observed_at'     => $r->observed_at?->toIso8601String(),
+                'created_at'      => $r->created_at?->toIso8601String(),
+                'has_screenshot'  => $r->assets->isNotEmpty(),
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data'    => $items,
+            'meta'    => [
+                'current_page' => $records->currentPage(),
+                'last_page'    => $records->lastPage(),
+                'per_page'     => $records->perPage(),
+                'total'        => $records->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * POST /api/projects/{project}/evidence-runs/{runId}/items/{itemId}/manual-resolve
+     * Manual fallback: create evidence record from uploaded proof + resolve item in one step.
+     */
+    public function manualResolveItem(Request $request, Project $project, int $runId, int $itemId): JsonResponse
+    {
+        $this->authorize('update', $project);
+
+        $run = EstimateEvidenceRun::where('project_id', $project->id)
+            ->findOrFail($runId);
+
+        if (in_array($run->status, EvidenceRunStatus::terminalStatuses(), true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot modify items in a {$run->status} run.",
+            ], 422);
+        }
+
+        $item = $run->items()->findOrFail($itemId);
+
+        if (in_array($item->status, EvidenceItemStatus::terminalStatuses(), true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Item already in terminal status '{$item->status}'.",
+            ], 422);
+        }
+
+        $request->validate([
+            'file'           => 'required|file|max:10240',
+            'observed_price' => 'required|numeric|min:0',
+            'currency'       => 'nullable|string|max:10',
+            'source_url'     => 'nullable|url|max:2048',
+            'extracted_name' => 'nullable|string|max:500',
+        ]);
+
+        return DB::transaction(function () use ($request, $item, $run) {
+            $file = $request->file('file');
+
+            // 1. Create EvidenceRecord
+            $record = EvidenceRecord::create([
+                'uuid'                => (string) Str::uuid(),
+                'cost_component'      => $item->cost_component,
+                'source_type'         => SourceType::MANUAL_INPUT,
+                'capture_method'      => CaptureMethod::FILE_UPLOAD,
+                'verification_status' => VerificationStatus::PENDING,
+                'source_url'          => $request->input('source_url'),
+                'source_domain'       => $request->input('source_url')
+                    ? (parse_url($request->input('source_url'), PHP_URL_HOST) ?: null)
+                    : null,
+                'observed_price'      => $request->input('observed_price'),
+                'currency'            => strtoupper($request->input('currency', 'RUB')),
+                'observed_at'         => now(),
+                'extracted_name'      => $request->input('extracted_name'),
+                'created_by'          => auth()->id(),
+            ]);
+
+            // 2. Store uploaded file as asset
+            $path = $file->store('evidence-records/' . $record->uuid, 'public');
+            GenericEvidenceAsset::create([
+                'uuid'               => (string) Str::uuid(),
+                'evidence_record_id' => $record->id,
+                'asset_type'         => 'document',
+                'file_path'          => $path,
+                'original_filename'  => $file->getClientOriginalName(),
+                'mime_type'          => $file->getMimeType(),
+                'file_size'          => $file->getSize(),
+                'sha256'             => hash_file('sha256', $file->getRealPath()),
+            ]);
+
+            // 3. Resolve item
+            $item->update([
+                'status'             => EvidenceItemStatus::RESOLVED,
+                'resolution_type'    => 'manual',
+                'evidence_record_id' => $record->id,
+                'source_url'         => $item->source_url ?: $record->source_url,
+                'effective_value'    => $record->observed_price,
+                'currency'           => $record->currency,
+            ]);
+
+            $this->refreshRunCounters($run);
+
+            return response()->json([
+                'success' => true,
+                'data'    => $item->fresh()->load('evidenceRecord'),
+            ], 201);
+        });
     }
 
     /**

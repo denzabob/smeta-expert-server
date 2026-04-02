@@ -260,4 +260,65 @@ class GenericChromeCaptureService
 
         $run->update($updates);
     }
+
+    /**
+     * Attempt deterministic auto-link of an evidence record to an unresolved evidence item.
+     *
+     * Rules (strict — no fuzzy matching):
+     *  1. Item must belong to user's non-terminal run
+     *  2. Item must not be in a terminal status
+     *  3. Item cost_component must exactly match the derived cost component
+     *  4. Item source_url must exactly match the evidence record's source_url (after normalization)
+     *  5. Exactly ONE candidate must exist — 0 or 2+ means no auto-link
+     *
+     * @return array{linked: bool, item_id: ?int, item_label: ?string}
+     */
+    public function autoLinkToEvidenceItem(
+        EvidenceRecord $record,
+        int $userId,
+        string $costComponent,
+        string $sourceUrl,
+    ): array {
+        $normalizedUrl = $this->urlNormalizer->normalize($sourceUrl);
+
+        if (!$normalizedUrl) {
+            return ['linked' => false, 'item_id' => null, 'item_label' => null];
+        }
+
+        $candidates = EstimateEvidenceItem::whereHas('run', function ($q) use ($userId) {
+                $q->where('initiated_by', $userId)
+                  ->whereNotIn('status', EvidenceRunStatus::terminalStatuses());
+            })
+            ->whereNotIn('status', EvidenceItemStatus::terminalStatuses())
+            ->where('cost_component', $costComponent)
+            ->where('source_url', $normalizedUrl)
+            ->with('run')
+            ->limit(2) // Only need to know if 0, 1, or 2+
+            ->get();
+
+        if ($candidates->count() !== 1) {
+            return ['linked' => false, 'item_id' => null, 'item_label' => null];
+        }
+
+        $item = $candidates->first();
+
+        $linkResult = $this->captureForItem($item, [
+            'cost_component' => $costComponent,
+            'source_url'     => $sourceUrl,
+            'observed_price' => $record->observed_price,
+            'currency'       => $record->currency,
+            'extracted_name' => $record->extracted_name,
+            'capture_mode'   => 'auto_link',
+        ], $userId, null);
+
+        if (!($linkResult['success'] ?? false)) {
+            return ['linked' => false, 'item_id' => null, 'item_label' => null];
+        }
+
+        return [
+            'linked'     => true,
+            'item_id'    => $item->id,
+            'item_label' => $item->label,
+        ];
+    }
 }

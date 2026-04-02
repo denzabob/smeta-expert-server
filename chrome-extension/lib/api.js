@@ -294,6 +294,40 @@ class PrizmAPI {
     }
     return data;
   }
+
+  /**
+   * POST /api/chrome/extract-with-evidence
+   * One-click material upsert + evidence screenshot + auto-link.
+   * Uses FormData for screenshot upload — must be called directly from popup.
+   */
+  async extractWithEvidence(formData) {
+    await this.ready();
+    if (!this.token) {
+      throw new Error('Не авторизован. Подключите API-токен в настройках расширения.');
+    }
+    const url = `${this.baseUrl}/chrome/extract-with-evidence`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${this.token}`,
+      },
+      body: formData,
+    });
+    if (response.status === 401) {
+      await chrome.storage.local.remove('authToken');
+      this.token = null;
+      throw new Error('Сессия истекла. Войдите заново.');
+    }
+    const data = await response.json();
+    if (!response.ok) {
+      const message = data.error || data.message || `Ошибка сервера (${response.status})`;
+      const err = new Error(message);
+      err.status = response.status;
+      throw err;
+    }
+    return data;
+  }
 }
 
 // Export as singleton

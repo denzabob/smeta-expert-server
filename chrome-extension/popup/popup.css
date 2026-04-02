@@ -687,6 +687,26 @@ body {
   border: 1px solid #FDE68A;
 }
 
+/* One-click rich result (multi-line with detail spans) */
+.result-message.result-rich {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.5;
+}
+
+.result-detail {
+  display: block;
+  font-size: 12px;
+}
+
+.result-material { color: #065F46; }
+.result-evidence { color: #1E40AF; }
+.result-evidence-off { color: #6B7280; }
+.result-screenshot { color: #059669; }
+.result-screenshot-fail { color: #DC2626; }
+.result-autolink { color: #7C3AED; font-weight: 500; }
+
 .error-text {
   color: var(--danger);
   font-size: 12px;

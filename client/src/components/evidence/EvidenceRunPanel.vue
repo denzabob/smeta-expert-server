@@ -52,6 +52,18 @@
             Обновить
           </v-btn>
 
+          <v-chip
+            v-if="evidence.isPolling.value"
+            size="small"
+            color="info"
+            variant="tonal"
+            prepend-icon="mdi-sync"
+            closable
+            @click:close="evidence.stopChromePolling()"
+          >
+            Ожидание захвата…
+          </v-chip>
+
           <v-btn
             v-if="evidence.canFinalize.value"
             size="small"
@@ -158,6 +170,7 @@
                 :disabled="evidence.actionLoading.value || isRunTerminal"
                 @resolve="openResolveDialog"
                 @skip="openSkipDialog"
+                @chrome-click="onChromeClick"
               />
             </div>
           </v-card-text>
@@ -173,6 +186,7 @@
       :error-message="evidence.error.value"
       @resolve="handleResolve"
       @skip="handleSkip"
+      @manual-resolve="handleManualResolve"
     />
 
     <!-- Finalize confirmation -->
@@ -293,6 +307,17 @@ async function handleSkip(itemId: number, reason: string) {
   if (!evidence.error.value) {
     dialogOpen.value = false
   }
+}
+
+async function handleManualResolve(itemId: number, formData: FormData) {
+  await evidence.manualResolveItem(itemId, formData)
+  if (!evidence.error.value) {
+    dialogOpen.value = false
+  }
+}
+
+function onChromeClick() {
+  evidence.startChromePolling()
 }
 
 // Finalize confirm
