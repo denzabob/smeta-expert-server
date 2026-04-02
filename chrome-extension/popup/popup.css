@@ -1009,16 +1009,17 @@ hr {
 /* ─── Secondary Panels Wrapper ─── */
 
 .secondary-panels {
-  margin-top: 16px;
+  margin-top: 20px;
   border-top: 1px dashed var(--border);
-  padding-top: 4px;
+  padding-top: 2px;
+  opacity: 0.85;
 }
 
 .secondary-panels-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 5px;
+  padding: 4px 8px;
   cursor: pointer;
   user-select: none;
   border-radius: var(--radius);
@@ -1026,34 +1027,37 @@ hr {
 
 .secondary-panels-header:hover {
   background: #F9FAFB;
+  opacity: 1;
 }
 
 .secondary-panels-toggle {
-  font-size: 9px;
+  font-size: 8px;
   color: var(--text-secondary);
-  width: 14px;
+  width: 12px;
   text-align: center;
+  opacity: 0.6;
 }
 
 .secondary-panels-title {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 400;
   color: var(--text-secondary);
   flex: 1;
+  letter-spacing: 0.02em;
 }
 
 .secondary-panels-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  font-size: 10px;
+  min-width: 14px;
+  height: 14px;
+  font-size: 9px;
   font-weight: 600;
-  color: white;
-  background: var(--text-secondary);
-  border-radius: 8px;
-  padding: 0 4px;
+  color: var(--text-secondary);
+  background: #E5E7EB;
+  border-radius: 7px;
+  padding: 0 3px;
 }
 
 .secondary-panels-body .revision-panel {

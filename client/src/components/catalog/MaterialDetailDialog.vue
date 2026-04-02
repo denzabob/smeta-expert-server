@@ -94,6 +94,100 @@
 
         <v-divider />
 
+        <!-- Proof Screenshot -->
+        <v-sheet class="pa-4">
+          <div class="text-subtitle-1 font-weight-bold mb-3">
+            <v-icon size="small" color="primary" class="mr-1">mdi-camera-outline</v-icon>
+            Скриншот / Снимок страницы
+          </div>
+
+          <template v-if="latestScreenshot && latestScreenshot.exists">
+            <!-- Image preview -->
+            <template v-if="latestScreenshot.is_image">
+              <v-img
+                :src="latestScreenshot.url"
+                max-height="240"
+                class="rounded border mb-2 screenshot-preview"
+                cover
+                @error="screenshotError = true"
+                @click="openScreenshot"
+                style="cursor: pointer;"
+              >
+                <template #error>
+                  <div class="d-flex align-center justify-center fill-height text-medium-emphasis">
+                    <v-icon class="mr-1" size="small">mdi-image-off-outline</v-icon>
+                    Не удалось загрузить изображение
+                  </div>
+                </template>
+                <template #placeholder>
+                  <div class="d-flex align-center justify-center fill-height">
+                    <v-progress-circular indeterminate size="24" width="2" />
+                  </div>
+                </template>
+              </v-img>
+              <div class="d-flex align-center ga-2 mt-1">
+                <v-btn
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  prepend-icon="mdi-open-in-new"
+                  @click="openScreenshot"
+                >
+                  Открыть скриншот
+                </v-btn>
+                <span class="text-caption text-medium-emphasis">
+                  {{ screenshotSourceLabel(latestScreenshot.source) }}
+                  <template v-if="latestScreenshot.captured_at">
+                    · {{ formatDateTime(latestScreenshot.captured_at) }}
+                  </template>
+                </span>
+              </div>
+            </template>
+            <!-- Non-image document -->
+            <template v-else>
+              <div class="d-flex align-center ga-2">
+                <v-icon color="primary">mdi-file-document-outline</v-icon>
+                <div class="flex-grow-1">
+                  <div class="font-weight-medium text-body-2">Прикреплённый документ</div>
+                  <div class="text-caption text-medium-emphasis">
+                    {{ screenshotSourceLabel(latestScreenshot.source) }}
+                    <template v-if="latestScreenshot.captured_at">
+                      · {{ formatDateTime(latestScreenshot.captured_at) }}
+                    </template>
+                  </div>
+                </div>
+                <v-btn
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  prepend-icon="mdi-open-in-new"
+                  @click="openScreenshot"
+                >
+                  Открыть
+                </v-btn>
+              </div>
+            </template>
+          </template>
+
+          <!-- File missing -->
+          <template v-else-if="latestScreenshot && !latestScreenshot.exists">
+            <div class="d-flex align-center ga-2 text-medium-emphasis">
+              <v-icon size="small" color="warning">mdi-file-alert-outline</v-icon>
+              <span class="text-body-2">Файл скриншота не найден на сервере</span>
+            </div>
+          </template>
+
+          <!-- No screenshot -->
+          <template v-else>
+            <div class="d-flex align-center ga-2 text-medium-emphasis">
+              <v-icon size="small" color="grey">mdi-camera-off-outline</v-icon>
+              <span class="text-body-2">Нет прикреплённого скриншота</span>
+            </div>
+          </template>
+        </v-sheet>
+
+        <v-divider />
+
         <!-- Material Properties -->
         <v-sheet class="pa-4">
           <div class="text-subtitle-1 font-weight-bold mb-3">
@@ -265,7 +359,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { fetchMaterialDetail } from '@/api/materialCatalog'
-import type { MaterialDetail, TrustBreakdownItem } from '@/api/materialCatalog'
+import type { MaterialDetail, TrustBreakdownItem, LatestScreenshot } from '@/api/materialCatalog'
 import TrustBadge from './TrustBadge.vue'
 
 const props = defineProps<{
@@ -281,6 +375,8 @@ const emit = defineEmits<{
 const loading = ref(false)
 const detail = ref<MaterialDetail | null>(null)
 const trustBreakdown = ref<TrustBreakdownItem[]>([])
+const latestScreenshot = ref<LatestScreenshot | null>(null)
+const screenshotError = ref(false)
 
 const isOwner = ref(false)
 
@@ -290,20 +386,25 @@ watch(() => [props.modelValue, props.materialId], async ([open, id]) => {
   } else if (!open) {
     detail.value = null
     trustBreakdown.value = []
+    latestScreenshot.value = null
+    screenshotError.value = false
   }
 })
 
 async function loadDetail(id: number) {
   loading.value = true
+  screenshotError.value = false
   try {
     const res = await fetchMaterialDetail(id)
     detail.value = res.data.material
     trustBreakdown.value = res.data.trust_breakdown
+    latestScreenshot.value = res.data.latest_screenshot ?? null
     // Simple owner check: user_id is present (server already checks access)
     isOwner.value = !!detail.value?.user_id
   } catch (e) {
     detail.value = null
     trustBreakdown.value = []
+    latestScreenshot.value = null
   } finally {
     loading.value = false
   }
@@ -360,6 +461,22 @@ function parseStatusColor(s: string): string {
   const map: Record<string, string> = { ok: 'success', failed: 'error', blocked: 'warning', unsupported: 'grey' }
   return map[s] || 'grey'
 }
+
+function openScreenshot() {
+  if (latestScreenshot.value?.url) {
+    window.open(latestScreenshot.value.url, '_blank', 'noopener')
+  }
+}
+
+function screenshotSourceLabel(source: string): string {
+  const map: Record<string, string> = {
+    chrome_ext: 'Chrome расширение',
+    web: 'Парсинг',
+    manual: 'Вручную',
+    price_list: 'Прайс-лист',
+  }
+  return map[source] || source
+}
 </script>
 
 <style scoped>
@@ -368,5 +485,11 @@ function parseStatusColor(s: string): string {
 }
 .border-b {
   border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.screenshot-preview {
+  transition: opacity 0.15s ease;
+}
+.screenshot-preview:hover {
+  opacity: 0.9;
 }
 </style>

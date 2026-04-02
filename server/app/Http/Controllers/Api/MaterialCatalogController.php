@@ -8,6 +8,7 @@ use App\Http\Requests\ParseByUrlRequest;
 use App\Http\Requests\StoreCatalogMaterialRequest;
 use App\Models\Material;
 use App\Models\MaterialPriceHistory;
+use App\Models\GenericEvidenceAsset;
 use App\Models\UserMaterialLibrary;
 use App\Models\UserSettings;
 use App\Services\DomainParseService;
@@ -21,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class MaterialCatalogController extends Controller
 {
@@ -404,7 +406,74 @@ class MaterialCatalogController extends Controller
                 'observation_count' => $observations->count(),
             ],
             'trust_breakdown' => $trustBreakdown,
+            'latest_screenshot' => $this->resolveLatestScreenshot($observations),
         ]);
+    }
+
+    /**
+     * Source-of-truth rule for material proof screenshot.
+     *
+     * Priority:
+     *  1. MaterialPriceHistory.screenshot_path on the latest observation (set by
+     *     one-click bridge, manual upload, or parser)
+     *  2. GenericEvidenceAsset via evidence_record_id on the latest observation
+     *  3. null — no proof screenshot available
+     */
+    protected function resolveLatestScreenshot($observations): ?array
+    {
+        foreach ($observations as $obs) {
+            // Priority 1: direct screenshot_path on the observation
+            if (!empty($obs->screenshot_path)) {
+                $isImage = $this->isImagePath($obs->screenshot_path);
+                return [
+                    'url'         => Storage::disk('public')->url($obs->screenshot_path),
+                    'path'        => $obs->screenshot_path,
+                    'is_image'    => $isImage,
+                    'source'      => $obs->source_type ?? 'unknown',
+                    'captured_at' => ($obs->observed_at ?? $obs->created_at)?->toIso8601String(),
+                    'exists'      => Storage::disk('public')->exists($obs->screenshot_path),
+                ];
+            }
+
+            // Priority 1b: snapshot_path (legacy parser path)
+            if (!empty($obs->snapshot_path)) {
+                $isImage = $this->isImagePath($obs->snapshot_path);
+                return [
+                    'url'         => Storage::disk('public')->url($obs->snapshot_path),
+                    'path'        => $obs->snapshot_path,
+                    'is_image'    => $isImage,
+                    'source'      => $obs->source_type ?? 'unknown',
+                    'captured_at' => ($obs->observed_at ?? $obs->created_at)?->toIso8601String(),
+                    'exists'      => Storage::disk('public')->exists($obs->snapshot_path),
+                ];
+            }
+
+            // Priority 2: generic evidence asset via evidence_record_id
+            if ($obs->evidence_record_id) {
+                $asset = GenericEvidenceAsset::where('evidence_record_id', $obs->evidence_record_id)
+                    ->where('asset_type', 'screenshot')
+                    ->first();
+                if ($asset && !empty($asset->file_path)) {
+                    $isImage = $this->isImagePath($asset->file_path);
+                    return [
+                        'url'         => Storage::disk('public')->url($asset->file_path),
+                        'path'        => $asset->file_path,
+                        'is_image'    => $isImage,
+                        'source'      => $obs->source_type ?? 'chrome_ext',
+                        'captured_at' => ($obs->observed_at ?? $obs->created_at)?->toIso8601String(),
+                        'exists'      => Storage::disk('public')->exists($asset->file_path),
+                    ];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function isImagePath(string $path): bool
+    {
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        return in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true);
     }
 
     /**
@@ -453,9 +522,14 @@ class MaterialCatalogController extends Controller
             'description' => 'Заполнены: название, артикул, ед. изм., тип + источник не ручной',
         ];
 
-        // +10: snapshot
+        // +10: snapshot — aligned with resolveLatestScreenshot source-of-truth rule
         $latestObs = $observations->first();
         $hasSnapshot = $latestObs && ($latestObs->snapshot_path || $latestObs->screenshot_path);
+        if (!$hasSnapshot && $latestObs && $latestObs->evidence_record_id) {
+            $hasSnapshot = GenericEvidenceAsset::where('evidence_record_id', $latestObs->evidence_record_id)
+                ->where('asset_type', 'screenshot')
+                ->exists();
+        }
         $breakdown[] = [
             'label' => 'Скриншот/снимок страницы',
             'points' => $hasSnapshot ? 10 : 0,

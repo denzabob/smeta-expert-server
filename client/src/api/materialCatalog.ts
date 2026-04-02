@@ -189,9 +189,19 @@ export interface MaterialDetail extends CatalogMaterial {
   observation_count: number
 }
 
+export interface LatestScreenshot {
+  url: string
+  path: string
+  is_image: boolean
+  source: string
+  captured_at: string | null
+  exists: boolean
+}
+
 export interface MaterialDetailResponse {
   material: MaterialDetail
   trust_breakdown: TrustBreakdownItem[]
+  latest_screenshot: LatestScreenshot | null
 }
 
 export interface UpdateMaterialPayload {

@@ -289,6 +289,18 @@ class GenericChromeController extends Controller
                     'asset_id'    => $evidenceResult['asset']?->id,
                 ];
 
+                // ── Bridge: write screenshot/evidence back to the price observation ──
+                // This is the single source-of-truth rule: the observation carries
+                // evidence_record_id + screenshot_path so that material-detail and
+                // trust-score logic see the generic-evidence screenshot.
+                if (!$evidenceResult['duplicate'] && isset($materialResult['observation'])) {
+                    $bridgeData = ['evidence_record_id' => $evidenceResult['record']->id];
+                    if ($evidenceResult['asset']) {
+                        $bridgeData['screenshot_path'] = $evidenceResult['asset']->file_path;
+                    }
+                    $materialResult['observation']->update($bridgeData);
+                }
+
                 // ── Phase 3: Deterministic auto-link ──
                 if (!$evidenceResult['duplicate']) {
                     $autoLink = $this->captureService->autoLinkToEvidenceItem(
