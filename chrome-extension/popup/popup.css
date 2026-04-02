@@ -1006,6 +1006,60 @@ hr {
   border-radius: var(--radius-sm);
 }
 
+/* ─── Secondary Panels Wrapper ─── */
+
+.secondary-panels {
+  margin-top: 16px;
+  border-top: 1px dashed var(--border);
+  padding-top: 4px;
+}
+
+.secondary-panels-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius);
+}
+
+.secondary-panels-header:hover {
+  background: #F9FAFB;
+}
+
+.secondary-panels-toggle {
+  font-size: 9px;
+  color: var(--text-secondary);
+  width: 14px;
+  text-align: center;
+}
+
+.secondary-panels-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.secondary-panels-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  font-size: 10px;
+  font-weight: 600;
+  color: white;
+  background: var(--text-secondary);
+  border-radius: 8px;
+  padding: 0 4px;
+}
+
+.secondary-panels-body .revision-panel {
+  margin-top: 6px;
+}
+
 /* ─── Revision Evidence Panel (Block C1) ─── */
 
 .revision-panel {

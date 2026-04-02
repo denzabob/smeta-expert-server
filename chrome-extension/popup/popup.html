@@ -200,6 +200,15 @@
         <button id="btn-clear" class="btn btn-link">Очистить все поля</button>
       </div>
 
+      <!-- Secondary Panels: item-list capture (fallback path) -->
+      <div id="secondary-panels" class="secondary-panels hidden">
+        <div class="secondary-panels-header" id="secondary-panels-header">
+          <span class="secondary-panels-toggle">&#9654;</span>
+          <span class="secondary-panels-title">Дополнительно</span>
+          <span class="secondary-panels-badge hidden" id="secondary-panels-badge">0</span>
+        </div>
+        <div class="secondary-panels-body hidden" id="secondary-panels-body">
+
       <!-- Revision Evidence Panel (Block C1) -->
       <div id="revision-panel" class="revision-panel hidden">
         <div class="revision-header" id="revision-header">
@@ -267,6 +276,8 @@
           <div id="generic-evidence-result" class="result-message hidden"></div>
         </div>
       </div>
+      </div> <!-- /secondary-panels-body -->
+      </div> <!-- /secondary-panels -->
 
       <!-- Tab: Template -->
       <div class="tab-content advanced-only" id="tab-template">

@@ -264,6 +264,9 @@ class GenericChromeCaptureService
     /**
      * Attempt deterministic auto-link of an evidence record to an unresolved evidence item.
      *
+     * Directly links the existing record (which already has the screenshot asset)
+     * to the matching item instead of creating a new record through captureForItem.
+     *
      * Rules (strict — no fuzzy matching):
      *  1. Item must belong to user's non-terminal run
      *  2. Item must not be in a terminal status
@@ -301,17 +304,34 @@ class GenericChromeCaptureService
         }
 
         $item = $candidates->first();
+        $run = $item->run;
 
-        $linkResult = $this->captureForItem($item, [
-            'cost_component' => $costComponent,
-            'source_url'     => $sourceUrl,
-            'observed_price' => $record->observed_price,
-            'currency'       => $record->currency,
-            'extracted_name' => $record->extracted_name,
-            'capture_mode'   => 'auto_link',
-        ], $userId, null);
+        if (in_array($run->status, EvidenceRunStatus::terminalStatuses(), true)) {
+            return ['linked' => false, 'item_id' => null, 'item_label' => null];
+        }
 
-        if (!($linkResult['success'] ?? false)) {
+        try {
+            DB::transaction(function () use ($record, $item, $run) {
+                // Link the existing record (with its screenshot asset) directly
+                EvidenceLink::create([
+                    'evidence_record_id' => $record->id,
+                    'linkable_type'      => EstimateEvidenceItem::class,
+                    'linkable_id'        => $item->id,
+                    'relation_type'      => 'auto_linked',
+                ]);
+
+                $item->update([
+                    'status'             => EvidenceItemStatus::RESOLVED,
+                    'resolution_type'    => ResolutionType::CHROME,
+                    'evidence_record_id' => $record->id,
+                    'source_url'         => $item->source_url ?: $record->source_url,
+                    'effective_value'    => $record->observed_price ?? $item->effective_value,
+                    'currency'           => $record->currency ?? $item->currency,
+                ]);
+
+                $this->refreshRunCounters($run);
+            });
+        } catch (\Throwable) {
             return ['linked' => false, 'item_id' => null, 'item_label' => null];
         }
 

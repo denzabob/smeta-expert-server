@@ -292,6 +292,7 @@
     setupEventListeners();
     setupRevisionListeners();
     setupGenericEvidenceListeners();
+    setupSecondaryPanels();
   }
 
   function showAuthUI() {
@@ -1894,6 +1895,38 @@
   }
 
   // ============================================================
+  // Secondary Panels Wrapper
+  // ============================================================
+
+  const secondaryPanelsEl = $('#secondary-panels');
+  const secondaryPanelsHeader = $('#secondary-panels-header');
+  const secondaryPanelsBody = $('#secondary-panels-body');
+  const secondaryPanelsBadge = $('#secondary-panels-badge');
+
+  function setupSecondaryPanels() {
+    secondaryPanelsHeader?.addEventListener('click', toggleSecondaryPanels);
+  }
+
+  function toggleSecondaryPanels() {
+    const isHidden = secondaryPanelsBody.classList.toggle('hidden');
+    const toggle = secondaryPanelsHeader.querySelector('.secondary-panels-toggle');
+    if (toggle) toggle.textContent = isHidden ? '\u25B6' : '\u25BC';
+  }
+
+  function updateSecondaryPanelsVisibility() {
+    const totalItems = (revisionItems?.length || 0) + (genericEvidenceItems?.length || 0);
+    if (totalItems === 0) {
+      secondaryPanelsEl?.classList.add('hidden');
+    } else {
+      secondaryPanelsEl?.classList.remove('hidden');
+      if (secondaryPanelsBadge) {
+        secondaryPanelsBadge.textContent = String(totalItems);
+        secondaryPanelsBadge.classList.remove('hidden');
+      }
+    }
+  }
+
+  // ============================================================
   // Revision Evidence (Block C1)
   // ============================================================
 
@@ -1949,6 +1982,7 @@
 
     if (revisionItems.length === 0) {
       revisionPanel?.classList.add('hidden');
+      updateSecondaryPanelsVisibility();
       return;
     }
 
@@ -1956,6 +1990,7 @@
     revisionBadge.textContent = String(revisionItems.length);
     revisionBadge.classList.remove('hidden');
     renderRevisionList();
+    updateSecondaryPanelsVisibility();
   }
 
   function renderRevisionList() {
@@ -2127,6 +2162,7 @@
 
     if (genericEvidenceItems.length === 0) {
       genericPanel?.classList.add('hidden');
+      updateSecondaryPanelsVisibility();
       return;
     }
 
@@ -2135,6 +2171,7 @@
     genericBadge.textContent = String(genericEvidenceItems.length);
     genericBadge.classList.remove('hidden');
     renderGenericList();
+    updateSecondaryPanelsVisibility();
   }
 
   function renderGenericList() {
@@ -2287,6 +2324,7 @@
           genericBadge.textContent = String(genericEvidenceItems.length);
           renderGenericList();
         }
+        updateSecondaryPanelsVisibility();
 
         if (result.duplicate) {
           showResult(genericResult, '⚠ Уже существует (дубликат)', 'duplicate');

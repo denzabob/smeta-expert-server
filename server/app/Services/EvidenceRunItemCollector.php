@@ -27,6 +27,7 @@ class EvidenceRunItemCollector
 {
     public function __construct(
         private ReportService $reportService,
+        private UrlNormalizer $urlNormalizer,
     ) {}
 
     /**
@@ -233,6 +234,15 @@ class EvidenceRunItemCollector
                 'currency'       => 'RUB',
             ];
         }
+
+        // Normalize source_url using the same UrlNormalizer that auto-link uses.
+        // This ensures that auto-link's WHERE source_url = $normalizedUrl can match.
+        foreach ($items as &$item) {
+            if (!empty($item['source_url'])) {
+                $item['source_url'] = $this->urlNormalizer->normalize($item['source_url']);
+            }
+        }
+        unset($item);
 
         return array_values($items);
     }
