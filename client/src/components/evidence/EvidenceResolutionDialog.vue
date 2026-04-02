@@ -398,5 +398,3 @@ function submitSkip() {
   background: rgba(var(--v-theme-primary), 0.04);
 }
 </style>
-}
-</script>
