@@ -8,9 +8,11 @@ use App\Evidence\VerificationStatus;
 use App\Models\EvidenceRecord;
 use App\Models\GenericEvidenceAsset;
 use App\Models\Material;
+use App\Models\MaterialPriceHistory;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\MaterialConfirmationService;
+use App\Services\TrustScoreService;
 use App\Services\UrlNormalizer;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Str;
@@ -485,6 +487,136 @@ class PriceFreshnessTest extends TestCase
 
         $this->assertEquals('not_applicable', $result['state']);
         $this->assertEquals('type_unmapped', $result['reason']);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // 8. TrustScoreService: +10 screenshot criterion aligned with
+    //    MaterialCatalogController::computeTrustBreakdown
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * When a material's latest observation has evidence_record_id pointing to a
+     * GenericEvidenceAsset with asset_type='screenshot', TrustScoreService must
+     * award the +10 snapshot bonus — even if observation.screenshot_path is null.
+     * This aligns recalculate() with computeTrustBreakdown() in MaterialCatalogController.
+     */
+    public function test_trust_score_snapshot_criterion_uses_evidence_record_id_fallback(): void
+    {
+        $user = User::factory()->create();
+
+        $material = Material::create([
+            'user_id'        => $user->id,
+            'name'           => 'TrustScore Fallback Plate',
+            'article'        => 'TS-FALLBACK-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 3000,
+            'source_url'     => 'https://example.com/trust-fallback',
+            'origin'         => 'parser',
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+            'trust_level'    => 'unverified',
+        ]);
+
+        $record = EvidenceRecord::create([
+            'uuid'                => (string) Str::uuid(),
+            'cost_component'      => CostComponent::PLATE,
+            'source_type'         => 'chrome_ext',
+            'capture_method'      => 'viewport',
+            'verification_status' => VerificationStatus::PENDING,
+            'source_url'          => 'https://example.com/trust-fallback',
+            'observed_price'      => 3000,
+            'currency'            => 'RUB',
+            'trust_score'         => 50,
+            'created_by'          => $user->id,
+        ]);
+
+        // Observation: evidence_record_id set but screenshot_path/snapshot_path = null
+        MaterialPriceHistory::create([
+            'material_id'        => $material->id,
+            'price'              => 3000,
+            'price_per_unit'     => 3000,
+            'currency'           => 'RUB',
+            'source_url'         => 'https://example.com/trust-fallback',
+            'observed_at'        => now(),
+            'valid_from'         => now(),
+            'version'            => 1,
+            'evidence_record_id' => $record->id,
+            'screenshot_path'    => null,
+        ]);
+
+        // Without screenshot asset → no +10
+        $scoreNoAsset = app(TrustScoreService::class)->recalculate($material)->trust_score;
+
+        // Create screenshot asset for the evidence record
+        GenericEvidenceAsset::create([
+            'uuid'               => (string) Str::uuid(),
+            'evidence_record_id' => $record->id,
+            'asset_type'         => 'screenshot',
+            'file_path'          => 'screenshots/chrome/generic/trust-test.jpg',
+            'original_filename'  => 'trust-test.jpg',
+            'mime_type'          => 'image/jpeg',
+            'file_size'          => 1024,
+            'sha256'             => hash('sha256', 'fake'),
+        ]);
+
+        // With screenshot asset → +10 bonus via evidence_record_id fallback
+        $scoreWithAsset = app(TrustScoreService::class)->recalculate($material->fresh())->trust_score;
+
+        $this->assertSame(
+            $scoreNoAsset + 10,
+            $scoreWithAsset,
+            'TrustScoreService must award +10 when GenericEvidenceAsset screenshot exists for evidence_record_id'
+        );
+    }
+
+    /**
+     * Counterpart: when observation has direct screenshot_path set (no fallback needed),
+     * TrustScoreService still awards +10 — no regression.
+     */
+    public function test_trust_score_snapshot_criterion_direct_screenshot_path_still_works(): void
+    {
+        $user = User::factory()->create();
+
+        $material = Material::create([
+            'user_id'        => $user->id,
+            'name'           => 'TrustScore Direct Screenshot',
+            'article'        => 'TS-DIRECT-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 3000,
+            'source_url'     => 'https://example.com/trust-direct',
+            'origin'         => 'parser',
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+            'trust_level'    => 'unverified',
+        ]);
+
+        // Without screenshot
+        MaterialPriceHistory::create([
+            'material_id'     => $material->id,
+            'price'           => 3000,
+            'price_per_unit'  => 3000,
+            'currency'        => 'RUB',
+            'source_url'      => 'https://example.com/trust-direct',
+            'observed_at'     => now(),
+            'valid_from'      => now(),
+            'version'         => 1,
+            'screenshot_path' => null,
+        ]);
+        $scoreNoSs = app(TrustScoreService::class)->recalculate($material)->trust_score;
+
+        // With direct screenshot_path on observation
+        MaterialPriceHistory::where('material_id', $material->id)
+            ->update(['screenshot_path' => 'screenshots/direct.jpg']);
+
+        $scoreWithSs = app(TrustScoreService::class)->recalculate($material->fresh())->trust_score;
+
+        $this->assertSame(
+            $scoreNoSs + 10,
+            $scoreWithSs,
+            'Direct screenshot_path on observation must still award +10 (no regression)'
+        );
     }
 
     // ──────────────────────────────────────────────────────────────

@@ -290,26 +290,33 @@ class GenericChromeController extends Controller
                 ];
 
                 // ── Bridge: write screenshot/evidence back to the price observation ──
-                // This is the single source-of-truth rule: the observation carries
-                // evidence_record_id + screenshot_path so that material-detail and
-                // trust-score logic see the generic-evidence screenshot.
-                if (!$evidenceResult['duplicate'] && isset($materialResult['observation'])) {
+                // Runs for BOTH new and duplicate evidence — this is the single
+                // source-of-truth wiring so that material-detail, trust-score, and
+                // confirmation logic all see the evidence screenshot regardless of
+                // whether the evidence record was newly created or already existed.
+                // For duplicates, $evidenceResult['asset'] is null; we look up the
+                // existing screenshot asset from the duplicate record instead.
+                if (isset($materialResult['observation'])) {
                     $bridgeData = ['evidence_record_id' => $evidenceResult['record']->id];
-                    if ($evidenceResult['asset']) {
-                        $bridgeData['screenshot_path'] = $evidenceResult['asset']->file_path;
+                    $bridgeAsset = $evidenceResult['asset']
+                        ?? $evidenceResult['record']->assets()->where('asset_type', 'screenshot')->first();
+                    if ($bridgeAsset && !empty($bridgeAsset->file_path)) {
+                        $bridgeData['screenshot_path'] = $bridgeAsset->file_path;
                     }
                     $materialResult['observation']->update($bridgeData);
                 }
 
                 // ── Phase 3: Deterministic auto-link ──
-                if (!$evidenceResult['duplicate']) {
-                    $autoLink = $this->captureService->autoLinkToEvidenceItem(
-                        $evidenceResult['record'],
-                        $user->id,
-                        $derivedComponent,
-                        $validated['url']
-                    );
-                }
+                // Runs for BOTH new and duplicate evidence.
+                // autoLinkToEvidenceItem is safe to call on duplicates: if the matching
+                // item was already resolved (by a previous capture), it is excluded by
+                // the whereNotIn(terminalStatuses()) filter and linked=false is returned.
+                $autoLink = $this->captureService->autoLinkToEvidenceItem(
+                    $evidenceResult['record'],
+                    $user->id,
+                    $derivedComponent,
+                    $validated['url']
+                );
             } else {
                 // Cost component not derivable — evidence still skipped, material saved
                 // Screenshot is irrelevant when evidence is intentionally skipped

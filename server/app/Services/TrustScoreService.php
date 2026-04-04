@@ -64,9 +64,19 @@ class TrustScoreService
             $score += 15;
         }
 
-        // +10: latest observation has snapshot
+        // +10: latest observation has proof screenshot.
+        // Source-of-truth rule (aligned with MaterialCatalogController::computeTrustBreakdown):
+        //   1. observation.screenshot_path (set by one-click bridge or manual upload)
+        //   2. observation.snapshot_path   (legacy parser)
+        //   3. GenericEvidenceAsset via observation.evidence_record_id
         $latestObs = $observations->first();
-        if ($latestObs && ($latestObs->snapshot_path || $latestObs->screenshot_path)) {
+        $hasProofScreenshot = $latestObs && ($latestObs->snapshot_path || $latestObs->screenshot_path);
+        if (!$hasProofScreenshot && $latestObs && $latestObs->evidence_record_id) {
+            $hasProofScreenshot = \App\Models\GenericEvidenceAsset::where('evidence_record_id', $latestObs->evidence_record_id)
+                ->where('asset_type', 'screenshot')
+                ->exists();
+        }
+        if ($hasProofScreenshot) {
             $score += 10;
         }
 
