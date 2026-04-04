@@ -38,6 +38,7 @@ class Project extends Model
         'normohour_date',
         'normohour_method',
         'normohour_justification',
+        'price_confirmation_freshness_days',
     ];
 
     // Автоматически загружать связанные данные при сериализации
@@ -50,6 +51,7 @@ class Project extends Model
         'waste_operations_description' => 'json',
         'normohour_date' => 'date',
         'archived_at' => 'datetime',
+        'price_confirmation_freshness_days' => 'integer',
     ];
 
     public function user()

@@ -4,14 +4,14 @@ namespace Tests\Unit\Services;
 
 use App\Models\Operation;
 use App\Services\PriceImport\PriceImportExecutorV2;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use InvalidArgumentException;
 use ReflectionClass;
 use Tests\TestCase;
 
 class PriceImportExecutorV2GuardTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     public function test_manual_link_guard_rejects_obvious_mismatch(): void
     {

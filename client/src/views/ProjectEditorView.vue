@@ -6477,9 +6477,14 @@ const getMaterialCatalogLink = (materialId?: number | string | null): string => 
     return '/materials/catalog'
   }
 
+  const query: Record<string, string> = { material_id: String(id) }
+  if (project.value?.id) {
+    query.project_id = String(project.value.id)
+  }
+
   const resolved = router.resolve({
     name: 'catalog',
-    query: { material_id: String(id) },
+    query,
   })
 
   return resolved.href

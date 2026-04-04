@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Evidence\CostComponent;
 use App\Evidence\EvidenceItemStatus;
 use App\Evidence\EvidenceRunStatus;
+use App\Evidence\ResolutionType;
 use App\Evidence\SourceType;
 use App\Evidence\VerificationStatus;
 use App\Evidence\CaptureMethod;
@@ -28,6 +29,7 @@ class EvidenceRunItemCollector
     public function __construct(
         private ReportService $reportService,
         private UrlNormalizer $urlNormalizer,
+        private MaterialConfirmationService $confirmationService,
     ) {}
 
     /**
@@ -40,6 +42,9 @@ class EvidenceRunItemCollector
         $report = $this->reportService->buildReport($project)->toArray();
         $descriptors = $this->collectDescriptors($project, $report);
 
+        $freshnessDays = $project->price_confirmation_freshness_days
+            ?? MaterialConfirmationService::DEFAULT_FRESHNESS_DAYS;
+
         $resolved = 0;
         $total = count($descriptors);
 
@@ -47,7 +52,7 @@ class EvidenceRunItemCollector
             $isInternal = in_array($desc['cost_component'], CostComponent::internalOnlyTypes(), true);
 
             $status = $isInternal ? EvidenceItemStatus::RESOLVED : EvidenceItemStatus::PENDING;
-            $resolutionType = $isInternal ? 'auto' : null;
+            $resolutionType = $isInternal ? ResolutionType::AUTO : null;
 
             $evidenceRecordId = null;
             if ($isInternal && $desc['effective_value'] !== null) {
@@ -64,6 +69,20 @@ class EvidenceRunItemCollector
                     'created_by'          => $userId,
                 ]);
                 $evidenceRecordId = $record->id;
+            }
+
+            // Freshness-based auto-resolution for external types
+            if (!$isInternal && !empty($desc['source_url'])) {
+                $freshRecord = $this->confirmationService->getFreshRecord(
+                    $desc['source_url'],
+                    $desc['cost_component'],
+                    $freshnessDays,
+                );
+                if ($freshRecord) {
+                    $status = EvidenceItemStatus::RESOLVED;
+                    $resolutionType = ResolutionType::AUTO_FRESH;
+                    $evidenceRecordId = $freshRecord->id;
+                }
             }
 
             EstimateEvidenceItem::create([

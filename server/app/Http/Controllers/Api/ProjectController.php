@@ -75,6 +75,7 @@ class ProjectController extends Controller
             'normohour_date' => 'nullable|date',
             'normohour_method' => 'nullable|in:market_vacancies,commercial_proposals,contractor_estimate,other',
             'normohour_justification' => 'nullable|string|max:5000',
+            'price_confirmation_freshness_days' => 'nullable|integer|min:1|max:365',
         ], $this->projectValidationMessages());
 
         // Получить пользовательские настройки (или создать если нет)
@@ -177,6 +178,7 @@ class ProjectController extends Controller
             'normohour_date' => 'nullable|date',
             'normohour_method' => 'nullable|in:market_vacancies,commercial_proposals,contractor_estimate,other',
             'normohour_justification' => 'nullable|string|max:5000',
+            'price_confirmation_freshness_days' => 'nullable|integer|min:1|max:365',
         ], $this->projectValidationMessages());
 
         $project->update($validated);

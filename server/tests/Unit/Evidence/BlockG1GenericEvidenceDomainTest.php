@@ -197,11 +197,11 @@ class BlockG1GenericEvidenceDomainTest extends TestCase
         }
     }
 
-    public function test_resolution_type_has_four_values(): void
+    public function test_resolution_type_has_five_values(): void
     {
         $values = ResolutionType::all();
-        $this->assertCount(4, $values);
-        foreach (['auto', 'manual', 'chrome', 'skipped'] as $v) {
+        $this->assertCount(5, $values);
+        foreach (['auto', 'auto_fresh', 'manual', 'chrome', 'skipped'] as $v) {
             $this->assertContains($v, $values);
         }
     }

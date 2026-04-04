@@ -198,10 +198,19 @@ export interface LatestScreenshot {
   exists: boolean
 }
 
+export interface ConfirmationState {
+  state: 'confirmed' | 'stale' | 'missing' | 'not_applicable'
+  reason?: string | null
+  confirmed_at: string | null
+  days_ago: number | null
+  record_id: number | null
+}
+
 export interface MaterialDetailResponse {
   material: MaterialDetail
   trust_breakdown: TrustBreakdownItem[]
   latest_screenshot: LatestScreenshot | null
+  confirmation_state: ConfirmationState | null
 }
 
 export interface UpdateMaterialPayload {
@@ -334,11 +343,14 @@ export function recalculateTrust(id: number): Promise<AxiosResponse<{ trust_scor
 }
 
 /**
- * GET /api/materials/catalog/{id}
+ * GET /api/materials/catalog/{id}?project_id=N
  * Get detailed material info with trust breakdown.
+ * Optional projectId wires project-specific freshness threshold.
  */
-export function fetchMaterialDetail(id: number): Promise<AxiosResponse<MaterialDetailResponse>> {
-  return api.get(`/api/materials/catalog/${id}`)
+export function fetchMaterialDetail(id: number, projectId?: number | null): Promise<AxiosResponse<MaterialDetailResponse>> {
+  const params: Record<string, any> = {}
+  if (projectId) params.project_id = projectId
+  return api.get(`/api/materials/catalog/${id}`, { params })
 }
 
 /**

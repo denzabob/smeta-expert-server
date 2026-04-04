@@ -134,16 +134,44 @@
 
           <!-- ═══ Tab 2: Manual Upload ═══ -->
           <v-window-item value="manual">
-            <v-file-input
-              v-model="manualFile"
-              label="Файл обоснования (скриншот, документ)"
-              variant="outlined"
-              density="compact"
-              prepend-icon="mdi-paperclip"
-              accept="image/*,.pdf,.doc,.docx"
-              :rules="[v => !!v || 'Выберите файл']"
-              show-size
-            />
+            <div
+              class="manual-upload-dropzone mb-3"
+              :class="{ 'manual-upload-dropzone--active': dropActive }"
+              tabindex="0"
+              @dragenter.prevent="dropActive = true"
+              @dragover.prevent="dropActive = true"
+              @dragleave.prevent="dropActive = false"
+              @drop.prevent="onDrop"
+              @paste="onPaste"
+            >
+              <v-file-input
+                v-model="manualFile"
+                label="Файл обоснования (скриншот, документ)"
+                variant="outlined"
+                density="compact"
+                prepend-icon="mdi-paperclip"
+                accept="image/*,.pdf,.doc,.docx"
+                :rules="[v => !!v || 'Выберите файл']"
+                show-size
+                class="mb-1"
+              />
+              <div class="d-flex align-center justify-space-between ga-2 text-caption text-medium-emphasis">
+                <span>
+                  <v-icon size="x-small" class="mr-1">mdi-content-paste</v-icon>
+                  Перетащите файл сюда или вставьте изображение из буфера (Ctrl+V)
+                </span>
+                <v-btn
+                  v-if="manualFile"
+                  size="x-small"
+                  variant="text"
+                  color="warning"
+                  prepend-icon="mdi-close"
+                  @click="manualFile = null"
+                >
+                  Очистить
+                </v-btn>
+              </div>
+            </div>
 
             <v-text-field
               v-model="manualPrice"
@@ -151,6 +179,7 @@
               type="number"
               variant="outlined"
               density="compact"
+              class="mb-3"
               :rules="[v => (v !== '' && v !== null && Number(v) >= 0) || 'Укажите цену']"
             />
 
@@ -159,6 +188,7 @@
               label="Валюта"
               variant="outlined"
               density="compact"
+              class="mb-3"
               placeholder="RUB"
             />
 
@@ -167,6 +197,7 @@
               label="URL источника (необязательно)"
               variant="outlined"
               density="compact"
+              class="mb-3"
               placeholder="https://..."
             />
 
@@ -273,6 +304,7 @@ const manualPrice = ref<string | number>('')
 const manualCurrency = ref('RUB')
 const manualSourceUrl = ref('')
 const manualName = ref('')
+const dropActive = ref(false)
 
 // ── Skip state ──
 const skipReason = ref('')
@@ -320,6 +352,7 @@ watch(
       manualSourceUrl.value = ''
       manualName.value = ''
       skipReason.value = ''
+      dropActive.value = false
       pickerPage.value = 1
       loadRecords()
     }
@@ -369,6 +402,36 @@ function close() {
   emit('update:modelValue', false)
 }
 
+// ── Paste / Drop handlers ──
+
+function onPaste(event: ClipboardEvent) {
+  const file = extractImageFromClipboard(event)
+  if (file) {
+    manualFile.value = file
+    event.preventDefault()
+  }
+}
+
+function onDrop(event: DragEvent) {
+  dropActive.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (file && file.type.startsWith('image/')) {
+    manualFile.value = file
+  }
+}
+
+function extractImageFromClipboard(event: ClipboardEvent): File | null {
+  const items = event.clipboardData?.items
+  if (!items) return null
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.startsWith('image/')) {
+      const blob = items[i].getAsFile()
+      if (blob) return blob
+    }
+  }
+  return null
+}
+
 // ── Submit handlers ──
 
 function submitPicker() {
@@ -396,5 +459,22 @@ function submitSkip() {
 <style scoped>
 .evidence-picker-table tbody tr:hover {
   background: rgba(var(--v-theme-primary), 0.04);
+}
+
+.manual-upload-dropzone {
+  border: 2px dashed rgba(var(--v-border-color), 0.4);
+  border-radius: 8px;
+  padding: 12px;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.manual-upload-dropzone:focus-within,
+.manual-upload-dropzone:hover {
+  border-color: rgba(var(--v-theme-primary), 0.5);
+}
+
+.manual-upload-dropzone--active {
+  border-color: rgb(var(--v-theme-primary));
+  background-color: rgba(var(--v-theme-primary), 0.04);
 }
 </style>

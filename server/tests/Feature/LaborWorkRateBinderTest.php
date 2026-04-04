@@ -9,11 +9,11 @@ use App\Models\ProjectLaborWork;
 use App\Models\ProjectProfileRate;
 use App\Models\PositionProfile;
 use App\Services\LaborWorkRateBinder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 
 class LaborWorkRateBinderTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     private LaborWorkRateBinder $rateBinder;
     private Project $project;

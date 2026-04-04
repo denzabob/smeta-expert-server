@@ -340,6 +340,7 @@
     <MaterialDetailDialog
       v-model="showDetailDialog"
       :material-id="selectedMaterialId"
+      :project-id="activeProjectId"
       @edit="onEditFromDetail"
     />
 
@@ -402,6 +403,13 @@ const showPriceDialog = ref(false)
 const showHistoryDialog = ref(false)
 const showDetailDialog = ref(false)
 const showEditDialog = ref(false)
+
+// Project context from query (passed when navigating from project editor)
+const activeProjectId = computed(() => {
+  const raw = route.query.project_id
+  const id = Number(Array.isArray(raw) ? raw[0] : raw)
+  return Number.isFinite(id) && id > 0 ? id : null
+})
 const selectedMaterialId = ref<number | null>(null)
 const selectedMaterialName = ref('')
 const editMaterial = ref<MaterialDetail | null>(null)

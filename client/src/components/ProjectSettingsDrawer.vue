@@ -212,6 +212,25 @@
                       </v-row>
                     </v-card-text>
                   </v-card>
+
+                  <v-card variant="outlined" class="content-card mt-4">
+                    <v-card-text>
+                      <div class="section-title mb-1">Актуальность подтверждения цены</div>
+                      <div class="section-hint mb-3">Срок, в течение которого подтверждение цены считается действительным</div>
+                      <v-text-field
+                        v-model.number="projectData.price_confirmation_freshness_days"
+                        label="Срок актуальности, дней"
+                        type="number"
+                        min="1"
+                        max="365"
+                        step="1"
+                        density="compact"
+                        hint="По умолчанию 7 дней"
+                        persistent-hint
+                        style="max-width: 200px;"
+                      />
+                    </v-card-text>
+                  </v-card>
                 </div>
 
                 <div v-if="activeSettingsSection === 3" class="section-content">

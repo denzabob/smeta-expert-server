@@ -10,7 +10,7 @@ use App\Models\ProjectProfileRate;
 use App\Models\Region;
 use App\Models\User;
 use App\Services\NormohourRateService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
 /**
@@ -25,7 +25,7 @@ use Tests\TestCase;
  */
 class NormohourRateServiceTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     private NormohourRateService $service;
     private User $user;
@@ -412,7 +412,7 @@ class NormohourRateServiceTest extends TestCase
                 ->create([
                     'rate_per_hour' => $rate,
                     'salary_month' => $rate * 160,
-                    'source' => "Источник #{$index + 1}",
+                    'source' => 'Источник #' . ($index + 1),
                     'source_date' => now()->subDays($index),
                     'is_active' => true,
                     'sort_order' => $index,

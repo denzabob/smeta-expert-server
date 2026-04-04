@@ -4,13 +4,13 @@ namespace Tests\Unit;
 
 use App\Models\Operation;
 use App\Models\OperationPrice;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class OperationPriceUnitNormalizationTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     public function test_m2_and_m2_superscript_are_treated_as_same_unit(): void
     {

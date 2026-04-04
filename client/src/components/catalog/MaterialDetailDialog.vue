@@ -94,6 +94,61 @@
 
         <v-divider />
 
+        <!-- Price Confirmation Freshness -->
+        <v-sheet class="pa-4">
+          <div class="text-subtitle-1 font-weight-bold mb-3">
+            <v-icon size="small" color="primary" class="mr-1">mdi-check-decagram-outline</v-icon>
+            Подтверждение цены
+          </div>
+
+          <template v-if="confirmationState && confirmationState.state !== 'not_applicable'">
+            <div class="d-flex align-center ga-3">
+              <v-chip
+                :color="confirmationState.state === 'confirmed' ? 'success' : confirmationState.state === 'stale' ? 'warning' : 'grey'"
+                variant="tonal"
+                size="small"
+              >
+                <v-icon start size="small">
+                  {{ confirmationState.state === 'confirmed' ? 'mdi-check-circle' : confirmationState.state === 'stale' ? 'mdi-clock-alert-outline' : 'mdi-help-circle-outline' }}
+                </v-icon>
+                {{ confirmationState.state === 'confirmed' ? 'Подтверждено' : confirmationState.state === 'stale' ? 'Устарело' : 'Не подтверждено' }}
+              </v-chip>
+              <span v-if="confirmationState.confirmed_at" class="text-body-2 text-medium-emphasis">
+                {{ formatDateTime(confirmationState.confirmed_at) }}
+                <template v-if="confirmationState.days_ago !== null">
+                  ({{ confirmationState.days_ago }} {{ daysLabel(confirmationState.days_ago) }} назад)
+                </template>
+              </span>
+            </div>
+          </template>
+
+          <template v-else-if="confirmationState && confirmationState.state === 'not_applicable'">
+            <div class="d-flex align-center ga-3">
+              <v-chip color="grey" variant="tonal" size="small">
+                <v-icon start size="small">mdi-minus-circle-outline</v-icon>
+                Не применимо
+              </v-chip>
+              <span class="text-body-2 text-medium-emphasis">
+                {{ confirmationState.reason === 'no_source_url' ? 'Нет URL источника' : 'Тип материала не отслеживается' }}
+              </span>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="d-flex align-center ga-3">
+              <v-chip color="grey" variant="tonal" size="small">
+                <v-icon start size="small">mdi-help-circle-outline</v-icon>
+                Нет данных
+              </v-chip>
+              <span class="text-body-2 text-medium-emphasis">
+                Нет данных для оценки актуальности
+              </span>
+            </div>
+          </template>
+        </v-sheet>
+
+        <v-divider />
+
         <!-- Proof Screenshot -->
         <v-sheet class="pa-4">
           <div class="text-subtitle-1 font-weight-bold mb-3">
@@ -359,12 +414,13 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { fetchMaterialDetail } from '@/api/materialCatalog'
-import type { MaterialDetail, TrustBreakdownItem, LatestScreenshot } from '@/api/materialCatalog'
+import type { MaterialDetail, TrustBreakdownItem, LatestScreenshot, ConfirmationState } from '@/api/materialCatalog'
 import TrustBadge from './TrustBadge.vue'
 
 const props = defineProps<{
   modelValue: boolean
   materialId: number | null
+  projectId?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -376,6 +432,7 @@ const loading = ref(false)
 const detail = ref<MaterialDetail | null>(null)
 const trustBreakdown = ref<TrustBreakdownItem[]>([])
 const latestScreenshot = ref<LatestScreenshot | null>(null)
+const confirmationState = ref<ConfirmationState | null>(null)
 const screenshotError = ref(false)
 
 const isOwner = ref(false)
@@ -387,6 +444,7 @@ watch(() => [props.modelValue, props.materialId], async ([open, id]) => {
     detail.value = null
     trustBreakdown.value = []
     latestScreenshot.value = null
+    confirmationState.value = null
     screenshotError.value = false
   }
 })
@@ -395,16 +453,18 @@ async function loadDetail(id: number) {
   loading.value = true
   screenshotError.value = false
   try {
-    const res = await fetchMaterialDetail(id)
+    const res = await fetchMaterialDetail(id, props.projectId)
     detail.value = res.data.material
     trustBreakdown.value = res.data.trust_breakdown
     latestScreenshot.value = res.data.latest_screenshot ?? null
+    confirmationState.value = res.data.confirmation_state ?? null
     // Simple owner check: user_id is present (server already checks access)
     isOwner.value = !!detail.value?.user_id
   } catch (e) {
     detail.value = null
     trustBreakdown.value = []
     latestScreenshot.value = null
+    confirmationState.value = null
   } finally {
     loading.value = false
   }
@@ -430,6 +490,12 @@ function formatDateTime(d: string | null): string {
 function typeLabel(t: string): string {
   const map: Record<string, string> = { plate: 'Плита', edge: 'Кромка', facade: 'Фасад', hardware: 'Фурнитура' }
   return map[t] || t
+}
+
+function daysLabel(n: number): string {
+  if (n % 10 === 1 && n % 100 !== 11) return 'день'
+  if ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100)) return 'дня'
+  return 'дней'
 }
 
 function typeColor(t: string): string {

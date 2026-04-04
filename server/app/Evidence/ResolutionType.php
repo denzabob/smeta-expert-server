@@ -8,6 +8,7 @@ namespace App\Evidence;
 final class ResolutionType
 {
     public const AUTO = 'auto';
+    public const AUTO_FRESH = 'auto_fresh';
     public const MANUAL = 'manual';
     public const CHROME = 'chrome';
     public const SKIPPED = 'skipped';
@@ -16,6 +17,7 @@ final class ResolutionType
     {
         return [
             self::AUTO,
+            self::AUTO_FRESH,
             self::MANUAL,
             self::CHROME,
             self::SKIPPED,

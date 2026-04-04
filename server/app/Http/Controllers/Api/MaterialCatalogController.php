@@ -16,6 +16,7 @@ use App\Services\MaterialDeduplicationService;
 use App\Services\MaterialParseService;
 use App\Services\TrustScoreService;
 use App\Services\UrlNormalizer;
+use App\Services\MaterialConfirmationService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,19 +32,22 @@ class MaterialCatalogController extends Controller
     protected MaterialDeduplicationService $dedupService;
     protected DomainParseService $domainParseService;
     protected UrlNormalizer $urlNormalizer;
+    protected MaterialConfirmationService $confirmationService;
 
     public function __construct(
         MaterialParseService $parseService,
         TrustScoreService $trustScoreService,
         MaterialDeduplicationService $dedupService,
         DomainParseService $domainParseService,
-        UrlNormalizer $urlNormalizer
+        UrlNormalizer $urlNormalizer,
+        MaterialConfirmationService $confirmationService
     ) {
         $this->parseService = $parseService;
         $this->trustScoreService = $trustScoreService;
         $this->dedupService = $dedupService;
         $this->domainParseService = $domainParseService;
         $this->urlNormalizer = $urlNormalizer;
+        $this->confirmationService = $confirmationService;
     }
 
     // ========================================================================
@@ -338,11 +342,12 @@ class MaterialCatalogController extends Controller
     // ========================================================================
 
     /**
-     * GET /api/materials/catalog/{id}
+     * GET /api/materials/catalog/{id}?project_id=N
      *
      * Get detailed material info with trust score breakdown.
+     * Optional project_id allows project-specific freshness threshold.
      */
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
         $material = Material::findOrFail($id);
         $user = auth()->user();
@@ -407,6 +412,7 @@ class MaterialCatalogController extends Controller
             ],
             'trust_breakdown' => $trustBreakdown,
             'latest_screenshot' => $this->resolveLatestScreenshot($observations),
+            'confirmation_state' => $this->resolveConfirmationState($material, $request),
         ]);
     }
 
@@ -474,6 +480,61 @@ class MaterialCatalogController extends Controller
     {
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
         return in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true);
+    }
+
+    private const MATERIAL_TYPE_TO_COST_COMPONENT = [
+        'plate'    => 'plate',
+        'edge'     => 'edge',
+        'facade'   => 'facade',
+        'hardware' => 'fitting',
+    ];
+
+    /**
+     * Resolve price confirmation freshness state for a material.
+     *
+     * Uses project-specific freshness threshold when project_id is provided.
+     * Returns 'not_applicable' state instead of null when conditions are unmet.
+     */
+    protected function resolveConfirmationState(Material $material, ?Request $request = null): array
+    {
+        $costComponent = self::MATERIAL_TYPE_TO_COST_COMPONENT[$material->type] ?? null;
+
+        if (!$costComponent) {
+            return self::notApplicableState('type_unmapped');
+        }
+
+        if (empty($material->source_url)) {
+            return self::notApplicableState('no_source_url');
+        }
+
+        // Resolve freshness threshold: project setting → default
+        $freshnessDays = MaterialConfirmationService::DEFAULT_FRESHNESS_DAYS;
+        if ($request) {
+            $projectId = $request->input('project_id');
+            if ($projectId) {
+                $project = \App\Models\Project::find($projectId);
+                if ($project && $project->price_confirmation_freshness_days) {
+                    $freshnessDays = (int) $project->price_confirmation_freshness_days;
+                }
+            }
+        }
+
+        return $this->confirmationService->evaluate(
+            $material->source_url,
+            $costComponent,
+            $freshnessDays,
+        );
+    }
+
+    private static function notApplicableState(string $reason): array
+    {
+        return [
+            'state' => 'not_applicable',
+            'reason' => $reason,
+            'confirmed_at' => null,
+            'days_ago' => null,
+            'record_id' => null,
+        ];
     }
 
     /**
