@@ -100,6 +100,45 @@ class MaterialConfirmationService
         return null;
     }
 
+    /**
+     * Find a fresh equivalent proof record that also matches the observed price.
+     *
+     * Used by Chrome one-click dedup to avoid creating redundant same-day snapshots
+     * when the price hasn't materially changed.  Returns the existing record if ALL
+     * conditions hold:
+     *  - same normalized source_url + cost_component
+     *  - non-rejected, with a screenshot asset
+     *  - created within freshnessDays
+     *  - observed_price matches within ±1% (or both null)
+     */
+    public function getFreshEquivalentRecord(
+        ?string $sourceUrl,
+        string $costComponent,
+        ?float $observedPrice,
+        int $freshnessDays = self::DEFAULT_FRESHNESS_DAYS,
+    ): ?EvidenceRecord {
+        $record = $this->getFreshRecord($sourceUrl, $costComponent, $freshnessDays);
+        if (!$record) {
+            return null;
+        }
+
+        // Price equivalence: both null → equivalent; one null → not equivalent
+        if ($observedPrice === null && $record->observed_price === null) {
+            return $record;
+        }
+        if ($observedPrice === null || $record->observed_price === null) {
+            return null;
+        }
+
+        // ±1% tolerance for floating-point / minor rounding differences
+        $tolerance = max(abs($record->observed_price) * 0.01, 0.01);
+        if (abs($observedPrice - (float) $record->observed_price) <= $tolerance) {
+            return $record;
+        }
+
+        return null; // price changed materially — new snapshot needed
+    }
+
     private static function missing(): array
     {
         return [

@@ -283,7 +283,13 @@ class GenericChromeController extends Controller
                     $screenshot
                 );
 
-                $evidenceStatus = $evidenceResult['duplicate'] ? 'duplicate' : 'created';
+                if ($evidenceResult['fresh_reuse'] ?? false) {
+                    $evidenceStatus = 'reused_existing';
+                } elseif ($evidenceResult['duplicate']) {
+                    $evidenceStatus = 'duplicate';
+                } else {
+                    $evidenceStatus = 'created';
+                }
                 $evidenceData = [
                     'record_id'   => $evidenceResult['record']->id,
                     'record_uuid' => $evidenceResult['record']->uuid,
@@ -371,6 +377,8 @@ class GenericChromeController extends Controller
                 : 'доказательство сохранено (скриншот не удался)';
         } elseif ($evidenceStatus === 'duplicate') {
             $parts[] = 'доказательство найдено (дубликат)';
+        } elseif ($evidenceStatus === 'reused_existing') {
+            $parts[] = 'актуальное доказательство уже существует (переиспользовано)';
         } elseif ($evidenceStatus === 'skipped_feature_disabled') {
             $parts[] = 'доказательство не создано (функция отключена)';
         } elseif ($evidenceStatus === 'skipped_unmapped_type') {

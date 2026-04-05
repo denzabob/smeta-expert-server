@@ -22,25 +22,50 @@ class GenericChromeCaptureService
 {
     public function __construct(
         private UrlNormalizer $urlNormalizer,
+        private MaterialConfirmationService $confirmationService,
     ) {}
 
     /**
      * Create a standalone EvidenceRecord (not tied to any run item).
+     *
+     * Deduplication hierarchy:
+     *  1. Rapid duplicate: same URL+component within 60 s → reuse (duplicate=true)
+     *  2. Fresh equivalent: same URL+component+price within freshness window,
+     *     has a screenshot asset → reuse (fresh_reuse=true)
+     *  3. Otherwise: create a new record + screenshot
      */
     public function captureObservation(array $payload, int $userId, ?UploadedFile $screenshot = null): array
     {
         $normalized = $this->urlNormalizer->normalize($payload['source_url'] ?? null);
         $domain = $normalized ? (parse_url($normalized, PHP_URL_HOST) ?: null) : null;
 
+        // 1. Rapid 60-second duplicate (unchanged)
         $duplicate = $this->findDuplicate($payload, $userId);
         if ($duplicate) {
             return [
-                'record'     => $duplicate,
-                'asset'      => null,
-                'duplicate'  => true,
+                'record'      => $duplicate,
+                'asset'       => null,
+                'duplicate'   => true,
+                'fresh_reuse' => false,
             ];
         }
 
+        // 2. Fresh equivalent proof — same URL, component, price (±1%), with screenshot
+        $freshEquivalent = $this->confirmationService->getFreshEquivalentRecord(
+            $payload['source_url'] ?? null,
+            $payload['cost_component'],
+            $payload['observed_price'] ?? null,
+        );
+        if ($freshEquivalent) {
+            return [
+                'record'      => $freshEquivalent,
+                'asset'       => null,
+                'duplicate'   => false,
+                'fresh_reuse' => true,
+            ];
+        }
+
+        // 3. Create new record
         $record = EvidenceRecord::create([
             'uuid'                => (string) Str::uuid(),
             'cost_component'      => $payload['cost_component'],
@@ -66,9 +91,10 @@ class GenericChromeCaptureService
         }
 
         return [
-            'record'    => $record,
-            'asset'     => $asset,
-            'duplicate' => false,
+            'record'      => $record,
+            'asset'       => $asset,
+            'duplicate'   => false,
+            'fresh_reuse' => false,
         ];
     }
 

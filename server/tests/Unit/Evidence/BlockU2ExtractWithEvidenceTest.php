@@ -1177,6 +1177,385 @@ class BlockU2ExtractWithEvidenceTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────
+    // Corrective: fresh proof auto-resolve + snapshot deduplication
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Chrome one-click reuses a fresh equivalent proof record instead of
+     * creating a redundant new one when URL, component, and price match.
+     */
+    public function test_chrome_one_click_reuses_fresh_equivalent_proof(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $url = 'https://example.com/product/plate-dedup-fresh';
+
+        // Pre-create a fresh evidence record with screenshot (as if captured earlier today)
+        // Backdate to 2 hours ago: outside 60-second rapid dedup but within 7-day freshness
+        $existingRecord = EvidenceRecord::create([
+            'uuid'                => (string) Str::uuid(),
+            'cost_component'      => CostComponent::PLATE,
+            'source_type'         => 'chrome_capture',
+            'capture_method'      => 'chrome_extension',
+            'verification_status' => 'pending',
+            'source_url'          => $url,
+            'observed_price'      => 3500,
+            'currency'            => 'RUB',
+            'observed_at'         => now()->subHours(2),
+            'created_by'          => $user->id,
+        ]);
+        $existingRecord->forceFill(['created_at' => now()->subHours(2)])->saveQuietly();
+        GenericEvidenceAsset::create([
+            'uuid'               => (string) Str::uuid(),
+            'evidence_record_id' => $existingRecord->id,
+            'asset_type'         => 'screenshot',
+            'file_path'          => 'screenshots/chrome/generic/2026/04/existing.jpg',
+            'original_filename'  => 'existing.jpg',
+            'mime_type'          => 'image/jpeg',
+            'file_size'          => 1024,
+            'sha256'             => hash('sha256', 'existing-screenshot-content'),
+        ]);
+
+        // Pre-create material so dedup matches it
+        Material::create([
+            'user_id'        => $user->id,
+            'origin'         => 'parser',
+            'name'           => 'ЛДСП Dedup Fresh',
+            'article'        => 'DEDUP-FRESH-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 3500,
+            'source_url'     => $url,
+            'is_active'      => true,
+            'version'        => 1,
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+        ]);
+
+        $recordCountBefore = EvidenceRecord::count();
+        $assetCountBefore = GenericEvidenceAsset::count();
+
+        // One-click with same price — should reuse existing proof
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $url,
+                'extracted'       => [
+                    'title' => 'ЛДСП Dedup Fresh',
+                    'price' => '3 500 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('ss.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('evidence_status', 'reused_existing');
+        $response->assertJsonPath('evidence.record_id', $existingRecord->id);
+
+        // No new evidence record created
+        $this->assertSame($recordCountBefore, EvidenceRecord::count());
+        // No new screenshot asset stored
+        $this->assertSame($assetCountBefore, GenericEvidenceAsset::count());
+    }
+
+    /**
+     * Chrome one-click creates a new record when the price changed materially,
+     * even though a fresh proof exists for the same URL/component.
+     */
+    public function test_chrome_one_click_creates_new_snapshot_when_price_changed(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $url = 'https://example.com/product/plate-price-changed';
+
+        // Fresh existing proof at price 3500 — backdated outside 60-second window
+        $existingRecord = EvidenceRecord::create([
+            'uuid'                => (string) Str::uuid(),
+            'cost_component'      => CostComponent::PLATE,
+            'source_type'         => 'chrome_capture',
+            'capture_method'      => 'chrome_extension',
+            'verification_status' => 'pending',
+            'source_url'          => $url,
+            'observed_price'      => 3500,
+            'currency'            => 'RUB',
+            'observed_at'         => now()->subHours(2),
+            'created_by'          => $user->id,
+        ]);
+        $existingRecord->forceFill(['created_at' => now()->subHours(2)])->saveQuietly();
+        GenericEvidenceAsset::create([
+            'uuid'               => (string) Str::uuid(),
+            'evidence_record_id' => $existingRecord->id,
+            'asset_type'         => 'screenshot',
+            'file_path'          => 'screenshots/chrome/generic/2026/04/price-old.jpg',
+            'original_filename'  => 'price-old.jpg',
+            'mime_type'          => 'image/jpeg',
+            'file_size'          => 1024,
+            'sha256'             => hash('sha256', 'old-price-screenshot'),
+        ]);
+
+        Material::create([
+            'user_id'        => $user->id,
+            'origin'         => 'parser',
+            'name'           => 'ЛДСП Price Changed',
+            'article'        => 'PRICE-CHG-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 3500,
+            'source_url'     => $url,
+            'is_active'      => true,
+            'version'        => 1,
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+        ]);
+
+        $recordCountBefore = EvidenceRecord::count();
+
+        // One-click with DIFFERENT price (4200 vs 3500 — >1% change)
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $url,
+                'extracted'       => [
+                    'title' => 'ЛДСП Price Changed',
+                    'price' => '4 200 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('ss.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('evidence_status', 'created');
+
+        // New evidence record must be created
+        $this->assertSame($recordCountBefore + 1, EvidenceRecord::count());
+    }
+
+    /**
+     * Chrome one-click creates a new record when the existing proof is stale
+     * (older than freshness window), even if price matches.
+     */
+    public function test_chrome_one_click_creates_new_snapshot_when_proof_stale(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $url = 'https://example.com/product/plate-stale-proof';
+
+        // STALE proof: created 10 days ago (default freshness = 7 days)
+        $staleRecord = EvidenceRecord::create([
+            'uuid'                => (string) Str::uuid(),
+            'cost_component'      => CostComponent::PLATE,
+            'source_type'         => 'chrome_capture',
+            'capture_method'      => 'chrome_extension',
+            'verification_status' => 'pending',
+            'source_url'          => $url,
+            'observed_price'      => 3500,
+            'currency'            => 'RUB',
+            'observed_at'         => now()->subDays(10),
+            'created_by'          => $user->id,
+        ]);
+        // Backdate created_at
+        $staleRecord->forceFill(['created_at' => now()->subDays(10)])->saveQuietly();
+
+        GenericEvidenceAsset::create([
+            'uuid'               => (string) Str::uuid(),
+            'evidence_record_id' => $staleRecord->id,
+            'asset_type'         => 'screenshot',
+            'file_path'          => 'screenshots/chrome/generic/2026/03/stale.jpg',
+            'original_filename'  => 'stale.jpg',
+            'mime_type'          => 'image/jpeg',
+            'file_size'          => 1024,
+            'sha256'             => hash('sha256', 'stale-screenshot'),
+        ]);
+
+        Material::create([
+            'user_id'        => $user->id,
+            'origin'         => 'parser',
+            'name'           => 'ЛДСП Stale Proof',
+            'article'        => 'STALE-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 3500,
+            'source_url'     => $url,
+            'is_active'      => true,
+            'version'        => 1,
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+        ]);
+
+        $recordCountBefore = EvidenceRecord::count();
+
+        // Same price, but proof is stale — new snapshot needed
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $url,
+                'extracted'       => [
+                    'title' => 'ЛДСП Stale Proof',
+                    'price' => '3 500 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('ss.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('evidence_status', 'created');
+        $this->assertSame($recordCountBefore + 1, EvidenceRecord::count());
+    }
+
+    /**
+     * Chrome one-click creates a new record when the existing proof
+     * has no screenshot asset, even if URL/price/freshness match.
+     */
+    public function test_chrome_one_click_creates_new_snapshot_when_no_screenshot_on_existing(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $url = 'https://example.com/product/plate-no-asset';
+
+        // Fresh record but WITHOUT any screenshot asset — backdated outside 60-second window
+        $noAssetRecord = EvidenceRecord::create([
+            'uuid'                => (string) Str::uuid(),
+            'cost_component'      => CostComponent::PLATE,
+            'source_type'         => 'chrome_capture',
+            'capture_method'      => 'chrome_extension',
+            'verification_status' => 'pending',
+            'source_url'          => $url,
+            'observed_price'      => 3500,
+            'currency'            => 'RUB',
+            'observed_at'         => now()->subHours(2),
+            'created_by'          => $user->id,
+        ]);
+        $noAssetRecord->forceFill(['created_at' => now()->subHours(2)])->saveQuietly();
+        // No GenericEvidenceAsset created
+
+        Material::create([
+            'user_id'        => $user->id,
+            'origin'         => 'parser',
+            'name'           => 'ЛДСП No Asset',
+            'article'        => 'NO-ASSET-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 3500,
+            'source_url'     => $url,
+            'is_active'      => true,
+            'version'        => 1,
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+        ]);
+
+        $recordCountBefore = EvidenceRecord::count();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $url,
+                'extracted'       => [
+                    'title' => 'ЛДСП No Asset',
+                    'price' => '3 500 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('ss.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('evidence_status', 'created');
+        $this->assertSame($recordCountBefore + 1, EvidenceRecord::count());
+    }
+
+    /**
+     * Fresh reuse + auto-link: if a fresh proof is reused AND a pending
+     * evidence item exists, the item must still be auto-linked and resolved.
+     */
+    public function test_fresh_reuse_still_auto_links_to_pending_evidence_item(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $url = 'https://example.com/product/plate-reuse-autolink';
+
+        // Fresh proof with screenshot — backdated outside 60-second window
+        $existingRecord = EvidenceRecord::create([
+            'uuid'                => (string) Str::uuid(),
+            'cost_component'      => CostComponent::PLATE,
+            'source_type'         => 'chrome_capture',
+            'capture_method'      => 'chrome_extension',
+            'verification_status' => 'pending',
+            'source_url'          => $url,
+            'observed_price'      => 3500,
+            'currency'            => 'RUB',
+            'observed_at'         => now()->subHours(2),
+            'created_by'          => $user->id,
+        ]);
+        $existingRecord->forceFill(['created_at' => now()->subHours(2)])->saveQuietly();
+        GenericEvidenceAsset::create([
+            'uuid'               => (string) Str::uuid(),
+            'evidence_record_id' => $existingRecord->id,
+            'asset_type'         => 'screenshot',
+            'file_path'          => 'screenshots/chrome/generic/2026/04/reuse-link.jpg',
+            'original_filename'  => 'reuse-link.jpg',
+            'mime_type'          => 'image/jpeg',
+            'file_size'          => 1024,
+            'sha256'             => hash('sha256', 'reuse-link-content'),
+        ]);
+
+        Material::create([
+            'user_id'        => $user->id,
+            'origin'         => 'parser',
+            'name'           => 'ЛДСП Reuse Autolink',
+            'article'        => 'REUSE-LINK-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 3500,
+            'source_url'     => $url,
+            'is_active'      => true,
+            'version'        => 1,
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+        ]);
+
+        // Pending evidence item in active run
+        $project = $this->makeProject($user);
+        $run = EstimateEvidenceRun::create([
+            'uuid'            => (string) Str::uuid(),
+            'project_id'      => $project->id,
+            'initiated_by'    => $user->id,
+            'status'          => EvidenceRunStatus::IN_PROGRESS,
+            'total_items'     => 1,
+            'completed_items' => 0,
+            'failed_items'    => 0,
+        ]);
+        $item = EstimateEvidenceItem::create([
+            'uuid'            => (string) Str::uuid(),
+            'evidence_run_id' => $run->id,
+            'cost_component'  => CostComponent::PLATE,
+            'label'           => 'ЛДСП Reuse Autolink',
+            'status'          => EvidenceItemStatus::PENDING,
+            'source_url'      => $url,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $url,
+                'extracted'       => [
+                    'title' => 'ЛДСП Reuse Autolink',
+                    'price' => '3 500 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('ss.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('evidence_status', 'reused_existing');
+        $response->assertJsonPath('auto_link.linked', true);
+        $response->assertJsonPath('auto_link.item_id', $item->id);
+
+        // Item must be RESOLVED
+        $item->refresh();
+        $this->assertSame(EvidenceItemStatus::RESOLVED, $item->status);
+        $this->assertSame($existingRecord->id, $item->evidence_record_id);
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────
 
