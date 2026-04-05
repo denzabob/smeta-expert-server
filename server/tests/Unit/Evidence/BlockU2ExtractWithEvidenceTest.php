@@ -875,6 +875,308 @@ class BlockU2ExtractWithEvidenceTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────
+    // Corrective: existing material update must resolve pending evidence item
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * When a material already exists and has a pending evidence item in an
+     * active run, updating it via one-click must resolve that item —
+     * exactly the same as for newly created materials.
+     *
+     * This was the core bug: existing-material update path did not
+     * reconcile the pending evidence item because the item source_url
+     * (stored raw) didn't match the UrlNormalizer-normalized browser URL.
+     */
+    public function test_existing_material_update_resolves_pending_evidence_item(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $url = 'https://example.com/product/plate-existing-reconcile';
+
+        // Pre-create existing material (as if from parser or previous chrome ext)
+        $material = Material::create([
+            'user_id'        => $user->id,
+            'origin'         => 'parser',
+            'name'           => 'ЛДСП Existing Reconcile',
+            'article'        => 'EX-RECON-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 2000,
+            'source_url'     => $url,
+            'is_active'      => true,
+            'version'        => 1,
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+            'trust_level'    => 'unverified',
+            'trust_score'    => 0,
+        ]);
+
+        // Set up evidence run with a pending item for this material
+        $project = $this->makeProject($user);
+        $run = EstimateEvidenceRun::create([
+            'uuid'            => (string) Str::uuid(),
+            'project_id'      => $project->id,
+            'initiated_by'    => $user->id,
+            'status'          => EvidenceRunStatus::IN_PROGRESS,
+            'total_items'     => 1,
+            'completed_items' => 0,
+            'failed_items'    => 0,
+        ]);
+
+        $item = EstimateEvidenceItem::create([
+            'uuid'            => (string) Str::uuid(),
+            'evidence_run_id' => $run->id,
+            'cost_component'  => CostComponent::PLATE,
+            'label'           => 'ЛДСП Existing Reconcile',
+            'status'          => EvidenceItemStatus::PENDING,
+            'source_url'      => $url,
+        ]);
+
+        // One-click update — dedup will find the existing material and UPDATE it
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $url,
+                'extracted'       => [
+                    'title' => 'ЛДСП Existing Reconcile',
+                    'price' => '2 200 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('ss.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('material_status', 'updated');
+        $response->assertJsonPath('auto_link.linked', true);
+        $response->assertJsonPath('auto_link.item_id', $item->id);
+
+        // Item must be RESOLVED
+        $item->refresh();
+        $this->assertSame(EvidenceItemStatus::RESOLVED, $item->status);
+        $this->assertNotNull($item->evidence_record_id);
+    }
+
+    /**
+     * Existing material update resolves pending item even when item source_url
+     * was stored with a different URL format (e.g. cleanUrl stripped 'from'
+     * param while UrlNormalizer keeps it). The normalizer must reconcile both.
+     */
+    public function test_existing_material_update_resolves_despite_url_normalization_diff(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+
+        // Item source_url as cleanUrl would produce (stripped 'from' param)
+        $itemUrl = 'https://supplier.ru/product/12345/';
+        // Browser URL has extra tracking param that cleanUrl strips but UrlNormalizer keeps
+        $browserUrl = 'https://supplier.ru/product/12345/?from=catalog';
+
+        // Pre-create existing material with the cleaned URL
+        Material::create([
+            'user_id'        => $user->id,
+            'origin'         => 'parser',
+            'name'           => 'ЛДСП URL Norm Test',
+            'article'        => 'URL-NORM-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 2000,
+            'source_url'     => $itemUrl,
+            'is_active'      => true,
+            'version'        => 1,
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+            'trust_level'    => 'unverified',
+            'trust_score'    => 0,
+        ]);
+
+        $project = $this->makeProject($user);
+        $run = EstimateEvidenceRun::create([
+            'uuid'            => (string) Str::uuid(),
+            'project_id'      => $project->id,
+            'initiated_by'    => $user->id,
+            'status'          => EvidenceRunStatus::IN_PROGRESS,
+            'total_items'     => 1,
+            'completed_items' => 0,
+            'failed_items'    => 0,
+        ]);
+
+        $item = EstimateEvidenceItem::create([
+            'uuid'            => (string) Str::uuid(),
+            'evidence_run_id' => $run->id,
+            'cost_component'  => CostComponent::PLATE,
+            'label'           => 'ЛДСП URL Norm Test',
+            'status'          => EvidenceItemStatus::PENDING,
+            'source_url'      => $itemUrl, // cleaned URL (no 'from' param)
+        ]);
+
+        // One-click with browser URL that has 'from' param
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $browserUrl,
+                'extracted'       => [
+                    'title' => 'ЛДСП URL Norm Test',
+                    'price' => '2 200 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('ss.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('auto_link.linked', true);
+        $response->assertJsonPath('auto_link.item_id', $item->id);
+
+        $item->refresh();
+        $this->assertSame(EvidenceItemStatus::RESOLVED, $item->status);
+    }
+
+    /**
+     * Existing material update does not create duplicate materials or
+     * unnecessary evidence records — only one new evidence record and
+     * one auto-link should be produced.
+     */
+    public function test_existing_material_update_no_extra_duplicates(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $url = 'https://example.com/product/plate-no-dupes';
+
+        $material = Material::create([
+            'user_id'        => $user->id,
+            'origin'         => 'parser',
+            'name'           => 'ЛДСП No Dupes',
+            'article'        => 'NO-DUPES-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 2000,
+            'source_url'     => $url,
+            'is_active'      => true,
+            'version'        => 1,
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+            'trust_level'    => 'unverified',
+            'trust_score'    => 0,
+        ]);
+
+        $project = $this->makeProject($user);
+        $run = EstimateEvidenceRun::create([
+            'uuid'            => (string) Str::uuid(),
+            'project_id'      => $project->id,
+            'initiated_by'    => $user->id,
+            'status'          => EvidenceRunStatus::IN_PROGRESS,
+            'total_items'     => 1,
+            'completed_items' => 0,
+            'failed_items'    => 0,
+        ]);
+
+        EstimateEvidenceItem::create([
+            'uuid'            => (string) Str::uuid(),
+            'evidence_run_id' => $run->id,
+            'cost_component'  => CostComponent::PLATE,
+            'label'           => 'ЛДСП No Dupes',
+            'status'          => EvidenceItemStatus::PENDING,
+            'source_url'      => $url,
+        ]);
+
+        $materialCountBefore = Material::count();
+        $evidenceRecordCountBefore = EvidenceRecord::count();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $url,
+                'extracted'       => [
+                    'title' => 'ЛДСП No Dupes',
+                    'price' => '2 200 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('ss.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('material_status', 'updated');
+
+        // No new materials created — only the existing one updated
+        $this->assertSame($materialCountBefore, Material::count());
+        // Exactly one new evidence record
+        $this->assertSame($evidenceRecordCountBefore + 1, EvidenceRecord::count());
+    }
+
+    /**
+     * If the pending item is already resolved, one-click does not re-resolve
+     * or create extra links — reconciliation is idempotent.
+     */
+    public function test_already_resolved_item_not_re_resolved(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $url = 'https://example.com/product/plate-already-resolved';
+
+        Material::create([
+            'user_id'        => $user->id,
+            'origin'         => 'parser',
+            'name'           => 'ЛДСП Already Resolved',
+            'article'        => 'RESOLVED-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 2000,
+            'source_url'     => $url,
+            'is_active'      => true,
+            'version'        => 1,
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+            'trust_level'    => 'unverified',
+            'trust_score'    => 0,
+        ]);
+
+        $project = $this->makeProject($user);
+        $run = EstimateEvidenceRun::create([
+            'uuid'            => (string) Str::uuid(),
+            'project_id'      => $project->id,
+            'initiated_by'    => $user->id,
+            'status'          => EvidenceRunStatus::IN_PROGRESS,
+            'total_items'     => 1,
+            'completed_items' => 1,
+            'failed_items'    => 0,
+        ]);
+
+        // Item is already RESOLVED (terminal status)
+        $item = EstimateEvidenceItem::create([
+            'uuid'            => (string) Str::uuid(),
+            'evidence_run_id' => $run->id,
+            'cost_component'  => CostComponent::PLATE,
+            'label'           => 'ЛДСП Already Resolved',
+            'status'          => EvidenceItemStatus::RESOLVED,
+            'source_url'      => $url,
+        ]);
+
+        $linkCountBefore = EvidenceLink::count();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $url,
+                'extracted'       => [
+                    'title' => 'ЛДСП Already Resolved',
+                    'price' => '2 200 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('ss.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        // auto_link should not be linked — item is already in terminal status
+        $response->assertJsonPath('auto_link.linked', false);
+
+        // No extra evidence links created
+        $this->assertSame($linkCountBefore, EvidenceLink::count());
+
+        // Item status unchanged
+        $item->refresh();
+        $this->assertSame(EvidenceItemStatus::RESOLVED, $item->status);
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────
 

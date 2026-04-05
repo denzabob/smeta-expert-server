@@ -7,6 +7,9 @@ class UrlNormalizer
     private const TRACKING_PARAMS = [
         'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
         'yclid', 'gclid', 'fbclid', 'etext', 'ybaip', 'pm_source', 'callibri', '_openstat',
+        // Harmonized with ChromeExtractService::TRACKING_PARAMS so that URLs
+        // cleaned by cleanUrl() and normalized by this class produce the same result.
+        'from', 'rs', 'rec',
     ];
 
     public function normalize(?string $url): ?string

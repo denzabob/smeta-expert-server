@@ -54,6 +54,11 @@ class EvidenceRunItemCollector
             $status = $isInternal ? EvidenceItemStatus::RESOLVED : EvidenceItemStatus::PENDING;
             $resolutionType = $isInternal ? ResolutionType::AUTO : null;
 
+            // Normalize source_url consistently so that autoLinkToEvidenceItem()
+            // can match by URL regardless of how the material URL was originally
+            // stored (cleanUrl, parser, raw).
+            $normalizedSourceUrl = $this->urlNormalizer->normalize($desc['source_url'] ?? null);
+
             $evidenceRecordId = null;
             if ($isInternal && $desc['effective_value'] !== null) {
                 $record = EvidenceRecord::create([
@@ -72,9 +77,9 @@ class EvidenceRunItemCollector
             }
 
             // Freshness-based auto-resolution for external types
-            if (!$isInternal && !empty($desc['source_url'])) {
+            if (!$isInternal && !empty($normalizedSourceUrl)) {
                 $freshRecord = $this->confirmationService->getFreshRecord(
-                    $desc['source_url'],
+                    $normalizedSourceUrl,
                     $desc['cost_component'],
                     $freshnessDays,
                 );
@@ -95,7 +100,7 @@ class EvidenceRunItemCollector
                 'subject_type'       => $desc['subject_type'],
                 'subject_id'         => $desc['subject_id'],
                 'evidence_record_id' => $evidenceRecordId,
-                'source_url'         => $desc['source_url'] ?? null,
+                'source_url'         => $normalizedSourceUrl,
                 'effective_value'    => $desc['effective_value'] ?? null,
                 'currency'           => $desc['currency'] ?? null,
             ]);

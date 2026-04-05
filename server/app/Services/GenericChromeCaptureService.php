@@ -271,7 +271,8 @@ class GenericChromeCaptureService
      *  1. Item must belong to user's non-terminal run
      *  2. Item must not be in a terminal status
      *  3. Item cost_component must exactly match the derived cost component
-     *  4. Item source_url must exactly match the evidence record's source_url (after normalization)
+     *  4. Item source_url must match the browser URL after normalizing BOTH sides
+     *     with the same UrlNormalizer (handles cleanUrl/parser/raw format differences)
      *  5. Exactly ONE candidate must exist — 0 or 2+ means no auto-link
      *
      * @return array{linked: bool, item_id: ?int, item_label: ?string}
@@ -288,16 +289,22 @@ class GenericChromeCaptureService
             return ['linked' => false, 'item_id' => null, 'item_label' => null];
         }
 
+        // Fetch candidates by user scope + cost component + non-terminal status.
+        // URL matching is done in PHP with normalization on BOTH sides to handle
+        // inconsistencies between how item source_url was stored (cleanUrl, parser,
+        // raw) vs how the browser URL is normalized.  The candidate set is small:
+        // bounded by pending items in a user's active runs for one cost component.
         $candidates = EstimateEvidenceItem::whereHas('run', function ($q) use ($userId) {
                 $q->where('initiated_by', $userId)
                   ->whereNotIn('status', EvidenceRunStatus::terminalStatuses());
             })
             ->whereNotIn('status', EvidenceItemStatus::terminalStatuses())
             ->where('cost_component', $costComponent)
-            ->where('source_url', $normalizedUrl)
+            ->whereNotNull('source_url')
             ->with('run')
-            ->limit(2) // Only need to know if 0, 1, or 2+
-            ->get();
+            ->get()
+            ->filter(fn ($item) => $this->urlNormalizer->normalize($item->source_url) === $normalizedUrl)
+            ->values();
 
         if ($candidates->count() !== 1) {
             return ['linked' => false, 'item_id' => null, 'item_label' => null];
