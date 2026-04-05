@@ -139,6 +139,23 @@ Route::middleware(InternalOnlyMiddleware::class)->group(function () {
     Route::get('/parsing/get-urls/{supplier}', [UrlCollectionController::class, 'getUrls']);
 });
 
+// ========== Screenshot / public-storage file serving ==========
+// Serves evidence screenshot assets through the /api/ prefix so that
+// production nginx (which routes only /api/ to the backend) delivers
+// the actual image instead of the SPA shell.
+// Restricted to the screenshots/ directory; rejects path-traversal.
+Route::get('screenshots/{path}', function (string $path) {
+    // Normalise and reject traversal
+    $fullPath = 'screenshots/' . $path;
+    if (str_contains($fullPath, '..') || str_contains($fullPath, "\0")) {
+        abort(404);
+    }
+    if (!\Illuminate\Support\Facades\Storage::disk('public')->exists($fullPath)) {
+        abort(404);
+    }
+    return \Illuminate\Support\Facades\Storage::disk('public')->response($fullPath);
+})->where('path', '.+');
+
 // Защищённые маршруты
 Route::middleware('auth:sanctum')->group(function () {
     // ========== Phone Auth: Complete Registration (onboarding) ==========

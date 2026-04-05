@@ -12,6 +12,7 @@ use App\Models\EstimateEvidenceItem;
 use App\Models\EstimateEvidenceRun;
 use App\Services\ChromeExtractService;
 use App\Services\GenericChromeCaptureService;
+use App\Services\TrustScoreService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -324,6 +325,15 @@ class GenericChromeController extends Controller
                 $screenshotStatus = 'skipped';
             }
         }
+
+        // ── Phase 4: Recalculate trust score ──
+        // Must run for BOTH created and updated materials so that the newly
+        // written observation (with evidence_record_id + screenshot_path) is
+        // reflected in the stored trust_score / trust_level.  For new materials
+        // ChromeExtractService sets an initial 70/30, but that doesn't account
+        // for the evidence bridge written above.  For updated materials the
+        // stored trust_score was previously stale.
+        app(TrustScoreService::class)->recalculate($material);
 
         $this->logChromeAction($request, 'extract_with_evidence', 'ok', null, $validated['url']);
 

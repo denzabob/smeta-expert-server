@@ -739,6 +739,142 @@ class BlockU2ExtractWithEvidenceTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────
+    // Corrective: existing material update must recalculate trust score
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * When an already-existing material is updated via one-click, the trust
+     * score must be recalculated so the new screenshot/evidence is reflected.
+     * Previously the stored trust_score remained stale after update.
+     */
+    public function test_trust_score_recalculated_after_existing_material_update(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $url = 'https://example.com/product/plate-trust-update';
+
+        // Pre-create material with a low trust score
+        $material = Material::create([
+            'user_id'        => $user->id,
+            'origin'         => 'parser',
+            'name'           => 'ЛДСП Trust Update Test',
+            'article'        => 'TRUST-UPD-001',
+            'type'           => 'plate',
+            'unit'           => 'м²',
+            'price_per_unit' => 2000,
+            'source_url'     => $url,
+            'is_active'      => true,
+            'version'        => 1,
+            'visibility'     => 'private',
+            'data_origin'    => 'chrome_ext',
+            'trust_level'    => 'unverified',
+            'trust_score'    => 0,
+        ]);
+
+        $scoreBefore = $material->trust_score;
+
+        // One-click update with screenshot — should recalculate trust
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $url,
+                'extracted'       => [
+                    'title' => 'ЛДСП Trust Update Test',
+                    'price' => '2 500 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('ss.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('material_status', 'updated');
+
+        $material->refresh();
+        $this->assertGreaterThan(
+            $scoreBefore,
+            $material->trust_score,
+            'Trust score must increase after one-click update with screenshot'
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Corrective: screenshot URL must go through /api/ prefix
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * The screenshot URL in material detail must start with /api/screenshots/
+     * so that production nginx routes it to the backend instead of the SPA.
+     */
+    public function test_screenshot_url_goes_through_api_prefix(): void
+    {
+        config(['smeta.evidence.generic_chrome_enabled' => true]);
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $url = 'https://example.com/product/plate-ss-url';
+
+        // One-click with screenshot
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/chrome/extract-with-evidence', [
+                'url'             => $url,
+                'extracted'       => [
+                    'title' => 'ЛДСП Screenshot URL Test',
+                    'price' => '3 000 ₽',
+                ],
+                'screenshot_file' => UploadedFile::fake()->image('screenshot.jpg'),
+            ]);
+
+        $response->assertStatus(201);
+        $materialId = $response->json('material.id');
+
+        // Load material detail and check screenshot URL
+        $detailResponse = $this->actingAs($user, 'sanctum')
+            ->getJson("/api/materials/catalog/{$materialId}");
+
+        $detailResponse->assertOk();
+        $screenshotUrl = $detailResponse->json('latest_screenshot.url');
+        $this->assertNotNull($screenshotUrl, 'Screenshot URL must be present');
+        $this->assertStringContainsString(
+            '/api/screenshots/',
+            $screenshotUrl,
+            'Screenshot URL must route through /api/screenshots/ prefix'
+        );
+        $this->assertStringNotContainsString(
+            '/storage/',
+            $screenshotUrl,
+            'Screenshot URL must NOT use the /storage/ prefix that gets caught by SPA'
+        );
+    }
+
+    /**
+     * The /api/screenshots/ route must serve the actual image file.
+     */
+    public function test_screenshot_api_route_serves_image(): void
+    {
+        Storage::fake('public');
+
+        $user = User::factory()->create();
+        $imageContent = 'fake-jpeg-content-for-test';
+        $path = 'screenshots/chrome/generic/2026/04/test-serve.jpg';
+        Storage::disk('public')->put($path, $imageContent);
+
+        $response = $this->get('/api/screenshots/chrome/generic/2026/04/test-serve.jpg');
+
+        $response->assertOk();
+        // Storage::response() returns StreamedResponse — use streamedContent()
+        $this->assertSame($imageContent, $response->streamedContent());
+    }
+
+    /**
+     * The /api/screenshots/ route must return 404 for path traversal attempts.
+     */
+    public function test_screenshot_api_route_rejects_traversal(): void
+    {
+        $response = $this->get('/api/screenshots/../../../etc/passwd');
+        $response->assertNotFound();
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────
 

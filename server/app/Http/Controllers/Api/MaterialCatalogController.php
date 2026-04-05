@@ -424,6 +424,10 @@ class MaterialCatalogController extends Controller
      *     one-click bridge, manual upload, or parser)
      *  2. GenericEvidenceAsset via evidence_record_id on the latest observation
      *  3. null — no proof screenshot available
+     *
+     * URLs are generated through the /api/screenshots/ route so that production
+     * nginx (which forwards only /api/ to the backend) serves the actual image
+     * instead of the SPA shell.
      */
     protected function resolveLatestScreenshot($observations): ?array
     {
@@ -432,7 +436,7 @@ class MaterialCatalogController extends Controller
             if (!empty($obs->screenshot_path)) {
                 $isImage = $this->isImagePath($obs->screenshot_path);
                 return [
-                    'url'         => Storage::disk('public')->url($obs->screenshot_path),
+                    'url'         => $this->screenshotUrl($obs->screenshot_path),
                     'path'        => $obs->screenshot_path,
                     'is_image'    => $isImage,
                     'source'      => $obs->source_type ?? 'unknown',
@@ -445,7 +449,7 @@ class MaterialCatalogController extends Controller
             if (!empty($obs->snapshot_path)) {
                 $isImage = $this->isImagePath($obs->snapshot_path);
                 return [
-                    'url'         => Storage::disk('public')->url($obs->snapshot_path),
+                    'url'         => $this->screenshotUrl($obs->snapshot_path),
                     'path'        => $obs->snapshot_path,
                     'is_image'    => $isImage,
                     'source'      => $obs->source_type ?? 'unknown',
@@ -462,7 +466,7 @@ class MaterialCatalogController extends Controller
                 if ($asset && !empty($asset->file_path)) {
                     $isImage = $this->isImagePath($asset->file_path);
                     return [
-                        'url'         => Storage::disk('public')->url($asset->file_path),
+                        'url'         => $this->screenshotUrl($asset->file_path),
                         'path'        => $asset->file_path,
                         'is_image'    => $isImage,
                         'source'      => $obs->source_type ?? 'chrome_ext',
@@ -474,6 +478,25 @@ class MaterialCatalogController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Build a screenshot URL that routes through /api/screenshots/ so that
+     * production nginx delivers the real image instead of the SPA shell.
+     *
+     * Paths starting with "screenshots/" are served by the dedicated API route.
+     * Other paths (e.g. legacy parser snapshots) fall back to the public disk URL.
+     */
+    private function screenshotUrl(string $path): string
+    {
+        if (str_starts_with($path, 'screenshots/')) {
+            // Strip the "screenshots/" prefix — the route already adds it.
+            $relativePath = substr($path, strlen('screenshots/'));
+            return url('/api/screenshots/' . $relativePath);
+        }
+
+        // Fallback for non-screenshot paths (legacy parser snapshots etc.)
+        return Storage::disk('public')->url($path);
     }
 
     private function isImagePath(string $path): bool
