@@ -174,6 +174,17 @@ export const evidenceRunApi = {
     return data
   },
 
+  /** POST /api/projects/{project}/evidence-runs/{runId}/refresh */
+  async refreshRun(
+    projectId: number | string,
+    runId: number | string,
+  ): Promise<EvidenceRunShowResponse & { auto_resolved: number }> {
+    const { data } = await api.post(
+      `/api/projects/${projectId}/evidence-runs/${runId}/refresh`,
+    )
+    return data
+  },
+
   /** POST /api/projects/{project}/evidence-runs/{runId}/finalize */
   async finalize(
     projectId: number | string,

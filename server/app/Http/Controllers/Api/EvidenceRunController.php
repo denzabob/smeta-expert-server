@@ -96,6 +96,38 @@ class EvidenceRunController extends Controller
     }
 
     /**
+     * POST /api/projects/{project}/evidence-runs/{runId}/refresh
+     *
+     * Re-evaluate pending items against current fresh proof and return
+     * the updated run.  Uses the same proof-selection rule as creation-time
+     * auto-resolve (MaterialConfirmationService::getFreshRecord).
+     */
+    public function refresh(Project $project, int $runId): JsonResponse
+    {
+        $this->authorize('update', $project);
+
+        $run = EstimateEvidenceRun::where('project_id', $project->id)
+            ->findOrFail($runId);
+
+        if (in_array($run->status, EvidenceRunStatus::terminalStatuses(), true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot refresh a {$run->status} run.",
+            ], 422);
+        }
+
+        $resolved = $this->itemCollector->refreshPendingItems($run, $project);
+
+        $this->refreshRunCounters($run);
+
+        return response()->json([
+            'success'       => true,
+            'data'          => $run->fresh()->load('items.evidenceRecord'),
+            'auto_resolved' => $resolved,
+        ]);
+    }
+
+    /**
      * POST /api/projects/{project}/evidence-runs/{runId}/finalize
      */
     public function finalize(Project $project, int $runId): JsonResponse

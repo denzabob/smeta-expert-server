@@ -111,25 +111,6 @@
                 @update:model-value="loadRecords"
               />
             </div>
-
-            <!-- Hidden debug fallback: raw ID input -->
-            <v-expansion-panels variant="accordion" class="mt-3">
-              <v-expansion-panel>
-                <v-expansion-panel-title class="text-caption text-medium-emphasis py-1">
-                  Ввести ID вручную (для отладки)
-                </v-expansion-panel-title>
-                <v-expansion-panel-text>
-                  <v-text-field
-                    v-model.number="rawRecordId"
-                    label="evidence_record_id"
-                    type="number"
-                    variant="outlined"
-                    density="compact"
-                    hide-details
-                  />
-                </v-expansion-panel-text>
-              </v-expansion-panel>
-            </v-expansion-panels>
           </v-window-item>
 
           <!-- ═══ Tab 2: Manual Upload ═══ -->
@@ -294,9 +275,8 @@ const pickerLoading = ref(false)
 const pickerPage = ref(1)
 const pickerMeta = ref({ current_page: 1, last_page: 1, per_page: 20, total: 0 })
 const selectedRecordId = ref<number | null>(null)
-const rawRecordId = ref<number | null>(null)
 
-const effectiveRecordId = computed(() => selectedRecordId.value || rawRecordId.value)
+const effectiveRecordId = computed(() => selectedRecordId.value)
 
 // ── Manual upload state ──
 const manualFile = ref<File | null>(null)
@@ -345,7 +325,6 @@ watch(
       activeTab.value = props.mode === 'skip' ? 'skip' : 'picker'
       searchQuery.value = ''
       selectedRecordId.value = null
-      rawRecordId.value = null
       manualFile.value = null
       manualPrice.value = ''
       manualCurrency.value = 'RUB'

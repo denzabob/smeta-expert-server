@@ -122,6 +122,52 @@ class EvidenceRunItemCollector
     }
 
     /**
+     * Re-evaluate PENDING items in an existing run against current fresh proof.
+     *
+     * Uses the same MaterialConfirmationService::getFreshRecord() lookup as
+     * creation-time auto-resolve, so the proof-selection rule is unified with
+     * the "Выбрать существующее" picker's expectation.
+     *
+     * Returns the count of items that were auto-resolved.
+     */
+    public function refreshPendingItems(EstimateEvidenceRun $run, Project $project): int
+    {
+        $freshnessDays = $project->price_confirmation_freshness_days
+            ?? MaterialConfirmationService::DEFAULT_FRESHNESS_DAYS;
+
+        $pendingItems = $run->items()
+            ->where('status', EvidenceItemStatus::PENDING)
+            ->get();
+
+        $resolved = 0;
+
+        foreach ($pendingItems as $item) {
+            if (empty($item->source_url)) {
+                continue;
+            }
+
+            $freshRecord = $this->confirmationService->getFreshRecord(
+                $item->source_url,       // already normalized at creation time
+                $item->cost_component,
+                $freshnessDays,
+            );
+
+            if ($freshRecord) {
+                $item->update([
+                    'status'             => EvidenceItemStatus::RESOLVED,
+                    'resolution_type'    => ResolutionType::AUTO_FRESH,
+                    'evidence_record_id' => $freshRecord->id,
+                    'effective_value'    => $freshRecord->observed_price ?? $item->effective_value,
+                    'currency'           => $freshRecord->currency ?? $item->currency,
+                ]);
+                $resolved++;
+            }
+        }
+
+        return $resolved;
+    }
+
+    /**
      * Build descriptors from the project report, one per unique cost driver.
      * Each descriptor contains everything needed to create an EstimateEvidenceItem.
      */

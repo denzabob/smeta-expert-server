@@ -143,6 +143,21 @@ export function useEvidenceRun(projectId: Ref<number>) {
     }
   }
 
+  async function refreshRun() {
+    if (!projectId.value || !selectedRun.value) return
+    loading.value = true
+    error.value = null
+    try {
+      const res = await evidenceRunApi.refreshRun(projectId.value, selectedRun.value.id)
+      selectedRun.value = res.data as EvidenceRun & { items: EvidenceItem[] }
+    } catch (err: unknown) {
+      const axErr = err as AxiosError<{ message?: string }>
+      error.value = axErr.response?.data?.message ?? 'Не удалось обновить запуск.'
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function resolveItem(itemId: number, evidenceRecordId: number) {
     if (!projectId.value || !selectedRun.value) return
     actionLoading.value = true
@@ -324,6 +339,7 @@ export function useEvidenceRun(projectId: Ref<number>) {
     fetchRuns,
     createRun,
     selectRun,
+    refreshRun,
     resolveItem,
     skipItem,
     manualResolveItem,

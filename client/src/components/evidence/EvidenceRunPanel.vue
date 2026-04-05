@@ -47,7 +47,7 @@
             variant="outlined"
             prepend-icon="mdi-refresh"
             :loading="evidence.loading.value"
-            @click="evidence.selectRun(evidence.selectedRun.value!.id)"
+            @click="evidence.refreshRun()"
           >
             Обновить
           </v-btn>
