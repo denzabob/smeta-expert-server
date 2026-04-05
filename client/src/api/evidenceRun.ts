@@ -216,6 +216,20 @@ export const evidenceRunApi = {
     return data
   },
 
+  /** GET /api/projects/{project}/evidence-runs/{runId}/items/{itemId}/candidates — strict picker */
+  async searchCandidatesForItem(
+    projectId: number | string,
+    runId: number | string,
+    itemId: number | string,
+    params: { q?: string; per_page?: number; page?: number },
+  ): Promise<EvidenceRecordSearchResponse> {
+    const { data } = await api.get(
+      `/api/projects/${projectId}/evidence-runs/${runId}/items/${itemId}/candidates`,
+      { params },
+    )
+    return data
+  },
+
   /** POST /api/projects/{project}/evidence-runs/{runId}/items/{itemId}/manual-resolve */
   async manualResolveItem(
     projectId: number | string,

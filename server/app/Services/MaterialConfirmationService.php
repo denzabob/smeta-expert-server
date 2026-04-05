@@ -139,6 +139,108 @@ class MaterialConfirmationService
         return null; // price changed materially — new snapshot needed
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // Canonical strict item-to-proof matching
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Check whether a given EvidenceRecord is a valid candidate for an item.
+     *
+     * This is the single canonical rule used by:
+     *  - manual resolve submit validation (hard gate)
+     *  - picker candidate pre-filtering
+     *  - refresh auto-confirm (with additional freshness check)
+     *
+     * A record is valid when ALL hold:
+     *  1. cost_component matches exactly
+     *  2. normalized source_url matches (if item has a source_url)
+     *  3. verification_status is not 'rejected'
+     *  4. record has at least one proof asset (screenshot or document)
+     */
+    public function isValidCandidateForItem(
+        EvidenceRecord $record,
+        string $itemCostComponent,
+        ?string $itemSourceUrl,
+    ): bool {
+        // 1. Exact component match
+        if ($record->cost_component !== $itemCostComponent) {
+            return false;
+        }
+
+        // 2. URL compatibility — if item has a URL, record must match it
+        if (!empty($itemSourceUrl)) {
+            $normalizedItemUrl = $this->urlNormalizer->normalize($itemSourceUrl);
+            $normalizedRecordUrl = $this->urlNormalizer->normalize($record->source_url);
+
+            if ($normalizedItemUrl !== $normalizedRecordUrl) {
+                return false;
+            }
+        }
+
+        // 3. Not rejected
+        if ($record->verification_status === 'rejected') {
+            return false;
+        }
+
+        // 4. Has at least one proof asset
+        $hasAsset = $record->assets()
+            ->whereIn('asset_type', ['screenshot', 'document'])
+            ->exists();
+
+        return $hasAsset;
+    }
+
+    /**
+     * Get paginated candidate records for an evidence item's picker.
+     *
+     * Applies the same strict matching rule as isValidCandidateForItem():
+     *  - exact cost_component
+     *  - normalized source_url match (if item has one)
+     *  - non-rejected
+     *  - has proof asset
+     *
+     * Additionally supports optional text search within the strict set.
+     *
+     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
+     */
+    public function getCandidatesForItem(
+        string $costComponent,
+        ?string $sourceUrl,
+        ?string $searchQuery = null,
+        int $perPage = 20,
+        int $page = 1,
+    ) {
+        $query = EvidenceRecord::where('cost_component', $costComponent)
+            ->where('verification_status', '!=', 'rejected')
+            ->whereHas('assets', function ($q) {
+                $q->whereIn('asset_type', ['screenshot', 'document']);
+            });
+
+        // Strict URL filter when item has a source_url
+        if (!empty($sourceUrl)) {
+            $normalizedUrl = $this->urlNormalizer->normalize($sourceUrl);
+            $query->where('source_url', $normalizedUrl);
+        }
+
+        // Optional text search within the strict candidate set
+        if (!empty($searchQuery)) {
+            $q = $searchQuery;
+            $query->where(function ($sub) use ($q) {
+                $sub->where('extracted_name', 'LIKE', "%{$q}%")
+                    ->orWhere('source_url', 'LIKE', "%{$q}%")
+                    ->orWhere('source_domain', 'LIKE', "%{$q}%")
+                    ->orWhere('extracted_article', 'LIKE', "%{$q}%");
+            });
+        }
+
+        $query->orderByDesc('created_at');
+
+        return $query->with(['assets' => function ($q) {
+            $q->select('id', 'evidence_record_id', 'asset_type', 'file_path')
+              ->limit(1);
+        }])->paginate($perPage, ['*'], 'page', $page);
+    }
+
     private static function missing(): array
     {
         return [

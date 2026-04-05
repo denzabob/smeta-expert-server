@@ -372,16 +372,29 @@ class BlockU3ManualResolveTest extends TestCase
     {
         $user = User::factory()->create();
         $project = $this->makeProject($user);
+        $url = 'https://example.com/product/plate-search';
 
         $record = EvidenceRecord::create([
             'uuid'           => (string) Str::uuid(),
             'cost_component' => CostComponent::PLATE,
             'source_type'    => SourceType::CHROME_CAPTURE,
             'capture_method' => CaptureMethod::CHROME_EXTENSION,
+            'source_url'     => $url,
             'observed_price' => 4500,
             'currency'       => 'RUB',
             'extracted_name' => 'Plate from search',
             'created_by'     => $user->id,
+        ]);
+
+        GenericEvidenceAsset::create([
+            'uuid'               => (string) Str::uuid(),
+            'evidence_record_id' => $record->id,
+            'asset_type'         => 'screenshot',
+            'file_path'          => 'screenshots/test/plate-search.jpg',
+            'original_filename'  => 'proof.jpg',
+            'mime_type'          => 'image/jpeg',
+            'file_size'          => 1024,
+            'sha256'             => hash('sha256', 'plate-search'),
         ]);
 
         $run = EstimateEvidenceRun::create([
@@ -400,6 +413,7 @@ class BlockU3ManualResolveTest extends TestCase
             'cost_component'  => CostComponent::PLATE,
             'label'           => 'Item to resolve via picker',
             'status'          => EvidenceItemStatus::PENDING,
+            'source_url'      => $url,
         ]);
 
         // Simulate picker: search → select → resolve
@@ -429,15 +443,28 @@ class BlockU3ManualResolveTest extends TestCase
     {
         $user = User::factory()->create();
         $project = $this->makeProject($user);
+        $url = 'https://example.com/product/edge-legacy';
 
         $record = EvidenceRecord::create([
             'uuid'           => (string) Str::uuid(),
             'cost_component' => CostComponent::EDGE,
             'source_type'    => SourceType::CHROME_CAPTURE,
             'capture_method' => CaptureMethod::CHROME_EXTENSION,
+            'source_url'     => $url,
             'observed_price' => 200,
             'currency'       => 'RUB',
             'created_by'     => $user->id,
+        ]);
+
+        GenericEvidenceAsset::create([
+            'uuid'               => (string) Str::uuid(),
+            'evidence_record_id' => $record->id,
+            'asset_type'         => 'screenshot',
+            'file_path'          => 'screenshots/test/edge-legacy.jpg',
+            'original_filename'  => 'proof.jpg',
+            'mime_type'          => 'image/jpeg',
+            'file_size'          => 1024,
+            'sha256'             => hash('sha256', 'edge-legacy'),
         ]);
 
         $run = EstimateEvidenceRun::create([
@@ -456,6 +483,7 @@ class BlockU3ManualResolveTest extends TestCase
             'cost_component'  => CostComponent::EDGE,
             'label'           => 'Edge item',
             'status'          => EvidenceItemStatus::PENDING,
+            'source_url'      => $url,
         ]);
 
         $response = $this->actingAs($user, 'sanctum')

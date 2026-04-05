@@ -12,6 +12,7 @@ use App\Models\EstimateEvidenceItem;
 use App\Models\EstimateEvidenceRun;
 use App\Models\EvidenceRecord;
 use App\Models\Expense;
+use App\Models\GenericEvidenceAsset;
 use App\Models\Material;
 use App\Models\Project;
 use App\Models\ProjectFitting;
@@ -630,6 +631,7 @@ class BlockG2RunPipelineTest extends TestCase
             'cost_component'  => $costComponent,
             'label'           => 'Test ' . $costComponent,
             'status'          => $status,
+            'source_url'      => 'https://example.com/test/' . $costComponent,
             'subject_type'    => 'test',
             'subject_id'      => 1,
         ]);
@@ -637,18 +639,32 @@ class BlockG2RunPipelineTest extends TestCase
 
     private function makeEvidenceRecord(User $user, string $costComponent, float $price): EvidenceRecord
     {
-        return EvidenceRecord::create([
+        $record = EvidenceRecord::create([
             'uuid'                => (string) Str::uuid(),
             'cost_component'      => $costComponent,
             'source_type'         => SourceType::MANUAL_INPUT,
             'capture_method'      => CaptureMethod::MANUAL_ENTRY,
             'verification_status' => VerificationStatus::PENDING,
+            'source_url'          => 'https://example.com/test/' . $costComponent,
             'observed_price'      => $price,
             'currency'            => 'RUB',
             'extracted_name'      => 'Test record',
             'trust_score'         => 80,
             'created_by'          => $user->id,
         ]);
+
+        GenericEvidenceAsset::create([
+            'uuid'               => (string) Str::uuid(),
+            'evidence_record_id' => $record->id,
+            'asset_type'         => 'screenshot',
+            'file_path'          => 'screenshots/test/' . Str::random(8) . '.jpg',
+            'original_filename'  => 'proof.jpg',
+            'mime_type'          => 'image/jpeg',
+            'file_size'          => 1024,
+            'sha256'             => hash('sha256', Str::random(16)),
+        ]);
+
+        return $record;
     }
 
     /**

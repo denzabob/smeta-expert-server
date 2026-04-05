@@ -256,6 +256,8 @@ const props = defineProps<{
   mode: 'resolve' | 'skip'
   loading?: boolean
   errorMessage?: string | null
+  projectId: number | string
+  runId: number | string
 }>()
 
 const emit = defineEmits<{
@@ -302,12 +304,21 @@ function debouncedSearch() {
 async function loadRecords() {
   pickerLoading.value = true
   try {
-    const res = await evidenceRunApi.searchRecords({
-      q: searchQuery.value || undefined,
-      cost_component: props.item?.cost_component || undefined,
-      per_page: 20,
-      page: pickerPage.value,
-    })
+    const item = props.item
+    if (!item) {
+      pickerRecords.value = []
+      return
+    }
+    const res = await evidenceRunApi.searchCandidatesForItem(
+      props.projectId,
+      props.runId,
+      item.id,
+      {
+        q: searchQuery.value || undefined,
+        per_page: 20,
+        page: pickerPage.value,
+      },
+    )
     pickerRecords.value = res.data
     pickerMeta.value = res.meta
   } catch {

@@ -384,6 +384,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('projects/{project}/evidence-runs/{runId}/items/{itemId}/resolve', [EvidenceRunController::class, 'resolveItem']);
     Route::post('projects/{project}/evidence-runs/{runId}/items/{itemId}/skip', [EvidenceRunController::class, 'skipItem']);
     Route::post('projects/{project}/evidence-runs/{runId}/items/{itemId}/manual-resolve', [EvidenceRunController::class, 'manualResolveItem']);
+    Route::get('projects/{project}/evidence-runs/{runId}/items/{itemId}/candidates', [EvidenceRunController::class, 'searchCandidatesForItem']);
     Route::get('projects/{project}/evidence-runs/{runId}/pdf', [EvidenceRunController::class, 'pdf']);
     Route::get('evidence-records/search', [EvidenceRunController::class, 'searchRecords']);
     Route::post('evidence-records', [EvidenceRunController::class, 'createRecord']);

@@ -17,6 +17,7 @@ use App\Models\EstimateEvidenceRun;
 use App\Models\EvidenceRecord;
 use App\Models\GenericEvidenceAsset;
 use App\Models\Project;
+use App\Services\MaterialConfirmationService;
 use App\Services\EvidenceRunFinalizer;
 use App\Services\EvidenceRunItemCollector;
 use App\Services\EstimateEvidencePdfBuilder;
@@ -33,6 +34,7 @@ class EvidenceRunController extends Controller
         private EvidenceRunItemCollector $itemCollector,
         private EvidenceRunFinalizer $finalizer,
         private EstimateEvidencePdfBuilder $pdfBuilder,
+        private MaterialConfirmationService $confirmationService,
     ) {}
 
     /**
@@ -185,6 +187,18 @@ class EvidenceRunController extends Controller
         ]);
 
         $record = EvidenceRecord::findOrFail($request->input('evidence_record_id'));
+
+        // Strict validation: record must be a valid candidate for this item
+        if (!$this->confirmationService->isValidCandidateForItem(
+            $record,
+            $item->cost_component,
+            $item->source_url,
+        )) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Selected evidence record does not match this item (component/URL mismatch or no proof asset).',
+            ], 422);
+        }
 
         $item->update([
             'status'             => EvidenceItemStatus::RESOLVED,
@@ -351,6 +365,72 @@ class EvidenceRunController extends Controller
         }])->paginate($perPage);
 
         // Shape output: add has_screenshot flag, hide internal fields
+        $items = collect($records->items())->map(function (EvidenceRecord $r) {
+            return [
+                'id'              => $r->id,
+                'uuid'            => $r->uuid,
+                'extracted_name'  => $r->extracted_name,
+                'source_url'      => $r->source_url,
+                'source_domain'   => $r->source_domain,
+                'observed_price'  => $r->observed_price,
+                'currency'        => $r->currency,
+                'cost_component'  => $r->cost_component,
+                'capture_method'  => $r->capture_method,
+                'observed_at'     => $r->observed_at?->toIso8601String(),
+                'created_at'      => $r->created_at?->toIso8601String(),
+                'has_screenshot'  => $r->assets->isNotEmpty(),
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data'    => $items,
+            'meta'    => [
+                'current_page' => $records->currentPage(),
+                'last_page'    => $records->lastPage(),
+                'per_page'     => $records->perPage(),
+                'total'        => $records->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/projects/{project}/evidence-runs/{runId}/items/{itemId}/candidates
+     *
+     * Strict picker: returns only records that are valid candidates for the
+     * given evidence item (same component + normalized URL + non-rejected +
+     * has proof asset).
+     */
+    public function searchCandidatesForItem(
+        Request $request,
+        Project $project,
+        int $runId,
+        int $itemId,
+    ): JsonResponse {
+        $this->authorize('view', $project);
+
+        $run = EstimateEvidenceRun::where('project_id', $project->id)
+            ->findOrFail($runId);
+
+        $item = $run->items()->findOrFail($itemId);
+
+        $request->validate([
+            'q'        => 'nullable|string|max:200',
+            'per_page' => 'nullable|integer|min:1|max:50',
+            'page'     => 'nullable|integer|min:1',
+        ]);
+
+        $perPage = (int) $request->input('per_page', 20);
+        $page = (int) $request->input('page', 1);
+
+        $records = $this->confirmationService->getCandidatesForItem(
+            $item->cost_component,
+            $item->source_url,
+            $request->input('q'),
+            $perPage,
+            $page,
+        );
+
         $items = collect($records->items())->map(function (EvidenceRecord $r) {
             return [
                 'id'              => $r->id,

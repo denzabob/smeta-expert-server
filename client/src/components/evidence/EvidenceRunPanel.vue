@@ -184,6 +184,8 @@
       :mode="dialogMode"
       :loading="evidence.actionLoading.value"
       :error-message="evidence.error.value"
+      :project-id="props.projectId"
+      :run-id="evidence.selectedRun.value?.id ?? 0"
       @resolve="handleResolve"
       @skip="handleSkip"
       @manual-resolve="handleManualResolve"
