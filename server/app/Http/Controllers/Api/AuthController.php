@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\TrustedDevice;
+use App\Services\GeoIpService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -111,9 +112,14 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         $user = $request->user();
+        $clientIp = GeoIpService::getClientIp($request);
+        $isRussiaIp = GeoIpService::isRussiaIp($clientIp);
+        
         return response()->json(array_merge($user->toArray(), [
             'role' => $user->role,
             'is_admin' => $user->isAdmin(),
+            'is_russia_ip' => $isRussiaIp,
+            'client_ip' => $clientIp,
         ]));
     }
 

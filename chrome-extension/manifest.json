@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Призма — Автосбор материалов",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Сбор цен и характеристик материалов со страниц поставщиков для системы Призма",
   "permissions": [
     "activeTab",
@@ -9,9 +9,7 @@
     "scripting"
   ],
   "host_permissions": [
-    "http://localhost/*",
-    "http://127.0.0.1/*",
-    "https://*/*"
+    "https://app.prismcore.ru/*"
   ],
   "action": {
     "default_popup": "popup/popup.html",
@@ -31,14 +29,6 @@
   "background": {
     "service_worker": "background/service-worker.js"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content/content.js"],
-      "css": ["content/content.css"],
-      "run_at": "document_idle"
-    }
-  ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   }

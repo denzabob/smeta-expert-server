@@ -7,6 +7,7 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<any>(null)
   const isAuthenticated = ref(false)
   const authChecked = ref(false)  // флаг: авторизация уже проверена
+  const isRussiaIp = ref(true)  // флаг: используется ли РФ IP (по умолчанию true для безопасности)
 
   /** Пользователь авторизован, но не завершил onboarding */
   const needsOnboarding = computed(() => {
@@ -36,8 +37,9 @@ export const useAuthStore = defineStore('auth', () => {
       console.log('[AUTH] Requesting /api/me...');
       const response = await api.get('/api/me', { timeout: 5000 })
       user.value = response.data
+      isRussiaIp.value = response.data.is_russia_ip ?? true  // Сохраняем флаг IP
       isAuthenticated.value = true
-      console.log('[AUTH] ✅ Authenticated as:', response.data.email || response.data.id)
+      console.log('[AUTH] ✅ Authenticated as:', response.data.email || response.data.id, '| RU IP:', isRussiaIp.value)
     } catch (error: any) {
       console.log('[AUTH] ❌ Not authenticated:', error.response?.status || error.message)
       user.value = null
@@ -60,8 +62,9 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = null
       isAuthenticated.value = false
       authChecked.value = false
+      isRussiaIp.value = true  // Сбросить флаг при выходе
     }
   }
 
-  return { user, isAuthenticated, authChecked, needsOnboarding, checkAuth, logout }
+  return { user, isAuthenticated, authChecked, needsOnboarding, isRussiaIp, checkAuth, logout }
 })

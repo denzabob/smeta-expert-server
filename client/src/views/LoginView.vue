@@ -1,19 +1,5 @@
 <template>
   <v-container class="fill-height login-page" fluid>
-      <div class="login-prism-bg" aria-hidden="true">
-        <PrismBackground
-          animation-type="3drotate"
-          :time-scale="0.4"
-          :height="3.5"
-          :base-width="5.5"
-          :scale="2.2"
-          :hue-shift="0"
-          :color-frequency="0.25"
-          :noise="0"
-          :glow="0.5"
-        />
-      </div>
-
       <v-row class="auth-content ma-0" align="center" justify="center">
         <v-col cols="12" sm="auto" class="auth-col">
           <v-card class="login-card">
@@ -175,7 +161,6 @@ import AuthPhoneLogin from '@/components/auth/AuthPhoneLogin.vue'
 import OnboardingCompletion from '@/components/auth/OnboardingCompletion.vue'
 import YandexLoginButton from '@/components/auth/YandexLoginButton.vue'
 import PinSetupDialog from '@/components/auth/PinSetupDialog.vue'
-import PrismBackground from '@/components/effects/PrismBackground.vue'
 import { pinApi } from '@/api/pin'
 import { useAuthStore } from '@/stores/auth'
 import type { VerifyCodeResponse } from '@/api/phoneAuth'
@@ -475,12 +460,6 @@ const navigateAfterLogin = async () => {
   overflow: hidden;
   background-color: rgb(var(--v-theme-background));
   padding: 16px 12px;
-}
-
-.login-prism-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
 }
 
 .auth-content {

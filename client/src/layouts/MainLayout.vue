@@ -146,6 +146,9 @@
 
       <!-- Контент страниц -->
       <v-container fluid class="pa-4 pa-md-8">
+        <!-- Уведомление о подключении не из РФ -->
+        <GeoIpWarningBanner />
+        
         <router-view></router-view>
       </v-container>
 
@@ -170,6 +173,7 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify' // ← добавьте useTheme
 import { useAuthStore } from '@/stores/auth'
+import GeoIpWarningBanner from '@/components/GeoIpWarningBanner.vue'
 
 const authStore = useAuthStore()
 const router = useRouter()

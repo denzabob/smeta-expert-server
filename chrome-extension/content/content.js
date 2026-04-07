@@ -6,9 +6,11 @@
 (function () {
   'use strict';
 
-  // Prevent double-injection
-  if (window.__prizmContentScriptLoaded) return;
-  window.__prizmContentScriptLoaded = true;
+  // Idempotent bootstrap guard — prevents re-initialization on repeated injection.
+  // window.__PRISM_CONTENT_READY__ is reset on page navigation, so re-injection
+  // after navigation works correctly without duplicate listeners or overlays.
+  if (window.__PRISM_CONTENT_READY__) return;
+  window.__PRISM_CONTENT_READY__ = true;
 
   // ============================================================
   // State
@@ -18,6 +20,69 @@
   let hoveredElement = null;
   let capturedData = {};  // { field: { value, selector, xpath, element } }
   let capturedSchemaMapping = null; // persisted schema mapping for template saving
+
+  // Tracks all page elements whose inline styles were permanently modified by the
+  // extension (capture-marker dashed outlines). Stores pre-extension originals so
+  // they can be fully restored during reset / clear operations.
+  // Key: HTMLElement  Value: { outline: string, outlineOffset: string }
+  const styledElements = new Map();
+
+  // ============================================================
+  // Style registry helpers
+  // ============================================================
+
+  /**
+   * Save original inline style values for a page element before the extension
+   * applies a permanent capture-marker style. Only saves once — subsequent calls
+   * on the same element preserve the original (pre-extension) values.
+   */
+  function saveCaptureStyle(el) {
+    if (!styledElements.has(el)) {
+      styledElements.set(el, {
+        outline: el.style.outline,
+        outlineOffset: el.style.outlineOffset,
+      });
+    }
+  }
+
+  /**
+   * Restore inline styles for ALL tracked elements and clear the registry.
+   * Safe to call multiple times.
+   */
+  function restoreAllStyles() {
+    for (const [el, orig] of styledElements) {
+      try {
+        el.style.outline = orig.outline;
+        el.style.outlineOffset = orig.outlineOffset;
+      } catch { /* element may have been removed from DOM */ }
+    }
+    styledElements.clear();
+  }
+
+  // ============================================================
+  // Full UI destroy — safe to call repeatedly
+  // ============================================================
+
+  /**
+   * Fully restore the page to pre-extension state:
+   * - Stop capture mode (removes listeners, hover highlight)
+   * - Remove overlay and tooltip from DOM
+   * - Remove all field-marker elements
+   * - Restore all inline styles mutated by the extension
+   *
+   * Does NOT touch capturedData or capturedSchemaMapping.
+   * Safe to call when capture is not active.
+   */
+  function destroyUI() {
+    if (captureMode) stopCapture();
+    // Ensure overlay/tooltip are gone even if stopCapture wasn't the trigger
+    overlay.remove();
+    tooltip.remove();
+    // Remove all field capture markers
+    document.querySelectorAll('.prizm-captured-marker').forEach(m => m.remove());
+    // Restore all permanent style mutations made by the extension
+    restoreAllStyles();
+  }
 
   // ============================================================
   // Overlay UI for capture mode
@@ -225,10 +290,16 @@
 
   function clearHighlight() {
     if (hoveredElement) {
-      hoveredElement.style.outline = hoveredElement.__prizmOriginalOutline || '';
-      hoveredElement.style.outlineOffset = hoveredElement.__prizmOriginalOutlineOffset || '';
-      delete hoveredElement.__prizmOriginalOutline;
-      delete hoveredElement.__prizmOriginalOutlineOffset;
+      // Restore the style that was in place when we started hovering.
+      // This may be the extension's own dashed outline (capture marker) or the
+      // page's original style — both are correctly restored because we store
+      // the snapshot taken at hover-start time, not the pre-extension original.
+      const prev = hoveredElement.__prizmHoverOrig;
+      if (prev) {
+        hoveredElement.style.outline = prev.outline;
+        hoveredElement.style.outlineOffset = prev.outlineOffset;
+        delete hoveredElement.__prizmHoverOrig;
+      }
       hoveredElement = null;
     }
   }
@@ -242,8 +313,12 @@
     if (el.closest('#prizm-capture-overlay, #prizm-capture-tooltip, .prizm-captured-marker')) return;
 
     hoveredElement = el;
-    el.__prizmOriginalOutline = el.style.outline;
-    el.__prizmOriginalOutlineOffset = el.style.outlineOffset;
+    // Snapshot whatever style the element currently has (could be a capture-marker
+    // dashed outline or the page's own style) so clearHighlight can restore it exactly.
+    el.__prizmHoverOrig = {
+      outline: el.style.outline,
+      outlineOffset: el.style.outlineOffset,
+    };
 
     const color = FIELD_COLORS[activeField] || '#4F46E5';
     el.style.outline = `3px solid ${color}`;
@@ -415,16 +490,12 @@
     // Mark the element visually
     addCapturedMarker(el, activeField);
 
-    // Notify popup
+    // Notify popup. The popup may be closed (e.g. user captured via context menu)
+    // so we suppress the "Could not establish connection" error silently.
     chrome.runtime.sendMessage({
       action: 'FIELD_CAPTURED',
-      data: {
-        field: activeField,
-        value,
-        selector,
-        xpath,
-      },
-    });
+      data: { field: activeField, value, selector, xpath },
+    }).catch(() => { /* popup closed or service worker unavailable — not an error */ });
 
     stopCapture();
   }
@@ -437,10 +508,16 @@
 
   /**
    * Add a visual marker on captured elements.
+   * Saves the element's original inline styles to the registry before mutating them,
+   * so they can be restored by destroyUI / restoreAllStyles.
    */
   function addCapturedMarker(el, field) {
     // Remove previous marker for this field
     document.querySelectorAll(`.prizm-captured-marker[data-field="${field}"]`).forEach(m => m.remove());
+
+    // If this element was previously highlighted during a hover, clear hover first
+    // so we don't snapshot the temporary solid outline as the "original".
+    if (hoveredElement === el) clearHighlight();
 
     const marker = document.createElement('div');
     marker.className = 'prizm-captured-marker';
@@ -456,7 +533,9 @@
 
     document.body.appendChild(marker);
 
-    // Also give the element a subtle permanent highlight
+    // Record original style BEFORE applying the permanent dashed outline.
+    // saveCaptureStyle is idempotent: only saves once per element.
+    saveCaptureStyle(el);
     el.style.outline = `2px dashed ${FIELD_COLORS[field]}`;
     el.style.outlineOffset = '1px';
   }
@@ -552,15 +631,60 @@
   }
 
   function findArticleFromDom() {
+    // Fast path 1: structured microdata attributes with explicit content
     const schemaSku = getMetaContent('[itemprop="sku"][content]') || getMetaContent('[itemprop="mpn"][content]');
     if (schemaSku) {
       return { value: schemaSku, selector: '[itemprop="sku"]', warning: null };
     }
 
+    // Fast path 2: common labelled CSS selectors — no text scanning needed
+    const directSelectors = [
+      '[itemprop="sku"]', '[itemprop="mpn"]',
+      '[data-sku]', '[data-article]', '[data-product-code]', '[data-code]',
+      '.product-sku', '.product-article', '.product-code',
+      '.sku', '.article', '.artikul',
+      '#product-sku', '#product-article', '#product-code',
+    ];
+    for (const sel of directSelectors) {
+      try {
+        const el = document.querySelector(sel);
+        if (!el) continue;
+        const text = extractText(el).trim();
+        // Validate: short, no excess whitespace, looks like an article code
+        if (text && text.length >= 2 && text.length <= 60 && !/\s{3,}/.test(text)) {
+          return { value: text, selector: sel, warning: null };
+        }
+      } catch { /* ignore invalid selectors on unusual pages */ }
+    }
+
+    // Slow path: text-pattern scan, scoped to product-detail containers first.
+    // Fall back to body * only if no product sections found, with a node cap.
     const candidates = [];
-    const elements = document.querySelectorAll('body *');
-    for (const el of elements) {
+    let elementsToScan;
+
+    const productContainers = document.querySelectorAll(
+      '.product-details, .product-info, .product-meta, ' +
+      '.product-attributes, .product-card, .card-body, ' +
+      '[class*="detail"], [class*="product"]'
+    );
+
+    if (productContainers.length > 0) {
+      const seen = new Set();
+      elementsToScan = [];
+      productContainers.forEach(root => {
+        root.querySelectorAll('*').forEach(el => {
+          if (!seen.has(el)) { seen.add(el); elementsToScan.push(el); }
+        });
+      });
+    } else {
+      // No product containers found — limit full-body scan to 1500 nodes
+      elementsToScan = Array.from(document.querySelectorAll('body *')).slice(0, 1500);
+    }
+
+    for (const el of elementsToScan) {
       if (candidates.length >= 4) break;
+      // Skip container elements: prefer leaf-ish nodes with short text
+      if (el.children.length > 5) continue;
       const text = (extractText(el) || '').replace(/\s+/g, ' ').trim();
       if (!text || text.length > 120) continue;
       const match = text.match(/(?:артикул|sku|код(?:\s+товара)?)\s*[:№]?\s*([A-Za-zА-Яа-я0-9\-_./]{2,})/i);
@@ -942,11 +1066,18 @@
         break;
 
       case 'CLEAR_CAPTURED_DATA':
+        // Full visual cleanup first (stops capture, removes markers, restores styles)
+        destroyUI();
         capturedData = {};
         capturedSchemaMapping = null;
-        // Remove all markers
-        document.querySelectorAll('.prizm-captured-marker').forEach(m => m.remove());
         sendResponse({ cleared: true });
+        break;
+
+      case 'RESET_EXTENSION_UI':
+        // Restore page to pre-extension visual state without clearing captured data.
+        // Use this to recover from partial failures or drift without losing user work.
+        destroyUI();
+        sendResponse({ reset: true });
         break;
 
       case 'GET_PAGE_INFO':

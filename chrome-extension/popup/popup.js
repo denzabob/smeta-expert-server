@@ -148,6 +148,105 @@
     setTimeout(() => el.classList.add('hidden'), 5000);
   }
 
+  function escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ============================================================
+  // Content script injection — on-demand, user-invoked only
+  // ============================================================
+
+  const RESTRICTED_URL_PATTERNS = [
+    /^chrome:\/\//,
+    /^chrome-extension:\/\//,
+    /^https:\/\/chrome\.google\.com\/webstore/,
+    /^about:/,
+    /^data:/,
+    /^blob:/,
+    /^javascript:/,
+  ];
+
+  function isRestrictedPage(url) {
+    if (!url) return true;
+    return RESTRICTED_URL_PATTERNS.some(p => p.test(url));
+  }
+
+  function getRestrictedPageMessage(url) {
+    if (!url) return 'URL страницы не определён. Откройте карточку товара поставщика.';
+    if (/^chrome:\/\//.test(url)) return 'Расширение не работает на служебных страницах Chrome.';
+    if (/^chrome-extension:\/\//.test(url)) return 'Расширение не работает на страницах расширений.';
+    if (/^https:\/\/chrome\.google\.com\/webstore/.test(url)) return 'Расширение не работает на странице Chrome Web Store.';
+    return 'Эта страница не поддерживается. Откройте карточку товара поставщика.';
+  }
+
+  /**
+   * Ensure content script is injected into the current tab.
+   * Safe to call multiple times — the content script has an idempotent guard.
+   * Must only be called while the popup is open (activeTab grant is active).
+   *
+   * Throws an Error with .code property on failure:
+   *   'RESTRICTED_PAGE' — page cannot be scripted
+   *   'INJECT_FAILED'   — scripting API rejected the injection
+   *   'PING_FAILED'     — script injected but did not respond
+   */
+  async function ensureContentScript() {
+    const url = currentTab?.url || '';
+
+    if (isRestrictedPage(url)) {
+      throw Object.assign(
+        new Error(getRestrictedPageMessage(url)),
+        { code: 'RESTRICTED_PAGE' }
+      );
+    }
+
+    // 1. Check if already injected (same session, popup reopened)
+    try {
+      const pong = await sendToContent('PING', {}, 1200);
+      if (pong?.pong) return; // Already active
+    } catch { /* not yet injected */ }
+
+    // 2. Inject JS + CSS using activeTab grant
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: currentTab.id },
+        files: ['content/content.js'],
+      });
+      await chrome.scripting.insertCSS({
+        target: { tabId: currentTab.id },
+        files: ['content/content.css'],
+      });
+      // Brief pause for the script's synchronous initialization
+      await new Promise(r => setTimeout(r, 150));
+    } catch (err) {
+      const msg = err.message || '';
+      if (/Cannot access|blocked|denied/i.test(msg)) {
+        throw Object.assign(
+          new Error('Страница заблокировала доступ расширения. Попробуйте обновить страницу.'),
+          { code: 'INJECT_FAILED' }
+        );
+      }
+      throw Object.assign(
+        new Error('Не удалось подключиться к странице: ' + msg),
+        { code: 'INJECT_FAILED' }
+      );
+    }
+
+    // 3. Verify the script is responding
+    try {
+      const pong = await sendToContent('PING', {}, 1500);
+      if (!pong?.pong) throw new Error('no pong');
+    } catch {
+      throw Object.assign(
+        new Error('Страница не ответила после подключения. Обновите страницу и попробуйте снова.'),
+        { code: 'PING_FAILED' }
+      );
+    }
+  }
+
   function truncate(str, len = 60) {
     if (!str) return '';
     return str.length > len ? str.substring(0, len) + '…' : str;
@@ -247,8 +346,13 @@
   // ============================================================
 
   async function init() {
-    // Очищаем бейдж при открытии попапа
-    chrome.action.setBadgeText({ text: '' });
+    // Clear badge and reset the session-scoped capture counter on every popup open.
+    // Using CLEAR_BADGE ensures both the visual badge AND chrome.storage.session
+    // counter stay in sync (MV3-safe — globalThis is not used for badge tracking).
+    await sendToBackground('CLEAR_BADGE').catch(() => {
+      // Service worker may still be starting up; fall back to direct badge clear.
+      chrome.action.setBadgeText({ text: '' });
+    });
     setAdvancedMode(false);
 
     // Get current tab
@@ -379,27 +483,31 @@
     autoFillWarnings = [];
     if (pageLoadingStatus) pageLoadingStatus.classList.remove('hidden');
 
-    let contentReady = false;
-    let retries = 0;
-    while (!contentReady && retries < 5) {
-      try {
-        const pong = await sendToContent('PING', {}, 1500);
-        contentReady = !!pong?.pong;
-      } catch {
-        retries++;
-        if (retries < 5) {
-          pageDomain.innerHTML = '<span class="loading-dots">Страница загружается</span>';
-          await new Promise((r) => setTimeout(r, 800));
-        }
-      }
+    // Detect restricted pages (chrome://, extension pages, Web Store) before scripting
+    const currentUrl = currentTab?.url || '';
+    if (isRestrictedPage(currentUrl)) {
+      pageDomain.textContent = 'Страница не поддерживается';
+      pageUrl.textContent = currentUrl || '—';
+      if (pageLoadingStatus) pageLoadingStatus.classList.add('hidden');
+      templateStatus.innerHTML = '<span class="no-template">Откройте карточку товара поставщика</span>';
+      setSimpleStatus(getRestrictedPageMessage(currentUrl), 'error');
+      return;
     }
 
-    if (!contentReady) {
-      pageDomain.textContent = 'Страница не отвечает';
-      pageUrl.textContent = currentTab?.url || '—';
+    // Inject content script on demand — activeTab grant is active because user opened the popup
+    pageDomain.innerHTML = '<span class="loading-dots">Подключаемся к странице</span>';
+    setSimpleStatus('Подключаемся к странице…');
+    try {
+      await ensureContentScript();
+    } catch (err) {
+      pageDomain.textContent = 'Не удалось подключиться';
+      pageUrl.textContent = currentUrl || '—';
       if (pageLoadingStatus) pageLoadingStatus.classList.add('hidden');
-      templateStatus.innerHTML = '<span class="no-template">Перезагрузите страницу и попробуйте снова</span>';
-      setSimpleStatus('Не удалось подключиться к странице. Обновите страницу и откройте расширение снова.', 'error');
+      const hint = err.code === 'RESTRICTED_PAGE'
+        ? 'Откройте карточку товара поставщика'
+        : 'Попробуйте обновить страницу';
+      templateStatus.innerHTML = '<span class="no-template">' + hint + '</span>';
+      setSimpleStatus(err.message || 'Не удалось подключиться к странице.', 'error');
       return;
     }
 
@@ -895,7 +1003,7 @@
     authError.classList.add('hidden');
 
     try {
-      await sendToBackground('CONFIGURE', { token });
+      await sendToBackground('CONFIGURE', { baseUrl: null, token });
       const me = await sendToBackground('GET_ME');
       userInfo = me;
       chrome.storage.local.set({ cachedUser: me });
@@ -911,7 +1019,7 @@
   }
 
   async function handleDisconnect() {
-    await sendToBackground('CONFIGURE', { token: '' });
+    await sendToBackground('CONFIGURE', { baseUrl: null, token: '' });
     await chrome.storage.local.remove('cachedUser');
     userInfo = null;
     showAuthUI();
@@ -922,35 +1030,12 @@
   // ============================================================
 
   async function startFieldCapture(field) {
-    // 1. Проверяем, жив ли content script
-    let contentReady = false;
+    // Ensure content script is available (inject if not yet present for this tab)
     try {
-      const pong = await sendToContent('PING');
-      contentReady = !!pong?.pong;
-    } catch {
-      contentReady = false;
-    }
-
-    // 2. Если content script не загружен — инжектим программно
-    if (!contentReady) {
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: currentTab.id },
-          files: ['content/content.js'],
-        });
-        await chrome.scripting.insertCSS({
-          target: { tabId: currentTab.id },
-          files: ['content/content.css'],
-        });
-        // Ждём инициализацию скрипта
-        await new Promise(r => setTimeout(r, 250));
-      } catch (err) {
-        showResult(captureResult,
-          'Не удалось подключиться к странице. Обновите страницу и попробуйте снова.',
-          'error'
-        );
-        return;
-      }
+      await ensureContentScript();
+    } catch (err) {
+      showResult(captureResult, err.message || 'Не удалось подключиться к странице.', 'error');
+      return;
     }
 
     // 3. Запускаем режим захвата
@@ -1208,15 +1293,19 @@
     }
 
     btnAddMaterial.disabled = true;
-    btnAddMaterial.innerHTML = '<span class="spinner"></span> Скриншот...';
+    btnAddMaterial.innerHTML = '<span class="spinner"></span> Подготовка...';
 
-    // Phase 1: capture screenshot (non-blocking failure)
+    // Phase 1: capture a screenshot of the visible page area for evidence.
+    // Triggered by explicit user click on "Добавить материал".
+    // Non-blocking: if capture fails the material is still submitted without it.
     let screenshotBlob = null;
+    setSimpleStatus('Делаем снимок страницы для доказательной базы...');
+    btnAddMaterial.innerHTML = '<span class="spinner"></span> Снимок...';
     try {
       const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
       screenshotBlob = await (await fetch(dataUrl)).blob();
     } catch (screenshotErr) {
-      console.warn('Screenshot capture failed:', screenshotErr);
+      console.warn('Screenshot capture failed — proceeding without it:', screenshotErr);
     }
 
     // Phase 2: build FormData and send
