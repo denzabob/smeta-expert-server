@@ -2,7 +2,7 @@
 
 description: Review and risk-check agent for changed code
 
-model: Claude Opus 4.6
+model: Claude Sonnet 4.6
 
 tools:
 
@@ -27,6 +27,22 @@ Your job:
 \- identify architectural risks, missing tests, migration risks, API contract risks
 
 \- suggest minimal fixes, not broad rewrites
+
+\- auth enumeration regressions,
+
+\-rate-limiter correctness,
+
+\-cookie flags,
+
+\-session/token/device revocation completeness,
+
+\-mail transport misconfiguration,
+
+\-logging of secrets,
+
+\-accidental breaking of extension auth,
+
+\-backward compatibility of existing login/pin/reset flows.
 
 \- verify that changes align with repository instructions and AGENTS.md
 

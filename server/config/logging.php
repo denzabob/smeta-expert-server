@@ -127,6 +127,16 @@ return [
             'path' => storage_path('logs/laravel.log'),
         ],
 
+        // Structured audit trail for auth-sensitive events (login, password, devices).
+        // Rotated daily, retained for 90 days. Never contains plaintext secrets.
+        'auth-audit' => [
+            'driver'               => 'daily',
+            'path'                 => storage_path('logs/auth-audit.log'),
+            'level'                => 'info',
+            'days'                 => 90,
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];

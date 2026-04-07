@@ -2,7 +2,7 @@
 
 description: Focused implementation agent for bounded code changes
 
-model: Claude Opus 4.6
+model: Claude Sonnet 4.6
 
 tools:
 

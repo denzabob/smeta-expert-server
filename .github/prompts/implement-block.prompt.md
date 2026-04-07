@@ -50,3 +50,23 @@ After implementation, return:
 
 5\. Suggested next block
 
+
+
+Acceptance criteria section before coding
+
+Out-of-scope confirmation
+
+Evidence required after coding:
+
+exact endpoints changed
+
+exact middleware/config changes
+
+exact tests added
+
+exact manual reproduction steps
+
+No silent scope expansion
+
+If implementation reveals hidden dependency, stop and report instead of broadening block
+

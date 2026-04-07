@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\TrustedDevice;
 use App\Models\User;
+use App\Services\AuthAuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class PinAuthController extends Controller
 {
+    public function __construct(private readonly AuthAuditService $audit) {}
     /**
      * GET /api/auth/pin/status
      *
@@ -128,15 +130,18 @@ class PinAuthController extends Controller
             // Если слишком много попыток — отзываем устройство
             if ($user->pin_attempts >= 10) {
                 $device->revoke();
+                $this->audit->trustedDeviceRevoked($user->id, $device->id, $request);
+                $this->audit->pinLoginFailed($user->id, $request, ['reason' => 'device_auto_revoked_after_max_attempts']);
                 return response()->json([
-                    'message' => 'Устройство отозвано из-за множества неудачных попыток. Войдите по паролю.',
+                    'message'        => 'Устройство отозвано из-за множества неудачных попыток. Войдите по паролю.',
                     'device_revoked' => true,
                 ], 403);
             }
 
             $remaining = max(0, 5 - $user->pin_attempts);
+            $this->audit->pinLoginFailed($user->id, $request, ['attempts_remaining' => $remaining]);
             return response()->json([
-                'message' => 'Неверный PIN-код',
+                'message'            => 'Неверный PIN-код',
                 'attempts_remaining' => $remaining,
             ], 401);
         }
@@ -148,15 +153,17 @@ class PinAuthController extends Controller
         // Обновить last_used_at и ip
         $device->update([
             'last_used_at' => now(),
-            'ip_last' => $request->ip(),
+            'ip_last'      => $request->ip(),
         ]);
 
         // Создать сессию
         Auth::login($user);
         $request->session()->regenerate();
 
-        // Single-session: инвалидировать остальные сеансы
+        // Single-session: инвалидировать все сеансы кроме текущего
         $this->enforceSingleSession($user, $request->session()->getId());
+
+        $this->audit->pinLoginSuccess($user->id, $request);
 
         return response()->json($user);
     }
@@ -264,6 +271,8 @@ class PinAuthController extends Controller
 
         $device->revoke();
 
+        $this->audit->trustedDeviceRevoked($request->user()->id, $device->id, $request);
+
         return response()->json(['message' => 'Устройство отозвано']);
     }
 
@@ -283,10 +292,16 @@ class PinAuthController extends Controller
             }
         }
 
-        // Удаляем cookies
+        // Delete cookies using parameters that EXACTLY match issuance:
+        // same path '/', domain null, Secure flag, HttpOnly, SameSite=Lax.
+        // Using cookie()->forget() is insufficient because it does not propagate
+        // the Secure flag, which means browsers that enforce secure-cookie deletion
+        // (Chrome 80+) will ignore the deletion header in production (HTTPS).
+        $secure = !app()->environment('local', 'testing');
+
         return response()->json(['message' => 'Устройство забыто'])
-            ->withCookie(cookie()->forget('tdid'))
-            ->withCookie(cookie()->forget('tds'));
+            ->withCookie(cookie('tdid', '', -60, '/', null, $secure, true, false, 'Lax'))
+            ->withCookie(cookie('tds',  '', -60, '/', null, $secure, true, false, 'Lax'));
     }
 
     /**
@@ -478,11 +493,14 @@ class PinAuthController extends Controller
             $request->ip()
         );
 
-        $cookieLifetime = 60 * 24 * 180; // 180 дней в минутах
+        $cookieLifetime = 60 * 24 * 180; // 180 days in minutes
+        // Secure flag: true in production (HTTPS), false in local/testing so HTTP dev works.
+        // Both cookies are HttpOnly — tds (device secret) must never be readable by JS.
+        $secure = !app()->environment('local', 'testing');
 
         return [
-            'tdid_cookie' => cookie('tdid', $result['device_id'], $cookieLifetime, '/', null, true, true, false, 'Lax'),
-            'tds_cookie' => cookie('tds', $result['device_secret'], $cookieLifetime, '/', null, true, true, false, 'Lax'),
+            'tdid_cookie' => cookie('tdid', $result['device_id'],     $cookieLifetime, '/', null, $secure, true, false, 'Lax'),
+            'tds_cookie'  => cookie('tds',  $result['device_secret'], $cookieLifetime, '/', null, $secure, true, false, 'Lax'),
         ];
     }
 

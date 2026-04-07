@@ -66,11 +66,13 @@ use App\Http\Controllers\Api\MaterialCatalogController;
 Route::post('login', [AuthController::class, 'login']); // ← без middleware, Sanctum сам добавит
 
 // ========== Chrome Extension Token Auth ==========
-// Без stateful-middleware (нет сессии/cookie — только Bearer token)
+// Без stateful-middleware (нет сессии/cookie — только Bearer token).
+// Rate-limited to 10 attempts/minute to protect against credential stuffing.
+// CSRF exemption is not needed here: no session cookie is used.
 Route::withoutMiddleware([
     \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
     \App\Http\Middleware\EnforceSingleSession::class,
-])->group(function () {
+])->middleware(['throttle:10,1'])->group(function () {
     Route::post('chrome/auth/token', [\App\Http\Controllers\Api\ChromeExtensionController::class, 'issueToken']);
 });
 
