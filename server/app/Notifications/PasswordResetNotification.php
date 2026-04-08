@@ -33,7 +33,7 @@ class PasswordResetNotification extends Notification implements ShouldQueue
         $url = $this->resetUrl($notifiable);
 
         return (new MailMessage)
-            ->subject('Сброс пароля – PrismCore')
+            ->subject('Запрос на сброс пароля – Призма')
             ->view('emails.auth.reset-password', ['url' => $url]);
     }
 

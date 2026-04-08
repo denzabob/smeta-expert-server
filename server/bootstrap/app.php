@@ -16,6 +16,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Trust the nginx reverse proxy so that X-Forwarded-Proto: https is respected.
+        // Without this, Laravel ignores the forwarded scheme and sees all requests as http://,
+        // which breaks ValidateSignature on the email verification route (403 on link click).
+        $middleware->trustProxies(at: '*');
+
         $middleware->statefulApi();  // ← Должно быть уже добавлено ранее
 
         // Используем кастомный auth-мидлвар, чтобы API не пытался редиректить на login.

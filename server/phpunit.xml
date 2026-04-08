@@ -31,6 +31,14 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <!-- Override production values that would trigger Sanctum stateful/CSRF in tests.
+             Tests use actingAs() + postJson() — no browser session or CSRF token needed.
+             APP_URL set to localhost so test request host never matches production
+             SANCTUM_STATEFUL_DOMAINS; SESSION_SECURE_COOKIE/DOMAIN kept HTTP-safe. -->
+        <env name="APP_URL" value="http://localhost"/>
+        <env name="SANCTUM_STATEFUL_DOMAINS" value="localhost,127.0.0.1,localhost:5173"/>
+        <env name="SESSION_SECURE_COOKIE" value="false"/>
+        <env name="SESSION_DOMAIN" value=""/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

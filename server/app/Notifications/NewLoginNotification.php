@@ -40,7 +40,7 @@ class NewLoginNotification extends Notification implements ShouldQueue
         $resetUrl     = $frontendBase . '/forgot-password';
 
         return (new MailMessage)
-            ->subject('Вход в аккаунт – PrismCore')
+            ->subject('Вход в аккаунт – Призма')
             ->view('emails.auth.new-login', [
                 'time'     => $this->loginAt->format('d.m.Y H:i') . ' UTC',
                 'ip'       => $this->ip,

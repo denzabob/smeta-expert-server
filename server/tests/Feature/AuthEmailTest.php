@@ -58,7 +58,7 @@ class AuthEmailTest extends TestCase
         $mail = $notification->toMail($user);
 
         $this->assertEquals('emails.auth.verify', $mail->view);
-        $this->assertStringContainsString('PrismCore', $mail->subject);
+        $this->assertStringContainsString('Призма', $mail->subject);
     }
 
     public function test_reset_password_notification_uses_custom_branded_view(): void
@@ -69,7 +69,7 @@ class AuthEmailTest extends TestCase
         $mail = $notification->toMail($user);
 
         $this->assertEquals('emails.auth.reset-password', $mail->view);
-        $this->assertStringContainsString('PrismCore', $mail->subject);
+        $this->assertStringContainsString('Призма', $mail->subject);
     }
 
     public function test_password_changed_notification_uses_custom_branded_view(): void
@@ -80,7 +80,7 @@ class AuthEmailTest extends TestCase
         $mail = $notification->toMail($user);
 
         $this->assertEquals('emails.auth.password-changed', $mail->view);
-        $this->assertStringContainsString('PrismCore', $mail->subject);
+        $this->assertStringContainsString('Призма', $mail->subject);
     }
 
     public function test_new_login_notification_uses_custom_branded_view(): void
@@ -91,7 +91,7 @@ class AuthEmailTest extends TestCase
         $mail = $notification->toMail($user);
 
         $this->assertEquals('emails.auth.new-login', $mail->view);
-        $this->assertStringContainsString('PrismCore', $mail->subject);
+        $this->assertStringContainsString('Призма', $mail->subject);
     }
 
     // ─── 2. Queue compliance ─────────────────────────────────────────────────

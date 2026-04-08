@@ -38,7 +38,7 @@ class PasswordChangedNotification extends Notification implements ShouldQueue
         $resetUrl     = $frontendBase . '/forgot-password';
 
         return (new MailMessage)
-            ->subject('Пароль изменён – PrismCore')
+            ->subject('Пароль изменён – Призма')
             ->view('emails.auth.password-changed', [
                 'isReset'  => $this->isReset,
                 'resetUrl' => $resetUrl,

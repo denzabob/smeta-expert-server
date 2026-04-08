@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\URL;
  *
  * Queued delivery via the database queue driver.
  * Uses the branded PrismCore Blade template (resources/views/emails/auth/verify.blade.php).
- * Signed URL expires in 60 minutes.
+ * Signed URL expires in 5 minutes.
  */
 class VerifyEmailNotification extends Notification implements ShouldQueue
 {
@@ -29,7 +29,7 @@ class VerifyEmailNotification extends Notification implements ShouldQueue
         $url = $this->verificationUrl($notifiable);
 
         return (new MailMessage)
-            ->subject('Подтверждение email – PrismCore')
+            ->subject('Подтверждение email – Призма')
             ->view('emails.auth.verify', ['url' => $url]);
     }
 
