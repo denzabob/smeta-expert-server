@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Notifications\PasswordResetNotification;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -80,6 +81,15 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isAdmin(): bool
     {
         return in_array($this->role, ['admin', 'superadmin']) || (int) $this->id === 1;
+    }
+
+    /**
+     * Override the default ResetPassword notification with our branded, queued version.
+     * Called by Password::sendResetLink() → Password::broker()->sendResetLink().
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new PasswordResetNotification($token));
     }
 
     public function isSuperAdmin(): bool

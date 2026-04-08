@@ -6,6 +6,7 @@ use App\Models\TrustedDevice;
 use App\Models\User;
 use App\Services\AuthAuditService;
 use App\Services\AuthMailService;
+use App\Notifications\PasswordResetNotification;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
@@ -354,9 +355,9 @@ class AuthSecurityTest extends TestCase
     // ─── 7. Password-reset email path proof ─────────────────────────────────
 
     /**
-     * Prove that POST /api/forgot-password triggers a real ResetPassword notification.
+     * Prove that POST /api/forgot-password triggers the branded PasswordResetNotification.
      * AuthMailService is the call path: controller → AuthMailService → Password broker
-     * → User::notify(ResetPassword notification).
+     * → User::sendPasswordResetNotification() → User::notify(PasswordResetNotification).
      */
     public function test_forgot_password_sends_reset_notification_via_auth_mail_service(): void
     {
@@ -367,9 +368,9 @@ class AuthSecurityTest extends TestCase
         $this->postJson('/api/forgot-password', ['email' => $user->email])
              ->assertOk();
 
-        // The ResetPassword notification must be dispatched through AuthMailService
-        // → Password::sendResetLink() → User::notify(new ResetPassword($token)).
-        Notification::assertSentTo($user, ResetPassword::class);
+        // The branded PasswordResetNotification must be dispatched through AuthMailService
+        // → Password::sendResetLink() → User::sendPasswordResetNotification() → PasswordResetNotification.
+        Notification::assertSentTo($user, PasswordResetNotification::class);
     }
 
     public function test_forgot_password_does_not_send_notification_for_nonexistent_email(): void
@@ -389,12 +390,20 @@ class AuthSecurityTest extends TestCase
      */
     public function test_auth_mail_service_is_called_during_forgot_password(): void
     {
+        // Use a unique email that is guaranteed not to exist (not even as unverified).
+        // Hard-coded addresses like test@example.com may exist in shared dev databases,
+        // and if they are unverified our new code routes to VerifyEmailNotification
+        // instead of sendPasswordResetLink — causing a false failure.
+        Notification::fake();
+
         $mail = $this->mock(AuthMailService::class);
         $mail->shouldReceive('sendPasswordResetLink')->once();
 
         $this->mock(AuthAuditService::class)->shouldIgnoreMissing();
 
-        $this->postJson('/api/forgot-password', ['email' => 'test@example.com'])
+        $email = 'wiring_probe_' . uniqid() . '@example.com';
+
+        $this->postJson('/api/forgot-password', ['email' => $email])
              ->assertOk();
     }
 

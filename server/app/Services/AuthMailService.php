@@ -2,44 +2,33 @@
 
 namespace App\Services;
 
-use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\Facades\Password;
 
 /**
- * Centralized mail dispatch for auth-related emails.
+ * Centralized dispatch for auth-related email flows.
  *
- * Currently wraps Laravel's built-in password-reset notification.
- * Extend this class in later blocks to add:
- *   - email verification
- *   - login-from-new-device alerts
- *   - account-locked notices
+ * Password reset: delegates to Password::sendResetLink() which calls
+ * User::sendPasswordResetNotification($token) → PasswordResetNotification.
+ * That notification is queued, branded in Russian, and uses the SPA reset URL.
  *
- * All sending goes through the configured MAIL_MAILER (see .env / config/mail.php).
- * Set MAIL_MAILER=smtp + real credentials for production delivery.
- * Set MAIL_MAILER=log for local development (emails appear in storage/logs/laravel.log).
+ * Anti-enumeration: always returns true regardless of whether the email
+ * is registered — callers must not reveal that distinction to users.
  */
 class AuthMailService
 {
     /**
-     * Send a password reset link to the given email address.
+     * Trigger a password reset email for the given address.
      *
-     * Uses Laravel's Password broker so the token is managed and throttled
-     * by the framework. The reset URL is built from FRONTEND_URL env var.
-     *
-     * Anti-enumeration: always returns true regardless of whether the email
-     * is registered — callers must not reveal that distinction to users.
+     * The URL and branding are handled inside PasswordResetNotification.
+     * The $frontendBase parameter is kept for backward compatibility.
      */
     public function sendPasswordResetLink(string $email, string $frontendBase): bool
     {
-        ResetPassword::createUrlUsing(function ($notifiable, string $token) use ($frontendBase) {
-            return rtrim($frontendBase, '/') . '/reset-password?token=' . $token
-                . '&email=' . urlencode($notifiable->getEmailForPasswordReset());
-        });
+        // Password::sendResetLink() finds the user and calls
+        // User::sendPasswordResetNotification($token) which dispatches
+        // App\Notifications\PasswordResetNotification (queued, branded).
+        Password::sendResetLink(['email' => $email]);
 
-        $status = Password::sendResetLink(['email' => $email]);
-
-        // Returns true even for non-existent emails (anti-enumeration).
         return true;
     }
 }

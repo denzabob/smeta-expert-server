@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Notifications\PasswordChangedNotification;
+use App\Notifications\VerifyEmailNotification;
 use App\Services\AuthAuditService;
 use App\Services\AuthMailService;
 use Illuminate\Auth\Events\PasswordReset;
@@ -33,13 +35,24 @@ class PasswordResetController extends Controller
             'email' => ['required', 'email'],
         ]);
 
+        $email = mb_strtolower(trim((string) $request->input('email')));
         $frontendBase = $this->resolveFrontendBase($request);
 
-        // Delegate to AuthMailService — centralised auth mail layer.
-        // Anti-enumeration is handled inside the service: always returns true.
-        $this->mail->sendPasswordResetLink((string) $request->input('email'), $frontendBase);
+        // If the account is found but not yet verified, send a verification email
+        // instead of a password reset link.  The user should prove email ownership
+        // (via verification) before they can reset the password.
+        // Anti-enumeration is maintained: the response is always identical.
+        $user = User::whereRaw('LOWER(email) = ?', [$email])->first();
 
-        // Log at the same point regardless of whether the email exists.
+        if ($user && !$user->hasVerifiedEmail()) {
+            $user->notify(new VerifyEmailNotification());
+            $this->audit->verificationResent($user->id, $request, ['trigger' => 'forgot_password_unverified']);
+        } else {
+            // Verified or non-existent: standard reset link flow via AuthMailService.
+            $this->mail->sendPasswordResetLink($email, $frontendBase);
+        }
+
+        // Log at the same point regardless of branch (anti-enumeration).
         $this->audit->passwordResetRequested($request);
 
         return response()->json([
@@ -82,6 +95,12 @@ class PasswordResetController extends Controller
                 $user->activeTrustedDevices()->update(['revoked_at' => now()]);
 
                 event(new PasswordReset($user));
+
+                // Notify the account owner that their password was reset.
+                // Sent regardless of who initiated it — acts as a security confirmation.
+                if ($user->email) {
+                    $user->notify(new PasswordChangedNotification(isReset: true));
+                }
 
                 $this->audit->passwordResetCompleted($user->id, $request, [
                     'sessions_revoked' => true,

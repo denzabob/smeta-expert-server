@@ -63,7 +63,8 @@ use App\Http\Middleware\InternalOnlyMiddleware;
 use App\Http\Controllers\Api\MaterialCatalogController;
 
 // Публичные маршруты
-Route::post('login', [AuthController::class, 'login']); // ← без middleware, Sanctum сам добавит
+Route::post('login', [AuthController::class, 'login']);
+Route::post('register', [AuthController::class, 'register']);
 
 // ========== Chrome Extension Token Auth ==========
 // Без stateful-middleware (нет сессии/cookie — только Bearer token).
@@ -105,10 +106,15 @@ Route::middleware('web')->group(function () {
 Route::post('forgot-password', [PasswordResetController::class, 'sendResetLink']);
 Route::post('reset-password', [PasswordResetController::class, 'resetPassword']);
 
-// ========== Email Verification (signed URL — публичный) ==========
+// ========== Email Verification (публичные) ==========
+// Signed URL redirect from verification email (stateless, no session required).
 Route::get('email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])
     ->middleware('signed')
     ->name('verification.email.verify');
+
+// Public resend for users who cannot log in yet (unverified state).
+// Rate-limited; anti-enumeration: always 200 regardless of email existence.
+Route::post('email/resend-verification', [EmailVerificationController::class, 'resendVerification']);
 
 Route::post('/parser/materials', [ParserMaterialController::class, 'store']);
 Route::post('/parser/materials/batch', [ParserMaterialController::class, 'storeBatch']);

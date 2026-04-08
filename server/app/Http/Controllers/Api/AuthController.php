@@ -4,8 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\TrustedDevice;
+use App\Models\User;
+use App\Notifications\NewLoginNotification;
+use App\Notifications\PasswordChangedNotification;
+use App\Notifications\VerifyEmailNotification;
 use App\Services\AuthAuditService;
 use App\Services\GeoIpService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +20,85 @@ use Illuminate\Support\Facades\RateLimiter;
 class AuthController extends Controller
 {
     public function __construct(private readonly AuthAuditService $audit) {}
+
+    /**
+     * POST /api/register
+     *
+     * Create a new email+password account in the unverified state and send
+     * a verification email.
+     *
+     * Duplicate-safe:
+     *   - Verified email already exists → anti-enumeration 200, no new record.
+     *   - Unverified email already exists → resend verification, no new record.
+     *   - Soft-deleted account → anti-enumeration 200, no action.
+     *
+     * Anti-enumeration: success message is identical in all non-error cases.
+     */
+    public function register(Request $request): JsonResponse
+    {
+        $request->validate([
+            'name'                  => ['nullable', 'string', 'max:255'],
+            'email'                 => ['required', 'email', 'max:255'],
+            'password'              => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $email = mb_strtolower(trim((string) $request->input('email')));
+
+        // Per-email+IP rate limit: 5 attempts / 60 s (covers repeated registration / resend spam).
+        $rateLimitKey = 'register:' . hash('sha256', $email) . ':' . $request->ip();
+        if (RateLimiter::tooManyAttempts($rateLimitKey, 5)) {
+            return response()->json([
+                'message' => 'Слишком много запросов. Попробуйте позже.',
+                'retry_after' => RateLimiter::availableIn($rateLimitKey),
+            ], 429);
+        }
+        RateLimiter::hit($rateLimitKey, 60);
+
+        // Identical message for all non-error outcomes (anti-enumeration).
+        $antiEnumResponse = fn () => response()->json([
+            'message'                     => 'Проверьте email — письмо с инструкциями отправлено.',
+            'email_verification_required' => true,
+        ], 200);
+
+        $existing = User::withTrashed()->whereRaw('LOWER(email) = ?', [$email])->first();
+
+        if ($existing) {
+            if ($existing->trashed()) {
+                // Soft-deleted account: treat as non-existent for anti-enumeration.
+                $this->audit->registrationCreated(null, $request, ['result' => 'email_soft_deleted']);
+                return $antiEnumResponse();
+            }
+
+            if ($existing->hasVerifiedEmail()) {
+                // Verified account exists: no new record, no disclosure.
+                $this->audit->registrationCreated(null, $request, ['result' => 'email_already_verified']);
+                return $antiEnumResponse();
+            }
+
+            // Unverified account exists: resend verification, do NOT create a duplicate.
+            $existing->notify(new VerifyEmailNotification());
+            $this->audit->verificationResent($existing->id, $request, ['trigger' => 'duplicate_register']);
+            return $antiEnumResponse();
+        }
+
+        // ── Create new unverified account ──────────────────────────────────
+        $user = User::create([
+            'name'              => trim((string) $request->input('name', '')),
+            'email'             => $email,
+            'password'          => Hash::make((string) $request->input('password')),
+            'email_verified_at' => null, // explicitly unverified
+        ]);
+
+        $user->notify(new VerifyEmailNotification());
+
+        $this->audit->registrationCreated($user->id, $request);
+        $this->audit->verificationSent($user->id, $request);
+
+        return response()->json([
+            'message'                     => 'Аккаунт создан. Проверьте email для подтверждения.',
+            'email_verification_required' => true,
+        ], 201);
+    }
 
     /**
      * Handle a login request to the application.
@@ -76,6 +160,21 @@ class AuthController extends Controller
             ], 403);
         }
 
+        // ── Email verification gate ────────────────────────────────────────
+        // Unverified accounts may not complete the session-based login flow.
+        // The frontend should offer a resend-verification action in this state.
+        if (!$user->hasVerifiedEmail()) {
+            Auth::guard('web')->logout();
+            if ($request->hasSession()) {
+                $request->session()->invalidate();
+            }
+            $this->audit->loginBlockedUnverifiedEmail($user->id, $request);
+            return response()->json([
+                'message' => 'Подтвердите email для входа. Проверьте почту или запросите письмо повторно.',
+                'error'   => 'email_unverified',
+            ], 403);
+        }
+
         // ── Success ─────────────────────────────────────────────────────────
         RateLimiter::clear($rateLimitKey);
 
@@ -106,6 +205,19 @@ class AuthController extends Controller
         }
 
         $this->audit->loginSuccess($user->id, $request);
+
+        // ── New-login security alert ───────────────────────────────────────────
+        // Notify account owner of every login that does not carry a recognized
+        // trusted-device cookie — i.e., any login from an unfamiliar browser.
+        // This is notification-only and does not block or delay the login.
+        if (!$hasTrustedDevice && $user->email) {
+            $user->notify(new NewLoginNotification(
+                (string) $request->ip(),
+                (string) $request->userAgent(),
+                now(),
+            ));
+            $this->audit->newLoginAlertSent($user->id, $request);
+        }
 
         $responseData = $user->toArray();
         $responseData['pin_enabled']            = (bool) $user->pin_enabled;
@@ -222,6 +334,11 @@ class AuthController extends Controller
             'devices_revoked'  => $deviceCount,
         ]);
 
+        if ($user->email) {
+            $user->notify(new PasswordChangedNotification());
+            $this->audit->passwordChangedEmailSent($user->id, $request);
+        }
+
         return response()->json(['message' => 'Пароль успешно изменён']);
     }
 
@@ -280,6 +397,11 @@ class AuthController extends Controller
             'tokens_revoked'   => $tokenCount,
             'devices_revoked'  => $deviceCount,
         ]);
+
+        if ($user->email) {
+            $user->notify(new PasswordChangedNotification());
+            $this->audit->passwordChangedEmailSent($user->id, $request);
+        }
 
         return response()->json(['message' => 'Пароль успешно изменён']);
     }

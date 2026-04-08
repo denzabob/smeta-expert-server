@@ -76,6 +76,45 @@ class AuthAuditService
         $this->write('auth.password_reset_completed', $userId, $request, 'success', $meta);
     }
 
+    // ─── Registration / verification lifecycle ──────────────────────────────
+
+    public function registrationCreated(?int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.registration_created', $userId, $request, 'success', $meta);
+    }
+
+    public function verificationSent(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.verification_sent', $userId, $request, 'success', $meta);
+    }
+
+    public function verificationResent(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.verification_resent', $userId, $request, 'success', $meta);
+    }
+
+    public function emailVerified(int $userId, Request $request): void
+    {
+        $this->write('auth.email_verified', $userId, $request, 'success');
+    }
+
+    public function loginBlockedUnverifiedEmail(int $userId, Request $request): void
+    {
+        $this->write('auth.login_blocked_unverified_email', $userId, $request, 'blocked');
+    }
+
+    // ─── Email security notifications ────────────────────────────────────────
+
+    public function passwordChangedEmailSent(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.password_changed_email_sent', $userId, $request, 'success', $meta);
+    }
+
+    public function newLoginAlertSent(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.new_login_alert_sent', $userId, $request, 'success', $meta);
+    }
+
     // ─── Sessions / tokens ──────────────────────────────────────────────────
 
     public function sessionsRevoked(int $userId, Request $request, int $revokedCount): void
