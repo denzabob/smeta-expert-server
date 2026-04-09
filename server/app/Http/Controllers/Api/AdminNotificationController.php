@@ -193,6 +193,20 @@ class AdminNotificationController extends Controller
     }
 
     /**
+     * DELETE /api/admin/notifications/{id}
+     * Permanently delete a notification and all its delivery records.
+     */
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        $notification = Notification::findOrFail($id);
+        $notification->delete();
+
+        return response()->json(['message' => 'Уведомление удалено']);
+    }
+
+    /**
      * POST /api/admin/notifications/{id}/cancel
      * Cancel a notification.
      */

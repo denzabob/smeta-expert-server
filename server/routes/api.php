@@ -564,6 +564,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('admin/notifications/{id}', [AdminNotificationController::class, 'update']);
     Route::post('admin/notifications/{id}/send', [AdminNotificationController::class, 'send']);
     Route::post('admin/notifications/{id}/cancel', [AdminNotificationController::class, 'cancel']);
+    Route::delete('admin/notifications/{id}', [AdminNotificationController::class, 'destroy']);
     Route::get('admin/notifications/{id}/stats', [AdminNotificationController::class, 'stats']);
     Route::get('admin/users/search', [AdminNotificationController::class, 'searchUsers']);
 

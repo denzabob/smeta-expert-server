@@ -158,6 +158,12 @@ export const adminNotificationsApi = {
     return data
   },
 
+  /** DELETE /api/admin/notifications/{id} */
+  async delete(id: number): Promise<{ message: string }> {
+    const { data } = await api.delete(`/api/admin/notifications/${id}`)
+    return data
+  },
+
   /** GET /api/admin/notifications/{id}/stats */
   async stats(id: number): Promise<NotificationStats> {
     const { data } = await api.get(`/api/admin/notifications/${id}/stats`)

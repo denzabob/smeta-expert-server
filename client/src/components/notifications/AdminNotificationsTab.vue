@@ -114,6 +114,13 @@
               color="info"
               @click="openStats(item)"
             />
+            <v-btn
+              icon="mdi-delete-outline"
+              size="x-small"
+              variant="text"
+              color="error"
+              @click="confirmDelete(item)"
+            />
           </div>
         </template>
       </v-data-table-server>
@@ -288,6 +295,21 @@
           <v-spacer />
           <v-btn variant="text" @click="cancelDialog = false">Нет</v-btn>
           <v-btn color="error" :loading="cancelling" @click="doCancel">Отменить уведомление</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Confirm delete dialog -->
+    <v-dialog v-model="deleteDialog" max-width="400">
+      <v-card>
+        <v-card-title>Удалить уведомление?</v-card-title>
+        <v-card-text>
+          Уведомление и все записи о доставке будут удалены без возможности восстановления.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="deleteDialog = false">Отмена</v-btn>
+          <v-btn color="error" :loading="deleting" @click="doDelete">Удалить</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -507,6 +529,27 @@ async function doCancel() {
     loadList()
   } finally {
     cancelling.value = false
+  }
+}
+
+// ==================== Delete ====================
+const deleteDialog = ref(false)
+const deleting = ref(false)
+
+function confirmDelete(item: AdminNotification) {
+  actionTarget.value = item
+  deleteDialog.value = true
+}
+
+async function doDelete() {
+  if (!actionTarget.value) return
+  deleting.value = true
+  try {
+    await adminNotificationsApi.delete(actionTarget.value.id)
+    deleteDialog.value = false
+    loadList()
+  } finally {
+    deleting.value = false
   }
 }
 
