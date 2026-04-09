@@ -551,11 +551,9 @@ async function saveProfile() {
     padding-top: max(12px, env(safe-area-inset-top));
   }
 
+  /* SettingsShell handles mobile layout internally */
   .dialog-body {
-    flex-direction: column;
     min-height: 0;
   }
-
-  /* SettingsShell mobile: use isMobile prop via Vuetify's display if added in future */
 }
 </style>

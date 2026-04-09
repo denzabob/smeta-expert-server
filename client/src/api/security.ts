@@ -42,6 +42,7 @@ export interface StepUpInitiateResponse {
   allowed_methods: string[]
   expires_at: string
   phone_masked: string | null
+  email_masked: string | null
 }
 
 export interface StepUpTokenResponse {
@@ -53,6 +54,13 @@ export interface StepUpTokenResponse {
 export interface PhoneOtpRequestResponse {
   phone_challenge_id: string
   phone_masked: string
+  resend_available_at: string
+  expires_at: string
+}
+
+export interface EmailOtpRequestResponse {
+  email_challenge_id: string
+  email_masked: string
   resend_available_at: string
   expires_at: string
 }
@@ -120,6 +128,28 @@ export const securityApi = {
     const { data } = await api.post('/api/security/step-up/verify-phone-otp', {
       challenge_id: challengeId,
       phone_challenge_id: phoneChallengeId,
+      code,
+    })
+    return data
+  },
+
+  // Step-up: request email OTP (Block 6A)
+  async stepUpRequestEmailOtp(challengeId: string): Promise<EmailOtpRequestResponse> {
+    const { data } = await api.post('/api/security/step-up/request-email-otp', {
+      challenge_id: challengeId,
+    })
+    return data
+  },
+
+  // Step-up: verify email OTP (Block 6A)
+  async stepUpVerifyEmailOtp(
+    challengeId: string,
+    emailChallengeId: string,
+    code: string,
+  ): Promise<StepUpTokenResponse> {
+    const { data } = await api.post('/api/security/step-up/verify-email-otp', {
+      challenge_id: challengeId,
+      email_challenge_id: emailChallengeId,
       code,
     })
     return data

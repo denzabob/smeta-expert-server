@@ -1,7 +1,7 @@
 <template>
-  <div class="ss-shell" :class="{ 'ss-shell--mobile': isMobile }">
+  <div class="ss-shell" :class="{ 'ss-shell--mobile': mobile }">
     <!-- Desktop sidebar nav -->
-    <nav v-if="!isMobile" class="ss-nav" :style="{ width: navWidth + 'px' }">
+    <nav v-if="!mobile" class="ss-nav" :style="{ width: navWidth + 'px' }">
       <template v-for="section in sections" :key="section.id">
         <div v-if="section.dividerBefore" class="ss-nav-divider" />
         <button
@@ -18,7 +18,7 @@
     <!-- Main area: (optional mobile tabs) + scrollable content + optional footer -->
     <div class="ss-main">
       <!-- Mobile horizontal scroll tabs -->
-      <div v-if="isMobile" class="ss-mobile-tabs">
+      <div v-if="mobile" class="ss-mobile-tabs">
         <button
           v-for="section in sections"
           :key="section.id"
@@ -32,7 +32,7 @@
       </div>
 
       <!-- Content (scrollable) -->
-      <div class="ss-content" :style="{ padding: contentPadding }">
+      <div class="ss-content" :style="{ padding: appliedPadding }">
         <slot />
       </div>
 
@@ -45,6 +45,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useDisplay } from 'vuetify'
+
 export interface SettingsSection {
   id: string | number
   title: string
@@ -52,14 +55,14 @@ export interface SettingsSection {
   dividerBefore?: boolean
 }
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   sections: SettingsSection[]
   modelValue: string | number
+  /** Optional: force mobile layout. Defaults to auto-detect via Vuetify useDisplay. */
   isMobile?: boolean
   navWidth?: number
   contentPadding?: string
 }>(), {
-  isMobile: false,
   navWidth: 200,
   contentPadding: '20px 24px',
 })
@@ -67,6 +70,11 @@ withDefaults(defineProps<{
 defineEmits<{
   'update:modelValue': [value: string | number]
 }>()
+
+const { smAndDown } = useDisplay()
+// Explicit prop takes priority; otherwise auto-detect from viewport
+const mobile = computed(() => props.isMobile !== undefined ? props.isMobile : smAndDown.value)
+const appliedPadding = computed(() => mobile.value ? '14px 16px' : props.contentPadding)
 </script>
 
 <style scoped>
@@ -185,5 +193,19 @@ defineEmits<{
 .ss-footer {
   flex-shrink: 0;
   border-top: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+}
+
+/* ── Mobile overrides (auto-applied via .ss-shell--mobile class) ─ */
+/*
+ * On mobile: switch from row (sidebar | content) to column (tabs / content / footer).
+ * Internal content scroll is preserved — modal contexts rely on it (fixed outer height).
+ * Page context (UserSettingsView) supplies a 70vh anchor via .usd-body.
+ */
+.ss-shell--mobile {
+  flex-direction: column;
+}
+
+.ss-shell--mobile .ss-mobile-tabs {
+  min-height: 44px;
 }
 </style>

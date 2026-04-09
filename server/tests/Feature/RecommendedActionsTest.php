@@ -60,9 +60,10 @@ class RecommendedActionsTest extends TestCase
     public function test_yandex_only_user_sees_bootstrap_add_phone_not_set_password(): void
     {
         $user = User::factory()->create([
-            'password' => null,
-            'phone'    => null,
-            'email'    => fake()->safeEmail(),
+            'password'          => null,
+            'phone'             => null,
+            'email'             => fake()->safeEmail(),
+            'email_verified_at' => null, // factory defaults to now(); must be null to deny email OTP step-up
         ]);
         $this->attachYandex($user);
 
@@ -81,7 +82,11 @@ class RecommendedActionsTest extends TestCase
 
     public function test_yandex_only_user_does_not_see_enable_quick_pin(): void
     {
-        $user = User::factory()->create(['password' => null, 'phone' => null]);
+        $user = User::factory()->create([
+            'password'          => null,
+            'phone'             => null,
+            'email_verified_at' => null,
+        ]);
         $this->attachYandex($user);
 
         $actions = $this->getRecommended($user);
@@ -249,4 +254,86 @@ class RecommendedActionsTest extends TestCase
             'recommended_actions must not contain duplicates'
         );
     }
+
+    // ─── Block 6A: email OTP step-up policy ──────────────────────────────────
+
+    public function test_verified_email_user_without_password_gets_set_password_recommended(): void
+    {
+        $user = User::factory()->create([
+            'email'             => fake()->safeEmail(),
+            'email_verified_at' => now(),
+            'password'          => null,
+            'phone'             => null,
+        ]);
+
+        $actions = $this->getRecommended($user);
+
+        $this->assertContains(
+            'set_password',
+            $actions,
+            'A verified-email user can step-up via email OTP, so set_password should be recommended'
+        );
+    }
+
+    public function test_unverified_email_only_user_does_not_get_set_password_recommended(): void
+    {
+        config()->set('verification.test_mode', false);
+        config()->set('verification.telegram_gateway.enabled', false);
+        config()->set('verification.sms_ru.enabled', false);
+
+        $user = User::factory()->create([
+            'email'             => fake()->safeEmail(),
+            'email_verified_at' => null,
+            'password'          => null,
+            'phone'             => null,
+        ]);
+
+        $actions = $this->getRecommended($user);
+
+        $this->assertNotContains(
+            'set_password',
+            $actions,
+            'No verified step-up factor → set_password must not be recommended'
+        );
+    }
+
+    public function test_verified_email_only_user_gets_email_otp_in_available_step_up_methods(): void
+    {
+        $user = User::factory()->create([
+            'email'             => fake()->safeEmail(),
+            'email_verified_at' => now(),
+            'password'          => null,
+            'phone'             => null,
+        ]);
+
+        $response = $this->actingAs($user)->getJson('/api/security/auth-status');
+        $response->assertOk();
+
+        $methods = $response->json('available_step_up_methods');
+        $this->assertNotNull($methods, 'available_step_up_methods should be present in the profile');
+        $this->assertContains('email_otp', $methods);
+        $this->assertNotContains('phone_otp', $methods);
+        $this->assertNotContains('password', $methods);
+    }
+
+    public function test_initiate_includes_email_masked_for_verified_email_user(): void
+    {
+        $email = 'block6a-' . uniqid() . '@example.com';
+        $user = User::factory()->create([
+            'email'             => $email,
+            'email_verified_at' => now(),
+            'password'          => null,
+            'phone'             => null,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->postJson('/api/security/step-up/initiate', ['scope' => 'set_password']);
+        $response->assertOk();
+
+        $this->assertArrayHasKey('email_masked', $response->json());
+        $this->assertNotNull($response->json('email_masked'));
+        // Full email must not be exposed
+        $this->assertStringNotContainsString($email, $response->json('email_masked'));
+    }
 }
+

@@ -24,12 +24,14 @@ use Illuminate\Support\Facades\Validator;
  * All routes require auth:sanctum.
  *
  * Route map:
- *   GET  /api/security/auth-status            → authStatus()
- *   POST /api/security/step-up/initiate        → stepUpInitiate()
- *   POST /api/security/step-up/verify-password → stepUpVerifyPassword()
- *   POST /api/security/step-up/request-phone-otp  → stepUpRequestPhoneOtp()
- *   POST /api/security/step-up/verify-phone-otp   → stepUpVerifyPhoneOtp()
- *   POST /api/security/password/set            → setPassword()
+ *   GET  /api/security/auth-status              → authStatus()
+ *   POST /api/security/step-up/initiate          → stepUpInitiate()
+ *   POST /api/security/step-up/verify-password   → stepUpVerifyPassword()
+ *   POST /api/security/step-up/request-phone-otp → stepUpRequestPhoneOtp()
+ *   POST /api/security/step-up/verify-phone-otp  → stepUpVerifyPhoneOtp()
+ *   POST /api/security/step-up/request-email-otp → stepUpRequestEmailOtp()  [Block 6A]
+ *   POST /api/security/step-up/verify-email-otp  → stepUpVerifyEmailOtp()   [Block 6A]
+ *   POST /api/security/password/set              → setPassword()
  */
 class SecurityController extends Controller
 {
@@ -92,6 +94,9 @@ class SecurityController extends Controller
             'expires_at'      => $challenge->expires_at->toIso8601String(),
             'phone_masked'    => $this->profileService->hasVerifiedPhone($user)
                 ? VerificationCodeService::maskPhone($user->phone)
+                : null,
+            'email_masked'    => $this->profileService->hasVerifiedEmail($user)
+                ? $this->profileService->maskEmail($user->email)
                 : null,
         ]);
     }
@@ -237,6 +242,99 @@ class SecurityController extends Controller
         $this->audit->stepUpChallengeCompleted($user->id, $request, [
             'scope'  => $challenge->scope,
             'method' => 'phone_otp',
+        ]);
+
+        return response()->json([
+            'step_up_token' => $token,
+            'scope'         => $challenge->scope,
+            'expires_at'    => $challenge->fresh()->token_expires_at->toIso8601String(),
+        ]);
+    }
+
+    // ─── Step-up: Request email OTP (Block 6A) ──────────────────────────────
+
+    /**
+     * POST /api/security/step-up/request-email-otp
+     *
+     * Send an OTP to the user's verified email address as a step-up factor.
+     * Only works when the user has a verified email.
+     */
+    public function stepUpRequestEmailOtp(Request $request): JsonResponse
+    {
+        $request->validate([
+            'challenge_id' => ['required', 'uuid'],
+        ]);
+
+        $user      = $request->user();
+        $challenge = $this->lookupPendingChallenge($request->input('challenge_id'), $user->id);
+
+        if (!$challenge) {
+            return response()->json(['message' => 'Сессия верификации не найдена или истекла.'], 422);
+        }
+
+        try {
+            $data = $this->stepUpService->requestEmailOtp($challenge);
+        } catch (StepUpMethodNotAllowedException) {
+            return response()->json(['message' => 'Метод недоступен для этой сессии. Подтвердите email для использования этого способа.'], 422);
+        } catch (StepUpChallengeExpiredException) {
+            return response()->json(['message' => 'Срок действия сессии истёк. Начните снова.'], 410);
+        } catch (\RuntimeException $e) {
+            if ($e->getMessage() === 'rate_limited') {
+                return response()->json(['message' => 'Слишком много попыток. Подождите немного перед повторной отправкой.'], 429);
+            }
+            return response()->json(['message' => 'Не удалось отправить код. Попробуйте позже.'], 503);
+        }
+
+        $this->audit->stepUpEmailOtpSent($user->id, $request, [
+            'scope' => $challenge->scope,
+        ]);
+
+        return response()->json($data);
+    }
+
+    // ─── Step-up: Verify email OTP (Block 6A) ───────────────────────────────
+
+    /**
+     * POST /api/security/step-up/verify-email-otp
+     *
+     * Verify the OTP code received by email as a step-up factor.
+     * Returns a step_up_token valid for 15 minutes.
+     */
+    public function stepUpVerifyEmailOtp(Request $request): JsonResponse
+    {
+        $request->validate([
+            'challenge_id'       => ['required', 'uuid'],
+            'email_challenge_id' => ['required', 'uuid'],
+            'code'               => ['required', 'string', 'size:6'],
+        ]);
+
+        $user      = $request->user();
+        $challenge = $this->lookupPendingChallenge($request->input('challenge_id'), $user->id);
+
+        if (!$challenge) {
+            return response()->json(['message' => 'Сессия верификации не найдена или истекла.'], 422);
+        }
+
+        try {
+            $token = $this->stepUpService->verifyByEmailOtp(
+                $challenge,
+                $request->input('email_challenge_id'),
+                $request->input('code'),
+            );
+        } catch (StepUpMethodNotAllowedException) {
+            return response()->json(['message' => 'Метод недоступен для этой сессии.'], 422);
+        } catch (StepUpChallengeExpiredException $e) {
+            return response()->json(['message' => $e->getMessage()], 410);
+        } catch (StepUpInvalidCredentialsException $e) {
+            $this->audit->stepUpEmailOtpFailed($user->id, $request, [
+                'scope'  => $challenge->scope,
+                'reason' => $e->getMessage(),
+            ]);
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $this->audit->stepUpEmailOtpVerified($user->id, $request, [
+            'scope' => $challenge->scope,
         ]);
 
         return response()->json([

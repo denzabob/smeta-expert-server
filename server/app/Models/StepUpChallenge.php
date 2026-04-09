@@ -36,6 +36,7 @@ class StepUpChallenge extends Model
         'token',
         'token_expires_at',
         'phone_challenge_id',
+        'email_challenge_id',
         'expires_at',
         'completed_at',
         'ip_address',

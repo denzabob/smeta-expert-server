@@ -17,7 +17,7 @@
         <div class="text-body-2 text-medium-emphasis mt-3">Подготовка...</div>
       </v-card-text>
 
-      <!-- Method choice (when both password + phone_otp are available) -->
+      <!-- Method choice (when multiple methods are available) -->
       <v-card-text v-else-if="phase === 'choice'">
         <div class="text-body-2 text-medium-emphasis mb-4">
           Для продолжения выберите способ подтверждения личности.
@@ -31,6 +31,15 @@
             class="justify-start"
           >
             Подтвердить паролем
+          </v-btn>
+          <v-btn
+            v-if="allowedMethods.includes('email_otp')"
+            variant="outlined"
+            @click="selectMethod('email_otp')"
+            prepend-icon="mdi-email-outline"
+            class="justify-start"
+          >
+            Код на email {{ emailMasked ? `(${emailMasked})` : '' }}
           </v-btn>
           <v-btn
             v-if="allowedMethods.includes('phone_otp')"
@@ -98,6 +107,39 @@
         />
       </v-card-text>
 
+      <!-- Email OTP: send code step -->
+      <v-card-text v-else-if="phase === 'email_otp_send'">
+        <div class="text-body-2 text-medium-emphasis mb-4">
+          Мы отправим код подтверждения на ваш email
+          <strong v-if="emailMasked">{{ emailMasked }}</strong>.
+        </div>
+        <v-alert v-if="error" type="error" variant="tonal" density="compact" class="mb-4">
+          {{ error }}
+        </v-alert>
+      </v-card-text>
+
+      <!-- Email OTP: enter code step -->
+      <v-card-text v-else-if="phase === 'email_otp_code'">
+        <div class="text-body-2 text-medium-emphasis mb-1">
+          Код подтверждения отправлен на <strong>{{ emailMasked }}</strong>.
+        </div>
+        <div class="text-caption text-medium-emphasis mb-4">
+          Не получили? <button class="text-primary" style="background:none;border:none;cursor:pointer;padding:0;" @click="resendEmailOtp">Отправить повторно</button>
+        </div>
+        <v-alert v-if="error" type="error" variant="tonal" density="compact" class="mb-4">
+          {{ error }}
+        </v-alert>
+        <v-text-field
+          v-model="emailOtpCode"
+          label="Код из письма"
+          inputmode="numeric"
+          maxlength="6"
+          @keydown.enter="submitEmailOtp"
+          autofocus
+          hide-details="auto"
+        />
+      </v-card-text>
+
       <!-- Success -->
       <v-card-text v-else-if="phase === 'success'" class="text-center py-8">
         <v-icon color="success" size="48">mdi-check-circle-outline</v-icon>
@@ -146,6 +188,29 @@
           :loading="verifying"
           :disabled="!otpCode"
           @click="submitOtp"
+        >
+          Подтвердить
+        </v-btn>
+
+        <!-- Send email OTP button -->
+        <v-btn
+          v-if="phase === 'email_otp_send'"
+          color="primary"
+          variant="flat"
+          :loading="verifying"
+          @click="requestEmailOtp"
+        >
+          Отправить код на email
+        </v-btn>
+
+        <!-- Verify email OTP button -->
+        <v-btn
+          v-if="phase === 'email_otp_code'"
+          color="primary"
+          variant="flat"
+          :loading="verifying"
+          :disabled="!emailOtpCode"
+          @click="submitEmailOtp"
         >
           Подтвердить
         </v-btn>
@@ -205,10 +270,11 @@ async function initiate() {
     challengeId.value = res.challenge_id
     allowedMethods.value = res.allowed_methods
     phoneMasked.value = res.phone_masked
+    emailMasked.value = res.email_masked
 
     // Auto-select method if only one is available
     if (allowedMethods.value.length === 1) {
-      selectMethod(allowedMethods.value[0] as 'password' | 'phone_otp')
+      selectMethod(allowedMethods.value[0] as 'password' | 'phone_otp' | 'email_otp')
     } else {
       phase.value = 'choice'
     }
@@ -218,9 +284,11 @@ async function initiate() {
   }
 }
 
-function selectMethod(method: 'password' | 'phone_otp') {
+function selectMethod(method: 'password' | 'phone_otp' | 'email_otp') {
   if (method === 'password') {
     phase.value = 'password'
+  } else if (method === 'email_otp') {
+    phase.value = 'email_otp_send'
   } else {
     phase.value = 'otp_send'
   }
@@ -279,6 +347,59 @@ async function resendOtp() {
   await requestOtp()
 }
 
+// ── Email OTP flow ──────────────────────────────────────────────────────────────────
+
+async function requestEmailOtp() {
+  if (!challengeId.value) return
+  verifying.value = true
+  error.value = null
+  try {
+    const res = await securityApi.stepUpRequestEmailOtp(challengeId.value)
+    emailChallengeId.value = res.email_challenge_id
+    if (res.email_masked) emailMasked.value = res.email_masked
+    phase.value = 'email_otp_code'
+  } catch (e: any) {
+    const status = e?.response?.status
+    if (status === 429) {
+      error.value = 'Слишком много попыток. Подождите перед повторной отправкой.'
+    } else {
+      error.value = e?.response?.data?.message || 'Не удалось отправить код.'
+    }
+  } finally {
+    verifying.value = false
+  }
+}
+
+async function resendEmailOtp() {
+  phase.value = 'email_otp_send'
+  emailOtpCode.value = ''
+  await requestEmailOtp()
+}
+
+async function submitEmailOtp() {
+  if (!emailOtpCode.value || !challengeId.value || !emailChallengeId.value) return
+  verifying.value = true
+  error.value = null
+  try {
+    const res = await securityApi.stepUpVerifyEmailOtp(
+      challengeId.value,
+      emailChallengeId.value,
+      emailOtpCode.value,
+    )
+    onSuccess(res.step_up_token)
+  } catch (e: any) {
+    const status = e?.response?.status
+    if (status === 410) {
+      error.value = 'Время сессии истекло. Начните заново.'
+      phase.value = 'error'
+    } else {
+      error.value = e?.response?.data?.message || 'Неверный код. Попробуйте снова.'
+    }
+  } finally {
+    verifying.value = false
+  }
+}
+
 async function submitOtp() {
   if (!otpCode.value || !challengeId.value || !phoneChallengeId.value) return
   verifying.value = true
@@ -333,11 +454,14 @@ function reset() {
   phase.value = 'initiating'
   challengeId.value = null
   phoneChallengeId.value = null
+  emailChallengeId.value = null
   allowedMethods.value = []
   phoneMasked.value = null
+  emailMasked.value = null
   password.value = ''
   showPassword.value = false
   otpCode.value = ''
+  emailOtpCode.value = ''
   error.value = null
   verifying.value = false
 }

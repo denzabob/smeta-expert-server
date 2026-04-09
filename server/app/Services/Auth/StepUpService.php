@@ -5,7 +5,9 @@ namespace App\Services\Auth;
 use App\Models\AuthVerificationChallenge;
 use App\Models\StepUpChallenge;
 use App\Models\User;
+use App\Notifications\StepUpEmailOtpNotification;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 /**
@@ -33,6 +35,15 @@ class StepUpService
     /** Minutes the step-up token remains valid after successful verification. */
     private const TOKEN_TTL_MINUTES = 15;
 
+    /** Minutes for email OTP challenge TTL. */
+    private const EMAIL_OTP_TTL_MINUTES = 10;
+
+    /** Max email OTP send attempts per user per hour. */
+    private const EMAIL_OTP_RATE_LIMIT = 5;
+
+    /** Max code-entry attempts for email OTP (stricter than phone OTP). */
+    private const EMAIL_OTP_MAX_ATTEMPTS = 3;
+
     public function __construct(
         private readonly AuthMethodProfileService  $profileService,
         private readonly VerificationCodeService   $verificationCodeService,
@@ -44,9 +55,10 @@ class StepUpService
      * Determine which step-up factors the user can use.
      *
      * Order matters: password is tried first since it produces a token
-     * immediately without a second round-trip.
+     * immediately without a second round-trip. Email OTP is listed before
+     * phone OTP because email delivery is reliable in all environments.
      *
-     * @return list<'password'|'phone_otp'>
+     * @return list<'password'|'email_otp'|'phone_otp'>
      */
     public function allowedMethods(User $user): array
     {
@@ -54,6 +66,10 @@ class StepUpService
 
         if ($this->profileService->hasPassword($user)) {
             $methods[] = 'password';
+        }
+
+        if ($this->profileService->hasVerifiedEmail($user)) {
+            $methods[] = 'email_otp';
         }
 
         if ($this->profileService->hasVerifiedPhone($user)) {
@@ -138,7 +154,118 @@ class StepUpService
 
         return $this->completeChallenge($challenge, 'password');
     }
+    // ─── Request email OTP ────────────────────────────────────────────────────────
 
+    /**
+     * Send an OTP code to the user's verified email address for step-up.
+     * Returns data needed by the frontend to display the entry form.
+     *
+     * Rate-limited per user: at most EMAIL_OTP_RATE_LIMIT sends per hour.
+     * Each call cancels the previous pending email challenge for this step-up.
+     *
+     * @return array{email_challenge_id: string, email_masked: string, resend_available_at: string, expires_at: string}
+     * @throws StepUpMethodNotAllowedException
+     * @throws StepUpChallengeExpiredException
+     * @throws \RuntimeException On rate_limited
+     */
+    public function requestEmailOtp(StepUpChallenge $challenge): array
+    {
+        $this->assertChallengeUsable($challenge, 'email_otp');
+
+        $user = $challenge->user;
+
+        if (!$this->profileService->hasVerifiedEmail($user)) {
+            throw new StepUpMethodNotAllowedException('Email не подтверждён.');
+        }
+
+        // Rate limit: max EMAIL_OTP_RATE_LIMIT sends per user per hour
+        $rateLimitKey = 'step_up_email_otp_send:' . $user->id;
+        if (RateLimiter::tooManyAttempts($rateLimitKey, self::EMAIL_OTP_RATE_LIMIT)) {
+            throw new \RuntimeException('rate_limited');
+        }
+        RateLimiter::hit($rateLimitKey, 3600);
+
+        // Cancel previous pending email OTP challenges for this user
+        AuthVerificationChallenge::where('user_id', $user->id)
+            ->where('purpose', 'step_up_email')
+            ->where('status', 'pending')
+            ->update(['status' => 'canceled']);
+
+        // Generate OTP code (respects VERIFICATION_TEST_CODE in dev/test mode)
+        $code = $this->generateEmailOtpCode();
+        $resendCooldown = config('verification.resend_cooldown_seconds', 60);
+
+        $emailChallenge = AuthVerificationChallenge::create([
+            'id'                   => Str::uuid()->toString(),
+            'purpose'              => 'step_up_email',
+            'phone'                => null,
+            'email'                => $user->email,
+            'code_hash'            => Hash::make($code),
+            'expires_at'           => now()->addMinutes(self::EMAIL_OTP_TTL_MINUTES),
+            'attempts_left'        => self::EMAIL_OTP_MAX_ATTEMPTS,
+            'resend_available_at'  => now()->addSeconds($resendCooldown),
+            'status'               => 'pending',
+            'current_channel'      => 'email',
+            'channel_attempt_order' => ['email'],
+            'user_id'              => $user->id,
+            'ip_address'           => $challenge->ip_address,
+        ]);
+
+        // Bind to step-up challenge
+        $challenge->update(['email_challenge_id' => $emailChallenge->id]);
+
+        // Send email (queued)
+        $user->notify(new StepUpEmailOtpNotification($code));
+
+        return [
+            'email_challenge_id'  => $emailChallenge->id,
+            'email_masked'        => $this->profileService->maskEmail($user->email),
+            'resend_available_at' => $emailChallenge->resend_available_at->toIso8601String(),
+            'expires_at'          => $emailChallenge->expires_at->toIso8601String(),
+        ];
+    }
+
+    // ─── Verify by email OTP ──────────────────────────────────────────────────────
+
+    /**
+     * Verify the step-up challenge using an email OTP code.
+     * Returns the step-up token on success.
+     *
+     * @throws StepUpMethodNotAllowedException
+     * @throws StepUpChallengeExpiredException
+     * @throws StepUpInvalidCredentialsException
+     */
+    public function verifyByEmailOtp(
+        StepUpChallenge $challenge,
+        string $emailChallengeId,
+        string $code
+    ): string {
+        $this->assertChallengeUsable($challenge, 'email_otp');
+
+        if ($challenge->email_challenge_id !== $emailChallengeId) {
+            throw new StepUpInvalidCredentialsException('Сессия подтверждения не совпадает.');
+        }
+
+        $emailChallenge = AuthVerificationChallenge::where('id', $emailChallengeId)
+            ->where('purpose', 'step_up_email')
+            ->first();
+
+        if (!$emailChallenge) {
+            throw new StepUpInvalidCredentialsException('Сессия OTP не найдена.');
+        }
+
+        $result = $this->verificationCodeService->verifyCode($emailChallenge, $code);
+
+        if (!$result['valid']) {
+            if (in_array($result['error'], ['challenge_expired', 'too_many_attempts'], true)) {
+                throw new StepUpChallengeExpiredException('Срок действия кода истёк. Запросите новый код.');
+            }
+
+            throw new StepUpInvalidCredentialsException('Неверный код подтверждения.');
+        }
+
+        return $this->completeChallenge($challenge, 'email_otp');
+    }
     // ─── Request phone OTP ───────────────────────────────────────────────────
 
     /**
@@ -293,6 +420,15 @@ class StepUpService
         ]);
 
         return $rawToken;
+    }
+
+    private function generateEmailOtpCode(): string
+    {
+        $testCode = config('verification.test_code');
+        if (!empty($testCode)) {
+            return (string) $testCode;
+        }
+        return str_pad((string) random_int(100000, 999999), 6, '0', STR_PAD_LEFT);
     }
 }
 

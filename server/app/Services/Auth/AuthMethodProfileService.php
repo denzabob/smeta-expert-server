@@ -31,8 +31,11 @@ class AuthMethodProfileService
         $pinEnabled    = (bool) $user->pin_enabled;
         $deviceCount   = $user->activeTrustedDevices()->count();
 
-        // canStepUp mirrors StepUpService::canStepUp() without creating a circular dependency
-        $canStepUp = $hasPassword || $phoneVerified;
+        // canStepUp: any factor that can currently verify identity.
+        // Email OTP is reliable (SMTP configured). Phone OTP is only operational
+        // when a transport (Telegram Gateway / SMS.ru) is available or test mode is on.
+        $phoneStepUpEnabled = $this->isPhoneStepUpEnabled();
+        $canStepUp = $hasPassword || $emailVerified || ($phoneVerified && $phoneStepUpEnabled);
 
         $recoveryMethods = $this->recoveryMethods($user, $hasPassword, $phoneVerified, $hasYandex);
         $blockedActions  = $this->blockedActions($hasPassword, $pinEnabled, $canStepUp);
@@ -67,7 +70,7 @@ class AuthMethodProfileService
                 'needs_email'               => !$hasEmail,
                 'needs_email_verification'  => $hasEmail && !$emailVerified,
                 'needs_password_setup'      => !$hasPassword,
-                'can_enable_quick_pin'      => $phoneVerified || $hasPassword,
+                'can_enable_quick_pin'      => $canStepUp,
             ],
             // ── Recovery & control surface ──────────────────────────────
             'can_self_recover'           => !empty($recoveryMethods),
@@ -75,7 +78,9 @@ class AuthMethodProfileService
             'can_manage_sessions'        => true,
             'can_manage_trusted_devices' => true,
             'blocked_actions'            => $blockedActions,
-            'prerequisite_actions'       => $this->prerequisiteActions($blockedActions, $hasYandex, $phoneVerified),
+            'prerequisite_actions'       => $this->prerequisiteActions($blockedActions, $hasYandex, $phoneVerified, $hasEmail, $emailVerified),
+            // ── Step-up availability (Block 6A) ─────────────────────────
+            'available_step_up_methods'  => $this->availableStepUpMethods($hasPassword, $phoneVerified, $emailVerified, $phoneStepUpEnabled),
         ];
     }
 
@@ -89,6 +94,11 @@ class AuthMethodProfileService
     public function hasVerifiedPhone(User $user): bool
     {
         return !empty($user->phone) && $user->phone_verified_at !== null;
+    }
+
+    public function hasVerifiedEmail(User $user): bool
+    {
+        return !empty($user->email) && $user->email_verified_at !== null;
     }
 
     public function hasYandexLink(User $user): bool
@@ -139,7 +149,8 @@ class AuthMethodProfileService
             }
         }
 
-        // Phase 3: Password — only if actionable (user can step up to complete it)
+        // Phase 3: Password — only if a real step-up factor exists.
+        // canStepUp at this point already reflects email + (phone if operational).
         if (!$hasPassword && $canStepUp) {
             $actions[] = 'set_password';
         }
@@ -210,8 +221,13 @@ class AuthMethodProfileService
      * For each blocked action, what the user should do first to unblock it.
      * Returns a map of blocked_action => next_step_action.
      */
-    private function prerequisiteActions(array $blockedActions, bool $hasYandex, bool $phoneVerified): array
-    {
+    private function prerequisiteActions(
+        array $blockedActions,
+        bool $hasYandex,
+        bool $phoneVerified,
+        bool $hasEmail = false,
+        bool $emailVerified = false
+    ): array {
         if (empty($blockedActions)) {
             return [];
         }
@@ -220,11 +236,17 @@ class AuthMethodProfileService
 
         foreach ($blockedActions as $action) {
             if (in_array($action, ['set_password', 'enable_quick_pin'], true)) {
-                if ($hasYandex && !$phoneVerified) {
-                    // Yandex-only bootstrap trap: must add phone first
+                if ($hasYandex && !$phoneVerified && !$emailVerified) {
+                    // Yandex-only bootstrap trap with no verified email: must add phone first
                     $prerequisites[$action] = 'bootstrap_add_phone';
+                } elseif ($hasEmail && !$emailVerified) {
+                    // Email linked but not verified — verify it to unlock email OTP step-up
+                    $prerequisites[$action] = 'verify_email';
+                } elseif (!$hasEmail) {
+                    // No email at all — add email first (email OTP is the reliable path)
+                    $prerequisites[$action] = 'add_email';
                 } else {
-                    // Generic: add/verify phone to unlock step-up
+                    // Has verified email but still blocked? Fallback to phone.
                     $prerequisites[$action] = 'verify_phone';
                 }
             }
@@ -233,9 +255,40 @@ class AuthMethodProfileService
         return $prerequisites;
     }
 
+    // ─── Step-up method availability ─────────────────────────────────────────
+
+    /**
+     * Return the step-up methods that are currently available to this user.
+     * Phone OTP is included only when a transport is operational (or test mode).
+     */
+    private function availableStepUpMethods(
+        bool $hasPassword,
+        bool $phoneVerified,
+        bool $emailVerified,
+        bool $phoneStepUpEnabled
+    ): array {
+        $methods = [];
+        if ($hasPassword)    $methods[] = 'password';
+        if ($emailVerified)  $methods[] = 'email_otp';
+        if ($phoneVerified && $phoneStepUpEnabled) $methods[] = 'phone_otp';
+        return $methods;
+    }
+
+    /**
+     * True when at least one phone OTP transport is available or test mode is on.
+     * Used to avoid recommending password setup when the only step-up path
+     * (phone OTP) does not currently have working delivery.
+     */
+    private function isPhoneStepUpEnabled(): bool
+    {
+        return (bool) config('verification.test_mode', false)
+            || (bool) config('verification.telegram_gateway.enabled', false)
+            || (bool) config('verification.sms_ru.enabled', false);
+    }
+
     // ─── Internal masking ────────────────────────────────────────────────────
 
-    private function maskEmail(string $email): string
+    public function maskEmail(string $email): string
     {
         [$local, $domain] = explode('@', $email, 2);
 

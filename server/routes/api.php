@@ -177,6 +177,11 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('throttle:3,1');
     Route::post('security/step-up/verify-phone-otp', [\App\Http\Controllers\Api\SecurityController::class, 'stepUpVerifyPhoneOtp'])
         ->middleware('throttle:5,1');
+    // Email OTP step-up (Block 6A) — reliable delivery for set_password flow
+    Route::post('security/step-up/request-email-otp', [\App\Http\Controllers\Api\SecurityController::class, 'stepUpRequestEmailOtp'])
+        ->middleware('throttle:3,1');
+    Route::post('security/step-up/verify-email-otp', [\App\Http\Controllers\Api\SecurityController::class, 'stepUpVerifyEmailOtp'])
+        ->middleware('throttle:5,1');
     Route::post('security/password/set', [\App\Http\Controllers\Api\SecurityController::class, 'setPassword'])
         ->middleware('throttle:5,1');
 

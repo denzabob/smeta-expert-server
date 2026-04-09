@@ -61,6 +61,7 @@ const statusClass = computed(() => ({
   justify-content: space-between;
   padding: 10px 20px;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .ssf-status {
@@ -81,5 +82,23 @@ const statusClass = computed(() => ({
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* Mobile: stack status above actions, actions go full-row */
+@media (max-width: 600px) {
+  .ssf {
+    padding: 10px 16px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .ssf-status {
+    width: 100%;
+    flex: none;
+  }
+
+  .ssf-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 </style>

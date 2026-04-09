@@ -169,6 +169,23 @@ class AuthAuditService
         $this->write('auth.step_up_required_action_blocked', $userId, $request, 'blocked', $meta);
     }
 
+    // Block 6A — Email OTP step-up events
+
+    public function stepUpEmailOtpSent(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.step_up_email_otp_sent', $userId, $request, 'success', $meta);
+    }
+
+    public function stepUpEmailOtpVerified(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.step_up_email_otp_verified', $userId, $request, 'success', $meta);
+    }
+
+    public function stepUpEmailOtpFailed(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.step_up_email_otp_failed', $userId, $request, 'failed', $meta);
+    }
+
     // ─── Sessions / tokens ──────────────────────────────────────────────────
 
     public function sessionsRevoked(int $userId, Request $request, int $revokedCount): void

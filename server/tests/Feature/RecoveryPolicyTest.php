@@ -156,7 +156,12 @@ class RecoveryPolicyTest extends TestCase
 
     public function test_yandex_only_user_has_set_password_and_enable_pin_blocked(): void
     {
-        $user = User::factory()->create(['password' => null, 'phone' => null]);
+        // email_verified_at=null: factory defaults to now(), which would grant email OTP step-up
+        $user = User::factory()->create([
+            'password'          => null,
+            'phone'             => null,
+            'email_verified_at' => null,
+        ]);
         $this->attachYandex($user);
 
         $profile = $this->getProfile($user);
@@ -198,7 +203,11 @@ class RecoveryPolicyTest extends TestCase
 
     public function test_yandex_only_blocked_set_password_requires_bootstrap_add_phone(): void
     {
-        $user = User::factory()->create(['password' => null, 'phone' => null]);
+        $user = User::factory()->create([
+            'password'          => null,
+            'phone'             => null,
+            'email_verified_at' => null,
+        ]);
         $this->attachYandex($user);
 
         $profile = $this->getProfile($user);
@@ -210,9 +219,10 @@ class RecoveryPolicyTest extends TestCase
     public function test_yandex_only_blocked_pin_requires_bootstrap_add_phone(): void
     {
         $user = User::factory()->create([
-            'password'   => null,
-            'phone'      => null,
-            'pin_enabled' => false,
+            'password'          => null,
+            'phone'             => null,
+            'pin_enabled'       => false,
+            'email_verified_at' => null,
         ]);
         $this->attachYandex($user);
 

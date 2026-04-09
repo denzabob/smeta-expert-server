@@ -60,7 +60,7 @@
       class="psm-dialog"
       @keydown.esc="handleEscKey"
     >
-      <v-card class="psm-card d-flex flex-column" :rounded="isMobile ? '0' : 'lg'">
+      <v-card class="psm-card d-flex flex-column" :class="isMobile ? 'psm-card--mobile' : null" :rounded="isMobile ? '0' : 'lg'">
         <!-- Header -->
         <div class="psm-header d-flex align-center justify-space-between px-5 py-3 border-b flex-shrink-0">
           <span class="text-subtitle-1 font-weight-bold">Настройки проекта</span>
@@ -90,13 +90,13 @@
         </div>
 
         <!-- Body + Footer: SettingsShell handles sidebar/tabs/content, footer slot handles actions -->
-        <SettingsShell
-          class="flex-grow-1"
-          :sections="settingsSections"
-          v-model="activeSettingsSection"
-          :is-mobile="isMobile"
-          :nav-width="220"
-        >
+        <div class="psm-body">
+          <SettingsShell
+            :sections="settingsSections"
+            v-model="activeSettingsSection"
+            :is-mobile="isMobile"
+            :nav-width="220"
+          >
             <v-form>
               <!-- Section 0: Основное -->
               <div v-if="activeSettingsSection === 0" class="psm-section">
@@ -423,7 +423,8 @@
               @cancel="handleCloseRequest"
             />
           </template>
-        </SettingsShell>
+          </SettingsShell>
+        </div>
       </v-card>
     </v-dialog>
   </div>
@@ -787,17 +788,37 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
 <style scoped>
 /* === Project Settings Modal — all styles scoped under .psm-* namespace === */
 
-/* Dialog card fills the dialog on desktop, full-screen on mobile */
+/* Dialog card: fixed stable height on desktop; full-screen on mobile.
+ * The explicit height gives flex children a definite size to flex-grow into.
+ * Use min() so it doesn't exceed the viewport on small desktop windows.
+ */
 .psm-card {
-  height: 90vh;
-  max-height: 90vh;
+  height: min(740px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
 }
 
-/* On mobile (fullscreen) the card must fill the viewport */
-:deep(.v-dialog--fullscreen) .psm-card {
-  height: 100%;
-  max-height: 100%;
+/* Mobile full-screen: card must fill the fullscreen dialog overlay.
+ * Class is applied via :class binding — more reliable than :deep() for
+ * Vuetify v-dialog which teleports content to <body>.
+ */
+.psm-card--mobile {
+  height: 100% !important;
+  max-height: 100% !important;
   border-radius: 0 !important;
+}
+
+/* Shell body wrapper: sits between the header and SettingsShell.
+ * Providing an explicit flex container here (display:flex column) ensures
+ * SettingsShell's own flex:1 1 0 has a proper definite-height parent to
+ * grow into — the same pattern used in AccountSettingsDialog.
+ */
+.psm-body {
+  flex: 1 1 0;
+  min-height: 0;        /* defensive: allow shrink below content size */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* Header */
