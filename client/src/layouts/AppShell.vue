@@ -85,6 +85,10 @@ function handleThemeModeChange(e: Event) {
 function openAccountSettings(tab?: string) {
   settingsInitialTab.value = tab
   settingsDialogOpen.value = true
+  // Mobile overlay exclusivity: close nav drawer when settings dialog opens
+  if (compactNav.value) {
+    drawerOpen.value = false
+  }
 }
 
 function handleSettingsQueryOpen() {

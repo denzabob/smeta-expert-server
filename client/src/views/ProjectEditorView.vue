@@ -3218,6 +3218,19 @@ watch(activeModule, (val) => {
   }
 })
 
+// Mobile overlay exclusivity: only one primary overlay at a time
+watch(settingsDrawer, (opened) => {
+  if (opened && compactLayout.value) {
+    positionDrawer.value = false
+  }
+})
+
+watch(positionDrawer, (opened) => {
+  if (opened && compactLayout.value) {
+    settingsDrawer.value = false
+  }
+})
+
 // Forward-declared refs for workspace computeds (actual declarations below)
 // Vue <script setup> hoists all declarations, computed callbacks are lazy
 

@@ -697,36 +697,63 @@ function savePreferences() {
   opacity: 0;
 }
 
-/* Mobile */
+/* Mobile — full-screen dialog */
 @media (max-width: 600px) {
+  .dialog-overlay {
+    padding: 0;
+  }
+
   .dialog-container {
-    margin: 8px;
-    max-height: calc(100vh - 16px);
+    margin: 0;
+    max-width: 100%;
+    max-height: 100%;
+    height: 100%;
+    width: 100%;
+  }
+
+  .dialog-content {
+    border-radius: 0;
+    max-height: 100%;
+    height: 100%;
+  }
+
+  .dialog-header {
+    padding: 12px 16px;
+    padding-top: max(12px, env(safe-area-inset-top));
   }
 
   .dialog-body {
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
   }
 
   .settings-nav {
     width: 100%;
     flex-direction: row;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
     gap: 4px;
-    padding: 12px;
+    padding: 8px 12px;
     border-right: none;
     border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+    flex-shrink: 0;
   }
 
   .nav-btn {
     flex: 0 0 auto;
     width: auto;
     margin-bottom: 0;
+    white-space: nowrap;
   }
 
   .settings-content {
     padding: 16px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 }
 </style>

@@ -169,12 +169,13 @@
     v-model="notificationsPanelOpen"
     location="left"
     temporary
-    width="400"
+    :width="mobile ? '100vw' : 400"
     :style="{
       position: 'fixed',
       top: 0,
       height: '100vh',
-      maxHeight: '100vh'
+      maxHeight: '100vh',
+      ...(mobile ? { maxWidth: '100vw' } : {})
     }"
   >
     <UserNotificationsPanel />
@@ -340,6 +341,32 @@ onBeforeUnmount(() => {
 watch(mobile, (isMobile) => {
   if (isMobile) {
     sidebarMode.value = 'wide'
+  }
+})
+
+// === Mobile overlay exclusivity ===
+// Only one primary overlay at a time on mobile.
+// When account drawer opens → close nav drawer.
+// When notifications opens → close nav drawer.
+// When nav drawer opens → close account drawer and notifications.
+watch(accountDrawerOpen, (opened) => {
+  if (opened && mobile.value) {
+    emit('update:modelValue', false)
+    notificationsPanelOpen.value = false
+  }
+})
+
+watch(notificationsPanelOpen, (opened) => {
+  if (opened && mobile.value) {
+    emit('update:modelValue', false)
+    accountDrawerOpen.value = false
+  }
+})
+
+watch(modelValue, (opened) => {
+  if (opened && mobile.value) {
+    accountDrawerOpen.value = false
+    notificationsPanelOpen.value = false
   }
 })
 

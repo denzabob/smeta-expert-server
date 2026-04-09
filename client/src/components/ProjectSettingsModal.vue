@@ -90,7 +90,7 @@
         </div>
 
         <!-- Body: sidebar + content -->
-        <div class="psm-body d-flex flex-grow-1 overflow-hidden">
+        <div class="psm-body d-flex flex-grow-1 overflow-hidden" :class="{ 'flex-column': isMobile }">
           <!-- Section navigation: left sidebar on desktop, top tabs on mobile -->
           <div v-if="!isMobile" class="psm-sidebar flex-shrink-0 border-r overflow-y-auto">
             <v-list
@@ -969,5 +969,26 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
 
 .psm-dirty-indicator {
   min-width: 0;
+}
+
+/* Mobile-specific overrides for fullscreen mode */
+@media (max-width: 600px) {
+  .psm-header {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .psm-content {
+    padding: 16px;
+  }
+
+  .psm-footer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .psm-waste-row {
+    flex-wrap: wrap;
+  }
 }
 </style>

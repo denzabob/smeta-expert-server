@@ -500,18 +500,44 @@ onBeforeUnmount(() => {
   opacity: 0;
 }
 
-/* Mobile */
+/* Mobile — full-screen bottom sheet */
 @media (max-width: 600px) {
   .drawer-overlay {
-    padding: 12px;
-    align-items: flex-end;
-    justify-content: center;
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
   }
-  
+
   .drawer-container {
     width: 100%;
-    max-width: none;
-    margin-left: 0;
+    max-width: 100vw;
+    max-height: 100%;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+
+  .drawer-content {
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    max-height: none;
+  }
+
+  .drawer-nav {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .drawer-header {
+    padding: 16px;
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+
+  .drawer-footer {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
 }
 </style>
