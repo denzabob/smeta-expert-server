@@ -10,23 +10,12 @@
               <button class="close-btn" @click="requestClose">×</button>
             </div>
 
-            <div class="dialog-body">
-              <!-- Left navigation -->
-              <nav class="settings-nav">
-                <template v-for="section in sections" :key="section.id">
-                  <div v-if="section.dividerBefore" class="nav-divider"></div>
-                  <button
-                    class="nav-btn"
-                    :class="{ 'nav-btn--active': activeSection === section.id }"
-                    @click="activeSection = section.id"
-                  >
-                    {{ section.title }}
-                  </button>
-                </template>
-              </nav>
-
-              <!-- Right content -->
-              <div class="settings-content">
+            <SettingsShell
+              class="dialog-body"
+              :sections="sections"
+              v-model="activeSection"
+              :nav-width="180"
+            >
                 <!-- Profile -->
                 <div v-if="activeSection === 'profile'" class="section-panel">
                   <h3 class="section-title">Профиль</h3>
@@ -103,8 +92,7 @@
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
+            </SettingsShell>
           </div>
           
           <!-- Подтверждение закрытия -->
@@ -131,12 +119,7 @@ import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api/axios'
 import AccountSecuritySection from '@/components/settings/AccountSecuritySection.vue'
-
-interface Section {
-  id: string
-  title: string
-  dividerBefore?: boolean
-}
+import SettingsShell, { type SettingsSection } from '@/components/settings/shell/SettingsShell.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -150,10 +133,10 @@ const emit = defineEmits<{
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 
-const sections: Section[] = [
-  { id: 'profile', title: 'Профиль' },
-  { id: 'security', title: 'Безопасность' },
-  { id: 'data', title: 'Данные', dividerBefore: true },
+const sections: SettingsSection[] = [
+  { id: 'profile', title: 'Профиль', icon: 'mdi-account-outline' },
+  { id: 'security', title: 'Безопасность', icon: 'mdi-shield-outline' },
+  { id: 'data', title: 'Данные', icon: 'mdi-database-outline', dividerBefore: true },
 ]
 
 const activeSection = ref('profile')
@@ -319,54 +302,8 @@ async function saveProfile() {
 }
 
 .dialog-body {
-  display: flex;
-  flex: 1;
+  flex: 1 1 0;
   overflow: hidden;
-}
-
-.settings-nav {
-  width: 180px;
-  flex-shrink: 0;
-  padding: 16px 12px;
-  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  background: rgb(var(--v-theme-surface-bright));
-}
-
-.nav-btn {
-  display: block;
-  width: 100%;
-  padding: 10px 12px;
-  margin-bottom: 4px;
-  font-size: 13px;
-  color: rgb(var(--v-theme-on-surface-variant));
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  text-align: left;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.nav-btn:hover {
-  background: rgba(var(--v-theme-on-surface), 0.1);
-}
-
-.nav-btn--active {
-  background: rgba(var(--v-theme-primary), 0.2);
-  color: rgb(var(--v-theme-on-surface));
-  font-weight: 500;
-}
-
-.nav-divider {
-  height: 1px;
-  background: rgba(var(--v-theme-on-surface), 0.12);
-  margin: 8px 0;
-}
-
-.settings-content {
-  flex: 1;
-  padding: 24px;
-  overflow-y: auto;
 }
 
 .section-panel {
@@ -616,36 +553,9 @@ async function saveProfile() {
 
   .dialog-body {
     flex-direction: column;
-    flex: 1;
     min-height: 0;
   }
 
-  .settings-nav {
-    width: 100%;
-    flex-direction: row;
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    gap: 4px;
-    padding: 8px 12px;
-    border-right: none;
-    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-    flex-shrink: 0;
-  }
-
-  .nav-btn {
-    flex: 0 0 auto;
-    width: auto;
-    margin-bottom: 0;
-    white-space: nowrap;
-  }
-
-  .settings-content {
-    padding: 16px;
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding-bottom: max(16px, env(safe-area-inset-bottom));
-  }
+  /* SettingsShell mobile: use isMobile prop via Vuetify's display if added in future */
 }
 </style>

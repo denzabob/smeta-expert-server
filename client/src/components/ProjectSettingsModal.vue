@@ -89,48 +89,14 @@
           </div>
         </div>
 
-        <!-- Body: sidebar + content -->
-        <div class="psm-body d-flex flex-grow-1 overflow-hidden" :class="{ 'flex-column': isMobile }">
-          <!-- Section navigation: left sidebar on desktop, top tabs on mobile -->
-          <div v-if="!isMobile" class="psm-sidebar flex-shrink-0 border-r overflow-y-auto">
-            <v-list
-              :model-value="activeSettingsSection"
-              @update:model-value="activeSettingsSection = $event"
-              class="py-0"
-            >
-              <v-list-item
-                v-for="(section, idx) in settingsSections"
-                :key="idx"
-                :value="idx"
-                @click="activeSettingsSection = idx"
-                rounded="0"
-              >
-                <template #prepend>
-                  <v-icon :icon="section.icon" size="small" class="mr-2" />
-                </template>
-                <v-list-item-title class="text-subtitle-2">{{ section.title }}</v-list-item-title>
-              </v-list-item>
-            </v-list>
-          </div>
-
-          <!-- Mobile: horizontal scrollable section tabs -->
-          <div v-else class="psm-mobile-tabs flex-shrink-0 border-b overflow-x-auto">
-            <div class="d-flex" style="white-space: nowrap;">
-              <button
-                v-for="(section, idx) in settingsSections"
-                :key="idx"
-                class="psm-mobile-tab"
-                :class="{ 'psm-mobile-tab--active': activeSettingsSection === idx }"
-                @click="activeSettingsSection = idx"
-              >
-                <v-icon :icon="section.icon" size="x-small" class="mr-1" />
-                {{ section.title }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Content area (scrollable) -->
-          <div class="psm-content overflow-y-auto flex-grow-1">
+        <!-- Body + Footer: SettingsShell handles sidebar/tabs/content, footer slot handles actions -->
+        <SettingsShell
+          class="flex-grow-1"
+          :sections="settingsSections"
+          v-model="activeSettingsSection"
+          :is-mobile="isMobile"
+          :nav-width="220"
+        >
             <v-form>
               <!-- Section 0: Основное -->
               <div v-if="activeSettingsSection === 0" class="psm-section">
@@ -448,45 +414,16 @@
                 </div>
               </div>
             </v-form>
-          </div>
-        </div>
 
-        <!-- Footer -->
-        <div class="psm-footer d-flex align-center border-t px-4 py-3 flex-shrink-0 gap-3">
-          <!-- Dirty state indicator -->
-          <div class="psm-dirty-indicator">
-            <v-chip
-              v-if="isDirty"
-              size="small"
-              color="warning"
-              variant="tonal"
-              prepend-icon="mdi-circle-edit-outline"
-            >
-              Есть несохранённые изменения
-            </v-chip>
-            <v-chip
-              v-else
-              size="small"
-              color="success"
-              variant="tonal"
-              prepend-icon="mdi-check-circle-outline"
-            >
-              Сохранено
-            </v-chip>
-          </div>
-
-          <v-spacer />
-
-          <v-btn variant="text" @click="handleCloseRequest">Отменить</v-btn>
-          <v-btn
-            variant="flat"
-            color="primary"
-            :loading="isSaving"
-            @click="saveSettings"
-          >
-            Сохранить
-          </v-btn>
-        </div>
+          <template #footer>
+            <SettingsShellFooter
+              :is-dirty="isDirty"
+              :saving="isSaving"
+              @save="saveSettings"
+              @cancel="handleCloseRequest"
+            />
+          </template>
+        </SettingsShell>
       </v-card>
     </v-dialog>
   </div>
@@ -497,6 +434,8 @@ import { ref, watch, computed, inject } from 'vue'
 import { useDisplay } from 'vuetify'
 import RichTextEditor from '@/components/notifications/RichTextEditor.vue'
 import type { AxiosInstance } from 'axios'
+import SettingsShell from '@/components/settings/shell/SettingsShell.vue'
+import SettingsShellFooter from '@/components/settings/shell/SettingsShellFooter.vue'
 
 interface Project {
   id: number
@@ -581,11 +520,11 @@ const editingCoefficientType = ref<'plate' | 'edge' | 'operations' | null>(null)
 const coefficientDescriptionForm = ref<CoefficientDescription>({ title: '', text: '' })
 
 const settingsSections = [
-  { title: 'Основное', icon: 'mdi-folder-settings' },
-  { title: 'Коэффициенты', icon: 'mdi-tune' },
-  { title: 'Материалы', icon: 'mdi-package-variant' },
-  { title: 'Отходы', icon: 'mdi-recycle' },
-  { title: 'Справочные блоки', icon: 'mdi-text-box-outline' },
+  { id: 0, title: 'Основное', icon: 'mdi-folder-settings' },
+  { id: 1, title: 'Коэффициенты', icon: 'mdi-tune' },
+  { id: 2, title: 'Материалы', icon: 'mdi-package-variant' },
+  { id: 3, title: 'Отходы', icon: 'mdi-recycle' },
+  { id: 4, title: 'Справочные блоки', icon: 'mdi-text-box-outline' },
 ]
 
 const syncProjectData = (source: Project) => {
@@ -867,52 +806,6 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
-/* Sidebar */
-.psm-sidebar {
-  width: 220px;
-  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-}
-
-:deep(.psm-sidebar .v-list-item) {
-  border-radius: 0;
-}
-
-:deep(.psm-sidebar .v-list-item--active) {
-  background-color: rgba(var(--v-theme-primary), 0.08);
-  border-right: 3px solid rgb(var(--v-theme-primary));
-}
-
-/* Mobile tabs bar */
-.psm-mobile-tabs {
-  width: 100%;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-}
-
-.psm-mobile-tab {
-  display: inline-flex;
-  align-items: center;
-  padding: 10px 14px;
-  font-size: 13px;
-  white-space: nowrap;
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: rgba(var(--v-theme-on-surface), 0.7);
-  border-bottom: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s;
-}
-
-.psm-mobile-tab--active {
-  color: rgb(var(--v-theme-primary));
-  border-bottom-color: rgb(var(--v-theme-primary));
-  font-weight: 500;
-}
-
-/* Content area */
-.psm-content {
-  padding: 20px 24px;
-}
-
 /* Section headings */
 .psm-section-title {
   font-size: 14px;
@@ -962,10 +855,6 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
 }
 
 /* Footer */
-.psm-footer {
-  min-height: 60px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-}
 
 .psm-dirty-indicator {
   min-width: 0;
@@ -977,14 +866,6 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
     padding-top: max(12px, env(safe-area-inset-top));
     padding-left: 16px;
     padding-right: 16px;
-  }
-
-  .psm-content {
-    padding: 16px;
-  }
-
-  .psm-footer {
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
 
   .psm-waste-row {

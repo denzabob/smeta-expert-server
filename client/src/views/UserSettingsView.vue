@@ -6,31 +6,12 @@
     />
 
     <SectionCard class="settings-shell">
-      <div class="d-flex settings-body">
-        <div class="settings-sidebar">
-          <v-list
-            :model-value="activeSection"
-            @update:model-value="activeSection = $event"
-            class="py-0"
-          >
-            <v-list-item
-              v-for="(section, idx) in sections"
-              :key="idx"
-              :value="idx"
-              @click="activeSection = idx"
-            >
-              <template #prepend>
-                <v-icon :icon="section.icon" size="small" class="mr-3" />
-              </template>
-              <v-list-item-title class="text-subtitle-2">
-                {{ section.title }}
-              </v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </div>
-
-        <div class="settings-content">
-          <div class="settings-content-scroll">
+      <div class="usd-body">
+        <SettingsShell
+          :sections="sections"
+          v-model="activeSection"
+          :nav-width="240"
+        >
             <v-skeleton-loader
               v-if="loading"
               type="article, paragraph, paragraph, paragraph"
@@ -360,20 +341,16 @@
               </div>
 
             </template>
-          </div>
 
-          <div class="settings-footer">
-            <div class="d-flex align-center justify-space-between">
-              <div class="text-body-2" :class="isDirty ? 'text-warning' : 'text-medium-emphasis'">
-                {{ isDirty ? 'Есть несохранённые изменения' : 'Все изменения сохранены' }}
-              </div>
-              <div class="d-flex gap-2">
-                <v-btn variant="text" @click="onCancel" :disabled="saving || !isDirty">Отменить</v-btn>
-                <v-btn color="primary" variant="flat" @click="onSave" :loading="saving" :disabled="saving || !isDirty">Сохранить</v-btn>
-              </div>
-            </div>
-          </div>
-        </div>
+          <template #footer>
+            <SettingsShellFooter
+              :is-dirty="isDirty"
+              :saving="saving"
+              @save="onSave"
+              @cancel="onCancel"
+            />
+          </template>
+        </SettingsShell>
       </div>
     </SectionCard>
 
@@ -390,6 +367,8 @@ import api from '@/api/axios'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import SettingsShell from '@/components/settings/shell/SettingsShell.vue'
+import SettingsShellFooter from '@/components/settings/shell/SettingsShellFooter.vue'
 
 interface Region {
   id: number
@@ -443,11 +422,11 @@ interface UserSettings {
 }
 
 const sections = [
-  { title: 'Регион и режим расчёта', icon: 'mdi-map-marker' },
-  { title: 'Общие коэффициенты', icon: 'mdi-tune' },
-  { title: 'Материалы по умолчанию', icon: 'mdi-package-variant' },
-  { title: 'Отходы', icon: 'mdi-recycle' },
-  { title: 'Справочные блоки', icon: 'mdi-text-box-outline' },
+  { id: 0, title: 'Регион и режим расчёта', icon: 'mdi-map-marker' },
+  { id: 1, title: 'Общие коэффициенты', icon: 'mdi-tune' },
+  { id: 2, title: 'Материалы по умолчанию', icon: 'mdi-package-variant' },
+  { id: 3, title: 'Отходы', icon: 'mdi-recycle' },
+  { id: 4, title: 'Справочные блоки', icon: 'mdi-text-box-outline' },
 ]
 
 const activeSection = ref(0)
@@ -688,35 +667,10 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.settings-body {
-  min-height: 70vh;
-}
-
-.settings-sidebar {
-  width: 280px;
-  border-right: 1px solid rgba(0,0,0,0.08);
-  padding: 8px 0;
-}
-
-.settings-content {
-  flex: 1;
+.usd-body {
+  height: 70vh;
   display: flex;
   flex-direction: column;
-  min-width: 0;
-}
-
-.settings-content-scroll {
-  flex: 1;
-  overflow: auto;
-  padding: 16px;
-}
-
-.settings-footer {
-  position: sticky;
-  bottom: 0;
-  padding: 12px 16px;
-  border-top: 1px solid rgba(0,0,0,0.08);
-  background: rgb(var(--v-theme-surface));
 }
 
 .section-title {
