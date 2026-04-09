@@ -6,9 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\AuthVerificationChallenge;
 use App\Models\User;
 use App\Notifications\VerifyEmailNotification;
+use App\Services\Auth\AuthMethodProfileService;
 use App\Services\Auth\LoginMethodService;
+use App\Services\Auth\StepUpService;
+use App\Services\Auth\StepUpTokenInvalidException;
 use App\Services\Auth\VerificationCodeService;
 use App\Services\Auth\YandexAuthService;
+use App\Services\AuthAuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -24,7 +28,10 @@ class AuthMethodController extends Controller
     public function __construct(
         LoginMethodService $loginMethodService,
         VerificationCodeService $verificationCodeService,
-        YandexAuthService $yandexAuthService
+        YandexAuthService $yandexAuthService,
+        private readonly StepUpService $stepUpService,
+        private readonly AuthMethodProfileService $profileService,
+        private readonly AuthAuditService $audit,
     ) {
         $this->loginMethodService = $loginMethodService;
         $this->verificationCodeService = $verificationCodeService;
@@ -164,18 +171,31 @@ class AuthMethodController extends Controller
 
     /**
      * POST /api/auth/methods/phone/request-change
+     *
+     * Request a phone number change.
+     * Requires a valid step-up token with scope=change_phone.
      */
     public function requestPhoneChange(Request $request): JsonResponse
     {
         $request->validate([
-            'phone' => ['required', 'string', 'min:10', 'max:20'],
-            'current_password' => ['nullable', 'string'],
+            'phone'         => ['required', 'string', 'min:10', 'max:20'],
+            'step_up_token' => ['required', 'string'],
         ]);
 
         $user = $request->user();
-        $passwordError = $this->validateSensitiveActionPassword($user, (string) $request->input('current_password', ''));
-        if ($passwordError) {
-            return $passwordError;
+
+        try {
+            $challenge = $this->stepUpService->validateToken(
+                $request->input('step_up_token'),
+                $user,
+                'change_phone',
+            );
+        } catch (StepUpTokenInvalidException $e) {
+            $this->audit->stepUpRequiredActionBlocked($user->id, $request, [
+                'action' => 'change_phone',
+                'reason' => 'invalid_step_up_token',
+            ]);
+            return response()->json(['message' => $e->getMessage(), 'error' => 'step_up_required'], 401);
         }
 
         $phone = VerificationCodeService::normalizePhone($request->input('phone'));
@@ -217,17 +237,20 @@ class AuthMethodController extends Controller
             ], 503);
         }
 
-        $challenge = $result['challenge'];
+        // Consume the step-up token (step-up was validated; now OTP flow begins)
+        $this->stepUpService->consumeToken($challenge);
+
+        $phoneChallenge = $result['challenge'];
 
         return response()->json([
-            'challenge_id' => $challenge->id,
-            'channel' => $result['channel_used'],
+            'challenge_id'        => $phoneChallenge->id,
+            'channel'             => $result['channel_used'],
             'verification_method' => $result['channel_used'] === 'sms_ru_callcheck' ? 'call' : 'code',
-            'call_phone' => $result['call_phone'],
-            'call_phone_pretty' => $result['call_phone_pretty'],
-            'phone_masked' => VerificationCodeService::maskPhone($phone),
-            'resend_available_at' => $challenge->resend_available_at?->toIso8601String(),
-            'expires_at' => $challenge->expires_at->toIso8601String(),
+            'call_phone'          => $result['call_phone'],
+            'call_phone_pretty'   => $result['call_phone_pretty'],
+            'phone_masked'        => VerificationCodeService::maskPhone($phone),
+            'resend_available_at' => $phoneChallenge->resend_available_at?->toIso8601String(),
+            'expires_at'          => $phoneChallenge->expires_at->toIso8601String(),
         ]);
     }
 
@@ -375,18 +398,31 @@ class AuthMethodController extends Controller
 
     /**
      * POST /api/auth/methods/email/change
+     *
+     * Set or change the linked email address.
+     * Requires a valid step-up token with scope=change_email.
      */
     public function changeEmail(Request $request): JsonResponse
     {
         $request->validate([
-            'email' => ['required', 'email', 'max:255'],
-            'current_password' => ['nullable', 'string'],
+            'email'         => ['required', 'email', 'max:255'],
+            'step_up_token' => ['required', 'string'],
         ]);
 
         $user = $request->user();
-        $passwordError = $this->validateSensitiveActionPassword($user, (string) $request->input('current_password', ''));
-        if ($passwordError) {
-            return $passwordError;
+
+        try {
+            $challenge = $this->stepUpService->validateToken(
+                $request->input('step_up_token'),
+                $user,
+                'change_email',
+            );
+        } catch (StepUpTokenInvalidException $e) {
+            $this->audit->stepUpRequiredActionBlocked($user->id, $request, [
+                'action' => 'change_email',
+                'reason' => 'invalid_step_up_token',
+            ]);
+            return response()->json(['message' => $e->getMessage(), 'error' => 'step_up_required'], 401);
         }
 
         $email = mb_strtolower(trim((string) $request->input('email')));
@@ -413,11 +449,15 @@ class AuthMethodController extends Controller
             'email_verified_at' => null,
         ]);
 
+        $this->stepUpService->consumeToken($challenge);
+
+        $this->audit->methodEmailLinked($user->id, $request, ['masked_email' => substr($email, 0, 2) . '***']);
+
         $user->notify(new VerifyEmailNotification());
 
         return response()->json([
-            'message' => 'Email обновлён. Мы отправили письмо для подтверждения нового адреса.',
-            'email' => $email,
+            'message'        => 'Email обновлён. Мы отправили письмо для подтверждения нового адреса.',
+            'email'          => $email,
             'email_verified' => false,
         ]);
     }

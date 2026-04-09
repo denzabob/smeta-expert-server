@@ -115,6 +115,60 @@ class AuthAuditService
         $this->write('auth.new_login_alert_sent', $userId, $request, 'success', $meta);
     }
 
+    // ─── Auth-method lifecycle ──────────────────────────────────────────────
+
+    public function methodEmailLinked(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.method_email_linked', $userId, $request, 'success', $meta);
+    }
+
+    public function methodEmailVerified(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.method_email_verified', $userId, $request, 'success', $meta);
+    }
+
+    public function methodPasswordSet(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.method_password_set', $userId, $request, 'success', $meta);
+    }
+
+    public function methodYandexLinked(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.method_yandex_linked', $userId, $request, 'success', $meta);
+    }
+
+    public function methodQuickPinEnabled(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.method_quick_pin_enabled', $userId, $request, 'success', $meta);
+    }
+
+    public function methodQuickPinDisabled(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.method_quick_pin_disabled', $userId, $request, 'success', $meta);
+    }
+
+    // ─── Step-up ────────────────────────────────────────────────────────────
+
+    public function stepUpChallengeStarted(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.step_up_challenge_started', $userId, $request, 'started', $meta);
+    }
+
+    public function stepUpChallengeCompleted(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.step_up_challenge_completed', $userId, $request, 'success', $meta);
+    }
+
+    public function stepUpChallengeFailed(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.step_up_challenge_failed', $userId, $request, 'failed', $meta);
+    }
+
+    public function stepUpRequiredActionBlocked(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.step_up_required_action_blocked', $userId, $request, 'blocked', $meta);
+    }
+
     // ─── Sessions / tokens ──────────────────────────────────────────────────
 
     public function sessionsRevoked(int $userId, Request $request, int $revokedCount): void
@@ -124,11 +178,52 @@ class AuthAuditService
         ]);
     }
 
+    public function sessionRevoked(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.session_revoked', $userId, $request, 'success', $meta);
+    }
+
+    public function sessionsRevokedOther(int $userId, Request $request, int $revokedCount): void
+    {
+        $this->write('auth.sessions_revoked_other', $userId, $request, 'success', [
+            'revoked_count' => $revokedCount,
+        ]);
+    }
+
+    public function trustedDevicesRevokedAll(int $userId, Request $request, int $revokedCount): void
+    {
+        $this->write('auth.trusted_devices_revoked_all', $userId, $request, 'success', [
+            'revoked_count' => $revokedCount,
+        ]);
+    }
+
     public function tokensRevoked(int $userId, Request $request, int $revokedCount): void
     {
         $this->write('auth.tokens_revoked', $userId, $request, 'success', [
             'revoked_count' => $revokedCount,
         ]);
+    }
+
+    // ─── Phone method lifecycle ──────────────────────────────────────────────
+
+    public function methodPhoneLinkStarted(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.method_phone_link_started', $userId, $request, 'started', $meta);
+    }
+
+    public function methodPhoneVerified(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.method_phone_verified', $userId, $request, 'success', $meta);
+    }
+
+    public function methodYandexBootstrapCompleted(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.method_yandex_bootstrap_completed', $userId, $request, 'success', $meta);
+    }
+
+    public function recoveryPathBlocked(int $userId, Request $request, array $meta = []): void
+    {
+        $this->write('auth.recovery_path_blocked', $userId, $request, 'blocked', $meta);
     }
 
     // ─── Internal ───────────────────────────────────────────────────────────

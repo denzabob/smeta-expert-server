@@ -129,6 +129,12 @@ const router = createRouter({
           meta: { title: 'Настройки проекта' }
         },
         {
+          path: 'settings/security',
+          name: 'settings-security',
+          component: () => import('@/views/SecurityPageView.vue'),
+          meta: { title: 'Безопасность аккаунта' }
+        },
+        {
           path: 'suppliers',
           name: 'suppliers',
           component: () => import('@/views/SuppliersIndex.vue'),

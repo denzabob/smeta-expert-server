@@ -3,6 +3,25 @@
     <div class="section-title">Безопасность</div>
     <div class="section-hint">Управление PIN-кодом, доверенными устройствами и сеансами</div>
 
+    <!-- Link to dedicated security page -->
+    <v-card
+      variant="tonal"
+      color="primary"
+      class="content-card mb-4 cursor-pointer"
+      :to="{ name: 'settings-security' }"
+    >
+      <v-card-text class="d-flex align-center gap-3">
+        <v-icon color="primary">mdi-shield-account-outline</v-icon>
+        <div class="flex-1">
+          <div class="text-body-2 font-weight-medium">Полные настройки безопасности</div>
+          <div class="text-caption text-medium-emphasis">
+            Способы входа, восстановление аккаунта, сеансы и устройства
+          </div>
+        </div>
+        <v-icon size="18" color="medium-emphasis">mdi-chevron-right</v-icon>
+      </v-card-text>
+    </v-card>
+
     <v-snackbar v-model="snack.show" :timeout="3000" :color="snack.color" location="bottom right">
       {{ snack.message }}
     </v-snackbar>

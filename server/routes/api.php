@@ -166,6 +166,39 @@ Route::get('screenshots/{path}', function (string $path) {
 
 // Защищённые маршруты
 Route::middleware('auth:sanctum')->group(function () {
+    // ========== Security: Auth-Method Profile + Universal Step-Up ==========
+    // throttle:N,M  → N attempts per M minutes per authenticated user+IP
+    Route::get('security/auth-status', [\App\Http\Controllers\Api\SecurityController::class, 'authStatus']);
+    Route::post('security/step-up/initiate', [\App\Http\Controllers\Api\SecurityController::class, 'stepUpInitiate'])
+        ->middleware('throttle:10,1');
+    Route::post('security/step-up/verify-password', [\App\Http\Controllers\Api\SecurityController::class, 'stepUpVerifyPassword'])
+        ->middleware('throttle:5,1');
+    Route::post('security/step-up/request-phone-otp', [\App\Http\Controllers\Api\SecurityController::class, 'stepUpRequestPhoneOtp'])
+        ->middleware('throttle:3,1');
+    Route::post('security/step-up/verify-phone-otp', [\App\Http\Controllers\Api\SecurityController::class, 'stepUpVerifyPhoneOtp'])
+        ->middleware('throttle:5,1');
+    Route::post('security/password/set', [\App\Http\Controllers\Api\SecurityController::class, 'setPassword'])
+        ->middleware('throttle:5,1');
+
+    // ========== Security: Account Control Surface (sessions + devices) ==========
+    // Sessions — no step-up required (cleaning up your own access surfaces is always safe)
+    Route::get('security/sessions', [\App\Http\Controllers\Api\AccountControlController::class, 'listSessions']);
+    Route::delete('security/sessions/others', [\App\Http\Controllers\Api\AccountControlController::class, 'revokeOtherSessions']);
+    Route::delete('security/sessions/{id}', [\App\Http\Controllers\Api\AccountControlController::class, 'revokeSession']);
+    // Trusted devices — step-up only for bulk revocation (high impact)
+    Route::get('security/trusted-devices', [\App\Http\Controllers\Api\AccountControlController::class, 'listDevices']);
+    Route::delete('security/trusted-devices', [\App\Http\Controllers\Api\AccountControlController::class, 'revokeAllDevices'])
+        ->middleware('throttle:3,1');
+    Route::delete('security/trusted-devices/{id}', [\App\Http\Controllers\Api\AccountControlController::class, 'revokeDevice']);
+
+    // ========== Security: Yandex-Bootstrap Phone Linking ==========
+    // No step-up required — the active authenticated session is the trust anchor.
+    // Scope: adding a phone as first factor only. Available to users without a verified phone.
+    Route::post('security/bootstrap/phone/initiate', [\App\Http\Controllers\Api\BootstrapController::class, 'initiatePhoneLink'])
+        ->middleware('throttle:5,1');
+    Route::post('security/bootstrap/phone/verify', [\App\Http\Controllers\Api\BootstrapController::class, 'verifyPhoneLink'])
+        ->middleware('throttle:10,1');
+
     // ========== Phone Auth: Complete Registration (onboarding) ==========
     Route::post('register/complete', [PhoneAuthController::class, 'completeRegistration']);
 

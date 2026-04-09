@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\TrustedDevice;
 use App\Models\User;
 use App\Services\AuthAuditService;
+use App\Services\Auth\StepUpService;
+use App\Services\Auth\StepUpTokenInvalidException;
+use App\Services\Auth\AuthMethodProfileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -15,7 +18,11 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class PinAuthController extends Controller
 {
-    public function __construct(private readonly AuthAuditService $audit) {}
+    public function __construct(
+        private readonly AuthAuditService         $audit,
+        private readonly StepUpService            $stepUpService,
+        private readonly AuthMethodProfileService  $profileService,
+    ) {}
     /**
      * GET /api/auth/pin/status
      *
@@ -171,29 +178,58 @@ class PinAuthController extends Controller
     /**
      * POST /api/auth/pin/set
      *
-     * Установить или изменить PIN (требует пароль).
+     * Установить или изменить PIN.
+     * Требует действительный step_up_token с scope=set_quick_pin.
+     * Пользователи с паролем получают токен через /security/step-up/verify-password.
+     * Пользователи без пароля — через /security/step-up/verify-phone-otp.
      */
     public function set(Request $request): JsonResponse
     {
         $request->validate([
-            'pin' => 'required|string|size:4|regex:/^\d{4}$/',
-            'pin_confirm' => 'required|string|same:pin',
-            'password' => 'required|string',
-            'trust_device' => 'boolean',
+            'pin'           => 'required|string|size:4|regex:/^\d{4}$/',
+            'pin_confirm'   => 'required|string|same:pin',
+            'step_up_token' => 'required|string',
+            'trust_device'  => 'boolean',
         ]);
 
         $user = $request->user();
 
-        // Проверка пароля
-        if (!Hash::check($request->input('password'), $user->password)) {
-            return response()->json(['message' => 'Неверный пароль'], 422);
+        // Verify step-up token
+        try {
+            $challenge = $this->stepUpService->validateToken(
+                $request->input('step_up_token'),
+                $user,
+                'set_quick_pin',
+            );
+        } catch (StepUpTokenInvalidException $e) {
+            $this->audit->stepUpRequiredActionBlocked($user->id, $request, [
+                'action' => 'set_quick_pin',
+                'reason' => 'invalid_step_up_token',
+            ]);
+            return response()->json(['message' => $e->getMessage(), 'error' => 'step_up_required'], 401);
         }
+
+        $isNewPin = !$user->pin_enabled;
 
         // Установить PIN
         $user->setPin($request->input('pin'));
 
+        // Consume token so it cannot be reused
+        $this->stepUpService->consumeToken($challenge);
+
+        if ($isNewPin) {
+            $this->audit->methodQuickPinEnabled($user->id, $request, [
+                'step_up_method' => $challenge->completed_method,
+            ]);
+        } else {
+            $this->audit->methodQuickPinEnabled($user->id, $request, [
+                'action'         => 'pin_changed',
+                'step_up_method' => $challenge->completed_method,
+            ]);
+        }
+
         $response = [
-            'message' => 'PIN-код установлен',
+            'message'     => 'PIN-код установлен',
             'pin_enabled' => true,
         ];
 
@@ -213,24 +249,41 @@ class PinAuthController extends Controller
     /**
      * POST /api/auth/pin/disable
      *
-     * Отключить PIN (требует пароль).
+     * Отключить PIN.
+     * Требует действительный step_up_token с scope=set_quick_pin.
      */
     public function disable(Request $request): JsonResponse
     {
         $request->validate([
-            'password' => 'required|string',
+            'step_up_token' => 'required|string',
         ]);
 
         $user = $request->user();
 
-        if (!Hash::check($request->input('password'), $user->password)) {
-            return response()->json(['message' => 'Неверный пароль'], 422);
+        try {
+            $challenge = $this->stepUpService->validateToken(
+                $request->input('step_up_token'),
+                $user,
+                'set_quick_pin',
+            );
+        } catch (StepUpTokenInvalidException $e) {
+            $this->audit->stepUpRequiredActionBlocked($user->id, $request, [
+                'action' => 'disable_quick_pin',
+                'reason' => 'invalid_step_up_token',
+            ]);
+            return response()->json(['message' => $e->getMessage(), 'error' => 'step_up_required'], 401);
         }
 
         $user->disablePin();
 
         // Отозвать все доверенные устройства
         $user->activeTrustedDevices()->update(['revoked_at' => now()]);
+
+        $this->stepUpService->consumeToken($challenge);
+
+        $this->audit->methodQuickPinDisabled($user->id, $request, [
+            'step_up_method' => $challenge->completed_method,
+        ]);
 
         return response()->json(['message' => 'PIN-код отключён', 'pin_enabled' => false]);
     }

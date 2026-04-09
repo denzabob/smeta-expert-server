@@ -92,7 +92,7 @@
     </Transition>
 
     <!-- Компонент настроек проекта -->
-    <ProjectSettingsDrawer
+    <ProjectSettingsModal
       :model-value="settingsDrawer"
       :project="project"
       :regions="regions"
@@ -1682,7 +1682,7 @@
 
     <!-- ======================== MODULE: SETTINGS ======================== -->
     <div v-show="activeModule === 'settings'" class="module-content">
-      <!-- Empty module area by design: entering this module opens ProjectSettingsDrawer immediately. -->
+      <!-- Empty module area by design: entering this module opens ProjectSettingsModal immediately. -->
     </div><!-- /MODULE: SETTINGS -->
 
       </div><!-- /workspace-module-area -->
@@ -3195,7 +3195,7 @@ import laborWorksApi, { type LaborWork } from '@/api/laborWorks'
 import { revisionRunApi, evidenceAssetFileUrl, type RevisionRun, type RevisionRunItem, type EvidenceArtifactDetail } from '@/api/revisionRun'
 import { consumePrefetchedProject, setProjectsFlashMessage } from '@/router/projectAccess'
 import ProfileRatesSection from '@/components/ProfileRatesSection.vue'
-import ProjectSettingsDrawer from '@/components/ProjectSettingsDrawer.vue'
+import ProjectSettingsModal from '@/components/ProjectSettingsModal.vue'
 import ImportPositionsDialog from '@/components/ImportPositionsDialog.vue'
 import RowHoverActions, { type RowAction } from '@/components/RowHoverActions.vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
@@ -3945,7 +3945,7 @@ const loadingStates = ref({
   operations: false
 })
 
-// === Обработчики для ProjectSettingsDrawer компонента ===
+// === Обработчики для ProjectSettingsModal компонента ===
 const handleSettingsSaved = async (updatedProject: any) => {
   try {
     // Обновляем локальный project из компонента
