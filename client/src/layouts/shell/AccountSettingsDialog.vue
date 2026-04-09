@@ -10,9 +10,9 @@
               <button class="close-btn" @click="requestClose">×</button>
             </div>
 
-            <div class="dialog-body" :class="{ 'dialog-body--direct': directEntryMode }">
+            <div class="dialog-body">
               <!-- Left navigation -->
-              <nav v-if="!directEntryMode" class="settings-nav">
+              <nav class="settings-nav">
                 <template v-for="section in sections" :key="section.id">
                   <div v-if="section.dividerBefore" class="nav-divider"></div>
                   <button
@@ -73,59 +73,7 @@
 
                 <!-- Security -->
                 <div v-if="activeSection === 'security'" class="section-panel section-panel--wide">
-                  <UserSecurityPanel />
-                </div>
-
-                <!-- Preferences -->
-                <div v-if="activeSection === 'preferences'" class="section-panel">
-                  <h3 class="section-title">Предпочтения</h3>
-                  <p class="section-desc">Настройки интерфейса и поведения приложения</p>
-
-                  <div class="settings-form">
-                    <div class="form-group">
-                      <label class="form-label">Тема оформления</label>
-                      <div class="radio-group">
-                        <label class="radio-item">
-                          <input
-                            type="radio"
-                            v-model="preferencesForm.theme"
-                            value="light"
-                          />
-                          <span>Светлая</span>
-                        </label>
-                        <label class="radio-item">
-                          <input
-                            type="radio"
-                            v-model="preferencesForm.theme"
-                            value="dark"
-                          />
-                          <span>Тёмная</span>
-                        </label>
-                        <label class="radio-item">
-                          <input
-                            type="radio"
-                            v-model="preferencesForm.theme"
-                            value="auto"
-                          />
-                          <span>Автоматическая</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div class="form-actions">
-                      <button
-                        type="button"
-                        class="btn btn--primary"
-                        @click="savePreferences"
-                      >
-                        Сохранить
-                      </button>
-                    </div>
-
-                    <div v-if="preferencesMessage" class="form-message form-message--success">
-                      {{ preferencesMessage }}
-                    </div>
-                  </div>
+                  <AccountSecuritySection />
                 </div>
 
                 <!-- Data -->
@@ -182,7 +130,7 @@
 import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api/axios'
-import UserSecurityPanel from '@/components/settings/UserSecurityPanel.vue'
+import AccountSecuritySection from '@/components/settings/AccountSecuritySection.vue'
 
 interface Section {
   id: string
@@ -205,13 +153,10 @@ const user = computed(() => authStore.user)
 const sections: Section[] = [
   { id: 'profile', title: 'Профиль' },
   { id: 'security', title: 'Безопасность' },
-  { id: 'preferences', title: 'Предпочтения' },
   { id: 'data', title: 'Данные', dividerBefore: true },
 ]
 
 const activeSection = ref('profile')
-const directEntryTabs = new Set(['profile', 'security', 'preferences'])
-const directEntryMode = computed(() => !!props.initialTab && directEntryTabs.has(props.initialTab))
 
 // Profile form
 const profileForm = ref({
@@ -228,30 +173,15 @@ const passwordForm = ref({
   confirm: '',
 })
 
-// Preferences form
-const savedTheme = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
-const preferencesForm = ref({
-  theme: savedTheme || 'auto',
-})
-const preferencesMessage = ref('')
-
 // === Отслеживание несохранённых изменений ===
 const initialProfileName = ref('')
-const initialTheme = ref(savedTheme || 'auto')
 
 const hasUnsavedChanges = computed(() => {
-  // Проверяем изменения в профиле
   const profileChanged = profileForm.value.name !== initialProfileName.value
-  
-  // Проверяем изменения в форме пароля (любое поле заполнено)
-  const passwordChanged = passwordForm.value.current !== '' || 
-                          passwordForm.value.new !== '' || 
+  const passwordChanged = passwordForm.value.current !== '' ||
+                          passwordForm.value.new !== '' ||
                           passwordForm.value.confirm !== ''
-  
-  // Проверяем изменения в предпочтениях
-  const preferencesChanged = preferencesForm.value.theme !== initialTheme.value
-  
-  return profileChanged || passwordChanged || preferencesChanged
+  return profileChanged || passwordChanged
 })
 
 // Показ подтверждения закрытия
@@ -263,16 +193,9 @@ watch(() => props.modelValue, (open) => {
     const name = user.value?.name || ''
     profileForm.value.name = name
     initialProfileName.value = name
-    
-    const theme = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' || 'auto'
-    preferencesForm.value.theme = theme
-    initialTheme.value = theme
-    
     profileMessage.value = ''
-    preferencesMessage.value = ''
     passwordForm.value = { current: '', new: '', confirm: '' }
     showCloseConfirm.value = false
-    
     if (props.initialTab && sections.find(s => s.id === props.initialTab)) {
       activeSection.value = props.initialTab
     }
@@ -327,18 +250,7 @@ async function saveProfile() {
   }
 }
 
-function savePreferences() {
-  localStorage.setItem('app-theme-mode', preferencesForm.value.theme)
-  window.dispatchEvent(new CustomEvent('theme-mode-change', { detail: preferencesForm.value.theme }))
-  
-  // Update initial value
-  initialTheme.value = preferencesForm.value.theme
-  
-  preferencesMessage.value = 'Настройки сохранены'
-  setTimeout(() => {
-    preferencesMessage.value = ''
-  }, 2000)
-}
+
 </script>
 
 <style scoped>
@@ -357,7 +269,6 @@ function savePreferences() {
 .dialog-container {
   width: 100%;
   max-width: 800px;
-  max-height: 90vh;
   margin: 16px;
 }
 
@@ -368,7 +279,8 @@ function savePreferences() {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: 90vh;
+  /* Fixed stable height — never resizes between sections */
+  height: min(720px, calc(100vh - 32px));
 }
 
 .dialog-header {
@@ -581,26 +493,6 @@ function savePreferences() {
 .form-message--error {
   color: rgb(var(--v-theme-error));
   background: rgba(var(--v-theme-error), 0.14);
-}
-
-.radio-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.radio-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: rgb(var(--v-theme-on-surface));
-  cursor: pointer;
-}
-
-.radio-item input {
-  width: 16px;
-  height: 16px;
 }
 
 .data-section {

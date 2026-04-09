@@ -12,6 +12,7 @@
     <AppSidebar
       v-model="drawerOpen"
       @open-settings="openAccountSettings"
+      @open-profile="openProfileEdit"
       @logout="handleLogout"
     />
 
@@ -28,6 +29,9 @@
       v-model="settingsDialogOpen"
       :initial-tab="settingsInitialTab"
     />
+
+    <!-- Profile Edit Modal (compact, ~420px) -->
+    <ProfileEditModal v-model="profileEditOpen" />
   </v-app>
 </template>
 
@@ -38,6 +42,7 @@ import { useDisplay, useTheme } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
 import AppSidebar from './shell/AppSidebarNew.vue'
 import AccountSettingsDialog from './shell/AccountSettingsDialog.vue'
+import ProfileEditModal from '@/components/settings/ProfileEditModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -52,6 +57,13 @@ const drawerOpen = ref(true)
 // Settings dialog
 const settingsDialogOpen = ref(false)
 const settingsInitialTab = ref<string | undefined>(undefined)
+
+// Profile edit modal
+const profileEditOpen = ref(false)
+
+function openProfileEdit() {
+  profileEditOpen.value = true
+}
 
 // Theme mode
 const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null

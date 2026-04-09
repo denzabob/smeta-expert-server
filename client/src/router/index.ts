@@ -120,19 +120,15 @@ const router = createRouter({
           path: 'settings',
           name: 'settings',
           component: () => import('@/views/UserSettingsView.vue'),
-          meta: { title: 'Настройки' }
+          meta: { title: 'Настройки проекта по умолчанию' }
         },
         {
           path: 'settings/project',
-          name: 'settings-project',
-          component: () => import('@/views/ProjectDefaultsView.vue'),
-          meta: { title: 'Настройки проекта' }
+          redirect: { name: 'settings' }
         },
         {
           path: 'settings/security',
-          name: 'settings-security',
-          component: () => import('@/views/SecurityPageView.vue'),
-          meta: { title: 'Безопасность аккаунта' }
+          redirect: { name: 'projects' }
         },
         {
           path: 'suppliers',

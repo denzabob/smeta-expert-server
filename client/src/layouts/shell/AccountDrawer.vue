@@ -4,14 +4,13 @@
       <div v-if="modelValue" class="drawer-overlay" @click.self="close">
         <div class="drawer-container">
           <div class="drawer-content">
-            <!-- User header -->
+
+            <!-- User identity block -->
             <div class="drawer-header">
               <div class="user-block">
-                <div class="user-avatar">
-                  {{ userInitial }}
-                </div>
+                <div class="user-avatar">{{ userInitial }}</div>
                 <div class="user-info">
-                  <div class="user-name">{{ userName }}</div>
+                  <div class="user-name">{{ userName || userEmail }}</div>
                   <div class="user-email">{{ userEmail }}</div>
                 </div>
               </div>
@@ -20,103 +19,47 @@
               </button>
             </div>
 
-            <!-- Menu items -->
+            <div class="drawer-divider" />
+
+            <!-- Flat navigation hub — no sections, no overflow bucket -->
             <nav class="drawer-nav">
-              <div class="drawer-section-title">Рабочее</div>
-              <button
-                v-for="item in quickWorkItems"
-                :key="item.id"
-                class="drawer-item"
-                @click="handleItemClick(item)"
-              >
-                <v-icon :icon="item.icon" size="20" class="drawer-item-icon" />
-                <span class="drawer-item-text">{{ item.title }}</span>
-                <v-badge
-                  v-if="item.badge && notificationsStore.hasUnread"
-                  :content="notificationsStore.badgeText"
-                  color="error"
-                  inline
-                  class="ml-auto"
-                />
-              </button>
-
-              <div class="drawer-section-title mt-1">Аккаунт</div>
-              <button
-                v-for="item in quickAccountItems"
-                :key="item.id"
-                class="drawer-item"
-                @click="handleItemClick(item)"
-              >
-                <v-icon :icon="item.icon" size="20" class="drawer-item-icon" />
-                <span class="drawer-item-text">{{ item.title }}</span>
-              </button>
-
-              <button
-                v-if="extraItems.length > 0"
-                class="drawer-item drawer-item--more"
-                @click="showMore = !showMore"
-              >
-                <v-icon icon="mdi-dots-horizontal" size="20" class="drawer-item-icon" />
-                <span class="drawer-item-text">Дополнительно ({{ extraItems.length }})</span>
-                <v-icon :icon="showMore ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="18" class="drawer-item-chevron" />
-              </button>
-
-              <Transition name="drawer-expand">
-                <div v-if="showMore" class="drawer-extra">
-                  <button
-                    v-for="item in extraItems"
-                    :key="item.id"
-                    class="drawer-item"
-                    @click="handleItemClick(item)"
-                  >
-                    <v-icon :icon="item.icon" size="20" class="drawer-item-icon" />
-                    <span class="drawer-item-text">{{ item.title }}</span>
-                  </button>
-                </div>
-              </Transition>
-
-              <div class="theme-quick">
-                <div class="theme-quick__label">Тема</div>
-                <div class="theme-toggle">
-                  <button
-                    class="theme-btn"
-                    :class="{ 'theme-btn--active': themeMode === 'light' }"
-                    title="Светлая тема"
-                    @click="setThemeMode('light')"
-                  >
-                    <v-icon icon="mdi-white-balance-sunny" size="18" />
-                  </button>
-                  <button
-                    class="theme-btn"
-                    :class="{ 'theme-btn--active': themeMode === 'dark' }"
-                    title="Тёмная тема"
-                    @click="setThemeMode('dark')"
-                  >
-                    <v-icon icon="mdi-moon-waning-crescent" size="18" />
-                  </button>
-                  <button
-                    class="theme-btn"
-                    :class="{ 'theme-btn--active': themeMode === 'auto' }"
-                    title="Авто тема"
-                    @click="setThemeMode('auto')"
-                  >
-                    <v-icon icon="mdi-theme-light-dark" size="18" />
-                  </button>
-                </div>
-              </div>
+              <template v-for="item in accountMenuItems" :key="item.id">
+                <div v-if="item.dividerBefore" class="drawer-divider drawer-divider--inner" />
+                <button
+                  class="drawer-item"
+                  :class="{ 'drawer-item--danger': item.action === 'logout' }"
+                  @click="handleItemClick(item)"
+                >
+                  <v-icon :icon="item.icon" size="20" class="drawer-item-icon" />
+                  <span class="drawer-item-text">{{ item.title }}</span>
+                  <v-badge
+                    v-if="item.badge && notificationsStore.hasUnread"
+                    :content="notificationsStore.badgeText"
+                    color="error"
+                    inline
+                    class="ml-auto"
+                  />
+                </button>
+              </template>
             </nav>
 
             <div class="drawer-divider" />
 
-            <div class="drawer-footer">
-              <button
-                v-if="logoutItem"
-                class="drawer-item drawer-item--danger"
-                @click="handleItemClick(logoutItem)"
-              >
-                <v-icon :icon="logoutItem.icon" size="20" class="drawer-item-icon" />
-                <span class="drawer-item-text">{{ logoutItem.title }}</span>
-              </button>
+            <!-- Theme quick-switch — persistent utility action -->
+            <div class="theme-quick">
+              <span class="theme-quick__label">Тема</span>
+              <div class="theme-toggle">
+                <button
+                  v-for="mode in themeModes"
+                  :key="mode.value"
+                  class="theme-btn"
+                  :class="{ 'theme-btn--active': themeMode === mode.value }"
+                  :title="mode.title"
+                  @click="setThemeMode(mode.value)"
+                >
+                  <v-icon :icon="mode.icon" size="18" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -126,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { accountMenuItems, type AccountMenuItem } from './sidebarConfig'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -140,31 +83,23 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
-  (e: 'open-settings', tab?: string): void
+  (e: 'open-settings'): void
+  (e: 'open-profile'): void
   (e: 'open-notifications'): void
   (e: 'logout'): void
 }>()
 
 const router = useRouter()
 const notificationsStore = useNotificationsStore()
-const showMore = ref(false)
 
-const quickWorkItemIds = new Set(['notifications', 'project-defaults'])
-const quickAccountItemIds = new Set(['profile'])
-const quickWorkItems = computed(() =>
-  accountMenuItems.filter((item) => quickWorkItemIds.has(item.id) && item.action !== 'logout')
-)
-const quickAccountItems = computed(() =>
-  accountMenuItems.filter((item) => quickAccountItemIds.has(item.id) && item.action !== 'logout')
-)
-const extraItems = computed(() =>
-  accountMenuItems.filter((item) => !quickWorkItemIds.has(item.id) && !quickAccountItemIds.has(item.id) && item.id !== 'logout')
-)
-const logoutItem = computed(() => accountMenuItems.find((item) => item.id === 'logout') ?? null)
-
-// Theme mode controls shared with the topbar toggle.
+// ── Theme ──────────────────────────────────────────────────────────────────
+const themeModes = [
+  { value: 'light' as const, icon: 'mdi-white-balance-sunny', title: 'Светлая тема' },
+  { value: 'dark'  as const, icon: 'mdi-moon-waning-crescent', title: 'Тёмная тема' },
+  { value: 'auto'  as const, icon: 'mdi-theme-light-dark', title: 'Авто' },
+]
 const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
-const themeMode = ref<'light' | 'dark' | 'auto'>(savedMode || 'auto')
+const themeMode = ref<'light' | 'dark' | 'auto'>(savedMode ?? 'auto')
 
 function setThemeMode(mode: 'light' | 'dark' | 'auto') {
   themeMode.value = mode
@@ -176,63 +111,38 @@ function handleThemeModeChange(e: Event) {
   themeMode.value = (e as CustomEvent).detail as 'light' | 'dark' | 'auto'
 }
 
+// ── Menu actions ────────────────────────────────────────────────────────────
 function close() {
   emit('update:modelValue', false)
 }
 
 function handleItemClick(item: AccountMenuItem) {
-  if (item.action === 'logout') {
-    close()
-    emit('logout')
-    return
+  switch (item.action) {
+    case 'logout':
+      close(); emit('logout'); return
+    case 'support':
+      close(); window.open('https://t.me/denzabob', '_blank'); return
+    case 'notifications':
+      close(); emit('open-notifications'); return
+    case 'profile':
+      close(); emit('open-profile'); return
+    case 'settings':
+      close(); emit('open-settings'); return
   }
-  
-  if (item.action === 'support') {
-    close()
-    window.open('https://t.me/denzabob', '_blank')
-    return
-  }
-
-  if (item.action === 'notifications') {
-    close()
-    emit('open-notifications')
-    return
-  }
-  
   if (item.route) {
     close()
     router.push(item.route)
-    return
-  }
-
-  if (item.tab) {
-    close()
-    emit('open-settings', item.tab)
-    return
   }
 }
 
-// Close on Escape
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.modelValue) {
-    close()
-  }
+  if (e.key === 'Escape' && props.modelValue) close()
 }
 
 onMounted(() => {
   window.addEventListener('theme-mode-change', handleThemeModeChange)
   document.addEventListener('keydown', handleKeydown)
 })
-
-watch(
-  () => props.modelValue,
-  (opened) => {
-    if (!opened) {
-      showMore.value = false
-    }
-  }
-)
-
 onBeforeUnmount(() => {
   window.removeEventListener('theme-mode-change', handleThemeModeChange)
   document.removeEventListener('keydown', handleKeydown)
@@ -248,31 +158,31 @@ onBeforeUnmount(() => {
   align-items: flex-end;
   justify-content: flex-start;
   padding: 16px;
-  background: rgba(var(--v-theme-on-surface), 0.36);
+  background: rgba(var(--v-theme-on-surface), 0.32);
 }
 
 .drawer-container {
-  width: 320px;
+  width: 296px;
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 32px);
   margin-left: 48px;
-  margin-bottom: 0;
 }
 
 .drawer-content {
   --drawer-bg: rgb(var(--v-theme-surface));
   --drawer-border: rgba(var(--v-theme-on-surface), 0.12);
   --drawer-text: rgb(var(--v-theme-on-surface));
-  --drawer-muted: rgba(var(--v-theme-on-surface), 0.65);
-  --drawer-hover: rgba(var(--v-theme-on-surface), 0.08);
-  --drawer-avatar-bg: rgba(var(--v-theme-on-surface), 0.1);
+  --drawer-muted: rgba(var(--v-theme-on-surface), 0.55);
+  --drawer-hover: rgba(var(--v-theme-on-surface), 0.07);
+  --drawer-avatar-bg: rgba(var(--v-theme-primary), 0.15);
+  --drawer-avatar-text: rgb(var(--v-theme-primary));
   --drawer-danger: rgb(var(--v-theme-error));
-  --drawer-danger-hover: rgba(var(--v-theme-error), 0.14);
-  --drawer-active-bg: rgba(var(--v-theme-primary), 0.2);
+  --drawer-danger-hover: rgba(var(--v-theme-error), 0.12);
+  --drawer-active-bg: rgba(var(--v-theme-primary), 0.18);
   --drawer-active-text: rgb(var(--v-theme-on-surface));
   background: var(--drawer-bg);
   border-radius: 16px;
-  box-shadow: 0 12px 32px rgba(5, 10, 20, 0.35);
+  box-shadow: 0 12px 32px rgba(5, 10, 20, 0.32);
   overflow: hidden;
 }
 
@@ -291,16 +201,16 @@ onBeforeUnmount(() => {
 }
 
 .user-avatar {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--drawer-avatar-bg);
-  color: var(--drawer-text);
+  color: var(--drawer-avatar-text);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
-  font-size: 16px;
+  font-weight: 700;
+  font-size: 15px;
   flex-shrink: 0;
 }
 
@@ -342,25 +252,18 @@ onBeforeUnmount(() => {
   color: var(--drawer-text);
 }
 
-/* Divider */
 .drawer-divider {
   height: 1px;
   background: var(--drawer-border);
   margin: 0 12px;
 }
 
-/* Nav */
-.drawer-nav {
-  padding: 8px;
+.drawer-divider--inner {
+  margin: 4px 12px;
 }
 
-.drawer-section-title {
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: var(--drawer-muted);
+.drawer-nav {
+  padding: 6px 8px;
 }
 
 .theme-quick {
@@ -382,7 +285,7 @@ onBeforeUnmount(() => {
 .theme-toggle {
   display: flex;
   border: 1px solid var(--drawer-border);
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -390,23 +293,17 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 30px;
+  width: 34px;
+  height: 28px;
   border: none;
   background: transparent;
   color: var(--drawer-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.13s;
 }
 
-.theme-btn:not(:last-child) {
-  border-right: 1px solid var(--drawer-border);
-}
-
-.theme-btn:hover {
-  background: var(--drawer-hover);
-}
-
+.theme-btn:not(:last-child) { border-right: 1px solid var(--drawer-border); }
+.theme-btn:hover { background: var(--drawer-hover); }
 .theme-btn--active {
   background: var(--drawer-active-bg);
   color: var(--drawer-active-text);
@@ -415,17 +312,17 @@ onBeforeUnmount(() => {
 .drawer-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 11px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 9px 10px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
   color: var(--drawer-text);
   font-size: 14px;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background 0.13s;
 }
 
 .drawer-item:hover {
@@ -445,69 +342,25 @@ onBeforeUnmount(() => {
   opacity: 0.8;
 }
 
-.drawer-item-text {
-  flex: 1;
-}
-
-.drawer-item--more {
-  color: var(--drawer-muted);
-}
-
-.drawer-item-chevron {
-  opacity: 0.6;
-}
-
-.drawer-extra {
-  padding-top: 2px;
-}
-
-.drawer-footer {
-  padding: 8px;
-}
-
-.drawer-expand-enter-active,
-.drawer-expand-leave-active {
-  transition: opacity 0.16s ease, max-height 0.16s ease;
-  max-height: 220px;
-}
-
-.drawer-expand-enter-from,
-.drawer-expand-leave-to {
-  opacity: 0;
-  max-height: 0;
-  overflow: hidden;
-}
+.drawer-item-text { flex: 1; }
 
 /* Transitions */
 .drawer-enter-active,
-.drawer-leave-active {
-  transition: opacity 0.2s ease;
-}
-
+.drawer-leave-active { transition: opacity 0.18s ease; }
 .drawer-enter-active .drawer-content,
-.drawer-leave-active .drawer-content {
-  transition: transform 0.2s ease, opacity 0.2s ease;
-}
-
+.drawer-leave-active .drawer-content { transition: transform 0.18s ease, opacity 0.18s ease; }
 .drawer-enter-from,
-.drawer-leave-to {
-  opacity: 0;
-}
-
+.drawer-leave-to { opacity: 0; }
 .drawer-enter-from .drawer-content,
-.drawer-leave-to .drawer-content {
-  transform: translateY(16px);
-  opacity: 0;
-}
+.drawer-leave-to .drawer-content { transform: translateY(12px); opacity: 0; }
 
-/* Mobile — full-screen bottom sheet */
+/* Mobile — full-screen */
 @media (max-width: 600px) {
   .drawer-overlay {
     padding: 0;
     align-items: stretch;
     justify-content: stretch;
   }
-
   .drawer-container {
     width: 100%;
     max-width: 100vw;
@@ -517,7 +370,6 @@ onBeforeUnmount(() => {
     flex-direction: column;
     flex: 1;
   }
-
   .drawer-content {
     border-radius: 0;
     display: flex;
@@ -525,19 +377,13 @@ onBeforeUnmount(() => {
     flex: 1;
     max-height: none;
   }
-
-  .drawer-nav {
-    flex: 1;
-    overflow-y: auto;
-  }
-
+  .drawer-nav { flex: 1; overflow-y: auto; }
   .drawer-header {
     padding: 16px;
     padding-top: max(16px, env(safe-area-inset-top));
   }
-
-  .drawer-footer {
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  .theme-quick {
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 }
 </style>

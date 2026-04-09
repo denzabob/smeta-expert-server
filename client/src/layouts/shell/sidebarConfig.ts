@@ -92,13 +92,43 @@ export interface AccountMenuItem {
   id: string
   title: string
   icon: string
-  action?: 'logout' | 'support' | 'notifications'
-  tab?: string // для открытия вкладки в настройках
-  route?: string // для перехода на отдельную страницу
-  badge?: boolean // показывать badge с кол-вом непрочитанных
+  /** Специальное действие */
+  action?: 'logout' | 'support' | 'notifications' | 'profile' | 'settings'
+  /** Навигация на маршрут (закрывает меню) */
+  route?: string
+  /** Показывать badge с кол-вом непрочитанных */
+  badge?: boolean
+  /** Визуальный разделитель перед элементом */
+  dividerBefore?: boolean
 }
 
+/**
+ * Flat menu structure — no sections, no overflow bucket.
+ * Container taxonomy:
+ *   action:'profile'        → compact ProfileEditModal (~420px)
+ *   action:'settings'       → AccountSettingsDialog (settings shell, 800px)
+ *   route:'/settings'       → UserSettingsView (full page)
+ *   action:'notifications'  → notifications panel / fullscreen on mobile
+ */
 export const accountMenuItems: AccountMenuItem[] = [
+  {
+    id: 'profile',
+    title: 'Профиль',
+    icon: 'mdi-account-outline',
+    action: 'profile',
+  },
+  {
+    id: 'account-settings',
+    title: 'Настройки аккаунта',
+    icon: 'mdi-cog-outline',
+    action: 'settings',
+  },
+  {
+    id: 'project-defaults',
+    title: 'Настройки проекта по умолчанию',
+    icon: 'mdi-tune-variant',
+    route: '/settings',
+  },
   {
     id: 'notifications',
     title: 'Уведомления',
@@ -107,34 +137,11 @@ export const accountMenuItems: AccountMenuItem[] = [
     badge: true,
   },
   {
-    id: 'profile',
-    title: 'Профиль',
-    icon: 'mdi-account-outline',
-    tab: 'profile',
-  },
-  {
-    id: 'security',
-    title: 'Безопасность',
-    icon: 'mdi-lock-outline',
-    tab: 'security',
-  },
-  {
-    id: 'preferences',
-    title: 'Предпочтения',
-    icon: 'mdi-tune-variant',
-    tab: 'preferences',
-  },
-  {
-    id: 'project-defaults',
-    title: 'Настройки проекта',
-    icon: 'mdi-folder-cog-outline',
-    route: '/settings/project',
-  },
-  {
     id: 'support',
     title: 'Поддержка',
     icon: 'mdi-help-circle-outline',
     action: 'support',
+    dividerBefore: true,
   },
   {
     id: 'logout',

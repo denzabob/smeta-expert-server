@@ -60,13 +60,32 @@
     />
 
     <div class="workspace-body">
-      <!-- Sidebar -->
+      <!-- Sidebar (desktop only — hidden on mobile via CSS) -->
       <WorkspaceSidebar
+        class="workspace-sidebar-desktop"
         :modules="sidebarModules"
         :active-module="activeModule"
         :loading="!loadingReady"
         @update:active-module="activeModule = $event"
       />
+
+      <!-- Mobile module tab bar (replaces sidebar on compact screens) -->
+      <div v-if="compactLayout" class="workspace-mobile-tabs">
+        <div class="workspace-mobile-tab-scroll">
+          <button
+            v-for="mod in sidebarModules"
+            :key="mod.key"
+            class="wmt-btn"
+            :class="{ 'wmt-btn--active': activeModule === mod.key }"
+            @click="activeModule = mod.key"
+          >
+            <v-icon size="18">{{ mod.icon }}</v-icon>
+            <span class="wmt-label">{{ mod.label }}</span>
+            <span v-if="mod.warnings && mod.warnings > 0" class="wmt-badge wmt-badge--warn">{{ mod.warnings }}</span>
+            <span v-else-if="mod.count != null && mod.count > 0" class="wmt-badge">{{ mod.count > 99 ? '99+' : mod.count }}</span>
+          </button>
+        </div>
+      </div>
 
       <!-- Main module area -->
       <div class="workspace-module-area">
@@ -3218,19 +3237,6 @@ watch(activeModule, (val) => {
   }
 })
 
-// Mobile overlay exclusivity: only one primary overlay at a time
-watch(settingsDrawer, (opened) => {
-  if (opened && compactLayout.value) {
-    positionDrawer.value = false
-  }
-})
-
-watch(positionDrawer, (opened) => {
-  if (opened && compactLayout.value) {
-    settingsDrawer.value = false
-  }
-})
-
 // Forward-declared refs for workspace computeds (actual declarations below)
 // Vue <script setup> hoists all declarations, computed callbacks are lazy
 
@@ -3531,7 +3537,25 @@ const refreshing = ref(false)
 const settingsDrawer = ref(false) // ← Drawer с настройками проекта
 const importDialog = ref(false) // ← Диалог импорта позиций
 const positionDrawer = ref(false)
+
+// Mobile overlay exclusivity: only one primary overlay at a time
+// (placed after declarations to avoid TDZ errors during setup execution)
+watch(settingsDrawer, (opened) => {
+  if (opened && compactLayout.value) {
+    positionDrawer.value = false
+  }
+})
+watch(positionDrawer, (opened) => {
+  if (opened && compactLayout.value) {
+    settingsDrawer.value = false
+  }
+})
+
 const selectedPosition = ref<Position | null>(null)
+// Guard: close position drawer if selection is cleared while drawer is open
+watch(selectedPosition, (pos) => {
+  if (!pos) positionDrawer.value = false
+})
 const selectedPositionsRaw = ref<number[]>([])
 const selectedPositionIds = computed(() => selectedPositionsRaw.value)
 type DimensionCalcState = { expr: string; result: number | null; error: string | null }
@@ -8586,6 +8610,79 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+/* Hide sidebar on mobile; it's replaced by the tab bar */
+@media (max-width: 600px) {
+  .workspace-sidebar-desktop {
+    display: none !important;
+  }
+  .workspace-body {
+    flex-direction: column;
+  }
+}
+
+/* === Mobile Module Tab Bar === */
+.workspace-mobile-tabs {
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background: rgb(var(--v-theme-surface));
+}
+
+.workspace-mobile-tab-scroll {
+  display: flex;
+  overflow-x: auto;
+  gap: 2px;
+  padding: 4px 8px;
+  scrollbar-width: none;
+}
+.workspace-mobile-tab-scroll::-webkit-scrollbar { display: none; }
+
+.wmt-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+.wmt-btn:hover {
+  background: rgba(var(--v-theme-primary), 0.06);
+  color: rgba(var(--v-theme-on-surface), 0.9);
+}
+.wmt-btn--active {
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+  font-weight: 600;
+}
+
+.wmt-label {
+  font-size: 0.8rem;
+}
+
+.wmt-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-on-surface), 0.15);
+  color: rgba(var(--v-theme-on-surface), 0.8);
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+.wmt-badge--warn {
+  background: rgb(var(--v-theme-warning));
+  color: #fff;
+}
+
 /* === Project Loading Overlay === */
 .project-loading-overlay {
   position: absolute;
@@ -8690,10 +8787,17 @@ onBeforeUnmount(() => {
 
 .workspace-module-area {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px 24px;
   position: relative;
+}
+
+@media (max-width: 600px) {
+  .workspace-module-area {
+    padding: 12px 12px;
+  }
 }
 
 .module-content {

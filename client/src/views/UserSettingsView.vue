@@ -1,8 +1,8 @@
 <template>
   <PageContainer class="user-settings-page">
     <PageHeader
-      title="Личные настройки"
-      subtitle="Применяются к новым проектам по умолчанию"
+      title="Настройки проекта по умолчанию"
+      subtitle="Эти значения подставляются в новые проекты и могут быть изменены в конкретном проекте."
     />
 
     <SectionCard class="settings-shell">
@@ -359,8 +359,6 @@
                     </div>
               </div>
 
-              <!-- 5. Безопасность -->
-              <SecuritySection v-else-if="activeSection === 5" />
             </template>
           </div>
 
@@ -389,7 +387,6 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import api from '@/api/axios'
-import SecuritySection from '@/components/settings/SecuritySection.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
@@ -451,7 +448,6 @@ const sections = [
   { title: 'Материалы по умолчанию', icon: 'mdi-package-variant' },
   { title: 'Отходы', icon: 'mdi-recycle' },
   { title: 'Справочные блоки', icon: 'mdi-text-box-outline' },
-  { title: 'Безопасность', icon: 'mdi-shield-lock' },
 ]
 
 const activeSection = ref(0)

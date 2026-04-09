@@ -160,23 +160,36 @@
     :user-email="userEmail"
     :user-initial="userInitial"
     @open-settings="handleOpenSettings"
+    @open-profile="handleOpenProfile"
     @open-notifications="handleOpenNotifications"
     @logout="$emit('logout')"
   />
 
-  <!-- Notifications Panel (right side drawer) -->
+  <!-- Notifications Panel: fullscreen dialog on mobile, side drawer on desktop -->
+  <v-dialog
+    v-if="mobile"
+    v-model="notificationsPanelOpen"
+    fullscreen
+    transition="dialog-bottom-transition"
+    :scrim="false"
+  >
+    <v-card class="notifications-screen" flat>
+      <v-toolbar color="surface" flat border="b">
+        <v-btn icon="mdi-arrow-left" variant="text" @click="notificationsPanelOpen = false" />
+        <v-toolbar-title>Уведомления</v-toolbar-title>
+      </v-toolbar>
+      <div class="notifications-screen__body">
+        <UserNotificationsPanel />
+      </div>
+    </v-card>
+  </v-dialog>
   <v-navigation-drawer
+    v-else
     v-model="notificationsPanelOpen"
     location="left"
     temporary
-    :width="mobile ? '100vw' : 400"
-    :style="{
-      position: 'fixed',
-      top: 0,
-      height: '100vh',
-      maxHeight: '100vh',
-      ...(mobile ? { maxWidth: '100vw' } : {})
-    }"
+    :width="400"
+    :style="{ position: 'fixed', top: 0, height: '100vh', maxHeight: '100vh' }"
   >
     <UserNotificationsPanel />
   </v-navigation-drawer>
@@ -203,6 +216,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'open-settings', tab?: string): void
+  (e: 'open-profile'): void
   (e: 'logout'): void
 }>()
 
@@ -297,6 +311,11 @@ function handleOpenSettings(tab?: string) {
   emit('open-settings', tab)
 }
 
+function handleOpenProfile() {
+  accountDrawerOpen.value = false
+  emit('open-profile')
+}
+
 function handleOpenNotifications() {
   accountDrawerOpen.value = false
   notificationsPanelOpen.value = true
@@ -381,6 +400,17 @@ watch(() => authStore.isAuthenticated, (authed) => {
 </script>
 
 <style scoped>
+/* === Notifications fullscreen screen (mobile) === */
+.notifications-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.notifications-screen__body {
+  flex: 1;
+  overflow-y: auto;
+}
+
 /* Sidebar always fixed to viewport */
 .app-sidebar {
   --sidebar-bg: rgb(var(--v-theme-surface));
