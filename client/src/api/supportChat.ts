@@ -6,17 +6,28 @@ export type ConversationStatus = 'open' | 'pending' | 'closed'
 export type ParticipantRole   = 'customer' | 'admin' | 'bot' | 'system'
 export type MessageType       = 'text' | 'system' | 'file' | 'ai'
 
+export interface ChatAttachment {
+  id:            number
+  original_name: string
+  mime_type:     string
+  size:          number
+  width:         number | null
+  height:        number | null
+  url:           string
+}
+
 export interface ChatMessage {
   id:                   number
   conversation_id:      number
   sender_id:            number | null
   sender_role:          ParticipantRole
   type:                 MessageType
-  body:                 string
+  body:                 string | null
   meta_json:            Record<string, unknown> | null
   is_mine:              boolean
   sender_display_name:  string | null
   created_at:           string
+  attachments?:         ChatAttachment[]
 }
 
 export interface ChatParticipant {
@@ -60,10 +71,15 @@ export const supportChatApi = {
   /** POST /api/support-chat/conversations/{id}/messages */
   sendMessage(
     conversationId: number,
-    body: string,
+    payload: { body?: string; file?: File },
   ): Promise<{ message: ChatMessage }> {
+    const form = new FormData()
+    if (payload.body?.trim()) form.append('body', payload.body.trim())
+    if (payload.file)         form.append('attachment', payload.file)
     return api
-      .post(`/api/support-chat/conversations/${conversationId}/messages`, { body })
+      .post(`/api/support-chat/conversations/${conversationId}/messages`, form, {
+        headers: { 'Content-Type': undefined },
+      })
       .then((r) => r.data)
   },
 

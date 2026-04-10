@@ -109,10 +109,11 @@ class AdminChatController extends Controller
         $message = $this->chatService->sendAdminMessage(
             $conversation,
             $request->user(),
-            $request->validated('body')
+            $request->validated('body'),
+            $request->hasFile('attachment') ? $request->file('attachment') : null,
         );
 
-        $message->load('sender:id,name');
+        $message->load(['sender:id,name', 'attachments']);
 
         return response()->json([
             'message' => new ChatMessageResource($message),

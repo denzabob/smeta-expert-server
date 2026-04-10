@@ -23,6 +23,9 @@ class ChatMessageResource extends JsonResource
             'meta_json'           => $this->meta_json,
             'is_mine'             => $this->sender_id !== null && $this->sender_id === $request->user()?->id,
             'sender_display_name' => $this->whenLoaded('sender', fn () => $this->sender?->name),
+            'attachments'         => ChatAttachmentResource::collection(
+                $this->whenLoaded('attachments', fn () => $this->attachments)
+            ),
             'created_at'          => optional($this->created_at)->toIso8601String(),
         ];
     }

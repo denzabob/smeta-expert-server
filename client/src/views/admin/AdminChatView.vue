@@ -192,7 +192,13 @@
                 >
                   {{ msg.sender_display_name }}
                 </div>
-                <div style="white-space: pre-wrap;">{{ msg.body }}</div>
+                <div v-if="msg.body" style="white-space: pre-wrap;">{{ msg.body }}</div>
+                <!-- Attachments -->
+                <ChatAttachmentItem
+                  v-for="att in (msg.attachments ?? [])"
+                  :key="att.id"
+                  :attachment="att"
+                />
                 <div class="text-right text-caption text-disabled mt-1" style="font-size: 10px;">
                   {{ formatTime(msg.created_at) }}
                 </div>
@@ -219,32 +225,69 @@
         <!-- Input -->
         <div
           v-if="activeConversation?.status !== 'closed'"
-          class="d-flex align-end gap-2 pa-2"
+          class="d-flex flex-column pa-2 gap-1"
         >
-          <v-textarea
-            v-model="replyText"
-            placeholder="Ответить пользователю…"
-            rows="1"
-            auto-grow
-            max-rows="5"
-            density="compact"
-            variant="outlined"
-            hide-details
-            class="flex-grow-1"
-            :disabled="sending"
-            @keydown.enter.exact.prevent="sendReply"
+          <!-- Hidden file picker -->
+          <input
+            ref="fileInputEl"
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            style="display: none;"
+            @change="onFileSelected"
           />
-          <v-btn
-            icon
-            color="primary"
-            variant="tonal"
+
+          <!-- Attached file preview chip -->
+          <v-chip
+            v-if="attachedFile"
             size="small"
-            :disabled="!replyText.trim() || sending"
-            :loading="sending"
-            @click="sendReply"
+            closable
+            prepend-icon="mdi-paperclip"
+            class="mb-1 text-truncate"
+            style="max-width: 100%;"
+            @click:close="attachedFile = null"
           >
-            <v-icon size="18">mdi-send</v-icon>
-          </v-btn>
+            {{ attachedFile.name }}
+          </v-chip>
+
+          <div class="d-flex align-end gap-2">
+            <!-- Paperclip button -->
+            <v-btn
+              icon
+              variant="text"
+              size="small"
+              :disabled="sending"
+              aria-label="Прикрепить файл"
+              @click="fileInputEl?.click()"
+            >
+              <v-icon size="18">mdi-paperclip</v-icon>
+            </v-btn>
+
+            <v-textarea
+              v-model="replyText"
+              placeholder="Ответить пользователю…"
+              rows="1"
+              auto-grow
+              max-rows="5"
+              density="compact"
+              variant="outlined"
+              hide-details
+              class="flex-grow-1"
+              :disabled="sending"
+              @keydown.enter.exact.prevent="sendReply"
+              @paste="onPaste"
+            />
+            <v-btn
+              icon
+              color="primary"
+              variant="tonal"
+              size="small"
+              :disabled="(!replyText.trim() && !attachedFile) || sending"
+              :loading="sending"
+              @click="sendReply"
+            >
+              <v-icon size="18">mdi-send</v-icon>
+            </v-btn>
+          </div>
         </div>
 
         <div v-else class="text-center text-caption text-medium-emphasis pa-3">
@@ -264,6 +307,7 @@ import {
 } from '@/api/adminSupportChat'
 import type { ChatMessage } from '@/api/supportChat'
 import type { ConversationStatus } from '@/api/supportChat'
+import ChatAttachmentItem from '@/components/support/ChatAttachmentItem.vue'
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const conversations  = ref<AdminConversationMeta[]>([])
@@ -283,7 +327,9 @@ const assigning          = ref(false)
 const replyText          = ref('')
 const sendError          = ref<string | null>(null)
 
-const messagesEl = ref<HTMLElement | null>(null)
+const messagesEl    = ref<HTMLElement | null>(null)
+const fileInputEl   = ref<HTMLInputElement | null>(null)
+const attachedFile  = ref<File | null>(null)
 
 // ── Polling ───────────────────────────────────────────────────────────────────
 const POLL_INTERVAL = 4_000
@@ -384,13 +430,19 @@ async function refreshThread() {
 // ── Send reply ────────────────────────────────────────────────────────────────
 async function sendReply() {
   const body = replyText.value.trim()
-  if (!body || !activeId.value || sending.value) return
+  const file = attachedFile.value
+  if (!body && !file) return
+  if (!activeId.value || sending.value) return
   sending.value = true
   sendError.value = null
   try {
-    const { message } = await adminChatApi.sendMessage(activeId.value, body)
+    const { message } = await adminChatApi.sendMessage(activeId.value, {
+      body: body || undefined,
+      file: file ?? undefined,
+    })
     messages.value.push(message)
     replyText.value = ''
+    attachedFile.value = null
     scrollToBottom()
     // Refresh conversation meta to reflect assigned admin
     const { conversation } = await adminChatApi.show(activeId.value)
@@ -399,6 +451,25 @@ async function sendReply() {
     sendError.value = 'Не удалось отправить сообщение.'
   } finally {
     sending.value = false
+  }
+}
+
+// ── File attachment ───────────────────────────────────────────────────────────
+function onFileSelected(e: Event): void {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  attachedFile.value = file
+  input.value = '' // allow re-selecting same file
+}
+
+function onPaste(e: ClipboardEvent): void {
+  const items = e.clipboardData?.items
+  if (!items) return
+  for (const item of Array.from(items)) {
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) { attachedFile.value = file; e.preventDefault(); break }
+    }
   }
 }
 

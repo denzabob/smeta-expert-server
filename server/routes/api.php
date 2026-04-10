@@ -683,6 +683,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('conversations/{conversation}/read', [\App\Http\Controllers\Api\AdminChatController::class, 'markRead']);
         Route::post('conversations/{conversation}/assign', [\App\Http\Controllers\Api\AdminChatController::class, 'assign']);
     });
+
+    // ========== Chat Attachments (auth-guarded file serving) ==========
+    Route::get('chat/attachments/{attachment}', [\App\Http\Controllers\Api\ChatAttachmentController::class, 'download'])
+        ->name('chat.attachment.download');
 });
 
 // Старые маршруты (можно удалить позже)

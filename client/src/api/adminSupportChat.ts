@@ -81,8 +81,13 @@ export const adminChatApi = {
   },
 
   /** POST /api/admin/chat/conversations/{id}/messages */
-  sendMessage(id: number, body: string): Promise<{ message: ChatMessage }> {
-    return api.post(`/api/admin/chat/conversations/${id}/messages`, { body }).then((r) => r.data)
+  sendMessage(id: number, payload: { body?: string; file?: File }): Promise<{ message: ChatMessage }> {
+    const form = new FormData()
+    if (payload.body?.trim()) form.append('body', payload.body.trim())
+    if (payload.file)         form.append('attachment', payload.file)
+    return api.post(`/api/admin/chat/conversations/${id}/messages`, form, {
+      headers: { 'Content-Type': undefined },
+    }).then((r) => r.data)
   },
 
   /** POST /api/admin/chat/conversations/{id}/read */

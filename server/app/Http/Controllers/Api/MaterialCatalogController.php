@@ -309,6 +309,8 @@ class MaterialCatalogController extends Controller
         $materialData['data_origin'] = $validated['data_origin'] ?? Material::ORIGIN_MANUAL;
         // article is NOT NULL in DB; treat omitted/null as empty string
         $materialData['article'] = $materialData['article'] ?? '';
+        // Remove nulls for optional fields so DB column defaults apply (e.g. waste_factor = 1.00)
+        $materialData = array_filter($materialData, fn($v) => $v !== null);
 
         // Build observation data
         $observationData = [

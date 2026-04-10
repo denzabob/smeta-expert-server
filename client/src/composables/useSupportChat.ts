@@ -12,6 +12,7 @@ export function useSupportChat() {
   const loadingSend         = ref(false)
   const error               = ref<string | null>(null)
   const messageInput        = ref('')
+  const attachedFile        = ref<File | null>(null)
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const unreadCount = computed(() => conversation.value?.unread_count ?? 0)
@@ -113,14 +114,20 @@ export function useSupportChat() {
 
   async function sendMessage(): Promise<void> {
     const body = messageInput.value.trim()
-    if (!body || !conversation.value || loadingSend.value) return
+    const file = attachedFile.value
+    if (!body && !file) return
+    if (!conversation.value || loadingSend.value) return
 
     loadingSend.value = true
     error.value = null
     try {
-      const { message } = await supportChatApi.sendMessage(conversation.value.id, body)
+      const { message } = await supportChatApi.sendMessage(conversation.value.id, {
+        body: body || undefined,
+        file: file ?? undefined,
+      })
       messages.value.push(message)
       messageInput.value = ''
+      attachedFile.value = null
     } catch {
       error.value = 'Не удалось отправить сообщение. Попробуйте ещё раз.'
     } finally {
@@ -146,6 +153,7 @@ export function useSupportChat() {
     loadingSend,
     error,
     messageInput,
+    attachedFile,
     // derived
     unreadCount,
     // actions

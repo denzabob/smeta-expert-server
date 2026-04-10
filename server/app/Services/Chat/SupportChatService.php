@@ -7,13 +7,17 @@ namespace App\Services\Chat;
 use App\Enums\Chat\ConversationStatus;
 use App\Enums\Chat\MessageType;
 use App\Enums\Chat\ParticipantRole;
+use App\Models\Chat\ChatAttachment;
 use App\Models\Chat\ChatConversation;
 use App\Models\Chat\ChatMessage;
 use App\Models\Chat\ChatParticipant;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class SupportChatService
 {
@@ -57,20 +61,24 @@ class SupportChatService
     }
 
     /**
-     * Send a text message as the user (customer role).
+     * Send a message as the user (customer role).
+     * Either $body or $file must be provided (both are allowed simultaneously).
      */
-    public function sendUserMessage(ChatConversation $conversation, User $user, string $body): ChatMessage
-    {
+    public function sendUserMessage(
+        ChatConversation $conversation,
+        User $user,
+        ?string $body,
+        ?UploadedFile $file = null,
+    ): ChatMessage {
         $this->assertNotClosed($conversation);
 
-        return DB::transaction(function () use ($conversation, $user, $body) {
-            $message = ChatMessage::create([
-                'conversation_id' => $conversation->id,
-                'sender_id'       => $user->id,
-                'sender_role'     => ParticipantRole::CUSTOMER,
-                'type'            => MessageType::TEXT,
-                'body'            => $body,
-            ]);
+        return DB::transaction(function () use ($conversation, $user, $body, $file) {
+            $message = $this->createMessage($conversation, [
+                'sender_id'   => $user->id,
+                'sender_role' => ParticipantRole::CUSTOMER,
+                'type'        => $file !== null ? MessageType::FILE : MessageType::TEXT,
+                'body'        => $body,
+            ], $file);
 
             $conversation->update(['last_message_at' => $message->created_at]);
 
@@ -83,15 +91,20 @@ class SupportChatService
     // =========================================================================
 
     /**
-     * Send a text message as an admin.
+     * Send a message as an admin.
      * Auto-assigns the admin to the conversation if it has no assigned admin yet.
      * Ensures the admin is a participant (creates participant record lazily).
+     * Either $body or $file must be provided (both are allowed simultaneously).
      */
-    public function sendAdminMessage(ChatConversation $conversation, User $admin, string $body): ChatMessage
-    {
+    public function sendAdminMessage(
+        ChatConversation $conversation,
+        User $admin,
+        ?string $body,
+        ?UploadedFile $file = null,
+    ): ChatMessage {
         $this->assertNotClosed($conversation);
 
-        return DB::transaction(function () use ($conversation, $admin, $body) {
+        return DB::transaction(function () use ($conversation, $admin, $body, $file) {
             $this->ensureParticipant($conversation, $admin, ParticipantRole::ADMIN);
 
             if ($conversation->assigned_admin_id === null) {
@@ -99,13 +112,12 @@ class SupportChatService
                 $conversation->refresh();
             }
 
-            $message = ChatMessage::create([
-                'conversation_id' => $conversation->id,
-                'sender_id'       => $admin->id,
-                'sender_role'     => ParticipantRole::ADMIN,
-                'type'            => MessageType::TEXT,
-                'body'            => $body,
-            ]);
+            $message = $this->createMessage($conversation, [
+                'sender_id'   => $admin->id,
+                'sender_role' => ParticipantRole::ADMIN,
+                'type'        => $file !== null ? MessageType::FILE : MessageType::TEXT,
+                'body'        => $body,
+            ], $file);
 
             $conversation->update(['last_message_at' => $message->created_at]);
 
@@ -167,7 +179,7 @@ class SupportChatService
 
     /**
      * Load a conversation with all details for the admin view.
-     * Returns participants, creator, assigned admin, and messages.
+     * Returns participants, creator, assigned admin, and messages with attachments.
      */
     public function getWithDetails(ChatConversation $conversation): ChatConversation
     {
@@ -175,7 +187,7 @@ class SupportChatService
             'creator:id,name,email',
             'assignedAdmin:id,name',
             'participants.user:id,name',
-            'messages' => fn ($q) => $q->with('sender:id,name')->orderBy('id', 'asc'),
+            'messages' => fn ($q) => $q->with(['sender:id,name', 'attachments'])->orderBy('id', 'asc'),
         ]);
     }
 
@@ -195,7 +207,7 @@ class SupportChatService
     {
         if ($afterId > 0) {
             return $conversation->messages()
-                ->with('sender:id,name')
+                ->with(['sender:id,name', 'attachments'])
                 ->where('id', '>', $afterId)
                 ->orderBy('id', 'asc')
                 ->limit(self::MESSAGES_LIMIT)
@@ -204,7 +216,7 @@ class SupportChatService
 
         // Initial load: fetch latest N in reverse, then flip to chronological.
         return $conversation->messages()
-            ->with('sender:id,name')
+            ->with(['sender:id,name', 'attachments'])
             ->latest('id')
             ->limit(self::MESSAGES_LIMIT)
             ->get()
@@ -284,5 +296,68 @@ class SupportChatService
         if ($conversation->status === ConversationStatus::CLOSED) {
             abort(422, 'Диалог закрыт и не принимает новые сообщения.');
         }
+    }
+
+    /**
+     * Create a ChatMessage and optionally persist an attachment.
+     * If file storage fails after the message is created, the transaction
+     * around the caller rolls back the DB record automatically.
+     */
+    private function createMessage(
+        ChatConversation $conversation,
+        array $attrs,
+        ?UploadedFile $file,
+    ): ChatMessage {
+        $message = ChatMessage::create(array_merge(
+            ['conversation_id' => $conversation->id],
+            $attrs,
+        ));
+
+        if ($file !== null) {
+            $this->persistAttachment($message, $conversation, $file);
+        }
+
+        return $message;
+    }
+
+    /**
+     * Store the uploaded file on the private disk and record the attachment.
+     *
+     * Path layout: chat-attachments/{conversation_id}/{Y}/{m}/{uuid}.{ext}
+     *
+     * Image dimensions are extracted with getimagesize() — works for PNG/JPEG/GIF/WebP
+     * without requiring the full GD extension to be enabled.
+     */
+    private function persistAttachment(
+        ChatMessage $message,
+        ChatConversation $conversation,
+        UploadedFile $file,
+    ): ChatAttachment {
+        $disk = 'local';
+        $ext  = $file->getClientOriginalExtension() ?: 'bin';
+        $path = sprintf(
+            'chat-attachments/%d/%s/%s.%s',
+            $conversation->id,
+            now()->format('Y/m'),
+            Str::uuid(),
+            strtolower($ext),
+        );
+
+        // Store the file — throws on failure, rolling back the transaction.
+        Storage::disk($disk)->put($path, file_get_contents($file->getRealPath()));
+
+        // Extract image dimensions safely; returns false for non-images.
+        $dimensions = @getimagesize($file->getRealPath());
+
+        return ChatAttachment::create([
+            'message_id'    => $message->id,
+            'disk'          => $disk,
+            'path'          => $path,
+            'original_name' => $file->getClientOriginalName(),
+            'mime_type'     => $file->getMimeType() ?? $file->getClientMimeType(),
+            'size'          => $file->getSize(),
+            'width'         => $dimensions !== false ? ($dimensions[0] ?? null) : null,
+            'height'        => $dimensions !== false ? ($dimensions[1] ?? null) : null,
+        ]);
     }
 }
