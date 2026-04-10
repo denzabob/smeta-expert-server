@@ -60,12 +60,40 @@
         </div>
       </transition>
 
-      <!-- Messages scroll area -->
-      <div ref="messagesEl" class="chat-messages">
-        <SupportChatMessageList
-          :messages="messages"
-          :loading="loadingConversation"
-        />
+      <!-- Messages area wrapper: relative container for scroll-btn overlay -->
+      <div class="chat-messages-wrapper">
+        <div ref="messagesEl" class="chat-messages" @scroll="onMessagesScroll">
+          <SupportChatMessageList
+            :messages="messages"
+            :loading="loadingConversation"
+          />
+
+          <!-- Admin typing indicator -->
+          <transition name="fade">
+            <div v-if="adminTyping" class="typing-indicator">
+              <div class="typing-dots">
+                <span /><span /><span />
+              </div>
+              <span class="typing-text">Оператор печатает</span>
+            </div>
+          </transition>
+        </div>
+
+        <!-- Scroll to bottom button -->
+        <transition name="fade">
+          <v-btn
+            v-if="!isAtBottom"
+            class="scroll-bottom-btn"
+            icon
+            size="small"
+            color="primary"
+            variant="elevated"
+            aria-label="Прокрутить вниз"
+            @click="scrollToBottom()"
+          >
+            <v-icon size="18">mdi-chevron-down</v-icon>
+          </v-btn>
+        </transition>
       </div>
 
       <!-- Closed state notice -->
@@ -125,8 +153,8 @@
             rows="1"
             :disabled="loadingSend || loadingConversation"
             @keydown.enter.exact.prevent="sendMessage"
+            @input="onTextareaInput"
             @paste="onPaste"
-            @input="autoGrowTextarea"
           />
           <v-btn
             color="primary"
@@ -147,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onMounted } from 'vue'
 import { useSupportChat } from '@/composables/useSupportChat'
 import SupportChatMessageList from '@/components/support/SupportChatMessageList.vue'
 
@@ -161,22 +189,39 @@ const {
   messageInput,
   attachedFile,
   unreadCount,
+  adminTyping,
+  onUserTyping,
+  initBackground,
   openWidget,
   closeWidget,
   sendMessage,
   dismissError,
 } = useSupportChat()
 
+onMounted(() => { initBackground() })
+
 const messagesEl        = ref<HTMLElement | null>(null)
 const fileInputEl       = ref<HTMLInputElement | null>(null)
 const textareaEl        = ref<HTMLTextAreaElement | null>(null)
 const attachmentPreview = ref<string>('')
+const isAtBottom        = ref(true)
 
 function scrollToBottom(behavior: ScrollBehavior = 'smooth'): void {
   nextTick(() => {
     const el = messagesEl.value
     if (el) el.scrollTo({ top: el.scrollHeight, behavior })
   })
+}
+
+function onMessagesScroll(): void {
+  const el = messagesEl.value
+  if (!el) return
+  isAtBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+
+function onTextareaInput(): void {
+  autoGrowTextarea()
+  onUserTyping()
 }
 
 function onFileSelected(e: Event): void {
@@ -243,10 +288,20 @@ watch(
   () => messages.value.length,
   (newLen, oldLen) => {
     if (newLen > oldLen) {
-      scrollToBottom(oldLen === 0 ? 'instant' : 'smooth')
+      // Only auto-scroll if already at bottom; otherwise show the scroll-to-bottom btn
+      if (isAtBottom.value || oldLen === 0) {
+        scrollToBottom(oldLen === 0 ? 'instant' : 'smooth')
+      }
     }
   },
 )
+
+// Refocus textarea after message is sent
+watch(loadingSend, (loading) => {
+  if (!loading && isOpen.value) {
+    nextTick(() => textareaEl.value?.focus())
+  }
+})
 
 watch(isOpen, (opened) => {
   if (opened) {
@@ -434,6 +489,14 @@ watch(isOpen, (opened) => {
 
 /* ─── Messages area ──────────────────────────────────────────────────────── */
 
+.chat-messages-wrapper {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-messages {
   flex: 1 1 0;
   min-height: 0;
@@ -575,6 +638,7 @@ watch(isOpen, (opened) => {
   color: rgb(var(--v-theme-on-surface));
   background: rgba(var(--v-theme-on-surface), 0.03);
   resize: none;
+  overflow-y: hidden;
   transition: all 0.2s ease;
   min-height: 32px;
   max-height: 96px;
@@ -605,6 +669,68 @@ watch(isOpen, (opened) => {
   min-height: 32px !important;
   padding: 0 !important;
   border-radius: 6px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TYPING INDICATOR
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px 4px;
+}
+
+.typing-dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.typing-dots span {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(var(--v-theme-primary), 0.7);
+  animation: typing-bounce 1.4s infinite;
+}
+
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: scale(1); opacity: 0.4; }
+  40% { transform: scale(1.3); opacity: 1; }
+}
+
+.typing-text {
+  font-size: 0.78rem;
+  color: rgba(var(--v-theme-on-surface), 0.56);
+  font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SCROLL TO BOTTOM BUTTON
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.scroll-bottom-btn {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 20;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18) !important;
+}
+
+/* Fade transition */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

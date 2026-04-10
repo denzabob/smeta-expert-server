@@ -17,28 +17,32 @@
 
   <!-- Message list -->
   <div v-else class="d-flex flex-column gap-1 pa-2">
-    <div
-      v-for="msg in messages"
-      :key="msg.id"
-      class="d-flex"
-      :class="msg.is_mine ? 'justify-end' : 'justify-start'"
-    >
-      <div
-        class="chat-bubble text-body-2"
-        :class="[
-          msg.is_mine ? 'chat-bubble--mine' : 'chat-bubble--theirs',
-          !msg.body && msg.attachments?.length ? 'chat-bubble--image-only' : ''
-        ]"
-      >
-        <!-- Sender label for admin messages -->
-        <div
-          v-if="!msg.is_mine && msg.sender_display_name"
-          class="text-caption font-weight-medium mb-1 text-medium-emphasis"
-        >
-          {{ msg.sender_display_name }}
-        </div>
+    <template v-for="(msg, index) in messages" :key="msg.id">
+      <!-- Date separator -->
+      <div v-if="showDateSeparator(index)" class="date-separator">
+        <span class="date-separator__label">{{ formatDateLabel(msg.created_at) }}</span>
+      </div>
 
-        <div v-if="msg.body" class="chat-bubble__body">{{ msg.body }}</div>
+      <div
+        class="d-flex"
+        :class="msg.is_mine ? 'justify-end' : 'justify-start'"
+      >
+        <div
+          class="chat-bubble text-body-2"
+          :class="[
+            msg.is_mine ? 'chat-bubble--mine' : 'chat-bubble--theirs',
+            !msg.body && msg.attachments?.length ? 'chat-bubble--image-only' : ''
+          ]"
+        >
+          <!-- Sender label for admin messages -->
+          <div
+            v-if="!msg.is_mine && msg.sender_display_name"
+            class="text-caption font-weight-medium mb-1 text-medium-emphasis"
+          >
+            {{ msg.sender_display_name }}
+          </div>
+
+          <div v-if="msg.body" class="chat-bubble__body">{{ msg.body }}</div>
 
           <!-- Attachments -->
           <ChatAttachmentItem
@@ -47,11 +51,12 @@
             :attachment="att"
           />
 
-        <div class="text-right text-caption mt-1" style="font-size: 10px;">
-          {{ formatTime(msg.created_at) }}
+          <div class="text-right text-caption mt-1" style="font-size: 10px;">
+            {{ formatTime(msg.created_at) }}
+          </div>
         </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
@@ -59,13 +64,38 @@
 import type { ChatMessage } from '@/api/supportChat'
 import ChatAttachmentItem from './ChatAttachmentItem.vue'
 
-defineProps<{
+const props = defineProps<{
   messages: ChatMessage[]
   loading:  boolean
 }>()
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
+function isSameDay(a: string, b: string): boolean {
+  const da = new Date(a), db = new Date(b)
+  return da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+}
+
+function showDateSeparator(index: number): boolean {
+  if (index === 0) return true
+  const prev = props.messages[index - 1]
+  const curr = props.messages[index]
+  if (!prev || !curr) return false
+  return !isSameDay(prev.created_at, curr.created_at)
+}
+
+function formatDateLabel(iso: string): string {
+  const d = new Date(iso)
+  const today = new Date()
+  const yesterday = new Date()
+  yesterday.setDate(today.getDate() - 1)
+  if (isSameDay(iso, today.toISOString())) return 'Сегодня'
+  if (isSameDay(iso, yesterday.toISOString())) return 'Вчера'
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined })
 }
 </script>
 
@@ -99,6 +129,36 @@ function formatTime(iso: string): string {
 
 :deep(.chat-message-row:last-child) {
   margin-bottom: 0;
+}
+
+/* ==========================================================================
+   DATE SEPARATORS
+   ========================================================================== */
+
+.date-separator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 6px;
+  flex-shrink: 0;
+}
+
+.date-separator::before,
+.date-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(var(--v-theme-on-surface), 0.10);
+}
+
+.date-separator__label {
+  font-size: 0.7rem;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 0 4px;
 }
 
 /* ==========================================================================
@@ -268,22 +328,8 @@ function formatTime(iso: string): string {
   .chat-bubble {
     max-width: 90%;
     padding: 9px 12px;
-    font-size: 0.92rem;
+    font-size: 0.90rem;
     border-radius: 14px;
   }
-}
-:deep(.d-flex.flex-column.gap-1) {
-  padding: 6px;
-  gap: 0 !important;
-}
-
-:deep(.justify-end),
-:deep(.justify-start) {
-  margin-bottom: 5px;
-}
-
-:deep(.justify-end:last-child),
-:deep(.justify-start:last-child) {
-  margin-bottom: 0;
 }
 </style>

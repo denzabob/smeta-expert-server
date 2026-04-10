@@ -99,4 +99,14 @@ export const adminChatApi = {
   assignMe(id: number): Promise<AssignResponse> {
     return api.post(`/api/admin/chat/conversations/${id}/assign`).then((r) => r.data)
   },
+
+  /** POST /api/admin/chat/conversations/{id}/typing */
+  reportTyping(id: number): Promise<void> {
+    return api.post(`/api/admin/chat/conversations/${id}/typing`).then(() => undefined)
+  },
+
+  /** GET /api/admin/chat/conversations/{id}/typing-status */
+  typingStatus(id: number): Promise<{ user_typing: boolean }> {
+    return api.get(`/api/admin/chat/conversations/${id}/typing-status`).then((r) => r.data)
+  },
 }

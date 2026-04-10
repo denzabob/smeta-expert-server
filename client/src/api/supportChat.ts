@@ -89,4 +89,18 @@ export const supportChatApi = {
       .post(`/api/support-chat/conversations/${conversationId}/read`)
       .then(() => undefined)
   },
+
+  /** POST /api/support-chat/conversations/{id}/typing */
+  reportTyping(conversationId: number): Promise<void> {
+    return api
+      .post(`/api/support-chat/conversations/${conversationId}/typing`)
+      .then(() => undefined)
+  },
+
+  /** GET /api/support-chat/conversations/{id}/typing-status */
+  typingStatus(conversationId: number): Promise<{ admin_typing: boolean }> {
+    return api
+      .get(`/api/support-chat/conversations/${conversationId}/typing-status`)
+      .then((r) => r.data)
+  },
 }

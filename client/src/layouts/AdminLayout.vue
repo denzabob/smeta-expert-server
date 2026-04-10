@@ -152,9 +152,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, provide, shallowRef, type Component } from 'vue'
+import { ref, computed, provide, shallowRef, onMounted, onUnmounted, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
+import { adminChatApi } from '@/api/adminSupportChat'
 
 const route = useRoute()
 const { smAndDown } = useDisplay()
@@ -203,13 +204,33 @@ const navSections = computed(() => [
   {
     title: 'Поддержка',
     items: [
-      { to: '/admin/chat', label: 'Чаты пользователей', icon: 'mdi-chat-processing-outline' },
+      { to: '/admin/chat', label: 'Чаты пользователей', icon: 'mdi-chat-processing-outline', badge: chatUnreadTotal.value || undefined, badgeColor: 'error' },
     ]
   }
 ])
 
 // Problem count (will be fetched from store/API)
 const problemCount = ref<number | null>(null)
+
+// ── Chat unread count ─────────────────────────────────────────────────────────
+const chatUnreadTotal = ref(0)
+let chatPollTimer: ReturnType<typeof setInterval> | null = null
+
+async function fetchChatUnread(): Promise<void> {
+  try {
+    const res = await adminChatApi.list({ per_page: 50 })
+    chatUnreadTotal.value = res.conversations.reduce((sum, c) => sum + (c.unread_count ?? 0), 0)
+  } catch { /* silent */ }
+}
+
+onMounted(() => {
+  fetchChatUnread()
+  chatPollTimer = setInterval(fetchChatUnread, 30_000)
+})
+
+onUnmounted(() => {
+  if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null }
+})
 
 // Provide inspector controls to child components
 function handleOpenInspector(options: { 

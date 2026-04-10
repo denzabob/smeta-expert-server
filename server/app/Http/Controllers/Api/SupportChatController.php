@@ -74,6 +74,9 @@ class SupportChatController extends Controller
             $request->hasFile('attachment') ? $request->file('attachment') : null,
         );
 
+        // Clear typing indicator immediately so the other party doesn't see a stale state
+        \Illuminate\Support\Facades\Cache::forget("chat.typing.user.{$conversation->id}");
+
         $message->load(['sender:id,name', 'attachments']);
 
         return response()->json([
@@ -97,5 +100,39 @@ class SupportChatController extends Controller
         );
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * POST /api/support-chat/conversations/{conversation}/typing
+     *
+     * Signal that the user is currently typing. Stored in cache with 8-second TTL.
+     */
+    public function reportTyping(Request $request, ChatConversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+
+        \Illuminate\Support\Facades\Cache::put(
+            "chat.typing.user.{$conversation->id}",
+            true,
+            now()->addSeconds(8)
+        );
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * GET /api/support-chat/conversations/{conversation}/typing-status
+     *
+     * Check whether the admin is currently typing in this conversation.
+     */
+    public function typingStatus(Request $request, ChatConversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+
+        return response()->json([
+            'admin_typing' => (bool) \Illuminate\Support\Facades\Cache::get(
+                "chat.typing.admin.{$conversation->id}", false
+            ),
+        ]);
     }
 }

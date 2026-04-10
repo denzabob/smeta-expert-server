@@ -672,6 +672,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('conversations/{conversation}/messages', [\App\Http\Controllers\Api\SupportChatController::class, 'messages']);
         Route::post('conversations/{conversation}/messages', [\App\Http\Controllers\Api\SupportChatController::class, 'sendMessage']);
         Route::post('conversations/{conversation}/read', [\App\Http\Controllers\Api\SupportChatController::class, 'markRead']);
+        Route::post('conversations/{conversation}/typing', [\App\Http\Controllers\Api\SupportChatController::class, 'reportTyping']);
+        Route::get('conversations/{conversation}/typing-status', [\App\Http\Controllers\Api\SupportChatController::class, 'typingStatus']);
     });
 
     // ========== Support Chat (Admin) ==========
@@ -682,6 +684,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('conversations/{conversation}/messages', [\App\Http\Controllers\Api\AdminChatController::class, 'sendMessage']);
         Route::post('conversations/{conversation}/read', [\App\Http\Controllers\Api\AdminChatController::class, 'markRead']);
         Route::post('conversations/{conversation}/assign', [\App\Http\Controllers\Api\AdminChatController::class, 'assign']);
+        Route::post('conversations/{conversation}/typing', [\App\Http\Controllers\Api\AdminChatController::class, 'reportTyping']);
+        Route::get('conversations/{conversation}/typing-status', [\App\Http\Controllers\Api\AdminChatController::class, 'typingStatus']);
     });
 
     // ========== Chat Attachments (auth-guarded file serving) ==========

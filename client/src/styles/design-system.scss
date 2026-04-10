@@ -1216,3 +1216,7 @@ a {
 .v-data-table .expanded-content-row td {
   background: rgba(var(--v-theme-on-surface), 0.01);
 }
+
+.justify-start, .justify-end {
+  padding-bottom: 2px;
+}
