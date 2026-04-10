@@ -362,7 +362,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import api from '@/api/axios'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
@@ -648,9 +648,29 @@ const beforeUnloadHandler = (event: BeforeUnloadEvent) => {
   event.returnValue = ''
 }
 
+// ── Email verification redirect handling ──────────────────────────────────
+
+const route = useRoute()
+const router = useRouter()
+
+function handleEmailVerifiedRedirect() {
+  const param = route.query.email_verified as string | undefined
+  if (!param) return
+
+  // Remove param from URL immediately (one-time handling)
+  router.replace({ query: { ...route.query, email_verified: undefined } })
+
+  if (param === 'success') {
+    showNotification('Почта успешно подтверждена! Теперь доступен сброс пароля через email.', 'success', 7000)
+  } else if (param === 'already') {
+    showNotification('Почта уже была подтверждена ранее.', 'info', 5000)
+  }
+}
+
 onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnloadHandler)
   await loadAll()
+  handleEmailVerifiedRedirect()
 })
 
 onBeforeUnmount(() => {

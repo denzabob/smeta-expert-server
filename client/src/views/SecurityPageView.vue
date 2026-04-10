@@ -111,11 +111,26 @@
     v-model="bootstrapPhoneDialog"
     @completed="onBootstrapPhoneCompleted"
   />
+
+  <!-- Global feedback snackbar -->
+  <v-snackbar
+    v-model="snack.show"
+    :color="snack.color"
+    :timeout="snack.timeout"
+    location="bottom right"
+    variant="tonal"
+  >
+    {{ snack.message }}
+    <template v-if="snack.action" #actions>
+      <v-btn variant="text" size="small" @click="snack.show = false">OK</v-btn>
+    </template>
+  </v-snackbar>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useSecurityStore } from '@/stores/security'
+import { authApi } from '@/api/auth'
 
 import AuthMethodsCard from '@/components/security/AuthMethodsCard.vue'
 import RecoveryReadinessCard from '@/components/security/RecoveryReadinessCard.vue'
@@ -131,6 +146,20 @@ const loadError = ref(false)
 const setPasswordDialog = ref(false)
 const changePasswordDialog = ref(false)
 const bootstrapPhoneDialog = ref(false)
+
+// ── Snackbar ──────────────────────────────────────────────────────────────
+
+const snack = ref({
+  show: false,
+  message: '',
+  color: 'success' as 'success' | 'error' | 'warning' | 'info',
+  timeout: 4000,
+  action: false,
+})
+
+function notify(message: string, color: typeof snack.value.color = 'success', timeout = 4000) {
+  snack.value = { show: true, message, color, timeout, action: false }
+}
 
 // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -160,8 +189,11 @@ function handleRecommendedAction(action: string) {
     case 'bootstrap_add_phone':
       bootstrapPhoneDialog.value = true
       break
+    case 'verify_email':
+    case 'add_email':
+      handleResendEmail()
+      break
     default:
-      // Other actions (email, etc.) are handled via external navigation or future dialogs
       break
   }
 }
@@ -179,25 +211,41 @@ function openChangePassword() {
 // ── Phone ─────────────────────────────────────────────────────────────────
 
 function handleVerifyPhone() {
-  // Phone verification is not yet implemented (external flow)
+  // Phone verification not yet implemented
 }
 
 function handleChangePhone() {
-  // Phone change is not yet implemented (external flow)
+  // Phone change not yet implemented
 }
 
 // ── Email ─────────────────────────────────────────────────────────────────
 
 function handleAddEmail() {
-  // Delegate to UserSettingsView email tab (external flow)
+  // Delegate to email settings tab
 }
 
-function handleResendEmail() {
-  // Resend verification — future implementation
+async function handleResendEmail() {
+  const maskedEmail = store.authStatus?.email?.masked
+  try {
+    await authApi.resendEmailVerification()
+    const target = maskedEmail ? ` на ${maskedEmail}` : ''
+    notify(`Письмо подтверждения отправлено${target}. Проверьте почту.`, 'success', 6000)
+  } catch (e: any) {
+    const status = e?.response?.status
+    if (status === 429) {
+      const retryAfter = e?.response?.data?.retry_after
+      const seconds = retryAfter ? ` через ${retryAfter} сек.` : ''
+      notify(`Слишком много попыток. Повторите${seconds}.`, 'warning', 6000)
+    } else if (status === 422) {
+      notify(e?.response?.data?.message || 'Email не указан в профиле.', 'error')
+    } else {
+      notify('Не удалось отправить письмо. Попробуйте позже.', 'error')
+    }
+  }
 }
 
 function handleChangeEmail() {
-  // Email change — future implementation
+  // Email change not yet implemented
 }
 
 // ── Yandex ────────────────────────────────────────────────────────────────
@@ -213,8 +261,7 @@ function handleUnlinkYandex() {
 // ── PIN ───────────────────────────────────────────────────────────────────
 
 function handleEnablePin() {
-  // PIN setup delegated to PinSetupDialog (existing component)
-  // For now opens settings
+  // PIN setup — future implementation
 }
 
 function handleDisablePin() {
@@ -225,9 +272,11 @@ function handleDisablePin() {
 
 async function onActionCompleted() {
   await store.fetchAuthStatus()
+  notify('Изменения сохранены.')
 }
 
 async function onBootstrapPhoneCompleted(_recommendedActions: string[]) {
   await store.refreshAfterBootstrap()
+  notify('Телефон добавлен.')
 }
 </script>

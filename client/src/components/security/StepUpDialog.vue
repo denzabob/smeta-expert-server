@@ -237,13 +237,24 @@ const emit = defineEmits<{
 
 // ── State ────────────────────────────────────────────────────────────────────
 
-type Phase = 'initiating' | 'choice' | 'password' | 'otp_send' | 'otp_code' | 'success' | 'error'
+type Phase =
+  | 'initiating'
+  | 'choice'
+  | 'password'
+  | 'otp_send'
+  | 'otp_code'
+  | 'email_otp_send'
+  | 'email_otp_code'
+  | 'success'
+  | 'error'
 
 const phase = ref<Phase>('initiating')
 const challengeId = ref<string | null>(null)
 const phoneChallengeId = ref<string | null>(null)
+const emailChallengeId = ref<string | null>(null)
 const allowedMethods = ref<string[]>([])
 const phoneMasked = ref<string | null>(null)
+const emailMasked = ref<string | null>(null)
 const verifying = ref(false)
 const error = ref<string | null>(null)
 
@@ -251,6 +262,7 @@ const error = ref<string | null>(null)
 const password = ref('')
 const showPassword = ref(false)
 const otpCode = ref('')
+const emailOtpCode = ref('')
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
