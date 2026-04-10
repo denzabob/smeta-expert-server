@@ -40,12 +40,17 @@
           class="device-row"
         >
           <div class="d-flex align-center gap-3 py-3">
-            <v-icon size="24" color="medium-emphasis">
+            <v-icon size="24" :color="device.is_current ? 'primary' : 'medium-emphasis'">
               mdi-devices
             </v-icon>
 
             <div class="flex-1">
-              <div class="text-body-2">{{ device.device_label || 'Неизвестное устройство' }}</div>
+              <div class="d-flex align-center gap-2 flex-wrap">
+                <span class="text-body-2">{{ device.device_label || 'Неизвестное устройство' }}</span>
+                <v-chip v-if="device.is_current" size="x-small" color="primary" variant="tonal">
+                  Это устройство
+                </v-chip>
+              </div>
               <div class="text-caption text-medium-emphasis">
                 {{ formatDate(device.last_used_at ?? device.created_at) }}
               </div>
@@ -81,15 +86,15 @@
         <v-card-title class="pt-5 px-6 text-subtitle-1">Отозвать все устройства?</v-card-title>
         <v-card-text class="px-6">
           <p class="text-body-2 text-medium-emphasis">
-            Быстрый PIN будет отключён на всех устройствах. Для входа нужно будет использовать
-            номер телефона или пароль.
+            Быстрый PIN будет отключён на всех устройствах. На каждом из них потребуется снова
+            войти обычным способом — через телефон или пароль.
           </p>
         </v-card-text>
         <v-card-actions class="px-6 pb-5">
           <v-btn variant="text" @click="confirmRevokeAll = false">Отмена</v-btn>
           <v-spacer />
           <v-btn color="error" variant="flat" @click="startRevokeAll">
-            Продолжить
+            Отозвать все
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -108,6 +113,10 @@ const props = defineProps<{
   loading: boolean
 }>()
 
+const emit = defineEmits<{
+  (e: 'notify', message: string, color: 'success' | 'error' | 'warning' | 'info'): void
+}>()
+
 const store = useSecurityStore()
 
 const revokingId = ref<number | null>(null)
@@ -116,8 +125,14 @@ const showStepUp = ref(false)
 
 async function revokeDevice(id: number) {
   revokingId.value = id
-  await store.revokeDevice(id)
-  revokingId.value = null
+  try {
+    await store.revokeDevice(id)
+    emit('notify', 'Устройство отозвано.', 'success')
+  } catch {
+    emit('notify', 'Не удалось отозвать устройство. Попробуйте снова.', 'error')
+  } finally {
+    revokingId.value = null
+  }
 }
 
 function startRevokeAll() {
@@ -127,7 +142,12 @@ function startRevokeAll() {
 
 async function onStepUpCompleted(token: string) {
   showStepUp.value = false
-  await store.revokeAllDevices(token)
+  try {
+    await store.revokeAllDevices(token)
+    emit('notify', 'Все доверенные устройства отозваны.', 'success')
+  } catch {
+    emit('notify', 'Не удалось отозвать устройства. Попробуйте снова.', 'error')
+  }
 }
 
 function formatDate(iso: string | null): string {

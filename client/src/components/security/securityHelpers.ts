@@ -37,49 +37,56 @@ export interface ActionMeta {
 const actionMap: Record<string, ActionMeta> = {
   verify_email: {
     label: 'Подтвердить почту',
-    description: 'Без подтверждённой почты вы не сможете сбросить пароль.',
-    buttonLabel: 'Подтвердить',
+    description: 'Без подтверждения почты нельзя сбросить пароль, если потеряете доступ.',
+    buttonLabel: 'Отправить письмо',
     icon: 'mdi-email-check-outline',
     color: 'warning',
   },
   add_email: {
     label: 'Добавить почту',
-    description: 'Позволит получать уведомления и сбрасывать пароль через почту.',
+    description: 'Нужна для получения уведомлений и восстановления доступа через сброс пароля.',
     buttonLabel: 'Добавить',
     icon: 'mdi-email-plus-outline',
     color: 'primary',
   },
   add_phone: {
     label: 'Добавить телефон',
-    description: 'Для входа по SMS-коду и установки пароля.',
+    description: 'Позволяет войти по SMS-коду и включить быстрый PIN.',
     buttonLabel: 'Добавить',
     icon: 'mdi-cellphone-plus',
     color: 'primary',
   },
   verify_phone: {
     label: 'Подтвердить телефон',
-    description: 'Телефон не будет работать для входа, пока не подтверждён.',
+    description: 'Телефон не работает для входа, пока не подтверждён.',
     buttonLabel: 'Подтвердить',
     icon: 'mdi-cellphone-check',
     color: 'warning',
   },
   set_password: {
     label: 'Установить пароль',
-    description: 'Без пароля вы теряете один из способов восстановления доступа.',
+    description: 'Позволит входить без SMS и восстанавливать аккаунт через почту.',
     buttonLabel: 'Установить',
     icon: 'mdi-key-plus',
     color: 'primary',
   },
+  change_password: {
+    label: 'Изменить пароль',
+    description: 'Рекомендуется при подозрении на утечку данных.',
+    buttonLabel: 'Изменить',
+    icon: 'mdi-key-change',
+    color: 'primary',
+  },
   enable_quick_pin: {
     label: 'Включить быстрый PIN',
-    description: 'Удобный вход без полного пароля на доверенных устройствах.',
+    description: 'Вход 4-значным кодом на этом устройстве — быстрее пароля и SMS.',
     buttonLabel: 'Включить',
     icon: 'mdi-dialpad',
     color: 'primary',
   },
   bootstrap_add_phone: {
     label: 'Добавить телефон через Яндекс',
-    description: 'Привяжите телефон Яндекс-аккаунта для восстановления доступа.',
+    description: 'Привяжите телефон Яндекс-аккаунта, чтобы установить пароль и PIN.',
     buttonLabel: 'Добавить',
     icon: 'mdi-cellphone-plus',
     color: 'primary',
@@ -102,10 +109,10 @@ export function recommendedActionMeta(action: string): ActionMeta {
 
 const prerequisiteLabels: Record<string, string> = {
   bootstrap_add_phone: 'добавьте телефон через Яндекс-аккаунт',
-  verify_phone: 'подтвердите телефон',
-  add_phone: 'добавьте телефон',
-  add_email: 'добавьте почту',
-  verify_email: 'подтвердите почту',
+  verify_phone: 'подтвердите номер телефона',
+  add_phone: 'добавьте номер телефона',
+  add_email: 'добавьте адрес почты',
+  verify_email: 'подтвердите адрес почты',
 }
 
 export function prerequisiteLabel(prerequisiteAction: string): string {

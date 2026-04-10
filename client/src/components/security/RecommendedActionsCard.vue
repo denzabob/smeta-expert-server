@@ -17,12 +17,12 @@
         class="action-row mb-3"
       >
         <div class="d-flex align-start gap-3">
-          <v-icon size="20" :color="actionMeta(action).color" class="mt-0-5">
+          <v-icon size="20" :color="actionMeta(action).color" class="mt-1">
             {{ actionMeta(action).icon }}
           </v-icon>
           <div class="flex-1">
             <div class="text-body-2 font-weight-medium">{{ actionMeta(action).label }}</div>
-            <div class="text-caption text-medium-emphasis mt-0-5">
+            <div class="text-caption text-medium-emphasis mt-1">
               {{ actionMeta(action).description }}
             </div>
           </div>
@@ -43,25 +43,34 @@
         class="my-3"
       />
 
-      <!-- Blocked actions (with prerequisite info) -->
+      <!-- Blocked actions: show what's blocked and a CTA to unblock it -->
       <div
         v-for="action in status.blocked_actions"
         :key="action"
-        class="action-row mb-3"
+        class="action-row mb-2"
       >
         <div class="d-flex align-start gap-3">
-          <v-icon size="20" color="medium-emphasis" class="mt-0-5">
+          <v-icon size="20" color="medium-emphasis" class="mt-1">
             mdi-lock-outline
           </v-icon>
           <div class="flex-1">
-            <div class="text-body-2 text-medium-emphasis font-weight-medium">
+            <div class="text-body-2 text-medium-emphasis font-weight-medium line-through">
               {{ actionMeta(action).label }}
             </div>
-            <div class="text-caption text-medium-emphasis mt-0-5">
-              Сначала: {{ prerequisiteLabel(action) }}
+            <div class="text-caption text-medium-emphasis mt-1">
+              Чтобы продолжить — {{ prerequisiteLabel(action) }}.
             </div>
           </div>
-          <v-chip size="x-small" variant="tonal">Заблокировано</v-chip>
+          <v-btn
+            v-if="prerequisiteAction(action)"
+            size="small"
+            color="primary"
+            variant="outlined"
+            @click="$emit('action', prerequisiteAction(action)!)"
+          >
+            {{ actionMeta(prerequisiteAction(action)!).buttonLabel }}
+          </v-btn>
+          <v-chip v-else size="x-small" variant="tonal">Заблокировано</v-chip>
         </div>
       </div>
     </v-card-text>
@@ -93,6 +102,10 @@ const actionMeta = recommendedActionMeta
 function prerequisiteLabel(action: string): string {
   return blockedActionPrerequisiteLabel(action, props.status.prerequisite_actions)
 }
+
+function prerequisiteAction(blockedAction: string): string | null {
+  return props.status.prerequisite_actions[blockedAction] ?? null
+}
 </script>
 
 <style scoped>
@@ -104,7 +117,12 @@ function prerequisiteLabel(action: string): string {
   flex: 1;
 }
 
-.mt-0-5 {
-  margin-top: 2px;
+.mt-1 {
+  margin-top: 4px;
+}
+
+.line-through {
+  text-decoration: line-through;
+  opacity: 0.7;
 }
 </style>

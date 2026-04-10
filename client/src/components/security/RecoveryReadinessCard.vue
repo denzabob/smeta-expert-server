@@ -30,7 +30,7 @@
       >
         <div class="text-body-2 font-weight-medium">Один способ восстановления</div>
         <div class="text-caption mt-0-5">
-          Если вы потеряете доступ к нему, войти в аккаунт будет невозможно.
+          Если вы потеряете к нему доступ — войти в аккаунт будет невозможно. Добавьте второй способ для надёжности.
         </div>
       </v-alert>
 
@@ -45,7 +45,7 @@
       >
         <div class="text-body-2 font-weight-medium">Аккаунт надёжно защищён</div>
         <div class="text-caption mt-0-5">
-          Несколько способов восстановления доступа.
+          {{ status.recovery_methods.length }} способа восстановления доступа.
         </div>
       </v-alert>
 

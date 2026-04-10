@@ -28,10 +28,10 @@
         class="mb-6"
         prepend-icon="mdi-alert-circle"
       >
-        <div class="text-body-2 font-weight-medium">Аккаунт под угрозой</div>
+        <div class="text-body-2 font-weight-medium">Нет способа восстановить доступ</div>
         <div class="text-caption mt-1">
-          У вас нет ни одного способа восстановить доступ к аккаунту. Если вы потеряете доступ,
-          это будет невозможно исправить самостоятельно.
+          Если вы потеряете доступ к аккаунту, вернуться будет невозможно.
+          Добавьте телефон или установите пароль — это займёт меньше минуты.
         </div>
       </v-alert>
 
@@ -57,6 +57,7 @@
         @unlink-yandex="handleUnlinkYandex"
         @enable-pin="handleEnablePin"
         @disable-pin="handleDisablePin"
+        @action="handleRecommendedAction"
       />
 
       <!-- Recovery readiness -->
@@ -66,6 +67,7 @@
       <SessionsCard
         :sessions="store.sessions"
         :loading="store.sessionsLoading"
+        @notify="notify"
       />
 
       <!-- Trusted devices (only shown if can_manage_trusted_devices) -->
@@ -73,6 +75,7 @@
         v-if="store.authStatus.can_manage_trusted_devices"
         :devices="store.devices"
         :loading="store.devicesLoading"
+        @notify="notify"
       />
     </template>
 
@@ -112,6 +115,21 @@
     @completed="onBootstrapPhoneCompleted"
   />
 
+  <!-- Enable PIN -->
+  <SetPinDialog
+    v-model="setPinDialog"
+    @completed="onPinEnabled"
+  />
+
+  <!-- Disable PIN (step-up only) -->
+  <StepUpDialog
+    v-model="disablePinDialog"
+    scope="set_quick_pin"
+    title="Подтверждение для отключения PIN"
+    @completed="onDisablePinStepUp"
+    @cancelled="disablePinDialog = false"
+  />
+
   <!-- Global feedback snackbar -->
   <v-snackbar
     v-model="snack.show"
@@ -129,6 +147,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useSecurityStore } from '@/stores/security'
 import { authApi } from '@/api/auth'
 
@@ -138,14 +157,19 @@ import RecommendedActionsCard from '@/components/security/RecommendedActionsCard
 import SessionsCard from '@/components/security/SessionsCard.vue'
 import TrustedDevicesCard from '@/components/security/TrustedDevicesCard.vue'
 import SetPasswordDialog from '@/components/security/SetPasswordDialog.vue'
+import SetPinDialog from '@/components/security/SetPinDialog.vue'
 import BootstrapPhoneDialog from '@/components/security/BootstrapPhoneDialog.vue'
+import StepUpDialog from '@/components/security/StepUpDialog.vue'
 
 const store = useSecurityStore()
+const router = useRouter()
 
 const loadError = ref(false)
 const setPasswordDialog = ref(false)
 const changePasswordDialog = ref(false)
 const bootstrapPhoneDialog = ref(false)
+const setPinDialog = ref(false)
+const disablePinDialog = ref(false)
 
 // ── Snackbar ──────────────────────────────────────────────────────────────
 
@@ -185,13 +209,24 @@ function handleRecommendedAction(action: string) {
     case 'set_password':
       openSetPassword()
       break
+    case 'change_password':
+      openChangePassword()
+      break
     case 'add_phone':
     case 'bootstrap_add_phone':
       bootstrapPhoneDialog.value = true
       break
     case 'verify_email':
-    case 'add_email':
       handleResendEmail()
+      break
+    case 'add_email':
+      handleAddEmail()
+      break
+    case 'verify_phone':
+      handleVerifyPhone()
+      break
+    case 'enable_quick_pin':
+      handleEnablePin()
       break
     default:
       break
@@ -211,17 +246,17 @@ function openChangePassword() {
 // ── Phone ─────────────────────────────────────────────────────────────────
 
 function handleVerifyPhone() {
-  // Phone verification not yet implemented
+  notify('Подтверждение телефона: отправьте код повторно через настройки профиля.', 'info', 6000)
 }
 
 function handleChangePhone() {
-  // Phone change not yet implemented
+  notify('Изменение телефона доступно в разделе «Настройки профиля».', 'info', 5000)
 }
 
 // ── Email ─────────────────────────────────────────────────────────────────
 
 function handleAddEmail() {
-  // Delegate to email settings tab
+  router.push({ name: 'settings' })
 }
 
 async function handleResendEmail() {
@@ -245,27 +280,38 @@ async function handleResendEmail() {
 }
 
 function handleChangeEmail() {
-  // Email change not yet implemented
+  notify('Изменение email доступно в разделе «Настройки профиля».', 'info', 5000)
 }
 
 // ── Yandex ────────────────────────────────────────────────────────────────
 
 function handleLinkYandex() {
-  // OAuth redirect — future implementation
+  notify('Подключение Яндекс-аккаунта будет доступно в ближайшем обновлении.', 'info', 5000)
 }
 
 function handleUnlinkYandex() {
-  // Unlink — future implementation
+  notify('Отвязка Яндекс-аккаунта будет доступна в ближайшем обновлении.', 'info', 5000)
 }
 
 // ── PIN ───────────────────────────────────────────────────────────────────
 
 function handleEnablePin() {
-  // PIN setup — future implementation
+  setPinDialog.value = true
 }
 
 function handleDisablePin() {
-  // PIN disable — future implementation
+  disablePinDialog.value = true
+}
+
+async function onDisablePinStepUp(token: string) {
+  disablePinDialog.value = false
+  try {
+    await store.disablePin(token)
+    notify('Быстрый PIN отключён. Все доверенные устройства отозваны.', 'success')
+    await store.fetchDevices()
+  } catch (e: any) {
+    notify(e?.response?.data?.message || 'Не удалось отключить PIN. Попробуйте снова.', 'error')
+  }
 }
 
 // ── Callbacks ─────────────────────────────────────────────────────────────
@@ -275,8 +321,14 @@ async function onActionCompleted() {
   notify('Изменения сохранены.')
 }
 
+async function onPinEnabled() {
+  await store.fetchAuthStatus()
+  await store.fetchDevices()
+  notify('Быстрый PIN установлен. Это устройство теперь доверенное.', 'success')
+}
+
 async function onBootstrapPhoneCompleted(_recommendedActions: string[]) {
   await store.refreshAfterBootstrap()
-  notify('Телефон добавлен.')
+  notify('Телефон добавлен. Теперь вы можете установить пароль и включить быстрый PIN.', 'success', 6000)
 }
 </script>

@@ -21,8 +21,9 @@ describe('handleEmailVerifiedRedirect — notification mapping', () => {
   it.each(cases)('param=$param → color=$color and text contains "$textContains"', ({ param, color, textContains }) => {
     // Pure mapping logic extracted from SecurityPageView / UserSettingsView
     const result = emailVerifiedNotification(param)
-    expect(result.color).toBe(color)
-    expect(result.message).toContain(textContains)
+    expect(result).not.toBeNull()
+    expect(result!.color).toBe(color)
+    expect(result!.message).toContain(textContains)
   })
 
   it('unknown param → no notification emitted', () => {

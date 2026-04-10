@@ -29,7 +29,7 @@
             </div>
             <div class="text-caption text-medium-emphasis mt-0-5">
               <span v-if="status.phone.linked">{{ status.phone.masked }}</span>
-              <span v-else>Для входа, восстановления и быстрого PIN</span>
+              <span v-else>Для входа по SMS-коду и быстрого PIN</span>
             </div>
           </div>
           <div class="method-action">
@@ -126,11 +126,9 @@
               <v-chip v-else size="x-small" color="error" variant="tonal">Не установлен</v-chip>
             </div>
             <div class="text-caption text-medium-emphasis mt-0-5">
-              <span v-if="status.password.set">Для входа с любого браузера</span>
-              <span v-else-if="isPasswordBlocked">
-                Сначала {{ prerequisiteLabel('set_password') }}
-              </span>
-              <span v-else>Установите для входа и восстановления аккаунта</span>
+              <span v-if="status.password.set">Вход с любого браузера без SMS</span>
+              <span v-else-if="isPasswordBlocked">Сначала {{ prerequisiteLabel('set_password') }}</span>
+              <span v-else>Для входа и восстановления с любого устройства</span>
             </div>
           </div>
           <div class="method-action">
@@ -144,11 +142,11 @@
             <v-btn
               v-else-if="!status.password.set && isPasswordBlocked"
               size="small"
-              variant="text"
-              disabled
+              variant="outlined"
+              color="warning"
+              @click="$emit('action', prerequisiteAction('set_password'))"
             >
-              <v-icon size="16" class="mr-1">mdi-lock-outline</v-icon>
-              Заблокировано
+              {{ prerequisiteButtonLabel('set_password') }}
             </v-btn>
             <v-btn
               v-else
@@ -221,12 +219,12 @@
             </div>
             <div class="text-caption text-medium-emphasis mt-0-5">
               <span v-if="status.quick_pin.enabled">
-                4-значный вход на доверенных устройствах
+                4-значный код на этом устройстве, без SMS
               </span>
               <span v-else-if="isPinBlocked">
                 Сначала {{ prerequisiteLabel('enable_quick_pin') }}
               </span>
-              <span v-else>Быстрый вход на доверенных устройствах без пароля</span>
+              <span v-else>Вход 4-значным кодом — быстрее пароля и SMS</span>
             </div>
           </div>
           <div class="method-action">
@@ -239,11 +237,11 @@
             <v-btn
               v-else-if="!status.quick_pin.enabled && isPinBlocked"
               size="small"
-              variant="text"
-              disabled
+              variant="outlined"
+              color="warning"
+              @click="$emit('action', prerequisiteAction('enable_quick_pin'))"
             >
-              <v-icon size="16" class="mr-1">mdi-lock-outline</v-icon>
-              Заблокировано
+              {{ prerequisiteButtonLabel('enable_quick_pin') }}
             </v-btn>
             <v-btn
               v-else
@@ -262,7 +260,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AuthMethodProfile } from '@/api/security'
-import { blockedActionPrerequisiteLabel } from './securityHelpers'
+import { blockedActionPrerequisiteLabel, recommendedActionMeta } from './securityHelpers'
 
 const props = defineProps<{
   status: AuthMethodProfile
@@ -281,10 +279,21 @@ defineEmits<{
   (e: 'unlinkYandex'): void
   (e: 'enablePin'): void
   (e: 'disablePin'): void
+  (e: 'action', action: string): void
 }>()
 
 const isPasswordBlocked = computed(() => props.status.blocked_actions.includes('set_password'))
 const isPinBlocked = computed(() => props.status.blocked_actions.includes('enable_quick_pin'))
+
+function prerequisiteAction(blockedAction: string): string {
+  return props.status.prerequisite_actions[blockedAction] ?? ''
+}
+
+function prerequisiteButtonLabel(blockedAction: string): string {
+  const prereq = prerequisiteAction(blockedAction)
+  if (!prereq) return 'Выполнить условие'
+  return recommendedActionMeta(prereq).buttonLabel
+}
 
 function prerequisiteLabel(action: string): string {
   return blockedActionPrerequisiteLabel(action, props.status.prerequisite_actions)

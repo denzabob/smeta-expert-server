@@ -14,7 +14,7 @@
           color="error"
           @click="confirmRevokeAll = true"
         >
-          Завершить все другие
+          Завершить все остальные
         </v-btn>
       </div>
 
@@ -46,7 +46,7 @@
               <div class="d-flex align-center gap-2 flex-wrap">
                 <span class="text-body-2">{{ session.device || 'Неизвестное устройство' }}</span>
                 <v-chip v-if="session.current" size="x-small" color="primary" variant="tonal">
-                  Текущий
+                  Текущий сеанс
                 </v-chip>
               </div>
               <div class="text-caption text-medium-emphasis">
@@ -66,6 +66,11 @@
             >
               Завершить
             </v-btn>
+            <span
+              v-else
+              class="text-caption text-medium-emphasis px-2"
+              title="Текущий сеанс нельзя завершить здесь"
+            >Это вы</span>
           </div>
           <v-divider v-if="idx < sessions.length - 1" />
         </div>
@@ -78,7 +83,8 @@
         <v-card-title class="pt-5 px-6 text-subtitle-1">Завершить другие сеансы?</v-card-title>
         <v-card-text class="px-6">
           <p class="text-body-2 text-medium-emphasis">
-            Все сеансы, кроме текущего, будут завершены. Вам придётся снова войти на других устройствах.
+            Все активные сеансы, кроме текущего, будут завершены.
+            На других устройствах потребуется снова войти в аккаунт.
           </p>
         </v-card-text>
         <v-card-actions class="px-6 pb-5">
@@ -103,6 +109,10 @@ const props = defineProps<{
   loading: boolean
 }>()
 
+const emit = defineEmits<{
+  (e: 'notify', message: string, color: 'success' | 'error' | 'warning' | 'info'): void
+}>()
+
 const store = useSecurityStore()
 
 const revokingId = ref<string | null>(null)
@@ -111,15 +121,28 @@ const revoking = ref(false)
 
 async function revokeSession(id: string) {
   revokingId.value = id
-  await store.revokeSession(id)
-  revokingId.value = null
+  try {
+    await store.revokeSession(id)
+    emit('notify', 'Сеанс завершён.', 'success')
+  } catch {
+    emit('notify', 'Не удалось завершить сеанс. Попробуйте снова.', 'error')
+  } finally {
+    revokingId.value = null
+  }
 }
 
 async function revokeOthers() {
   revoking.value = true
-  await store.revokeOtherSessions()
-  confirmRevokeAll.value = false
-  revoking.value = false
+  try {
+    await store.revokeOtherSessions()
+    confirmRevokeAll.value = false
+    emit('notify', 'Все остальные сеансы завершены.', 'success')
+  } catch {
+    emit('notify', 'Не удалось завершить сеансы. Попробуйте снова.', 'error')
+    confirmRevokeAll.value = false
+  } finally {
+    revoking.value = false
+  }
 }
 
 function formatDate(iso: string | null): string {

@@ -219,4 +219,26 @@ export const securityApi = {
     })
     return data
   },
+
+  // ── Quick PIN ─────────────────────────────────────────────────────────────
+
+  async enablePin(
+    stepUpToken: string,
+    pin: string,
+    pinConfirm: string,
+  ): Promise<{ message: string; pin_enabled: boolean }> {
+    const { data } = await api.post('/api/auth/pin/set', {
+      step_up_token: stepUpToken,
+      pin,
+      pin_confirm: pinConfirm,
+    })
+    return data
+  },
+
+  async disablePin(stepUpToken: string): Promise<{ message: string; pin_enabled: boolean }> {
+    const { data } = await api.post('/api/auth/pin/disable', {
+      step_up_token: stepUpToken,
+    })
+    return data
+  },
 }

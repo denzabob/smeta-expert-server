@@ -87,6 +87,18 @@ export const useSecurityStore = defineStore('security', () => {
     await fetchAuthStatus()
   }
 
+  // ── Quick PIN ────────────────────────────────────────────────────────────
+
+  async function enablePin(stepUpToken: string, pin: string) {
+    await securityApi.enablePin(stepUpToken, pin, pin)
+    await fetchAuthStatus()
+  }
+
+  async function disablePin(stepUpToken: string) {
+    await securityApi.disablePin(stepUpToken)
+    await fetchAuthStatus()
+  }
+
   return {
     authStatus,
     sessions,
@@ -102,5 +114,7 @@ export const useSecurityStore = defineStore('security', () => {
     revokeDevice,
     revokeAllDevices,
     refreshAfterBootstrap,
+    enablePin,
+    disablePin,
   }
 })
