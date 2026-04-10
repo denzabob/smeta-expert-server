@@ -89,8 +89,8 @@ export const useSecurityStore = defineStore('security', () => {
 
   // ── Quick PIN ────────────────────────────────────────────────────────────
 
-  async function enablePin(stepUpToken: string, pin: string) {
-    await securityApi.enablePin(stepUpToken, pin, pin)
+  async function enablePin(stepUpToken: string, pin: string, trustDevice?: boolean) {
+    await securityApi.enablePin(stepUpToken, pin, pin, trustDevice)
     await fetchAuthStatus()
   }
 

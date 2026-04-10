@@ -226,11 +226,13 @@ export const securityApi = {
     stepUpToken: string,
     pin: string,
     pinConfirm: string,
+    trustDevice?: boolean,
   ): Promise<{ message: string; pin_enabled: boolean }> {
     const { data } = await api.post('/api/auth/pin/set', {
       step_up_token: stepUpToken,
       pin,
       pin_confirm: pinConfirm,
+      ...(trustDevice !== undefined && { trust_device: trustDevice }),
     })
     return data
   },

@@ -131,94 +131,17 @@
   <!-- Bootstrap phone (Yandex-only accounts) -->
   <BootstrapPhoneDialog v-model="bootstrapPhoneDialog" @completed="onActionCompleted" />
 
-  <!-- ── PIN dialog ──────────────────────────────────────────────────────── -->
-  <v-dialog v-model="pinDialogOpen" max-width="360" persistent :scrim="false">
-    <v-card rounded="xl" class="pa-6">
-      <div class="d-flex align-center mb-4">
-        <button class="acc-sec__back-btn mr-2" @click="closePinDialog">
-          <v-icon size="18">mdi-arrow-left</v-icon>
-        </button>
-        <div class="text-subtitle-1 font-weight-semibold">
-          {{ pinDisableMode ? 'Отключить PIN-код' : pinStepTitle }}
-        </div>
-      </div>
+  <!-- ── PIN dialogs (канонический поток через step-up) ────────────────────────────── -->
+  <SetPinDialog v-model="setPinDialogOpen" @completed="onPinEnabled" />
 
-      <!-- Disable PIN mode -->
-      <template v-if="pinDisableMode">
-        <p class="text-body-2 text-medium-emphasis mb-4">
-          Введите текущий пароль для отключения PIN-кода.
-        </p>
-        <div class="acc-sec__field mb-4">
-          <input
-            v-model="pinDisablePassword"
-            type="password"
-            class="acc-sec__input"
-            placeholder="Текущий пароль"
-          />
-        </div>
-        <div v-if="pinError" class="acc-sec__inline-error mb-3">{{ pinError }}</div>
-        <div class="d-flex justify-end" style="gap:8px">
-          <button class="acc-sec__btn acc-sec__btn--secondary" @click="closePinDialog">Отмена</button>
-          <button
-            class="acc-sec__btn acc-sec__btn--danger"
-            :disabled="!pinDisablePassword || pinSaving"
-            @click="submitDisablePin"
-          >
-            {{ pinSaving ? 'Отключение...' : 'Отключить PIN' }}
-          </button>
-        </div>
-      </template>
-
-      <!-- Setup PIN steps -->
-      <template v-else>
-        <p class="text-body-2 text-medium-emphasis mb-4">{{ pinStepHint }}</p>
-
-        <v-alert v-if="pinError" type="error" variant="tonal" density="compact" closable class="mb-4" @click:close="pinError = ''">
-          {{ pinError }}
-        </v-alert>
-        <v-alert v-if="pinSuccess" type="success" variant="tonal" density="compact" class="mb-4">
-          {{ pinSuccess }}
-        </v-alert>
-
-        <div v-if="pinStep === 'enter'" class="acc-sec__pin-center mb-4">
-          <PinInput ref="pinRef1" v-model="pinForm.pin1" autofocus @complete="onPin1Complete" />
-        </div>
-
-        <div v-else-if="pinStep === 'confirm'" class="acc-sec__pin-center mb-4">
-          <PinInput ref="pinRef2" v-model="pinForm.pin2" autofocus @complete="onPin2Complete" />
-        </div>
-
-        <template v-else-if="pinStep === 'password'">
-          <div class="acc-sec__field mb-3">
-            <label class="acc-sec__label">Пароль для подтверждения</label>
-            <input
-              ref="pinPasswordRef"
-              v-model="pinForm.password"
-              type="password"
-              class="acc-sec__input"
-              placeholder="Введите текущий пароль"
-              autocomplete="current-password"
-              @keydown.enter="submitPin"
-            />
-          </div>
-          <label class="d-flex align-center mb-4" style="gap:8px;cursor:pointer">
-            <input type="checkbox" v-model="pinForm.trustDevice" />
-            <span class="text-body-2">Доверять этому устройству</span>
-          </label>
-          <div class="d-flex justify-end" style="gap:8px">
-            <button class="acc-sec__btn acc-sec__btn--secondary" @click="closePinDialog">Отмена</button>
-            <button
-              class="acc-sec__btn acc-sec__btn--primary"
-              :disabled="pinSaving || !pinForm.password"
-              @click="submitPin"
-            >
-              {{ pinSaving ? 'Сохранение...' : 'Сохранить PIN' }}
-            </button>
-          </div>
-        </template>
-      </template>
-    </v-card>
-  </v-dialog>
+  <!-- Disable PIN: step-up only -->
+  <StepUpDialog
+    v-model="disablePinDialogOpen"
+    scope="set_quick_pin"
+    title="Подтверждение для отключения PIN"
+    @completed="onDisablePinStepUp"
+    @cancelled="disablePinDialogOpen = false"
+  />
 
   <!-- ── Phone change dialog ─────────────────────────────────────────────── -->
   <v-dialog v-model="phoneDialogOpen" max-width="440" persistent :scrim="false">
@@ -298,7 +221,6 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSecurityStore } from '@/stores/security'
 import { authApi } from '@/api/auth'
-import { pinApi } from '@/api/pin'
 import { formatRuPhoneMask } from '@/components/auth/phoneCallFlow'
 
 import AuthMethodsCard from '@/components/security/AuthMethodsCard.vue'
@@ -307,8 +229,9 @@ import RecommendedActionsCard from '@/components/security/RecommendedActionsCard
 import SessionsCard from '@/components/security/SessionsCard.vue'
 import TrustedDevicesCard from '@/components/security/TrustedDevicesCard.vue'
 import SetPasswordDialog from '@/components/security/SetPasswordDialog.vue'
+import SetPinDialog from '@/components/security/SetPinDialog.vue'
+import StepUpDialog from '@/components/security/StepUpDialog.vue'
 import BootstrapPhoneDialog from '@/components/security/BootstrapPhoneDialog.vue'
-import PinInput from '@/components/auth/PinInput.vue'
 
 const authStore = useAuthStore()
 const store = useSecurityStore()
@@ -425,118 +348,33 @@ async function doResendEmailVerification() {
   }
 }
 
-// ── PIN ──────────────────────────────────────────────────────────────────
+// ── PIN ─────────────────────────────────────────────────────────────────
+// All PIN operations now go through the canonical step-up flow (SetPinDialog / StepUpDialog).
+// The old inline form that submitted password directly is removed.
 
-type PinStep = 'enter' | 'confirm' | 'password'
-
-const pinDialogOpen = ref(false)
-const pinDisableMode = ref(false)
-const pinDisablePassword = ref('')
-const pinStep = ref<PinStep>('enter')
-const pinForm = ref({ pin1: '', pin2: '', password: '', trustDevice: true })
-const pinSaving = ref(false)
-const pinError = ref('')
-const pinSuccess = ref('')
-
-const pinRef1 = ref<InstanceType<typeof PinInput> | null>(null)
-const pinRef2 = ref<InstanceType<typeof PinInput> | null>(null)
-const pinPasswordRef = ref<HTMLInputElement | null>(null)
-
-const pinStepTitle = computed(() => {
-  if (pinStep.value === 'enter') return 'Установить PIN-код'
-  if (pinStep.value === 'confirm') return 'Подтвердите PIN-код'
-  return 'Подтверждение паролем'
-})
-
-const pinStepHint = computed(() => {
-  if (pinStep.value === 'enter') return 'Введите новый 4-значный PIN-код'
-  if (pinStep.value === 'confirm') return 'Введите PIN-код ещё раз для подтверждения'
-  return 'Введите пароль от аккаунта для подтверждения'
-})
+const setPinDialogOpen = ref(false)
+const disablePinDialogOpen = ref(false)
 
 function openPinSetup() {
-  pinDisableMode.value = false
-  pinStep.value = 'enter'
-  pinForm.value = { pin1: '', pin2: '', password: '', trustDevice: true }
-  pinError.value = ''
-  pinSuccess.value = ''
-  pinDialogOpen.value = true
+  setPinDialogOpen.value = true
 }
 
 function openPinDisable() {
-  pinDisableMode.value = true
-  pinDisablePassword.value = ''
-  pinError.value = ''
-  pinDialogOpen.value = true
+  disablePinDialogOpen.value = true
 }
 
-function closePinDialog() {
-  pinDialogOpen.value = false
-  pinError.value = ''
-  pinSuccess.value = ''
+async function onPinEnabled() {
+  await onActionCompleted()
 }
 
-function onPin1Complete() {
-  pinError.value = ''
-  pinStep.value = 'confirm'
-  nextTick(() => pinRef2.value?.focus())
-}
-
-function onPin2Complete() {
-  if (pinForm.value.pin1 !== pinForm.value.pin2) {
-    pinError.value = 'PIN-коды не совпадают'
-    pinForm.value.pin2 = ''
-    nextTick(() => (pinRef2.value as any)?.clear?.())
-    return
-  }
-  pinError.value = ''
-  pinStep.value = 'password'
-  nextTick(() => pinPasswordRef.value?.focus())
-}
-
-async function submitPin() {
-  if (!pinForm.value.password || pinSaving.value) return
-  pinError.value = ''
-  pinSuccess.value = ''
-  pinSaving.value = true
+async function onDisablePinStepUp(token: string) {
+  disablePinDialogOpen.value = false
   try {
-    await pinApi.setPin({
-      pin: pinForm.value.pin1,
-      pin_confirm: pinForm.value.pin2,
-      password: pinForm.value.password,
-      trust_device: pinForm.value.trustDevice,
-    })
-    pinSuccess.value = 'PIN-код успешно установлен'
-    await store.fetchAuthStatus()
-    setTimeout(() => { pinDialogOpen.value = false }, 1200)
-  } catch (e: any) {
-    const msg = e.response?.data?.message
-    pinError.value = msg || 'Не удалось установить PIN'
-    if (!msg?.toLowerCase().includes('пароль')) {
-      pinStep.value = 'enter'
-      pinForm.value.pin1 = ''
-      pinForm.value.pin2 = ''
-      pinForm.value.password = ''
-      nextTick(() => pinRef1.value?.focus())
-    }
-  } finally {
-    pinSaving.value = false
+    await store.disablePin(token)
+  } catch {
+    // store.disablePin errors bubble up; silent here, user can retry
   }
-}
-
-async function submitDisablePin() {
-  if (!pinDisablePassword.value || pinSaving.value) return
-  pinError.value = ''
-  pinSaving.value = true
-  try {
-    await pinApi.disablePin(pinDisablePassword.value)
-    await store.fetchAuthStatus()
-    pinDialogOpen.value = false
-  } catch (e: any) {
-    pinError.value = e.response?.data?.message || 'Не удалось отключить PIN'
-  } finally {
-    pinSaving.value = false
-  }
+  await onActionCompleted()
 }
 
 // ── Phone change ──────────────────────────────────────────────────────────

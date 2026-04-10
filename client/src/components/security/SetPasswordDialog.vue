@@ -100,11 +100,12 @@
     </v-card>
   </v-dialog>
 
-  <!-- Step-up dialog for 'set' mode -->
+  <!-- Step-up dialog for 'set' mode: phone OTP is excluded for password setup policy -->
   <StepUpDialog
     v-model="showStepUp"
     scope="set_password"
     title="Подтверждение для установки пароля"
+    :exclude-methods="['phone_otp']"
     @completed="onStepUpCompleted"
     @cancelled="showStepUp = false"
   />

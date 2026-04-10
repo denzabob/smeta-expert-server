@@ -227,6 +227,8 @@ const props = defineProps<{
   modelValue: boolean
   scope: string
   title?: string
+  /** Methods to suppress from the method-choice list (e.g. ['phone_otp'] for password setup) */
+  excludeMethods?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -280,7 +282,9 @@ async function initiate() {
   try {
     const res = await securityApi.stepUpInitiate(props.scope)
     challengeId.value = res.challenge_id
-    allowedMethods.value = res.allowed_methods
+    allowedMethods.value = (res.allowed_methods as string[]).filter(
+      (m) => !props.excludeMethods?.includes(m),
+    )
     phoneMasked.value = res.phone_masked
     emailMasked.value = res.email_masked
 

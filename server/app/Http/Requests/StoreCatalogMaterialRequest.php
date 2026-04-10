@@ -15,7 +15,7 @@ class StoreCatalogMaterialRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'article' => 'required|string|max:255',
+            'article' => 'nullable|string|max:255',
             'type' => 'required|in:plate,edge,facade,hardware',
             'unit' => 'required|in:м²,м.п.,шт',
             'price_per_unit' => 'required|numeric|min:0',
@@ -52,7 +52,6 @@ class StoreCatalogMaterialRequest extends FormRequest
     {
         return [
             'name.required' => 'Название материала обязательно.',
-            'article.required' => 'Артикул обязателен.',
             'type.required' => 'Тип материала обязателен.',
             'unit.required' => 'Единица измерения обязательна.',
             'price_per_unit.required' => 'Цена обязательна.',

@@ -23,7 +23,8 @@
           </p>
         </v-card-text>
         <v-card-actions class="px-6 pb-5">
-          <v-btn variant="text" @click="close">Отмена</v-btn>
+          <v-btn v-if="skipable" variant="text" @click="skip">Пропустить</v-btn>
+          <v-btn v-else variant="text" @click="close">Отмена</v-btn>
           <v-spacer />
           <v-btn color="primary" variant="flat" @click="showStepUp = true">
             Подтвердить личность
@@ -66,10 +67,19 @@
               autocomplete="new-password"
               hide-details="auto"
             />
+            <!-- Trust device checkbox (post-login context only) -->
+            <v-checkbox
+              v-if="showTrustDevice"
+              v-model="trustDevice"
+              label="Доверять этому устройству"
+              hide-details
+              density="compact"
+            />
           </div>
         </v-card-text>
         <v-card-actions class="px-6 pb-5">
-          <v-btn variant="text" :disabled="saving" @click="close">Отмена</v-btn>
+          <v-btn v-if="skipable" variant="text" :disabled="saving" @click="skip">Пропустить</v-btn>
+          <v-btn v-else variant="text" :disabled="saving" @click="close">Отмена</v-btn>
           <v-spacer />
           <v-btn
             color="primary"
@@ -101,11 +111,16 @@ import StepUpDialog from './StepUpDialog.vue'
 
 const props = defineProps<{
   modelValue: boolean
+  /** Show a 'Пропустить' button instead of 'Отмена'; emits 'skipped' on click */
+  skipable?: boolean
+  /** Show 'Доверять устройству' checkbox — used in post-login context */
+  showTrustDevice?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', val: boolean): void
   (e: 'completed'): void
+  (e: 'skipped'): void
 }>()
 
 const store = useSecurityStore()
@@ -117,6 +132,7 @@ const pinConfirm = ref('')
 const showPin = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
+const trustDevice = ref(true)
 
 const pinMismatch = computed(
   () => !!pinConfirm.value && pin.value !== pinConfirm.value,
@@ -135,6 +151,7 @@ watch(
       pinConfirm.value = ''
       showPin.value = false
       error.value = null
+      trustDevice.value = true
     }
   },
 )
@@ -144,16 +161,53 @@ function onStepUpCompleted(token: string) {
   showStepUp.value = false
 }
 
+/** Map raw backend errors to user-readable messages. */
+function mapPinError(e: any): string {
+  const status = e?.response?.status
+  const msg: string = e?.response?.data?.message || ''
+  const errors = e?.response?.data?.errors || {}
+
+  if (status === 422) {
+    if (errors.step_up_token) {
+      return 'Для продолжения сначала подтвердите личность.'
+    }
+    if (errors.pin || errors.pin_confirm) {
+      return 'Введите корректный 4-значный PIN-код.'
+    }
+    // Generic 422 — do not show raw Laravel message
+    return 'Не удалось сохранить PIN-код. Проверьте введённые данные.'
+  }
+  if (status === 401) {
+    return 'Подтверждение личности не завершено или истекло. Закройте окно и попробуйте снова.'
+  }
+  // Use backend message only when it does not look like raw English validation
+  if (msg && !/The \w+ field/.test(msg)) {
+    return msg
+  }
+  return 'Не удалось установить PIN. Попробуйте снова.'
+}
+
 async function submit() {
-  if (!canSubmit.value || !stepUpToken.value) return
+  // Defensive: if step-up token is missing, return to confirmation step
+  if (!stepUpToken.value) {
+    error.value = 'Для продолжения сначала подтвердите личность.'
+    return
+  }
+  if (!canSubmit.value) return
+
   saving.value = true
   error.value = null
   try {
-    await store.enablePin(stepUpToken.value, pin.value)
+    const td = props.showTrustDevice ? trustDevice.value : undefined
+    await store.enablePin(stepUpToken.value, pin.value, td)
     emit('completed')
     close()
   } catch (e: any) {
-    error.value = e?.response?.data?.message || 'Не удалось установить PIN. Попробуйте снова.'
+    error.value = mapPinError(e)
+    // If token was rejected, reset so user re-runs step-up
+    if (e?.response?.status === 401) {
+      stepUpToken.value = null
+    }
   } finally {
     saving.value = false
   }
@@ -161,5 +215,10 @@ async function submit() {
 
 function close() {
   emit('update:modelValue', false)
+}
+
+function skip() {
+  emit('skipped')
+  close()
 }
 </script>

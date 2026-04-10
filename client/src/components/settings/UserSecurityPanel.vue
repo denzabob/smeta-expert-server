@@ -77,7 +77,8 @@
         </button>
 
         <!-- Изменить PIN-код -->
-        <button class="security-item" @click="currentView = 'pin'">
+        <!-- Изменить PIN-код -->
+        <button class="security-item" @click="setPinDialogOpen = true">
           <span class="security-item__icon">
             <v-icon size="20">mdi-dialpad</v-icon>
           </span>
@@ -186,113 +187,6 @@
           </button>
         </div>
       </form>
-    </template>
-
-    <!-- ======================== CHANGE PIN VIEW ======================== -->
-    <template v-if="currentView === 'pin'">
-      <div class="sub-header">
-        <button class="back-btn" @click="goBack">
-          <v-icon size="20">mdi-arrow-left</v-icon>
-        </button>
-        <h3 class="sub-header__title">Изменить PIN-код</h3>
-      </div>
-
-      <div class="pin-change-form">
-        <p class="pin-step-hint">{{ pinStepHint }}</p>
-
-        <v-alert
-          v-if="pinError"
-          type="error"
-          variant="tonal"
-          class="mb-4"
-          density="compact"
-          closable
-          @click:close="pinError = ''"
-        >
-          {{ pinError }}
-        </v-alert>
-
-        <v-alert
-          v-if="pinSuccess"
-          type="success"
-          variant="tonal"
-          class="mb-4"
-          density="compact"
-        >
-          {{ pinSuccess }}
-        </v-alert>
-
-        <!-- Step 1: Enter new PIN -->
-        <template v-if="pinStep === 'enter'">
-          <div class="pin-center">
-            <PinInput
-              ref="pinRef1"
-              v-model="pinForm.pin1"
-              autofocus
-              @complete="onPin1Complete"
-            />
-          </div>
-        </template>
-
-        <!-- Step 2: Confirm PIN -->
-        <template v-if="pinStep === 'confirm'">
-          <div class="pin-center">
-            <PinInput
-              ref="pinRef2"
-              v-model="pinForm.pin2"
-              autofocus
-              @complete="onPin2Complete"
-            />
-          </div>
-        </template>
-
-        <!-- Step 3: Enter password -->
-        <template v-if="pinStep === 'password'">
-          <div class="form-group">
-            <label class="form-label">Пароль для подтверждения</label>
-            <div class="input-wrapper">
-              <input
-                ref="pinPasswordRef"
-                v-model="pinForm.password"
-                :type="pinShowPassword ? 'text' : 'password'"
-                class="form-input"
-                placeholder="Введите текущий пароль"
-                autocomplete="current-password"
-                @keydown.enter="submitPin"
-              />
-              <button type="button" class="input-toggle" @click="pinShowPassword = !pinShowPassword">
-                <v-icon size="18">{{ pinShowPassword ? 'mdi-eye-off' : 'mdi-eye' }}</v-icon>
-              </button>
-            </div>
-          </div>
-
-          <div class="trust-device-row">
-            <label class="checkbox-label">
-              <input type="checkbox" v-model="pinForm.trustDevice" />
-              <span>Доверять этому устройству</span>
-            </label>
-          </div>
-        </template>
-
-        <div class="form-actions">
-          <button
-            type="button"
-            class="btn btn--secondary"
-            @click="goBack"
-          >
-            Отмена
-          </button>
-          <button
-            v-if="pinStep === 'password'"
-            type="button"
-            class="btn btn--primary"
-            :disabled="pinSaving || !pinForm.password"
-            @click="submitPin"
-          >
-            {{ pinSaving ? 'Сохранение...' : 'Сохранить PIN' }}
-          </button>
-        </div>
-      </div>
     </template>
 
     <!-- ======================== AUTH METHODS VIEW ======================== -->
@@ -644,20 +538,21 @@
       {{ snackbar.message }}
     </v-snackbar>
   </div>
+
+  <!-- PIN setup dialog (canonical step-up flow) -->
+  <SetPinDialog v-model="setPinDialogOpen" @completed="onPinEnabled" />
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { authApi, type AuthMethodsResponse } from '@/api/auth'
-import { pinApi } from '@/api/pin'
 import { formatRuPhoneMask } from '@/components/auth/phoneCallFlow'
 import { buildProviderConnectionRows } from '@/components/settings/providerConnectionRows'
-import PinInput from '@/components/auth/PinInput.vue'
+import SetPinDialog from '@/components/security/SetPinDialog.vue'
 import UserDevicesPanel from '@/components/settings/UserDevicesPanel.vue'
 
-type ViewName = 'list' | 'password' | 'pin' | 'auth-methods' | 'devices' | 'chrome-token'
-type PinStep = 'enter' | 'confirm' | 'password'
+type ViewName = 'list' | 'password' | 'auth-methods' | 'devices' | 'chrome-token'
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
@@ -668,7 +563,6 @@ const currentView = ref<ViewName>('list')
 
 function goBack() {
   pwReset()
-  pinReset()
   chromeReset()
   authMethodsError.value = ''
   authMethodsSuccess.value = ''
@@ -1087,88 +981,11 @@ async function submitPassword() {
 }
 
 // ==================== CHANGE PIN ====================
-const pinStep = ref<PinStep>('enter')
-const pinForm = ref({ pin1: '', pin2: '', password: '', trustDevice: true })
-const pinShowPassword = ref(false)
-const pinSaving = ref(false)
-const pinError = ref('')
-const pinSuccess = ref('')
+const setPinDialogOpen = ref(false)
 
-const pinRef1 = ref<InstanceType<typeof PinInput> | null>(null)
-const pinRef2 = ref<InstanceType<typeof PinInput> | null>(null)
-const pinPasswordRef = ref<HTMLInputElement | null>(null)
-
-const pinStepHint = computed(() => {
-  switch (pinStep.value) {
-    case 'enter': return 'Введите новый 4-значный PIN-код'
-    case 'confirm': return 'Подтвердите PIN-код'
-    case 'password': return 'Введите пароль для подтверждения'
-    default: return ''
-  }
-})
-
-function pinReset() {
-  pinStep.value = 'enter'
-  pinForm.value = { pin1: '', pin2: '', password: '', trustDevice: true }
-  pinShowPassword.value = false
-  pinError.value = ''
-  pinSuccess.value = ''
-}
-
-function onPin1Complete() {
-  pinError.value = ''
-  pinStep.value = 'confirm'
-  nextTick(() => pinRef2.value?.focus())
-}
-
-function onPin2Complete() {
-  if (pinForm.value.pin1 !== pinForm.value.pin2) {
-    pinError.value = 'PIN-коды не совпадают'
-    pinForm.value.pin2 = ''
-    nextTick(() => pinRef2.value?.clear())
-    return
-  }
-  pinError.value = ''
-  pinStep.value = 'password'
-  nextTick(() => pinPasswordRef.value?.focus())
-}
-
-async function submitPin() {
-  if (!pinForm.value.password || pinSaving.value) return
-
-  pinError.value = ''
-  pinSuccess.value = ''
-  pinSaving.value = true
-
-  try {
-    await pinApi.setPin({
-      pin: pinForm.value.pin1,
-      pin_confirm: pinForm.value.pin2,
-      password: pinForm.value.password,
-      trust_device: pinForm.value.trustDevice,
-    })
-    pinEnabled.value = true
-    pinSuccess.value = 'PIN-код успешно установлен'
-    notify('PIN-код изменён', 'success')
-    // Return to list after short delay
-    setTimeout(() => { currentView.value = 'list' }, 1500)
-  } catch (e: any) {
-    const msg = e.response?.data?.message
-    pinError.value = msg || 'Не удалось установить PIN'
-
-    if (msg?.toLowerCase().includes('пароль')) {
-      // Stay on password step
-    } else {
-      // PIN error — start over
-      pinStep.value = 'enter'
-      pinForm.value.pin1 = ''
-      pinForm.value.pin2 = ''
-      pinForm.value.password = ''
-      nextTick(() => pinRef1.value?.focus())
-    }
-  } finally {
-    pinSaving.value = false
-  }
+function onPinEnabled() {
+  pinEnabled.value = true
+  notify('PIN-код установлен', 'success')
 }
 
 // ==================== CHROME EXTENSION TOKEN ====================

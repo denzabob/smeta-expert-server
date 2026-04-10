@@ -17,6 +17,8 @@ use App\Policies\IdeaPolicy;
 use App\Policies\MaterialDimensionParseFailurePolicy;
 use App\Policies\MaterialDimensionRulePolicy;
 use App\Policies\MaterialTypePatternPolicy;
+use App\Policies\ChatConversationPolicy;
+use App\Models\Chat\ChatConversation;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -47,6 +49,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(MaterialDimensionParseFailure::class, MaterialDimensionParseFailurePolicy::class);
         Gate::policy(MaterialTypePattern::class, MaterialTypePatternPolicy::class);
         Gate::policy(Idea::class, IdeaPolicy::class);
+        Gate::policy(ChatConversation::class, ChatConversationPolicy::class);
 
         ProjectLaborWork::observe(ProjectLaborWorkObserver::class);
         ProjectLaborWorkStep::observe(ProjectLaborWorkStepObserver::class);

@@ -665,6 +665,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('supplier-operations/categories', [\App\Http\Controllers\Api\SupplierOperationController::class, 'categories']);
     Route::get('supplier-operations/units', [\App\Http\Controllers\Api\SupplierOperationController::class, 'units']);
     Route::get('supplier-operations/{supplierOperation}', [\App\Http\Controllers\Api\SupplierOperationController::class, 'show']);
+
+    // ========== Support Chat (User) ==========
+    Route::prefix('support-chat')->group(function () {
+        Route::get('conversation', [\App\Http\Controllers\Api\SupportChatController::class, 'conversation']);
+        Route::get('conversations/{conversation}/messages', [\App\Http\Controllers\Api\SupportChatController::class, 'messages']);
+        Route::post('conversations/{conversation}/messages', [\App\Http\Controllers\Api\SupportChatController::class, 'sendMessage']);
+        Route::post('conversations/{conversation}/read', [\App\Http\Controllers\Api\SupportChatController::class, 'markRead']);
+    });
+
+    // ========== Support Chat (Admin) ==========
+    Route::prefix('admin/chat')->group(function () {
+        Route::get('conversations', [\App\Http\Controllers\Api\AdminChatController::class, 'index']);
+        Route::get('conversations/{conversation}', [\App\Http\Controllers\Api\AdminChatController::class, 'show']);
+        Route::get('conversations/{conversation}/messages', [\App\Http\Controllers\Api\AdminChatController::class, 'messages']);
+        Route::post('conversations/{conversation}/messages', [\App\Http\Controllers\Api\AdminChatController::class, 'sendMessage']);
+        Route::post('conversations/{conversation}/read', [\App\Http\Controllers\Api\AdminChatController::class, 'markRead']);
+        Route::post('conversations/{conversation}/assign', [\App\Http\Controllers\Api\AdminChatController::class, 'assign']);
+    });
 });
 
 // Старые маршруты (можно удалить позже)

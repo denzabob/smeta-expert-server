@@ -111,11 +111,13 @@
         </v-col>
       </v-row>
 
-    <!-- PIN Setup dialog (after first login) -->
-      <PinSetupDialog
+    <!-- PIN Setup dialog (after first login): canonical shared flow -->
+      <SetPinDialog
         v-model="showPinSetup"
-        @done="onPinSetupDone"
-        @skip="onPinSetupSkip"
+        :skipable="true"
+        :show-trust-device="true"
+        @completed="onPinSetupDone"
+        @skipped="onPinSetupSkip"
       />
 
       <v-dialog v-model="showPinTrustDialog" max-width="420" persistent>
@@ -160,7 +162,7 @@ import AuthPinLogin from '@/components/auth/AuthPinLogin.vue'
 import AuthPhoneLogin from '@/components/auth/AuthPhoneLogin.vue'
 import OnboardingCompletion from '@/components/auth/OnboardingCompletion.vue'
 import YandexLoginButton from '@/components/auth/YandexLoginButton.vue'
-import PinSetupDialog from '@/components/auth/PinSetupDialog.vue'
+import SetPinDialog from '@/components/security/SetPinDialog.vue'
 import { pinApi } from '@/api/pin'
 import { useAuthStore } from '@/stores/auth'
 import type { VerifyCodeResponse } from '@/api/phoneAuth'
