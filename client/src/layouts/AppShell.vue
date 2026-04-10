@@ -32,6 +32,9 @@
 
     <!-- Profile Edit Modal (compact, ~420px) -->
     <ProfileEditModal v-model="profileEditOpen" />
+
+    <!-- Support chat widget -->
+    <SupportChatWidget />
   </v-app>
 </template>
 
@@ -43,6 +46,7 @@ import { useAuthStore } from '@/stores/auth'
 import AppSidebar from './shell/AppSidebarNew.vue'
 import AccountSettingsDialog from './shell/AccountSettingsDialog.vue'
 import ProfileEditModal from '@/components/settings/ProfileEditModal.vue'
+import SupportChatWidget from '@/components/support/SupportChatWidget.vue'
 
 const router = useRouter()
 const route = useRoute()

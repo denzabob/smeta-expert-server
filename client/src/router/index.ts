@@ -245,6 +245,12 @@ const router = createRouter({
           name: 'admin-system-logs',
           component: () => import('@/views/admin/AdminSystemView.vue'),
           meta: { title: 'Журнал системы' }
+        },
+        {
+          path: 'chat',
+          name: 'admin-chat',
+          component: () => import('@/views/admin/AdminChatView.vue'),
+          meta: { title: 'Чаты поддержки' }
         }
       ]
     },

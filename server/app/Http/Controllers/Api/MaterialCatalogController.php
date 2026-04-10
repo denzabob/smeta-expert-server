@@ -307,6 +307,8 @@ class MaterialCatalogController extends Controller
         ])->toArray();
 
         $materialData['data_origin'] = $validated['data_origin'] ?? Material::ORIGIN_MANUAL;
+        // article is NOT NULL in DB; treat omitted/null as empty string
+        $materialData['article'] = $materialData['article'] ?? '';
 
         // Build observation data
         $observationData = [

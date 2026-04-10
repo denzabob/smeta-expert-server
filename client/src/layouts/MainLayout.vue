@@ -165,9 +165,6 @@
         </v-btn>
       </v-fab-transition>
     </v-main>
-
-    <!-- Support chat widget — floating above all layout content -->
-    <SupportChatWidget />
   </v-app>
 </template>
 
@@ -177,7 +174,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify' // ← добавьте useTheme
 import { useAuthStore } from '@/stores/auth'
 import GeoIpWarningBanner from '@/components/GeoIpWarningBanner.vue'
-import SupportChatWidget from '@/components/support/SupportChatWidget.vue'
 
 const authStore = useAuthStore()
 const router = useRouter()

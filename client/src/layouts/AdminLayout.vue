@@ -199,6 +199,12 @@ const navSections = computed(() => [
       { to: '/admin/system/notifications', label: 'Уведомления', icon: 'mdi-bell-outline' },
       { to: '/admin/system/logs', label: 'Журнал системы', icon: 'mdi-text-box-search-outline' },
     ]
+  },
+  {
+    title: 'Поддержка',
+    items: [
+      { to: '/admin/chat', label: 'Чаты пользователей', icon: 'mdi-chat-processing-outline' },
+    ]
   }
 ])
 
