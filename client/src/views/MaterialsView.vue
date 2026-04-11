@@ -248,11 +248,20 @@
           <EmptyState
             icon="mdi-package-variant"
             title="Нет материалов"
-            description="Добавьте материал вручную или запустите парсер"
+            description="Добавьте материал вручную или установите расширение Prismcore для автосбора со страниц поставщиков"
           >
             <template #actions>
               <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreateDialog">
                 Добавить материал
+              </v-btn>
+              <v-btn
+                :href="CHROME_EXTENSION_STORE_URL"
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="outlined"
+                prepend-icon="mdi-google-chrome"
+              >
+                Установить расширение
               </v-btn>
             </template>
           </EmptyState>
@@ -602,6 +611,7 @@ import SectionCard from '@/components/layout/SectionCard.vue'
 import TableToolbar from '@/components/layout/TableToolbar.vue'
 import EmptyState from '@/components/layout/EmptyState.vue'
 import PriceImportDialog from '@/components/PriceImportDialog.vue'
+import { CHROME_EXTENSION_STORE_URL } from '@/constants/chrome-extension'
 
 const props = withDefaults(defineProps<{
   defaultType?: string

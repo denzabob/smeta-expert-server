@@ -77,47 +77,112 @@
       />
 
       <!-- 6. Расширение Chrome -->
-      <div class="acc-sec__card mb-4">
+      <div class="acc-sec__card acc-sec__card--chrome mb-4">
+        <!-- Header -->
         <div class="acc-sec__card-header">
-          <v-icon icon="mdi-puzzle-outline" size="18" class="acc-sec__card-icon" />
+          <v-icon icon="mdi-google-chrome" size="20" class="acc-sec__card-icon acc-sec__card-icon--chrome" />
           <div>
             <div class="acc-sec__card-title">Расширение Chrome</div>
-            <div class="acc-sec__card-desc">Токен для подключения браузерного расширения «Призма»</div>
+            <div class="acc-sec__card-desc">
+              Автосбор материалов, фиксация цен и доказательства прямо со страниц поставщиков
+            </div>
           </div>
         </div>
 
+        <!-- Status badges -->
+        <div class="acc-sec__status-row mt-3">
+          <div class="acc-sec__status-item">
+            <span class="acc-sec__status-label">Расширение</span>
+            <span class="acc-sec__status-badge acc-sec__status-badge--neutral">
+              <v-icon size="11" class="mr-1">mdi-help-circle-outline</v-icon>
+              Проверьте установку
+            </span>
+          </div>
+          <div class="acc-sec__status-item">
+            <span class="acc-sec__status-label">Токен</span>
+            <span
+              :class="[
+                'acc-sec__status-badge',
+                chromeHasToken ? 'acc-sec__status-badge--success' : 'acc-sec__status-badge--muted'
+              ]"
+            >
+              <v-icon size="11" class="mr-1">{{ chromeHasToken ? 'mdi-check-circle-outline' : 'mdi-circle-off-outline' }}</v-icon>
+              {{ chromeHasToken ? 'Активен' : 'Отсутствует' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Token value — shown immediately after generation -->
         <div v-if="chromeTokenJustCreated" class="acc-sec__token-box mt-3">
           <div class="acc-sec__token-label">
-            <v-icon icon="mdi-check-circle" size="16" color="success" class="mr-1" />
-            Токен создан — скопируйте его сейчас
+            <v-icon icon="mdi-check-circle" size="15" color="success" class="mr-1" />
+            Токен создан — скопируйте и вставьте в расширение
           </div>
           <div class="acc-sec__token-row">
             <code class="acc-sec__token-value">{{ chromeTokenMasked }}</code>
-            <button class="acc-sec__token-copy" :title="tokenCopied ? 'Скопировано!' : 'Копировать'" @click="copyChromeToken">
+            <button
+              class="acc-sec__token-copy"
+              :title="tokenCopied ? 'Скопировано!' : 'Копировать'"
+              @click="copyChromeToken"
+            >
               <v-icon size="15">{{ tokenCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
             </button>
           </div>
-          <v-alert type="warning" variant="tonal" density="compact" class="mt-2" style="font-size:12px">
-            Сохраните токен — он не будет показан повторно.
-          </v-alert>
+          <p class="acc-sec__token-hint">
+            Сохраните токен — он не будет показан повторно после закрытия этой страницы.
+          </p>
         </div>
 
+        <!-- Primary actions -->
         <div class="acc-sec__card-actions mt-3">
-          <button class="acc-sec__btn acc-sec__btn--secondary" :disabled="chromeSaving" @click="doGenerateChromeToken">
-            <v-icon size="15" class="mr-1">mdi-key-plus</v-icon>
+          <a
+            :href="CHROME_EXTENSION_STORE_URL"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="acc-sec__btn acc-sec__btn--primary"
+          >
+            <v-icon size="15" class="mr-1">mdi-download-outline</v-icon>
+            Установить расширение
+          </a>
+          <button
+            v-if="chromeToken"
+            class="acc-sec__btn acc-sec__btn--secondary"
+            :title="tokenCopied ? 'Скопировано!' : 'Скопировать токен'"
+            @click="copyChromeToken"
+          >
+            <v-icon size="15" class="mr-1">{{ tokenCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+            {{ tokenCopied ? 'Скопировано' : 'Скопировать токен' }}
+          </button>
+        </div>
+
+        <!-- Secondary / destructive actions -->
+        <div class="acc-sec__card-actions acc-sec__card-actions--secondary mt-2">
+          <button class="acc-sec__btn acc-sec__btn--ghost" :disabled="chromeSaving" @click="doGenerateChromeToken">
+            <v-icon size="14" class="mr-1">mdi-refresh</v-icon>
             {{ chromeSaving ? 'Генерация...' : (chromeHasToken ? 'Пересоздать токен' : 'Создать токен') }}
           </button>
           <button
             v-if="chromeHasToken"
-            class="acc-sec__btn acc-sec__btn--danger"
+            class="acc-sec__btn acc-sec__btn--ghost-danger"
             :disabled="chromeRevoking"
             @click="doRevokeChromeToken"
           >
-            <v-icon size="15" class="mr-1">mdi-close-circle-outline</v-icon>
-            {{ chromeRevoking ? 'Отзыв...' : 'Отозвать токен' }}
+            <v-icon size="14" class="mr-1">mdi-close-circle-outline</v-icon>
+            {{ chromeRevoking ? 'Отзыв...' : 'Отозвать доступ' }}
           </button>
         </div>
+
         <div v-if="chromeError" class="acc-sec__inline-error mt-2">{{ chromeError }}</div>
+
+        <!-- Step-by-step guide -->
+        <div class="acc-sec__chrome-steps mt-3">
+          <div class="acc-sec__chrome-steps-title">Как подключить расширение</div>
+          <ol class="acc-sec__chrome-steps-list">
+            <li>Установите расширение из Chrome Web Store</li>
+            <li>Нажмите «Создать токен» и скопируйте его</li>
+            <li>Вставьте токен в настройках расширения и подтвердите подключение</li>
+          </ol>
+        </div>
       </div>
     </template>
   </div>
@@ -222,6 +287,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSecurityStore } from '@/stores/security'
 import { authApi } from '@/api/auth'
 import { formatRuPhoneMask } from '@/components/auth/phoneCallFlow'
+import { CHROME_EXTENSION_STORE_URL } from '@/constants/chrome-extension'
 
 import AuthMethodsCard from '@/components/security/AuthMethodsCard.vue'
 import RecoveryReadinessCard from '@/components/security/RecoveryReadinessCard.vue'
@@ -807,5 +873,110 @@ function copyChromeToken() {
 
 .acc-sec__back-btn:hover {
   background: rgba(var(--v-theme-on-surface), 0.08);
+}
+
+/* ── Chrome extension card ────────────────────────────────────────────── */
+.acc-sec__card-icon--chrome {
+  color: rgb(var(--v-theme-primary));
+  opacity: 1;
+}
+
+.acc-sec__status-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.acc-sec__status-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.acc-sec__status-label {
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  white-space: nowrap;
+}
+
+.acc-sec__status-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.acc-sec__status-badge--success {
+  background: rgba(var(--v-theme-success), 0.12);
+  color: rgb(var(--v-theme-success));
+}
+
+.acc-sec__status-badge--neutral {
+  background: rgba(var(--v-theme-on-surface), 0.08);
+  color: rgba(var(--v-theme-on-surface), 0.65);
+}
+
+.acc-sec__status-badge--muted {
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  color: rgba(var(--v-theme-on-surface), 0.45);
+}
+
+.acc-sec__token-hint {
+  font-size: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
+/* Ghost (text-like) buttons for secondary/danger actions */
+.acc-sec__btn--ghost {
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.15);
+}
+
+.acc-sec__btn--ghost:hover:not(:disabled) {
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.acc-sec__btn--ghost-danger {
+  background: transparent;
+  color: rgb(var(--v-theme-error));
+  border: 1px solid rgba(var(--v-theme-error), 0.25);
+}
+
+.acc-sec__btn--ghost-danger:hover:not(:disabled) {
+  background: rgba(var(--v-theme-error), 0.06);
+}
+
+.acc-sec__card-actions--secondary {
+  opacity: 0.9;
+}
+
+/* Step-by-step mini guide */
+.acc-sec__chrome-steps {
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  padding-top: 12px;
+}
+
+.acc-sec__chrome-steps-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.acc-sec__chrome-steps-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.65);
+  line-height: 1.7;
 }
 </style>

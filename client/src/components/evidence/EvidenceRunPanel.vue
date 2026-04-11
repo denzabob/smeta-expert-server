@@ -158,9 +158,25 @@
               class="mt-3"
               icon="mdi-google-chrome"
             >
-              <strong>Chrome-расширение:</strong> откройте страницу поставщика и используйте расширение
-              Smeta Expert для автоматического захвата скриншота и цены.
-              После захвата обоснование появится в системе и позицию можно будет подтвердить.
+              <div class="d-flex align-start justify-space-between flex-wrap gap-2">
+                <div>
+                  <div class="text-body-2 font-weight-medium mb-1">Расширение Chrome</div>
+                  <div class="text-caption">
+                    Для автосбора цен и фиксации доказательств установите расширение Prismcore для Chrome.
+                    Откройте страницу поставщика и захватите цену одним кликом.
+                  </div>
+                </div>
+                <a
+                  :href="CHROME_EXTENSION_STORE_URL"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="v-btn v-btn--size-small v-btn--variant-flat bg-info text-on-info text-none"
+                  style="text-decoration:none; flex-shrink:0"
+                >
+                  <v-icon size="14" start>mdi-download-outline</v-icon>
+                  Установить расширение
+                </a>
+              </div>
             </v-alert>
 
             <!-- Items table -->
@@ -214,6 +230,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, toRef } from 'vue'
 import type { EvidenceItem } from '@/api/evidenceRun'
+import { CHROME_EXTENSION_STORE_URL } from '@/constants/chrome-extension'
 import {
   useEvidenceRun,
   RUN_STATUS_LABELS,

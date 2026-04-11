@@ -199,7 +199,7 @@ function formatDateLabel(iso: string): string {
 
 /* Сообщения оператора / системы */
 .chat-bubble--theirs {
-  background: rgb(var(--v-theme-surface));
+  background: #d7d7d7;
   color: rgb(var(--v-theme-on-surface));
   border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
   border-bottom-left-radius: 6px;
