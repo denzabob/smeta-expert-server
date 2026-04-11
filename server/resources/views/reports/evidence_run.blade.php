@@ -243,28 +243,60 @@
     <div class="section-heading">{{ $section['title'] }}</div>
 
     @if($section['is_internal'])
-      {{-- ── Compact table for internal sections ── --}}
-      <div class="section-note">
-        Значения по позициям данного раздела приняты по внутренним расчётным параметрам,
-        используемым в смете. Подробное числовое обоснование приведено в соответствующем
-        разделе расчётной части.
-      </div>
-      <table class="int-table">
-        <thead>
-          <tr>
-            <th class="col-name">Наименование позиции</th>
-            <th class="col-val">Значение, принятое в расчёте</th>
-          </tr>
-        </thead>
-        <tbody>
-          @foreach($section['entries'] as $entry)
+      @if($section['section_type'] === 'labor')
+        {{-- ── Labor: show rate once + work list without repeating rate ── --}}
+        <div class="section-note">
+          Для монтажно-демонтажных работ, включённых в смету, применена единая стоимость
+          1 нормо-часа подрядных работ.
+          Ставка подтверждена отдельным расчётом стоимости 1 часа подрядных работ,
+          являющимся частью расчётной документации.
+          Перечень работ соответствует расчётной части сметы.
+        </div>
+        @if(!empty($section['rate_display']))
+          <div style="font-size:8.5pt;font-weight:700;margin:0 0 2mm 0;padding:1.5mm 3mm;border:1pt solid #ccc;background:#f8f8f8;">
+            Применяемая стоимость 1 нормо-часа: {{ $section['rate_display'] }}
+          </div>
+        @endif
+        <table class="int-table">
+          <thead>
             <tr>
-              <td class="col-name">{{ $entry['entry_title'] }}</td>
-              <td class="col-val">{{ $entry['accepted_display'] ?? '—' }}</td>
+              <th style="width:4%;text-align:center;">№</th>
+              <th>Наименование работы</th>
             </tr>
-          @endforeach
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            @foreach($section['entries'] as $i => $entry)
+              <tr>
+                <td style="text-align:center;">{{ $i + 1 }}</td>
+                <td>{{ $entry['entry_title'] }}</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      @else
+        {{-- ── Other internal sections: compact name + value table ── --}}
+        <div class="section-note">
+          Значения по позициям данного раздела приняты по внутренним расчётным параметрам,
+          используемым в смете. Подробное числовое обоснование приведено в соответствующем
+          разделе расчётной части.
+        </div>
+        <table class="int-table">
+          <thead>
+            <tr>
+              <th class="col-name">Наименование позиции</th>
+              <th class="col-val">Значение, принятое в расчёте</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach($section['entries'] as $entry)
+              <tr>
+                <td class="col-name">{{ $entry['entry_title'] }}</td>
+                <td class="col-val">{{ $entry['accepted_display'] ?? '—' }}</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      @endif
 
     @else
       {{-- ── Compact 2-column cards for external (material) sections ── --}}
@@ -305,13 +337,7 @@
                   @if($entry['price_display'] !== null)
                     <tr>
                       <td class="ml">Цена в источнике</td>
-                      <td class="mv"><span class="price-val">{{ $entry['price_display'] }}</span></td>
-                    </tr>
-                  @endif
-                  @if($entry['accepted_display'] !== null)
-                    <tr>
-                      <td class="ml">Принято в расчёте</td>
-                      <td class="mv"><span class="price-val price-main">{{ $entry['accepted_display'] }}</span></td>
+                      <td class="mv"><span class="price-val price-main">{{ $entry['price_display'] }}</span></td>
                     </tr>
                   @endif
                   @if(!empty($entry['capture_date']))

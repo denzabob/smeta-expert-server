@@ -104,7 +104,7 @@ class EstimateEvidencePdfBuilder
 
         // ── Document sections ordered as in the smeta ────────────────────────
         $sections = [];
-        foreach (self::SECTIONS as $sectionDef) {
+        foreach (self::SECTIONS as $sectionKey => $sectionDef) {
             $entries = $allEntries
                 ->filter(fn($e) => in_array($e['cost_component'], $sectionDef['components'], true))
                 ->values()
@@ -114,10 +114,25 @@ class EstimateEvidencePdfBuilder
                 continue;
             }
 
+            $isInternal = collect($entries)->every(fn($e) => !$e['is_external']);
+
+            // For labor sections find the common hourly rate (first non-null accepted_display).
+            $rateDisplay = null;
+            if ($sectionKey === 'labor' && $isInternal) {
+                foreach ($entries as $e) {
+                    if (!empty($e['accepted_display'])) {
+                        $rateDisplay = $e['accepted_display'];
+                        break;
+                    }
+                }
+            }
+
             $sections[] = [
-                'title'       => $sectionDef['label'],
-                'is_internal' => collect($entries)->every(fn($e) => !$e['is_external']),
-                'entries'     => $entries,
+                'title'        => $sectionDef['label'],
+                'section_type' => $sectionKey,
+                'is_internal'  => $isInternal,
+                'rate_display' => $rateDisplay,
+                'entries'      => $entries,
             ];
         }
 
