@@ -5,15 +5,12 @@
   <title>{{ $cover['document_title'] }}</title>
 
   <style>
-    @page {
-      size: A4;
-      margin: 15mm 12mm 15mm 25mm;
-    }
+    @page { size: A4; margin: 14mm 12mm 14mm 24mm; }
 
     body {
       font-family: "DejaVu Sans", sans-serif;
-      font-size: 9pt;
-      line-height: 1.30;
+      font-size: 8.8pt;
+      line-height: 1.28;
       color: #111;
       background: #fff;
       margin: 0;
@@ -23,276 +20,171 @@
     * { box-sizing: border-box; }
     a { color: inherit; text-decoration: underline; }
 
-    .container {
-      width: 100%;
-      padding-top: 2mm;
-    }
-
-    /* ── Title / Cover ─────────────────────────────────────────────── */
+    /* ── Cover ─────────────────────────────────────────────────────── */
     .cover {
-      margin: 0 0 8mm 0;
-      padding: 0 0 6mm 0;
-      border-bottom: 1.5pt solid #222;
-      page-break-after: avoid;
+      margin: 0 0 6mm 0;
+      padding: 0 0 5mm 0;
+      border-bottom: 1.5pt solid #333;
       page-break-inside: avoid;
     }
 
     .cover-subtitle {
-      margin: 0 0 1.5mm 0;
-      font-size: 9pt;
+      font-size: 8.5pt;
       text-align: center;
-      color: #555;
-      letter-spacing: 0.3px;
+      color: #666;
+      margin: 0 0 1mm 0;
     }
 
     .cover-title {
-      margin: 0 0 4mm 0;
-      font-size: 13pt;
+      font-size: 12.5pt;
       font-weight: 700;
       text-align: center;
-      color: #111;
+      margin: 0 0 3mm 0;
       line-height: 1.20;
     }
 
     .cover-intro {
-      font-size: 8.6pt;
+      font-size: 8.3pt;
       color: #333;
-      line-height: 1.35;
+      line-height: 1.30;
       text-align: justify;
-      margin: 0 0 4mm 0;
-      padding: 3mm 4mm;
-      border-left: 2pt solid #aaa;
+      margin: 0 0 3mm 0;
+      padding: 2.5mm 3mm;
+      border-left: 1.5pt solid #999;
       background: #f8f8f8;
     }
 
-    .cover-meta {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 8.6pt;
-      color: #222;
-    }
+    .cover-meta { width: 100%; border-collapse: collapse; font-size: 8.3pt; }
+    .cover-meta td { padding: 0.6mm 0; vertical-align: top; }
+    .cover-meta .lbl { font-weight: 700; width: 28%; padding-right: 2mm; }
 
-    .cover-meta td {
-      padding: 0.8mm 0;
-      vertical-align: top;
-    }
-
-    .cover-meta .lbl {
-      font-weight: 700;
-      width: 28%;
-      padding-right: 3mm;
-    }
-
-    /* ── Section headings ──────────────────────────────────────────── */
+    /* ── Section heading ────────────────────────────────────────────── */
     .section-heading {
-      font-size: 10.5pt;
+      font-size: 9.8pt;
       font-weight: 700;
-      margin: 7mm 0 3mm 0;
-      padding: 1.5mm 3mm;
-      background: #f0f0f0;
-      border-left: 3pt solid #555;
+      margin: 5mm 0 2mm 0;
+      padding: 1.2mm 2.5mm;
+      background: #efefef;
+      border-left: 2.5pt solid #555;
       page-break-after: avoid;
     }
 
-    /* ── Summary box ───────────────────────────────────────────────── */
+    /* ── Summary ────────────────────────────────────────────────────── */
     .summary-box {
       border: 1pt solid #ccc;
-      background: #fafafa;
-      padding: 3mm 4mm;
-      margin: 3mm 0 6mm 0;
+      padding: 2.5mm 3mm;
+      margin: 2mm 0 4mm 0;
       page-break-inside: avoid;
     }
 
-    .summary-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 8.8pt;
-    }
+    .summary-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+    .summary-table td { padding: 0.5mm 2mm 0.5mm 0; line-height: 1.20; }
+    .summary-table .lbl { font-weight: 700; width: 55%; }
 
-    .summary-table td {
-      padding: 0.7mm 2mm 0.7mm 0;
-      vertical-align: top;
-      line-height: 1.25;
-    }
-
-    .summary-table .lbl {
-      font-weight: 700;
-      color: #333;
-      width: 55%;
-    }
-
-    .summary-table .val {
-      color: #111;
-    }
-
-    /* ── Entry cards ───────────────────────────────────────────────── */
-    .entry {
-      margin: 0 0 4mm 0;
-      border: 1pt solid #ccc;
+    /* ── External entry card ─────────────────────────────────────────── */
+    .entry-ext {
+      margin: 0 0 3mm 0;
+      border: 1pt solid #bbb;
+      border-left: 2.5pt solid #555;
       background: #fff;
       page-break-inside: avoid;
       break-inside: avoid;
     }
 
-    .entry-external {
-      border-left: 3pt solid #666;
-    }
-
-    .entry-internal {
-      border-left: 3pt solid #bbb;
-      background: #fafafa;
-    }
-
     .entry-head {
-      padding: 2mm 3mm 1.5mm 3mm;
-      background: #f5f5f5;
-      border-bottom: 1pt solid #e0e0e0;
+      padding: 1.5mm 2.5mm 1.2mm 2.5mm;
+      background: #f3f3f3;
+      border-bottom: 1pt solid #ddd;
     }
 
-    .entry-title {
-      margin: 0;
-      font-size: 9pt;
-      font-weight: 700;
-      color: #111;
-      word-break: break-word;
-      line-height: 1.20;
-    }
+    .entry-title { margin: 0; font-size: 8.8pt; font-weight: 700; line-height: 1.15; }
+    .entry-kind  { font-size: 7.5pt; color: #666; margin: 0.3mm 0 0 0; }
 
-    .entry-kind {
-      margin: 0.5mm 0 0 0;
-      font-size: 7.8pt;
-      color: #555;
-    }
+    /* 2-column layout inside external card */
+    .card-cols   { width: 100%; border-collapse: collapse; }
+    .col-meta    { width: 45%; vertical-align: top; padding: 2mm 1.5mm 2mm 2.5mm; }
+    .col-img     { width: 55%; vertical-align: top; padding: 2mm 2.5mm 2mm 1.5mm; }
 
-    .entry-body {
-      padding: 2.5mm 3mm 3mm 3mm;
-    }
+    /* Meta fields */
+    .meta-tbl { width: 100%; border-collapse: collapse; font-size: 8pt; }
+    .meta-tbl td { padding: 0.4mm 0; vertical-align: top; line-height: 1.18; }
+    .ml { width: 42%; font-weight: 700; color: #444; padding-right: 1.5mm; }
+    .mv { color: #111; word-break: break-word; overflow-wrap: anywhere; }
+    .mv.url { font-size: 7.3pt; }
 
-    /* ── Meta table inside entry ───────────────────────────────────── */
-    .meta-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 8.2pt;
-      margin-bottom: 2mm;
-    }
+    .price-val  { font-weight: 700; }
+    .price-main { font-size: 9pt; }
+    .recalc     { font-size: 7.5pt; color: #444; font-style: italic; }
 
-    .meta-table td {
-      padding: 0.5mm 0 0.5mm 0;
-      vertical-align: top;
-      line-height: 1.20;
-    }
-
-    .meta-lbl {
-      width: 34%;
-      font-weight: 700;
-      color: #444;
-      padding-right: 3mm;
-      white-space: nowrap;
-    }
-
-    .meta-val {
-      width: 66%;
-      color: #111;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-    }
-
-    .meta-val.source-url {
-      font-size: 7.6pt;
-    }
-
-    /* ── Price values ──────────────────────────────────────────────── */
-    .price-val {
-      font-weight: 700;
-    }
-
-    .price-accepted {
-      font-size: 9.5pt;
-    }
-
-    /* ── Notes ─────────────────────────────────────────────────────── */
-    .recalc-note {
-      font-size: 7.8pt;
-      color: #444;
-      font-style: italic;
-    }
-
-    .confirmation-line {
-      font-size: 8pt;
-      color: #333;
-      margin: 2mm 0 1.5mm 0;
-      padding-left: 2mm;
-      border-left: 1.5pt solid #bbb;
-    }
-
-    .attachment-note {
-      font-size: 7.8pt;
-      color: #666;
-      margin-top: 1.5mm;
-    }
-
-    /* ── Screenshot wrap ───────────────────────────────────────────── */
-    .shot-wrap {
-      border: 1pt solid #d0d0d0;
-      background: #fafafa;
-      padding: 1.5mm;
-      text-align: center;
-      margin-top: 2mm;
-    }
-
-    .shot-wrap img {
+    /* Screenshot */
+    .shot-box { border: 1pt solid #ccc; background: #f5f5f5; text-align: center; padding: 1mm; }
+    .shot-box img {
       display: block;
       max-width: 100%;
-      max-height: 90mm;
+      max-height: 52mm;
       width: auto;
       height: auto;
       margin: 0 auto;
     }
 
-    /* ── Document asset ────────────────────────────────────────────── */
-    .asset-doc {
-      font-size: 8pt;
-      padding: 1.5mm 2mm;
-      border: 1pt solid #e0e0e0;
-      background: #f8f8f8;
-      margin-top: 1.5mm;
-      color: #333;
+    /* Confirmation footer line */
+    .confirm-line {
+      font-size: 7.8pt;
+      color: #444;
+      padding: 1.2mm 2.5mm;
+      border-top: 1pt solid #e5e5e5;
     }
 
-    /* ── Closing notes ─────────────────────────────────────────────── */
+    /* No attachment / doc asset */
+    .no-attach  { font-size: 7.5pt; color: #888; font-style: italic; }
+    .asset-doc  { font-size: 7.8pt; padding: 1mm 2mm; border: 1pt solid #e0e0e0; background: #f8f8f8; }
+
+    /* ── Internal section ───────────────────────────────────────────── */
+    .section-note {
+      font-size: 8.2pt;
+      color: #444;
+      line-height: 1.30;
+      margin: 0 0 2mm 0;
+      padding: 2mm 3mm;
+      border-left: 1.5pt solid #ccc;
+      background: #fafafa;
+      font-style: italic;
+    }
+
+    .int-table { width: 100%; border-collapse: collapse; font-size: 8.3pt; margin-bottom: 3mm; }
+    .int-table th {
+      font-weight: 700;
+      background: #f0f0f0;
+      border: 1pt solid #ccc;
+      padding: 1.2mm 2mm;
+      text-align: left;
+      font-size: 8pt;
+    }
+    .int-table td { border: 1pt solid #ddd; padding: 1.2mm 2mm; vertical-align: top; line-height: 1.20; }
+    .int-table .col-name { width: 65%; }
+    .int-table .col-val  { width: 35%; font-weight: 700; }
+
+    /* ── Closing notes ──────────────────────────────────────────────── */
     .closing-notes {
       margin-top: 4mm;
-      padding: 3mm 4mm;
+      padding: 2.5mm 3mm;
       border: 1pt solid #ccc;
       background: #fafafa;
-      font-size: 8.4pt;
+      font-size: 8.2pt;
       color: #333;
-      line-height: 1.35;
+      line-height: 1.30;
     }
+    .closing-notes p { margin: 0 0 1.5mm 0; }
+    .closing-notes p:last-child { margin: 0; }
 
-    .closing-notes p {
-      margin: 0 0 2mm 0;
-    }
-
-    .closing-notes p:last-child {
-      margin: 0;
-    }
-
-    /* ── Empty state ───────────────────────────────────────────────── */
-    .empty {
-      border: 1pt dashed #ccc;
-      padding: 6mm;
-      text-align: center;
-      color: #666;
-      font-size: 9pt;
-      margin-top: 4mm;
-    }
+    /* ── Empty ──────────────────────────────────────────────────────── */
+    .empty { border: 1pt dashed #ccc; padding: 5mm; text-align: center; color: #666; font-size: 8.8pt; }
   </style>
 </head>
 <body>
 <div class="container">
 
-  {{-- ══════════════════════════ COVER / TITLE PAGE ══════════════════════════ --}}
+  {{-- ══════════════════════════ COVER ══════════════════════════ --}}
   <div class="cover">
     <div class="cover-subtitle">{{ $cover['document_subtitle'] }}</div>
     <div class="cover-title">{{ $cover['document_title'] }}</div>
@@ -320,40 +212,64 @@
     </table>
   </div>
 
-  {{-- ══════════════════════════ КРАТКАЯ СВОДКА ══════════════════════════════ --}}
+  {{-- ══════════════════════════ КРАТКАЯ СВОДКА ══════════════════════════ --}}
   <div class="section-heading">Краткая сводка</div>
   <div class="summary-box">
     <table class="summary-table">
       <tr>
         <td class="lbl">Всего позиций в приложении:</td>
-        <td class="val">{{ $summary['total_items'] }}</td>
+        <td>{{ $summary['total_items'] }}</td>
       </tr>
       <tr>
         <td class="lbl">Подтверждено внешними источниками:</td>
-        <td class="val">{{ $summary['external_confirmed'] }}</td>
+        <td>{{ $summary['external_confirmed'] }}</td>
       </tr>
       <tr>
         <td class="lbl">Принято по внутреннему расчёту:</td>
-        <td class="val">{{ $summary['internal_calc'] }}</td>
+        <td>{{ $summary['internal_calc'] }}</td>
       </tr>
       @if($summary['with_images'] > 0)
         <tr>
           <td class="lbl">Приложено графических материалов:</td>
-          <td class="val">{{ $summary['with_images'] }}</td>
+          <td>{{ $summary['with_images'] }}</td>
         </tr>
       @endif
     </table>
   </div>
 
-  {{-- ══════════════════════════ РАЗДЕЛЫ ═════════════════════════════════════ --}}
+  {{-- ══════════════════════════ РАЗДЕЛЫ ══════════════════════════ --}}
   @forelse($sections as $section)
+
     <div class="section-heading">{{ $section['title'] }}</div>
 
-    @foreach($section['entries'] as $entry)
+    @if($section['is_internal'])
+      {{-- ── Compact table for internal sections ── --}}
+      <div class="section-note">
+        Значения по позициям данного раздела приняты по внутренним расчётным параметрам,
+        используемым в смете. Подробное числовое обоснование приведено в соответствующем
+        разделе расчётной части.
+      </div>
+      <table class="int-table">
+        <thead>
+          <tr>
+            <th class="col-name">Наименование позиции</th>
+            <th class="col-val">Значение, принятое в расчёте</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach($section['entries'] as $entry)
+            <tr>
+              <td class="col-name">{{ $entry['entry_title'] }}</td>
+              <td class="col-val">{{ $entry['accepted_display'] ?? '—' }}</td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
 
-      @if($entry['is_external'])
-        {{-- ── External entry (material with external price source) ── --}}
-        <div class="entry entry-external">
+    @else
+      {{-- ── Compact 2-column cards for external (material) sections ── --}}
+      @foreach($section['entries'] as $entry)
+        <div class="entry-ext">
 
           <div class="entry-head">
             <div class="entry-title">{{ $entry['entry_title'] }}</div>
@@ -362,129 +278,90 @@
             @endif
           </div>
 
-          <div class="entry-body">
-            <table class="meta-table">
+          <table class="card-cols">
+            <tr>
 
-              @if(!empty($entry['extracted_name']))
-                <tr>
-                  <td class="meta-lbl">Наименование</td>
-                  <td class="meta-val">{{ $entry['extracted_name'] }}</td>
-                </tr>
-              @endif
-
-              @if(!empty($entry['extracted_article']))
-                <tr>
-                  <td class="meta-lbl">Артикул / обозначение</td>
-                  <td class="meta-val">{{ $entry['extracted_article'] }}</td>
-                </tr>
-              @endif
-
-              @if(!empty($entry['source_url']) || !empty($entry['source_label']))
-                <tr>
-                  <td class="meta-lbl">Источник сведений</td>
-                  <td class="meta-val source-url">
-                    @if(!empty($entry['source_url']))
-                      <a href="{{ $entry['source_url'] }}">{{ $entry['source_label'] ?? $entry['source_url'] }}</a>
-                    @else
-                      {{ $entry['source_label'] }}
-                    @endif
-                  </td>
-                </tr>
-              @endif
-
-              @if($entry['price_in_source'] !== null && $entry['price_in_source'] !== '')
-                <tr>
-                  <td class="meta-lbl">Цена в источнике</td>
-                  <td class="meta-val">
-                    <span class="price-val">{{ number_format((float) $entry['price_in_source'], 2, ',', '\u{00A0}') }} {{ $entry['currency'] }}</span>
-                  </td>
-                </tr>
-              @endif
-
-              @if($entry['accepted_value'] !== null && $entry['accepted_value'] !== '')
-                <tr>
-                  <td class="meta-lbl">Значение, принятое в расчёте</td>
-                  <td class="meta-val">
-                    <span class="price-val price-accepted">{{ number_format((float) $entry['accepted_value'], 2, ',', '\u{00A0}') }} {{ $entry['currency'] }}</span>
-                  </td>
-                </tr>
-              @endif
-
-              @if(!empty($entry['capture_date']))
-                <tr>
-                  <td class="meta-lbl">Дата фиксации</td>
-                  <td class="meta-val">{{ $entry['capture_date'] }}</td>
-                </tr>
-              @endif
-
-              @if(!empty($entry['recalculation_note']))
-                <tr>
-                  <td class="meta-lbl">Пояснение о перерасчёте</td>
-                  <td class="meta-val recalc-note">{{ $entry['recalculation_note'] }}</td>
-                </tr>
-              @endif
-
-            </table>
-
-            <div class="confirmation-line">{{ $entry['confirmation_note'] }}</div>
-
-            {{-- Graphic / documentary attachment --}}
-            @if($entry['attachment_mode'] === 'image' && $entry['image_exists'])
-              <div class="shot-wrap">
-                <img src="{{ storage_path('app/public/' . $entry['image_path']) }}" alt="Подтверждающий материал" />
-              </div>
-            @elseif($entry['attachment_mode'] === 'document' && !empty($entry['doc_assets']))
-              @foreach($entry['doc_assets'] as $docAsset)
-                <div class="asset-doc">
-                  Приложенный документ: {{ $docAsset['filename'] ?? $docAsset['type'] }}
-                  @if(!empty($docAsset['mime']))
-                    ({{ $docAsset['mime'] }})
+              {{-- Left column: meta fields --}}
+              <td class="col-meta">
+                <table class="meta-tbl">
+                  @if(!empty($entry['extracted_article']))
+                    <tr>
+                      <td class="ml">Артикул</td>
+                      <td class="mv">{{ $entry['extracted_article'] }}</td>
+                    </tr>
                   @endif
-                </div>
-              @endforeach
-            @else
-              <div class="attachment-note">{{ $entry['attachment_caption'] }}</div>
-            @endif
+                  @if(!empty($entry['source_url']) || !empty($entry['source_label']))
+                    <tr>
+                      <td class="ml">Источник сведений</td>
+                      <td class="mv url">
+                        @if(!empty($entry['source_url']))
+                          <a href="{{ $entry['source_url'] }}">{{ $entry['source_label'] ?? $entry['source_url'] }}</a>
+                        @else
+                          {{ $entry['source_label'] }}
+                        @endif
+                      </td>
+                    </tr>
+                  @endif
+                  @if($entry['price_display'] !== null)
+                    <tr>
+                      <td class="ml">Цена в источнике</td>
+                      <td class="mv"><span class="price-val">{{ $entry['price_display'] }}</span></td>
+                    </tr>
+                  @endif
+                  @if($entry['accepted_display'] !== null)
+                    <tr>
+                      <td class="ml">Принято в расчёте</td>
+                      <td class="mv"><span class="price-val price-main">{{ $entry['accepted_display'] }}</span></td>
+                    </tr>
+                  @endif
+                  @if(!empty($entry['capture_date']))
+                    <tr>
+                      <td class="ml">Дата фиксации</td>
+                      <td class="mv">{{ $entry['capture_date'] }}</td>
+                    </tr>
+                  @endif
+                  @if(!empty($entry['recalculation_note']))
+                    <tr>
+                      <td colspan="2" style="padding-top:1mm;">
+                        <span class="recalc">{{ $entry['recalculation_note'] }}</span>
+                      </td>
+                    </tr>
+                  @endif
+                </table>
+              </td>
 
-          </div>
+              {{-- Right column: screenshot / document / note --}}
+              <td class="col-img">
+                @if($entry['attachment_mode'] === 'image' && $entry['image_exists'])
+                  <div class="shot-box">
+                    <img src="{{ storage_path('app/public/' . $entry['image_path']) }}" alt="Подтверждающий материал" />
+                  </div>
+                @elseif($entry['attachment_mode'] === 'document' && !empty($entry['doc_assets']))
+                  @foreach($entry['doc_assets'] as $docAsset)
+                    <div class="asset-doc">
+                      Документ: {{ $docAsset['filename'] ?? $docAsset['type'] }}
+                      @if(!empty($docAsset['mime']))({{ $docAsset['mime'] }})@endif
+                    </div>
+                  @endforeach
+                @else
+                  <div class="no-attach">{{ $entry['attachment_caption'] }}</div>
+                @endif
+              </td>
+
+            </tr>
+          </table>
+
+          <div class="confirm-line">{{ $entry['confirmation_note'] }}</div>
+
         </div>
-
-      @else
-        {{-- ── Internal entry (operation / work / expense by internal calc) ── --}}
-        <div class="entry entry-internal">
-
-          <div class="entry-head">
-            <div class="entry-title">{{ $entry['entry_title'] }}</div>
-            @if(!empty($entry['entry_kind_label']))
-              <div class="entry-kind">{{ $entry['entry_kind_label'] }}</div>
-            @endif
-          </div>
-
-          <div class="entry-body">
-            @if($entry['accepted_value'] !== null && $entry['accepted_value'] !== '')
-              <table class="meta-table">
-                <tr>
-                  <td class="meta-lbl">Значение, принятое в расчёте</td>
-                  <td class="meta-val">
-                    <span class="price-val">{{ number_format((float) $entry['accepted_value'], 2, ',', '\u{00A0}') }} {{ $entry['currency'] }}</span>
-                  </td>
-                </tr>
-              </table>
-            @endif
-            <div class="confirmation-line">{{ $entry['confirmation_note'] }}</div>
-            <div class="attachment-note">{{ $entry['attachment_caption'] }}</div>
-          </div>
-
-        </div>
-      @endif
-
-    @endforeach
+      @endforeach
+    @endif
 
   @empty
     <div class="empty">Позиции не найдены.</div>
   @endforelse
 
-  {{-- ══════════════════════════ ЗАКЛЮЧИТЕЛЬНЫЕ ПРИМЕЧАНИЯ ═══════════════════ --}}
+  {{-- ══════════════════════════ ЗАКЛЮЧИТЕЛЬНЫЕ ПРИМЕЧАНИЯ ══════════════════════════ --}}
   @if(!empty($closing_notes))
     <div class="section-heading">Заключительные примечания</div>
     <div class="closing-notes">

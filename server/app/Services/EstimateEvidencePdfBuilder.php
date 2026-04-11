@@ -115,8 +115,9 @@ class EstimateEvidencePdfBuilder
             }
 
             $sections[] = [
-                'title'   => $sectionDef['label'],
-                'entries' => $entries,
+                'title'       => $sectionDef['label'],
+                'is_internal' => collect($entries)->every(fn($e) => !$e['is_external']),
+                'entries'     => $entries,
             ];
         }
 
@@ -251,6 +252,22 @@ class EstimateEvidencePdfBuilder
             'image_path'         => $imagePath,
             'image_exists'       => $imageExists,
             'doc_assets'         => $docAssetsHuman,
+            'price_display'      => $this->formatMoney($observedPrice),
+            'accepted_display'   => $this->formatMoney($effectiveValue !== null ? (float) $effectiveValue : null),
         ];
+    }
+
+    /**
+     * Format a monetary amount as a human-readable Russian string.
+     * Example: 2500.00 → "2\u{00A0}500,00\u{00A0}руб."
+     * Uses actual non-breaking space characters (not escaped sequences).
+     */
+    private function formatMoney(float|int|string|null $amount): ?string
+    {
+        if ($amount === null || $amount === '') {
+            return null;
+        }
+        $formatted = number_format((float) $amount, 2, ',', "\u{00A0}");
+        return $formatted . "\u{00A0}" . 'руб.';
     }
 }
