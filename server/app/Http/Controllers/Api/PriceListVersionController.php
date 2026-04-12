@@ -43,6 +43,7 @@ class PriceListVersionController extends Controller
                 'created_at'
             ])
             ->withCount('importSessions as import_session_count')
+            ->withCount('evidenceLinks as evidence_links_count')
             ->orderByDesc('effective_date')
             ->orderByDesc('captured_at')
             ->orderByDesc('version_number')
@@ -72,6 +73,7 @@ class PriceListVersionController extends Controller
                     ->distinct('material_id')
                     ->count('material_id');
             }
+            $version->has_evidence = (bool) ($version->evidence_links_count ?? 0);
             return $version;
         });
 
@@ -105,6 +107,9 @@ class PriceListVersionController extends Controller
         }
 
         $version->items_count = $itemsCount;
+
+        $version->loadCount('evidenceLinks');
+        $version->has_evidence = (bool) ($version->evidence_links_count ?? 0);
 
         // Подтягиваем file_path и original_filename из import session, если на версии их нет
         $session = $version->importSessions->first();
@@ -263,6 +268,7 @@ class PriceListVersionController extends Controller
                 $q->select('id', 'name', 'unit', 'category');
             }
         ])
+        ->withCount('evidenceLinks as evidence_links_count')
         ->where('price_list_version_id', $version->id)
         ->where('price_type', $priceType);
 
@@ -303,6 +309,8 @@ class PriceListVersionController extends Controller
                 'currency' => $price->currency,
                 'match_confidence' => $price->match_confidence,
                 'is_linked' => !is_null($price->operation_id),
+                'evidence_links_count' => (int) ($price->evidence_links_count ?? 0),
+                'has_evidence' => (bool) ($price->evidence_links_count ?? 0),
             ];
         });
 

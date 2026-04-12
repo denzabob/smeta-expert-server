@@ -56,6 +56,17 @@ class EstimateEvidencePdfBuilder
     ];
 
     /**
+     * Default unit of measure hint per cost component (shown in material cards).
+     * Used when the evidence record does not carry an explicit unit field.
+     */
+    private const COMPONENT_UNITS = [
+        'plate'   => 'м²',
+        'edge'    => 'м.п.',
+        'facade'  => 'шт.',
+        'fitting' => 'шт.',
+    ];
+
+    /**
      * Cost components whose values are determined by internal calculation
      * rather than external price sources.
      */
@@ -252,6 +263,7 @@ class EstimateEvidencePdfBuilder
             'is_external'        => !$isInternal,
             'entry_title'        => $item['label'] ?? 'Позиция',
             'entry_kind_label'   => self::COMPONENT_LABELS[$costComponent] ?? '',
+            'unit_hint'          => $isInternal ? null : (self::COMPONENT_UNITS[$costComponent] ?? null),
             'extracted_name'     => $record['extracted_name'] ?? null,
             'extracted_article'  => $record['extracted_article'] ?? null,
             'source_label'       => $record['source_domain'] ?? null,
