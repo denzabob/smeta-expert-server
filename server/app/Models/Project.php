@@ -52,6 +52,10 @@ class Project extends Model
         'normohour_date' => 'date',
         'archived_at' => 'datetime',
         'price_confirmation_freshness_days' => 'integer',
+        'use_area_calc_mode' => 'boolean',
+        'apply_waste_to_plate' => 'boolean',
+        'apply_waste_to_edge' => 'boolean',
+        'apply_waste_to_operations' => 'boolean',
     ];
 
     public function user()

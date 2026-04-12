@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
  * OperationPrice - цена операции в версии прайс-листа поставщика.
@@ -228,5 +229,15 @@ class OperationPrice extends Model
                 $model->calculateInternalPrice();
             }
         });
+    }
+
+    /**
+     * Evidence links attached to this operation price row.
+     * Allows associating one or more EvidenceRecord entries with a specific
+     * price row via the generic EvidenceLink polymorphic join table.
+     */
+    public function evidenceLinks(): MorphMany
+    {
+        return $this->morphMany(EvidenceLink::class, 'linkable');
     }
 }

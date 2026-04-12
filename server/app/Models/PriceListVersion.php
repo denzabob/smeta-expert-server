@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class PriceListVersion extends Model
 {
@@ -164,5 +165,16 @@ class PriceListVersion extends Model
     public function scopeNotArchived($query)
     {
         return $query->whereIn('status', [self::STATUS_ACTIVE, self::STATUS_INACTIVE]);
+    }
+
+    /**
+     * Evidence links attached to this price list version.
+     * Allows associating one or more EvidenceRecord entries with the whole version
+     * (e.g. a document-level screenshot or PDF proof) via the generic
+     * EvidenceLink polymorphic join table.
+     */
+    public function evidenceLinks(): MorphMany
+    {
+        return $this->morphMany(EvidenceLink::class, 'linkable');
     }
 }

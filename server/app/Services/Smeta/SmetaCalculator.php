@@ -164,7 +164,7 @@ class SmetaCalculator
             }
 
             // Пересчитываем с отходами и стоимостью
-            $isAreaMode = $project->use_area_calc_mode === true;
+            $isAreaMode = (bool) $project->use_area_calc_mode;
 
             foreach ($plateMap as &$entry) {
                 $entry['area_with_waste'] = $entry['area_details'] * $wasteCoeff;

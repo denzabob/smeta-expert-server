@@ -43,6 +43,8 @@ class AppServiceProvider extends ServiceProvider
             'expense'           => \App\Models\Expense::class,
             'evidence_record'   => \App\Models\EvidenceRecord::class,
             'material_price_history' => \App\Models\MaterialPriceHistory::class,
+            'operation_price'   => \App\Models\OperationPrice::class,
+            'price_list_version' => \App\Models\PriceListVersion::class,
         ]);
 
         Gate::policy(MaterialDimensionRule::class, MaterialDimensionRulePolicy::class);
