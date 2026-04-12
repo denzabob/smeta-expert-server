@@ -375,6 +375,9 @@ class PriceImportExecutorV2
             'source_name' => $rawData['name'],
             'external_key' => $externalKey,
             'match_confidence' => $matchConfidence,
+            'min_thickness' => isset($rawData['min_thickness']) && $rawData['min_thickness'] !== '' ? (float) $rawData['min_thickness'] : null,
+            'max_thickness' => isset($rawData['max_thickness']) && $rawData['max_thickness'] !== '' ? (float) $rawData['max_thickness'] : null,
+            'exclusion_group' => isset($rawData['exclusion_group']) && $rawData['exclusion_group'] !== '' ? $rawData['exclusion_group'] : null,
             'meta' => [
                 'source_row_index' => $item['row_index'] ?? null,
                 'raw_price' => $rawData['price'] ?? null,

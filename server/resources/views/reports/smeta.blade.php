@@ -769,6 +769,7 @@ a { color: inherit; text-decoration: underline; }
 
     <!-- === 3. ПЛИТЫ === -->
     @if(!empty($report['plates']))
+      @php $useAreaMode = $report['project']['use_area_calc_mode'] ?? false; @endphp
       <div class="section-title keep-with-next">Расчёт плитных материалов</div>
       <table>
         <thead>
@@ -777,8 +778,12 @@ a { color: inherit; text-decoration: underline; }
             <th class="text-right" style="width: 12%;">Площадь м²</th>
             <th class="text-right" style="width: 8%;">Отходы</th>
             <th class="text-right" style="width: 12%;">С отходами</th>
-            <th class="text-right" style="width: 8%;">Листов</th>
-            <th class="text-right" style="width: 14%;">Цена/лист, руб.</th>
+            @if(!$useAreaMode)
+              <th class="text-right" style="width: 8%;">Листов</th>
+              <th class="text-right" style="width: 14%;">Цена/лист, руб.</th>
+            @else
+              <th class="text-right" style="width: 22%;">Цена/м², руб.</th>
+            @endif
             <th class="text-right" style="width: 16%;">Итого, руб.</th>
           </tr>
         </thead>
@@ -794,15 +799,19 @@ a { color: inherit; text-decoration: underline; }
               <td class="text-right mono">{{ number_format($plate['area_details'] ?? 0, 2) }}</td>
               <td class="text-right mono">{{ $waste }}%</td>
               <td class="text-right mono">{{ number_format($plate['area_with_waste'] ?? 0, 2) }}</td>
-              <td class="text-right bold mono">{{ $plate['sheets_count'] ?? 0 }}</td>
-              <td class="text-right mono nowrap">{{ number_format($plate['price_per_sheet'] ?? 0, 2, ',', ' ') }}</td>
+              @if(!$useAreaMode)
+                <td class="text-right bold mono">{{ $plate['sheets_count'] ?? 0 }}</td>
+                <td class="text-right mono nowrap">{{ number_format($plate['price_per_sheet'] ?? 0, 2, ',', ' ') }}</td>
+              @else
+                <td class="text-right mono nowrap">{{ number_format($plate['price_per_m2'] ?? 0, 2, ',', ' ') }}</td>
+              @endif
               <td class="text-right bold mono nowrap">{{ number_format($plate['total_cost'] ?? 0, 2, ',', ' ') }}</td>
             </tr>
           @endforeach
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="6" style="text-align: right; font-weight: bold; padding-right: 4mm;">Итого по разделу:</td>
+            <td colspan="{{ $useAreaMode ? 5 : 6 }}" style="text-align: right; font-weight: bold; padding-right: 4mm;">Итого по разделу:</td>
             <td class="text-right bold mono">
               @php
                 $platesTotal = 0;

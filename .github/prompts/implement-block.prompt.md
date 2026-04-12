@@ -8,7 +8,9 @@ Block:
 
 
 
-Constraints:
+Mandatory constraints:
+
+\- execute only this block
 
 \- minimal localized diff
 
@@ -20,53 +22,67 @@ Constraints:
 
 \- keep old flows operational during transition
 
-\- run only targeted checks relevant to changed files
+\- no silent scope expansion
+
+\- if hidden dependency appears, stop and report instead of broadening the block
 
 
 
-Before coding, return:
+Before coding, return in this exact format:
+
+
 
 1\. Short plan
 
 2\. Files to change
 
-3\. Risks
+3\. Acceptance criteria
+
+4\. Out of scope
+
+5\. Risks / hidden dependency check
 
 
 
-Then implement.
+After that, implement.
 
 
 
-After implementation, return:
+After implementation, return in this exact format:
+
+
 
 1\. Files changed
 
 2\. What was implemented
 
-3\. Checks run
+3\. Exact endpoints changed
 
-4\. Known limitations
+4\. Exact models / migrations / services / UI contracts changed
 
-5\. Suggested next block
+5\. Exact tests added or updated
+
+6\. Checks run
+
+7\. Known limitations
+
+8\. Manual verification steps
+
+9\. Suggested next block
 
 
 
-Acceptance criteria section before coding
+Rules:
 
-Out-of-scope confirmation
+\- do not broaden the block because “it is cleaner”
 
-Evidence required after coding:
+\- do not refactor adjacent code unless required for this block
 
-exact endpoints changed
+\- do not rename public APIs unless the block explicitly requires it
 
-exact middleware/config changes
+\- do not modify unrelated frontend state or layouts
 
-exact tests added
+\- do not change PDF/report flows unless the block explicitly includes them
 
-exact manual reproduction steps
-
-No silent scope expansion
-
-If implementation reveals hidden dependency, stop and report instead of broadening block
+\- if acceptance criteria cannot be met without extra scope, stop and report that explicitly before coding
 

@@ -1,4 +1,4 @@
-Analyze this task against the current repository. Do not implement yet.
+Analyze this task against the current repository. Do not implement.
 
 
 
@@ -8,29 +8,45 @@ Task:
 
 
 
+Mandatory workflow:
+
+\- inspect current code first
+
+\- identify the real current architecture for the requested scope
+
+\- identify constraints and backward compatibility risks
+
+\- split work into bounded implementation blocks
+
+\- recommend exactly one next block
+
+\- stop after analysis
+
+
+
 Requirements:
 
-\- inspect current architecture first
+\- inspect current entities / schema
 
-\- identify affected files/directories
+\- inspect services / resolvers / controllers
 
-\- identify entities, migrations, and lifecycle/state changes
+\- inspect API contracts
 
-\- identify API changes
+\- inspect frontend impact
 
-\- identify frontend impact
+\- inspect PDF/reporting impact if applicable
 
-\- identify PDF/reporting impact if applicable
-
-\- identify extension/browser/plugin impact if applicable
+\- inspect extension/browser/plugin impact if applicable
 
 \- preserve backward compatibility
 
-\- split work into bounded implementation blocks
+\- do not propose one-pass implementation for a cross-cutting task
 
 
 
 Return in this exact format:
+
+
 
 1\. Goal summary
 
@@ -38,11 +54,9 @@ Return in this exact format:
 
 3\. Affected files/directories
 
-4\. Proposed changes by layer
+4\. Observed constraints and risks
 
-5\. Risks and backward compatibility concerns
+5\. Proposed implementation blocks
 
-6\. Implementation blocks
-
-7\. Recommended Block 1
+6\. Recommended Block 1
 
