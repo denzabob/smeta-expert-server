@@ -54,6 +54,8 @@ export interface PriceListVersion {
   size_bytes?: number | null
   items_count?: number
   import_sessions?: any[]
+  has_evidence?: boolean
+  evidence_links_count?: number
   created_at: string
   updated_at: string
 }
@@ -75,6 +77,8 @@ export interface PriceListVersionItem {
   match_confidence?: string | null
   is_linked?: boolean
   notes?: string | null
+  has_evidence?: boolean
+  evidence_links_count?: number
   created_at: string
   updated_at: string
 }

@@ -26,6 +26,20 @@
 
       <template #actions>
         <ButtonGroup>
+          <EvidenceBadge
+            v-if="version"
+            :count="version.evidence_links_count ?? 0"
+            @click="openEvidenceDrawer(version, 'price_list_version')"
+          />
+          <v-btn
+            variant="text"
+            prepend-icon="mdi-file-document-plus-outline"
+            class="text-none"
+            :disabled="!version"
+            @click="openCreateModal('price_list_version', version!.id, 'Обоснование для версии прайса')"
+          >
+            Добавить обоснование
+          </v-btn>
           <v-btn
             variant="text"
             prepend-icon="mdi-refresh"
@@ -199,7 +213,7 @@
 
         <!-- Действия -->
         <template #item.actions="{ item }">
-          <div class="d-flex ga-1">
+          <div class="d-flex ga-1 align-center">
             <v-btn
               v-if="!isLinked(item) && item.price_type === 'operation'"
               size="small"
@@ -217,10 +231,42 @@
               icon="mdi-link-off"
               @click="unlinkItem(item)"
             />
+            <EvidenceBadge
+              v-if="item.price_type === 'operation'"
+              :count="item.evidence_links_count ?? 0"
+              @click="openEvidenceDrawer(item)"
+            />
+            <v-btn
+              v-if="item.price_type === 'operation'"
+              icon="mdi-plus"
+              size="x-small"
+              variant="text"
+              color="primary"
+              title="Добавить обоснование"
+              @click="openCreateModal('operation_price', item.id, item.title)"
+            />
           </div>
         </template>
       </v-data-table>
     </SectionCard>
+
+    <!-- Evidence drawer -->
+    <EvidenceDrawer
+      v-model="evidenceDrawer.open"
+      :linkable-type="evidenceDrawer.linkableType"
+      :linkable-id="evidenceDrawer.linkableId"
+      :title="evidenceDrawer.title"
+      @detached="onEvidenceDetached"
+    />
+
+    <!-- Evidence create modal -->
+    <EvidenceCreateModal
+      v-model="createModal.open"
+      :linkable-type="createModal.linkableType"
+      :linkable-id="createModal.linkableId"
+      :title="createModal.title"
+      @created="onEvidenceCreated"
+    />
 
     <!-- Link Operation Dialog -->
     <v-dialog v-model="linkDialog.show" max-width="600" persistent>
@@ -290,6 +336,9 @@ import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import EvidenceBadge from '@/components/evidence/EvidenceBadge.vue'
+import EvidenceDrawer from '@/components/evidence/EvidenceDrawer.vue'
+import EvidenceCreateModal from '@/components/evidence/EvidenceCreateModal.vue'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
@@ -300,6 +349,39 @@ const router = useRouter()
 const loading = ref(false)
 const version = ref<PriceListVersion | null>(null)
 const items = ref<PriceListVersionItem[]>([])
+
+const evidenceDrawer = ref({
+  open: false,
+  linkableType: 'operation_price',
+  linkableId: 0,
+  title: '',
+})
+
+const createModal = ref({
+  open: false,
+  linkableType: 'operation_price' as 'operation_price' | 'price_list_version',
+  linkableId: 0,
+  title: '',
+})
+
+function openCreateModal(
+  linkableType: 'operation_price' | 'price_list_version',
+  linkableId: number,
+  title: string,
+) {
+  createModal.value = { open: true, linkableType, linkableId, title }
+}
+
+function onEvidenceCreated() {
+  const { linkableType, linkableId } = createModal.value
+  if (linkableType === 'operation_price') {
+    const item = items.value.find(i => i.id === linkableId)
+    if (item) item.evidence_links_count = (item.evidence_links_count ?? 0) + 1
+  } else if (linkableType === 'price_list_version' && version.value?.id === linkableId) {
+    version.value.evidence_links_count = (version.value.evidence_links_count ?? 0) + 1
+  }
+  showSnackbar('Обоснование добавлено', 'success')
+}
 
 // Filters
 const search = ref('')
@@ -319,8 +401,28 @@ const itemHeaders = [
   { title: 'Привязка', key: 'linked', sortable: false, width: '130px' },
   { title: 'Цена в руб.', key: 'prices', sortable: false, width: '200px' },
   { title: 'Ед. изм.', key: 'unit', sortable: true, width: '100px' },
-  { title: 'Действия', key: 'actions', sortable: false, width: '140px' },
+  { title: 'Действия', key: 'actions', sortable: false, width: '180px' },
 ]
+
+function openEvidenceDrawer(item: { id: number; title: string }, linkableType: 'operation_price' | 'price_list_version' = 'operation_price') {
+  evidenceDrawer.value = {
+    open: true,
+    linkableType,
+    linkableId: item.id,
+    title: `Обоснования: ${item.title}`,
+  }
+}
+
+function onEvidenceDetached() {
+  const { linkableType, linkableId } = evidenceDrawer.value
+  if (linkableType === 'operation_price') {
+    const item = items.value.find(i => i.id === linkableId)
+    if (item) item.evidence_links_count = Math.max(0, (item.evidence_links_count ?? 1) - 1)
+  } else if (linkableType === 'price_list_version' && version.value?.id === linkableId) {
+    version.value.evidence_links_count = Math.max(0, (version.value.evidence_links_count ?? 1) - 1)
+  }
+  showSnackbar('Связь удалена', 'success')
+}
 
 // Filter options
 const priceTypeOptions = [

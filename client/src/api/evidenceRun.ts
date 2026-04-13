@@ -34,6 +34,59 @@ export interface EvidenceRecord {
   created_at: string | null
 }
 
+// ── H11 list endpoint item ──
+export interface EvidenceListItem {
+  id: number
+  observed_price: string | null
+  currency: string | null
+  source_type: string | null
+  verification_status: string | null
+  created_at: string | null
+  assets_count: number
+  linked_targets: { type: string; id: number }[]
+}
+
+export interface EvidenceListResponse {
+  data: EvidenceListItem[]
+  meta: {
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+  }
+}
+
+// ── H9 detail endpoint ──
+export interface EvidenceRecordAsset {
+  asset_id: number
+  asset_type: string
+  original_filename: string | null
+  mime_type: string | null
+  file_size: number | null
+  download_url: string | null
+}
+
+export interface EvidenceRecordDetail {
+  evidence_record_id: number
+  uuid: string
+  observed_price: string | null
+  currency: string | null
+  cost_component: string | null
+  source_type: string | null
+  capture_method: string | null
+  source_url: string | null
+  verification_status: string | null
+  metadata_json: Record<string, unknown> | null
+  created_by: number | null
+  created_at: string | null
+  linked_targets: { type: string; id: number }[]
+  assets: EvidenceRecordAsset[]
+}
+
+export interface EvidenceDetailResponse {
+  data: EvidenceRecordDetail
+}
+
 // ── Evidence record picker item (shaped for search endpoint) ──
 export interface EvidenceRecordPickerItem {
   id: number
@@ -242,6 +295,95 @@ export const evidenceRunApi = {
       formData,
       { headers: { 'Content-Type': 'multipart/form-data' } },
     )
+    return data
+  },
+
+  /** GET /api/evidence-records — H11 paginated list filtered by linked target */
+  async listRecords(params: {
+    linkable_type?: string
+    linkable_id?: number
+    verification_status?: string
+    source_type?: string
+    has_assets?: boolean
+    per_page?: number
+    page?: number
+  }): Promise<EvidenceListResponse> {
+    const { data } = await api.get('/api/evidence-records', { params })
+    return data
+  },
+
+  /** GET /api/evidence-records/{id} — H9 single record detail */
+  async getRecord(id: number): Promise<EvidenceDetailResponse> {
+    const { data } = await api.get(`/api/evidence-records/${id}`)
+    return data
+  },
+
+  /**
+   * H6/H7 create-and-attach endpoint.
+   * POST /api/operation-prices/{id}/evidence-records
+   * POST /api/price-list-versions/{id}/evidence-records
+   * Sends multipart/form-data (files[] is optional).
+   */
+  async createAndAttach(
+    linkableType: 'operation_price' | 'price_list_version',
+    linkableId: number,
+    formData: FormData,
+  ): Promise<{ message: string; evidence_record_id: number; evidence_link_id: number; has_evidence: boolean; assets_count: number }> {
+    const url =
+      linkableType === 'operation_price'
+        ? `/api/operation-prices/${linkableId}/evidence-records`
+        : `/api/price-list-versions/${linkableId}/evidence-records`
+    const { data } = await api.post(url, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return data
+  },
+
+  /**
+   * H8 detach endpoint — deletes only the EvidenceLink row, not the record itself.
+   * DELETE /api/operation-prices/{id}/evidence-links/{linkId}
+   * DELETE /api/price-list-versions/{id}/evidence-links/{linkId}
+   */
+  async detachLink(
+    linkableType: 'operation_price' | 'price_list_version',
+    linkableId: number,
+    linkId: number,
+  ): Promise<void> {
+    const base =
+      linkableType === 'operation_price'
+        ? `/api/operation-prices/${linkableId}/evidence-links`
+        : `/api/price-list-versions/${linkableId}/evidence-links`
+    await api.delete(`${base}/${linkId}`)
+  },
+
+  /**
+   * H10 update verification status.
+   * PATCH /api/evidence-records/{id}/verification-status
+   */
+  async updateVerificationStatus(
+    recordId: number,
+    status: string,
+  ): Promise<{ data: { evidence_record_id: number; verification_status: string } }> {
+    const { data } = await api.patch(`/api/evidence-records/${recordId}/verification-status`, {
+      verification_status: status,
+    })
+    return data
+  },
+
+  /**
+   * List evidence links for a target to retrieve evidence_link_id values (needed for detach).
+   * GET /api/operation-prices/{id}/evidence-links
+   * GET /api/price-list-versions/{id}/evidence-links
+   */
+  async listLinks(
+    linkableType: 'operation_price' | 'price_list_version',
+    linkableId: number,
+  ): Promise<{ data: { evidence_link_id: number; evidence_record_id: number }[] }> {
+    const url =
+      linkableType === 'operation_price'
+        ? `/api/operation-prices/${linkableId}/evidence-links`
+        : `/api/price-list-versions/${linkableId}/evidence-links`
+    const { data } = await api.get(url)
     return data
   },
 }

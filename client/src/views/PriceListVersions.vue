@@ -96,6 +96,14 @@
           </v-chip>
         </template>
 
+        <!-- Обоснования -->
+        <template #item.evidence="{ item }">
+          <EvidenceBadge
+            :count="item.evidence_links_count ?? 0"
+            @click="openEvidenceDrawer(item)"
+          />
+        </template>
+
         <!-- Действия -->
         <template #item.actions="{ item }">
           <div class="d-flex ga-1">
@@ -151,6 +159,15 @@
       </v-data-table>
     </SectionCard>
 
+    <!-- Evidence drawer -->
+    <EvidenceDrawer
+      v-model="evidenceDrawer.open"
+      :linkable-type="evidenceDrawer.linkableType"
+      :linkable-id="evidenceDrawer.linkableId"
+      :title="evidenceDrawer.title"
+      @detached="onVersionEvidenceDetached"
+    />
+
     <!-- Snackbar -->
     <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="3000">
       {{ snackbar.message }}
@@ -171,6 +188,8 @@ import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import EvidenceBadge from '@/components/evidence/EvidenceBadge.vue'
+import EvidenceDrawer from '@/components/evidence/EvidenceDrawer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -180,6 +199,13 @@ const loading = ref(false)
 const priceList = ref<PriceList | null>(null)
 const versions = ref<PriceListVersion[]>([])
 const actionLoading = reactive<Record<number, boolean>>({})
+
+const evidenceDrawer = ref({
+  open: false,
+  linkableType: '',
+  linkableId: 0,
+  title: '',
+})
 
 const snackbar = ref({
   show: false,
@@ -194,8 +220,24 @@ const headers = [
   { title: 'Источник', key: 'source', sortable: false },
   { title: 'Размер', key: 'size_bytes', sortable: true, width: '100px' },
   { title: 'Позиций', key: 'items_count', sortable: true, width: '110px' },
+  { title: 'Обоснования', key: 'evidence', sortable: false, width: '120px' },
   { title: 'Действия', key: 'actions', sortable: false, width: '280px' }
 ]
+
+function openEvidenceDrawer(version: PriceListVersion) {
+  evidenceDrawer.value = {
+    open: true,
+    linkableType: 'price_list_version',
+    linkableId: version.id,
+    title: `Обоснования: версия от ${formatDate(version.effective_date || version.captured_at || version.created_at)}`,
+  }
+}
+
+function onVersionEvidenceDetached() {
+  const versionId = evidenceDrawer.value.linkableId
+  const version = versions.value.find(v => v.id === versionId)
+  if (version) version.evidence_links_count = Math.max(0, (version.evidence_links_count ?? 1) - 1)
+}
 
 // Methods
 const fetchPriceList = async () => {

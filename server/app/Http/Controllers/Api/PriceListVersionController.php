@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\EvidenceLink;
 use App\Models\EvidenceRecord;
+use App\Models\GenericEvidenceAsset;
 use App\Models\PriceList;
 use App\Models\PriceListVersion;
 use App\Models\SupplierOperation;
@@ -766,6 +767,220 @@ class PriceListVersionController extends Controller
             'already_attached' => false,
             'evidence_link_id' => $link->id,
         ], 201);
+    }
+
+    /**
+     * Remove an EvidenceLink from an OperationPrice.
+     *
+     * DELETE /api/operation-prices/{operationPrice}/evidence-links/{link}
+     *
+     * Only the EvidenceLink row is deleted. EvidenceRecord and GenericEvidenceAsset are preserved.
+     * Returns 404 when the link does not belong to this OperationPrice (avoids info leak).
+     */
+    public function destroyOperationPriceEvidenceLink(Request $request, \App\Models\OperationPrice $operationPrice, EvidenceLink $link): \Illuminate\Http\Response
+    {
+        // Authorize via version → priceList → supplier (same pattern as H4/H5/H6)
+        $operationPrice->load('priceListVersion.priceList.supplier');
+        if ($operationPrice->priceListVersion->priceList->supplier->user_id !== $request->user()->id) {
+            abort(403, 'Доступ запрещен');
+        }
+
+        // Verify the link actually belongs to this OperationPrice
+        if ($link->linkable_type !== 'operation_price' || $link->linkable_id !== $operationPrice->id) {
+            abort(404, 'Ссылка не найдена для данного объекта');
+        }
+
+        $link->delete();
+
+        return response()->noContent();
+    }
+
+    /**
+     * Remove an EvidenceLink from a PriceListVersion.
+     *
+     * DELETE /api/price-list-versions/{version}/evidence-links/{link}
+     *
+     * Only the EvidenceLink row is deleted. EvidenceRecord and GenericEvidenceAsset are preserved.
+     * Returns 404 when the link does not belong to this PriceListVersion.
+     */
+    public function destroyVersionEvidenceLink(Request $request, PriceListVersion $version, EvidenceLink $link): \Illuminate\Http\Response
+    {
+        $this->authorizeVersion($request, $version);
+
+        // Verify the link actually belongs to this PriceListVersion
+        if ($link->linkable_type !== 'price_list_version' || $link->linkable_id !== $version->id) {
+            abort(404, 'Ссылка не найдена для данной версии');
+        }
+
+        $link->delete();
+
+        return response()->noContent();
+    }
+
+    /**
+     * Create a new EvidenceRecord for a price claim and immediately attach it to an OperationPrice.
+     *
+     * POST /api/operation-prices/{operationPrice}/evidence-records
+     */
+    public function createAndAttachEvidence(Request $request, \App\Models\OperationPrice $operationPrice): JsonResponse
+    {
+        // Authorize via version → priceList → supplier (same pattern as H4/H5)
+        $operationPrice->load('priceListVersion.priceList.supplier');
+        if ($operationPrice->priceListVersion->priceList->supplier->user_id !== $request->user()->id) {
+            abort(403, 'Доступ запрещен');
+        }
+
+        $validated = $request->validate($this->evidenceRecordRules());
+
+        [$record, $assetsCount] = $this->buildNewEvidenceRecord($request, $validated, 'operation');
+
+        $link = EvidenceLink::create([
+            'evidence_record_id' => $record->id,
+            'linkable_type'      => 'operation_price',
+            'linkable_id'        => $operationPrice->id,
+            'relation_type'      => 'primary',
+        ]);
+
+        return response()->json([
+            'message'            => 'Доказательство создано и прикреплено',
+            'evidence_record_id' => $record->id,
+            'evidence_link_id'   => $link->id,
+            'linked_to'          => [
+                'type' => 'operation_price',
+                'id'   => $operationPrice->id,
+            ],
+            'assets_count'       => $assetsCount,
+            'has_evidence'       => true,
+        ], 201);
+    }
+
+    /**
+     * Create a new EvidenceRecord for a price claim and immediately attach it to a PriceListVersion.
+     *
+     * POST /api/price-list-versions/{version}/evidence-records
+     *
+     * Accepts:
+     *   asserted_price   numeric, required
+     *   source_type      string, required (see SourceType enum)
+     *   source_url       string|url, optional
+     *   capture_method   string, optional (defaults to file_upload if files present, else manual_entry)
+     *   cost_component   string, optional — defaults to 'operation', validated against CostComponent enum
+     *   currency         string(3), optional (default RUB)
+     *   note             string, optional — stored in metadata_json.justification_text
+     *   files[]          array of uploaded files/images, optional — each stored as GenericEvidenceAsset
+     */
+    public function createAndAttachEvidenceForVersion(Request $request, PriceListVersion $version): JsonResponse
+    {
+        $this->authorizeVersion($request, $version);
+
+        $validCostComponents = implode(',', \App\Evidence\CostComponent::all());
+
+        $validated = $request->validate(array_merge(
+            $this->evidenceRecordRules(),
+            [
+                'cost_component' => 'nullable|string|in:' . $validCostComponents,
+            ],
+        ));
+
+        $costComponent = $validated['cost_component'] ?? 'operation';
+
+        [$record, $assetsCount] = $this->buildNewEvidenceRecord($request, $validated, $costComponent);
+
+        $link = EvidenceLink::create([
+            'evidence_record_id' => $record->id,
+            'linkable_type'      => 'price_list_version',
+            'linkable_id'        => $version->id,
+            'relation_type'      => 'primary',
+        ]);
+
+        return response()->json([
+            'message'            => 'Доказательство создано и прикреплено',
+            'evidence_record_id' => $record->id,
+            'evidence_link_id'   => $link->id,
+            'linked_to'          => [
+                'type' => 'price_list_version',
+                'id'   => $version->id,
+            ],
+            'assets_count'       => $assetsCount,
+            'has_evidence'       => true,
+        ], 201);
+    }
+
+    /**
+     * Shared validation rules for create-and-attach evidence endpoints (H6 / H7).
+     */
+    private function evidenceRecordRules(): array
+    {
+        $validSourceTypes    = implode(',', \App\Evidence\SourceType::all());
+        $validCaptureMethods = implode(',', \App\Evidence\CaptureMethod::all());
+
+        return [
+            'asserted_price' => 'required|numeric|min:0',
+            'source_type'    => 'required|string|in:' . $validSourceTypes,
+            'source_url'     => 'nullable|url|max:2048',
+            'capture_method' => 'nullable|string|in:' . $validCaptureMethods,
+            'currency'       => 'nullable|string|max:3',
+            'note'           => 'nullable|string|max:2000',
+            'files'          => 'nullable|array|max:20',
+            'files.*'        => 'file|max:10240',
+        ];
+    }
+
+    /**
+     * Create an EvidenceRecord and optionally attach uploaded files as GenericEvidenceAsset rows.
+     *
+     * Returns [$record, $assetsCount]. Reused by H6 (OperationPrice) and H7 (PriceListVersion).
+     */
+    private function buildNewEvidenceRecord(Request $request, array $validated, string $costComponent): array
+    {
+        // Determine capture_method if not supplied
+        $captureMethod = $validated['capture_method'] ?? null;
+        if (!$captureMethod) {
+            $captureMethod = $request->hasFile('files')
+                ? \App\Evidence\CaptureMethod::FILE_UPLOAD
+                : \App\Evidence\CaptureMethod::MANUAL_ENTRY;
+        }
+
+        $metadata = [];
+        if (!empty($validated['note'])) {
+            $metadata['justification_text'] = $validated['note'];
+        }
+
+        $uuid = (string) \Illuminate\Support\Str::uuid();
+
+        $record = EvidenceRecord::create([
+            'uuid'                => $uuid,
+            'cost_component'      => $costComponent,
+            'source_type'         => $validated['source_type'],
+            'capture_method'      => $captureMethod,
+            'verification_status' => 'pending',
+            'source_url'          => $validated['source_url'] ?? null,
+            'observed_price'      => $validated['asserted_price'],
+            'currency'            => $validated['currency'] ?? 'RUB',
+            'metadata_json'       => $metadata ?: null,
+            'created_by'          => $request->user()->id,
+        ]);
+
+        // Store uploaded files as GenericEvidenceAsset rows (same path as EvidenceRunController::uploadAsset)
+        $assetsCount = 0;
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                $path = $file->store('evidence-records/' . $uuid, 'public');
+                GenericEvidenceAsset::create([
+                    'uuid'               => (string) \Illuminate\Support\Str::uuid(),
+                    'evidence_record_id' => $record->id,
+                    'asset_type'         => 'document',
+                    'file_path'          => $path,
+                    'original_filename'  => $file->getClientOriginalName(),
+                    'mime_type'          => $file->getMimeType(),
+                    'file_size'          => $file->getSize(),
+                    'sha256'             => hash_file('sha256', $file->getRealPath()),
+                ]);
+                $assetsCount++;
+            }
+        }
+
+        return [$record, $assetsCount];
     }
 
     /**

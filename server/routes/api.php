@@ -432,7 +432,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('projects/{project}/evidence-runs/{runId}/items/{itemId}/manual-resolve', [EvidenceRunController::class, 'manualResolveItem']);
     Route::get('projects/{project}/evidence-runs/{runId}/items/{itemId}/candidates', [EvidenceRunController::class, 'searchCandidatesForItem']);
     Route::get('projects/{project}/evidence-runs/{runId}/pdf', [EvidenceRunController::class, 'pdf']);
+    Route::get('evidence-records', [EvidenceRunController::class, 'listRecords']);
     Route::get('evidence-records/search', [EvidenceRunController::class, 'searchRecords']);
+    Route::get('evidence-records/{record}', [EvidenceRunController::class, 'showRecord']);
+    Route::patch('evidence-records/{record}/verification-status', [EvidenceRunController::class, 'updateVerificationStatus']);
     Route::post('evidence-records', [EvidenceRunController::class, 'createRecord']);
     Route::post('evidence-records/{id}/assets', [EvidenceRunController::class, 'uploadAsset']);
     
@@ -634,12 +637,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('price-list-versions/{version}/items', [\App\Http\Controllers\Api\PriceListVersionController::class, 'items']);
     Route::post('price-list-versions/{version}/evidence-links', [\App\Http\Controllers\Api\PriceListVersionController::class, 'storeEvidenceLink']);
     Route::get('price-list-versions/{version}/evidence-links', [\App\Http\Controllers\Api\PriceListVersionController::class, 'listEvidenceLinks']);
+    Route::delete('price-list-versions/{version}/evidence-links/{link}', [\App\Http\Controllers\Api\PriceListVersionController::class, 'destroyVersionEvidenceLink']);
+    Route::post('price-list-versions/{version}/evidence-records', [\App\Http\Controllers\Api\PriceListVersionController::class, 'createAndAttachEvidenceForVersion']);
     
     // Operation Price Linking
     Route::put('operation-prices/{operationPrice}/link', [\App\Http\Controllers\Api\PriceListVersionController::class, 'linkOperation']);
     Route::delete('operation-prices/{operationPrice}/link', [\App\Http\Controllers\Api\PriceListVersionController::class, 'unlinkOperation']);
     Route::post('operation-prices/{operationPrice}/evidence-links', [\App\Http\Controllers\Api\PriceListVersionController::class, 'storeOperationPriceEvidenceLink']);
     Route::get('operation-prices/{operationPrice}/evidence-links', [\App\Http\Controllers\Api\PriceListVersionController::class, 'listOperationPriceEvidenceLinks']);
+    Route::delete('operation-prices/{operationPrice}/evidence-links/{link}', [\App\Http\Controllers\Api\PriceListVersionController::class, 'destroyOperationPriceEvidenceLink']);
+    Route::post('operation-prices/{operationPrice}/evidence-records', [\App\Http\Controllers\Api\PriceListVersionController::class, 'createAndAttachEvidence']);
     
     // ========== Price Import API ==========
     Route::get('price-imports', [\App\Http\Controllers\Api\PriceImportController::class, 'index']);

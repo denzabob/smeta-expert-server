@@ -14,6 +14,7 @@ use App\Http\Requests\StoreEvidenceRecordRequest;
 use App\Http\Requests\StoreEvidenceRunRequest;
 use App\Models\EstimateEvidenceItem;
 use App\Models\EstimateEvidenceRun;
+use App\Models\EvidenceLink;
 use App\Models\EvidenceRecord;
 use App\Models\GenericEvidenceAsset;
 use App\Models\Project;
@@ -27,6 +28,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class EvidenceRunController extends Controller
 {
@@ -327,6 +329,279 @@ class EvidenceRunController extends Controller
             'success' => true,
             'data'    => $asset,
         ], 201);
+    }
+
+    /**
+     * Retrieve a single EvidenceRecord with full detail.
+     *
+     * GET /api/evidence-records/{record}
+     *
+     * Authorization: the calling user must own at least one target linked to this record.
+     * Ownership is verified through the supplier chain used in H4–H8:
+     *   operation_price   → price_list_versions → price_lists → suppliers.user_id
+     *   price_list_version → price_lists → suppliers.user_id
+     */
+    public function showRecord(Request $request, EvidenceRecord $record): JsonResponse
+    {
+        $userId = $request->user()->id;
+
+        $links = EvidenceLink::where('evidence_record_id', $record->id)->get();
+
+        $authorized = $links->contains(function (EvidenceLink $link) use ($userId) {
+            if ($link->linkable_type === 'operation_price') {
+                return DB::table('operation_prices as op')
+                    ->join('price_list_versions as plv', 'plv.id', '=', 'op.price_list_version_id')
+                    ->join('price_lists as pl', 'pl.id', '=', 'plv.price_list_id')
+                    ->join('suppliers as s', 's.id', '=', 'pl.supplier_id')
+                    ->where('op.id', $link->linkable_id)
+                    ->where('s.user_id', $userId)
+                    ->exists();
+            }
+
+            if ($link->linkable_type === 'price_list_version') {
+                return DB::table('price_list_versions as plv')
+                    ->join('price_lists as pl', 'pl.id', '=', 'plv.price_list_id')
+                    ->join('suppliers as s', 's.id', '=', 'pl.supplier_id')
+                    ->where('plv.id', $link->linkable_id)
+                    ->where('s.user_id', $userId)
+                    ->exists();
+            }
+
+            return false;
+        });
+
+        if (!$authorized) {
+            abort(403, 'Доступ запрещен');
+        }
+
+        $record->load(['assets', 'links']);
+
+        $assets = $record->assets->map(fn (GenericEvidenceAsset $asset) => [
+            'asset_id'          => $asset->id,
+            'asset_type'        => $asset->asset_type,
+            'original_filename' => $asset->original_filename,
+            'mime_type'         => $asset->mime_type,
+            'file_size'         => $asset->file_size,
+            'download_url'      => $asset->file_path
+                ? Storage::disk('public')->url($asset->file_path)
+                : null,
+        ])->values()->all();
+
+        $linkedTargets = $record->links->map(fn (EvidenceLink $link) => [
+            'type' => $link->linkable_type,
+            'id'   => $link->linkable_id,
+        ])->values()->all();
+
+        return response()->json([
+            'data' => [
+                'evidence_record_id'  => $record->id,
+                'uuid'                => $record->uuid,
+                'observed_price'      => $record->observed_price,
+                'currency'            => $record->currency,
+                'cost_component'      => $record->cost_component,
+                'source_type'         => $record->source_type,
+                'capture_method'      => $record->capture_method,
+                'source_url'          => $record->source_url,
+                'verification_status' => $record->verification_status,
+                'metadata_json'       => $record->metadata_json,
+                'created_by'          => $record->created_by,
+                'created_at'          => $record->created_at?->toIso8601String(),
+                'linked_targets'      => $linkedTargets,
+                'assets'              => $assets,
+            ],
+        ]);
+    }
+
+    /**
+     * Allowed verification_status transitions (H12).
+     * States absent from keys are terminal — no outgoing transitions permitted.
+     */
+    private const ALLOWED_TRANSITIONS = [
+        'pending'       => ['manual_verified', 'rejected'],
+        'stale'         => ['manual_verified', 'rejected'],
+        'auto_verified' => ['manual_verified', 'rejected'],
+    ];
+
+    /**
+     * PATCH /api/evidence-records/{record}/verification-status
+     *
+     * Authorization: same linked-target ownership check as showRecord().
+     * Updates only verification_status; all other fields remain unchanged.
+     * Transition rules: only explicitly defined source→target pairs are accepted.
+     */
+    public function updateVerificationStatus(Request $request, EvidenceRecord $record): JsonResponse
+    {
+        $userId = $request->user()->id;
+
+        $links = EvidenceLink::where('evidence_record_id', $record->id)->get();
+
+        $authorized = $links->contains(function (EvidenceLink $link) use ($userId) {
+            if ($link->linkable_type === 'operation_price') {
+                return DB::table('operation_prices as op')
+                    ->join('price_list_versions as plv', 'plv.id', '=', 'op.price_list_version_id')
+                    ->join('price_lists as pl', 'pl.id', '=', 'plv.price_list_id')
+                    ->join('suppliers as s', 's.id', '=', 'pl.supplier_id')
+                    ->where('op.id', $link->linkable_id)
+                    ->where('s.user_id', $userId)
+                    ->exists();
+            }
+
+            if ($link->linkable_type === 'price_list_version') {
+                return DB::table('price_list_versions as plv')
+                    ->join('price_lists as pl', 'pl.id', '=', 'plv.price_list_id')
+                    ->join('suppliers as s', 's.id', '=', 'pl.supplier_id')
+                    ->where('plv.id', $link->linkable_id)
+                    ->where('s.user_id', $userId)
+                    ->exists();
+            }
+
+            return false;
+        });
+
+        if (!$authorized) {
+            abort(403, 'Доступ запрещен');
+        }
+
+        $validated = $request->validate([
+            'verification_status' => [
+                'required',
+                'string',
+                'in:' . implode(',', VerificationStatus::all()),
+            ],
+        ]);
+
+        $current   = $record->verification_status;
+        $requested = $validated['verification_status'];
+        $permitted = self::ALLOWED_TRANSITIONS[$current] ?? [];
+
+        if (!in_array($requested, $permitted, true)) {
+            throw ValidationException::withMessages([
+                'verification_status' =>
+                    "Cannot transition from '{$current}' to '{$requested}'.",
+            ]);
+        }
+
+        $record->update(['verification_status' => $requested]);
+
+        return response()->json([
+            'data' => [
+                'evidence_record_id'  => $record->id,
+                'verification_status' => $record->verification_status,
+                'updated_at'          => $record->updated_at?->toIso8601String(),
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/evidence-records
+     *
+     * Paginated list of EvidenceRecords accessible to the user via linked-target ownership.
+     * Auth scoping uses correlated EXISTS subqueries (no N+1).
+     * Optional filters: linkable_type, linkable_id, verification_status, source_type, has_assets.
+     */
+    public function listRecords(Request $request): JsonResponse
+    {
+        $request->validate([
+            'linkable_type'       => 'nullable|string|in:operation_price,price_list_version',
+            'linkable_id'         => 'nullable|integer|min:1',
+            'verification_status' => 'nullable|string|in:' . implode(',', VerificationStatus::all()),
+            'source_type'         => 'nullable|string|in:' . implode(',', SourceType::all()),
+            'has_assets'          => 'nullable|boolean',
+            'per_page'            => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $userId = $request->user()->id;
+
+        $query = EvidenceRecord::query()
+            ->where(function ($q) use ($userId) {
+                // Records accessible via an operation_price link owned by the user
+                $q->whereExists(function ($sub) use ($userId) {
+                    $sub->select(DB::raw(1))
+                        ->from('evidence_links as el')
+                        ->join('operation_prices as op', function ($j) {
+                            $j->on('op.id', '=', 'el.linkable_id')
+                              ->where('el.linkable_type', 'operation_price');
+                        })
+                        ->join('price_list_versions as plv', 'plv.id', '=', 'op.price_list_version_id')
+                        ->join('price_lists as pl', 'pl.id', '=', 'plv.price_list_id')
+                        ->join('suppliers as s', 's.id', '=', 'pl.supplier_id')
+                        ->whereColumn('el.evidence_record_id', 'evidence_records.id')
+                        ->where('s.user_id', $userId);
+                })
+                // Records accessible via a price_list_version link owned by the user
+                ->orWhereExists(function ($sub) use ($userId) {
+                    $sub->select(DB::raw(1))
+                        ->from('evidence_links as el2')
+                        ->join('price_list_versions as plv2', function ($j) {
+                            $j->on('plv2.id', '=', 'el2.linkable_id')
+                              ->where('el2.linkable_type', 'price_list_version');
+                        })
+                        ->join('price_lists as pl2', 'pl2.id', '=', 'plv2.price_list_id')
+                        ->join('suppliers as s2', 's2.id', '=', 'pl2.supplier_id')
+                        ->whereColumn('el2.evidence_record_id', 'evidence_records.id')
+                        ->where('s2.user_id', $userId);
+                });
+            });
+
+        if ($request->filled('verification_status')) {
+            $query->where('verification_status', $request->input('verification_status'));
+        }
+
+        if ($request->filled('source_type')) {
+            $query->where('source_type', $request->input('source_type'));
+        }
+
+        if ($request->filled('linkable_type')) {
+            $lt  = $request->input('linkable_type');
+            $lid = $request->input('linkable_id');
+            $query->whereHas('links', function ($q) use ($lt, $lid) {
+                $q->where('linkable_type', $lt);
+                if ($lid !== null) {
+                    $q->where('linkable_id', (int) $lid);
+                }
+            });
+        }
+
+        if ($request->has('has_assets')) {
+            if ($request->boolean('has_assets')) {
+                $query->whereHas('assets');
+            } else {
+                $query->whereDoesntHave('assets');
+            }
+        }
+
+        $perPage   = (int) $request->input('per_page', 15);
+        $paginator = $query
+            ->withCount('assets')
+            ->with('links')
+            ->orderByDesc('created_at')
+            ->paginate($perPage);
+
+        $items = collect($paginator->items())->map(function (EvidenceRecord $r) {
+            return [
+                'id'                  => $r->id,
+                'observed_price'      => $r->observed_price,
+                'currency'            => $r->currency,
+                'source_type'         => $r->source_type,
+                'verification_status' => $r->verification_status,
+                'created_at'          => $r->created_at?->toIso8601String(),
+                'assets_count'        => $r->assets_count,
+                'linked_targets'      => $r->links->map(fn (EvidenceLink $link) => [
+                    'type' => $link->linkable_type,
+                    'id'   => $link->linkable_id,
+                ])->values()->all(),
+            ];
+        });
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page'    => $paginator->lastPage(),
+                'per_page'     => $paginator->perPage(),
+                'total'        => $paginator->total(),
+            ],
+        ]);
     }
 
     /**
