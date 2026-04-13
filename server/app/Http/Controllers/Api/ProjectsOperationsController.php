@@ -450,6 +450,16 @@ class ProjectsOperationsController extends Controller
             }
         }
 
+        // Attach pricing-context IDs so the frontend can link to the version page.
+        // These are the same for every row (project-level context); manual rows
+        // are also annotated so the UI can decide whether to show a link.
+        foreach ($result as &$r) {
+            $r['price_list_version_id'] = $pricingContext['version_id'];
+            $r['price_list_id']         = $pricingContext['price_list_id'] ?? null;
+            $r['supplier_id']           = $pricingContext['supplier_id'] ?? null;
+        }
+        unset($r);
+
         return response()->json($result);
     }
 
@@ -492,10 +502,11 @@ class ProjectsOperationsController extends Controller
 
         if ($explicit?->price_list_version_id) {
             return [
-                'version_id' => (int) $explicit->price_list_version_id,
-                'supplier_id' => $explicit->priceListVersion?->priceList?->supplier_id,
-                'price_mode' => 'project_version',
-                'resolution' => 'explicit_operation_role',
+                'version_id'    => (int) $explicit->price_list_version_id,
+                'price_list_id' => $explicit->priceListVersion?->price_list_id,
+                'supplier_id'   => $explicit->priceListVersion?->priceList?->supplier_id,
+                'price_mode'    => 'project_version',
+                'resolution'    => 'explicit_operation_role',
             ];
         }
 
@@ -516,23 +527,25 @@ class ProjectsOperationsController extends Controller
             $versionRow = DB::table('price_list_versions as plv')
                 ->join('price_lists as pl', 'pl.id', '=', 'plv.price_list_id')
                 ->where('plv.id', $fallbackVersionId)
-                ->select('pl.supplier_id')
+                ->select('pl.supplier_id', 'plv.price_list_id')
                 ->first();
 
             return [
-                'version_id' => (int) $fallbackVersionId,
-                'supplier_id' => (int) ($versionRow->supplier_id ?? 0) ?: null,
-                'price_mode' => 'project_version',
-                'resolution' => 'linked_version_with_operation_prices',
+                'version_id'    => (int) $fallbackVersionId,
+                'price_list_id' => $versionRow->price_list_id ?? null,
+                'supplier_id'   => (int) ($versionRow->supplier_id ?? 0) ?: null,
+                'price_mode'    => 'project_version',
+                'resolution'    => 'linked_version_with_operation_prices',
             ];
         }
 
         // 3) Last-resort fallback
         return [
-            'version_id' => null,
-            'supplier_id' => null,
-            'price_mode' => OperationPriceResolver::MODE_MEDIAN,
-            'resolution' => 'global_median_fallback',
+            'version_id'    => null,
+            'price_list_id' => null,
+            'supplier_id'   => null,
+            'price_mode'    => OperationPriceResolver::MODE_MEDIAN,
+            'resolution'    => 'global_median_fallback',
         ];
     }
 }

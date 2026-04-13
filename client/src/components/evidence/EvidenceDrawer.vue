@@ -259,7 +259,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   detached: []
-}>() 
+}>()
 
 const dialog = ref(props.modelValue)
 
@@ -292,12 +292,6 @@ const snack = ref({ show: false, message: '', color: 'success' })
 function toast(message: string, color: 'success' | 'error' | 'info' = 'success') {
   snack.value = { show: true, message, color }
 }
-const detachLoading = ref<Record<number, boolean>>({})
-const snack = ref({ show: false, message: '', color: 'success' })
-
-function toast(message: string, color: 'success' | 'error' | 'info' = 'success') {
-  snack.value = { show: true, message, color }
-}
 
 // ── Data fetching ──
 async function fetchList() {
@@ -319,7 +313,6 @@ async function fetchList() {
     ])
     records.value = listRes.data
     meta.value = listRes.meta
-    // Build recordId → linkId map
     const map = new Map<number, number>()
     for (const link of linksRes.data) {
       map.set(link.evidence_record_id, link.evidence_link_id)
@@ -328,18 +321,14 @@ async function fetchList() {
   } catch {
     // silent — empty state shown
   } finally {
+    loading.value = false
+  }
+}
+
+async function openDetail(id: number) {
   detailError.value = null
-  selectedRecord.value = null
-  // Set a placeholder so the detail panel is shown while loading
-  selectedRecord.value = { evidence_record_id: id } as EvidenceRecordDetail
-  try {
-    const res = await evidenceRunApi.getRecord(id)
-    selectedRecord.value = res.data
-  } catch (err: unknown) {
-    const e = err as { response?: { data?: { message?: string } } }
-    detailError.value = e.response?.data?.message || 'Ошибка загрузки обоснования'
-    selectedRecord.value = { evidence_record_id: id } as EvidenceRecordDetai
-  // Set a placeholder so the detail panel is shown while loading
+  detailLoading.value = true
+  // Placeholder so detail panel activates while loading
   selectedRecord.value = { evidence_record_id: id } as EvidenceRecordDetail
   try {
     const res = await evidenceRunApi.getRecord(id)
@@ -360,13 +349,10 @@ async function confirmDetach(recordId: number) {
   detachLoading.value[recordId] = true
   try {
     await evidenceRunApi.detachLink(
-    toast('Связь удалена')
-  } catch (err: unknown) {
-    const e = err as { response?: { data?: { message?: string } } }
-    toast(e.response?.data?.message || 'Ошибка при удалении связи', 'error')inkableId,
+      props.linkableType as 'operation_price' | 'price_list_version',
+      props.linkableId,
       linkId,
     )
-    // Remove from local list
     records.value = records.value.filter(r => r.id !== recordId)
     meta.value.total = Math.max(0, meta.value.total - 1)
     linkMap.value.delete(recordId)
@@ -382,18 +368,14 @@ async function confirmDetach(recordId: number) {
 
 async function changeStatus(newStatus: string) {
   if (!selectedRecord.value) return
-    toast('Статус обновлён')
-  } catch (err: unknown) {
-    const e = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } }
-    const fieldErr = e.response?.data?.errors?.['verification_status']?.[0]
-    toast(fieldErr || e.response?.data?.message || 'Ошибка при обновлении статуса', 'error')
+  statusLoading.value = true
+  try {
     const res = await evidenceRunApi.updateVerificationStatus(
       selectedRecord.value.evidence_record_id,
       newStatus,
     )
     const updated = res.data.verification_status
     selectedRecord.value = { ...selectedRecord.value, verification_status: updated }
-    // Sync in list
     const rec = records.value.find(r => r.id === selectedRecord.value!.evidence_record_id)
     if (rec) rec.verification_status = updated
     toast('Статус обновлён')

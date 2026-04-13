@@ -1002,11 +1002,31 @@
 
           <template v-slot:item.source="{ item }">
             <v-chip
+              v-if="!item.is_manual && item.price_list_version_id && item.price_list_id && item.supplier_id"
               size="small"
-              :color="item.is_manual ? 'primary' : 'success'"
+              color="success"
+              variant="tonal"
+              style="cursor:pointer"
+              title="Перейти к версии прайс-листа"
+              @click="router.push({ name: 'price-list-version-show', params: { supplierId: item.supplier_id, priceListId: item.price_list_id, versionId: item.price_list_version_id } })"
+            >
+              Авто
+            </v-chip>
+            <v-chip
+              v-else-if="!item.is_manual"
+              size="small"
+              color="success"
               variant="flat"
             >
-              {{ item.is_manual ? 'Ручная' : 'Авто' }}
+              Авто
+            </v-chip>
+            <v-chip
+              v-else
+              size="small"
+              color="primary"
+              variant="flat"
+            >
+              Ручная
             </v-chip>
           </template>
           <template v-slot:item.actions="{ item }">
