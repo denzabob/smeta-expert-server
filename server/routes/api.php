@@ -632,10 +632,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('price-list-versions/{version}', [\App\Http\Controllers\Api\PriceListVersionController::class, 'show']);
     Route::get('price-list-versions/{version}/download', [\App\Http\Controllers\Api\PriceListVersionController::class, 'download']);
     Route::get('price-list-versions/{version}/items', [\App\Http\Controllers\Api\PriceListVersionController::class, 'items']);
+    Route::post('price-list-versions/{version}/evidence-links', [\App\Http\Controllers\Api\PriceListVersionController::class, 'storeEvidenceLink']);
+    Route::get('price-list-versions/{version}/evidence-links', [\App\Http\Controllers\Api\PriceListVersionController::class, 'listEvidenceLinks']);
     
     // Operation Price Linking
     Route::put('operation-prices/{operationPrice}/link', [\App\Http\Controllers\Api\PriceListVersionController::class, 'linkOperation']);
     Route::delete('operation-prices/{operationPrice}/link', [\App\Http\Controllers\Api\PriceListVersionController::class, 'unlinkOperation']);
+    Route::post('operation-prices/{operationPrice}/evidence-links', [\App\Http\Controllers\Api\PriceListVersionController::class, 'storeOperationPriceEvidenceLink']);
+    Route::get('operation-prices/{operationPrice}/evidence-links', [\App\Http\Controllers\Api\PriceListVersionController::class, 'listOperationPriceEvidenceLinks']);
     
     // ========== Price Import API ==========
     Route::get('price-imports', [\App\Http\Controllers\Api\PriceImportController::class, 'index']);

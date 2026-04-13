@@ -476,86 +476,137 @@
    REPORT HEADER (premium / dompdf-friendly)
    ========================= */
 
+/* =========================
+   TOPBAR / VERIFY HEADER
+   ========================= */
+
 .topbar-table {
   width: 100%;
   border-collapse: collapse;
-  table-layout: auto; 
-  margin-bottom: 2mm;
+  table-layout: fixed;
+  margin: 0 0 3mm 0;
+  border: none;
+}
+
+.topbar-table,
+.topbar-table tr,
+.topbar-table td {
+  border: none !important;
+  background: transparent;
 }
 
 .topbar-brand {
-  margin-bottom: 2mm;
+  margin: 0 0 1.8mm 0;
+  padding: 0 0 1.2mm 0;
   font-size: 7.6pt;
   line-height: 1.2;
-  color: #555;
+  color: #666;
+  border-bottom: 0.35mm solid #d9d9d9;
 }
 
-.topbar-brand a {
-  color: #555;
-  text-decoration: underline;
+.topbar-brand .brand-name {
+  font-weight: 800;
+  font-size: 8.2pt;
+  letter-spacing: 0.35px;
+  color: #222;
+  text-transform: uppercase;
+}
+
+.topbar-brand .brand-sep,
+.topbar-brand .brand-dot {
+  color: #9a9a9a;
+  padding: 0 1mm;
+}
+
+.topbar-brand .brand-text {
+  color: #666;
+  font-weight: 400;
+}
+
+.topbar-brand .brand-link {
+  color: #4d4d4d;
+  text-decoration: none;
+  border-bottom: 0.2mm solid #bcbcbc;
+}
+
+.topbar-brand .brand-link:hover {
+  text-decoration: none;
 }
 
 .topbar-table td {
-  vertical-align: top;
-  padding: 1.2mm 1.4mm;
+  vertical-align: middle;
+  padding: 0;
 }
 
-/* 1) QR-код: минимальная ширина под изображение */
+/* QR */
 .topbar-qr {
-  width: 1%; /* Трюк: минимально возможная ширина */
-  white-space: nowrap;
-  padding-right: 2.4mm;
+  width: 18mm;
+  padding-right: 3.2mm;
 }
 
 .qr-img {
   display: block;
-  width: 58px;
-  height: 58px;
+  width: 16mm;
+  height: 16mm;
 }
 
-/* 2) Пояснение: занимает основное пространство */
 .topbar-explain {
-  width: auto;
-  padding-right: 2mm;
+  padding-top: 1.2mm;
+  padding-right: 4mm;
 }
 
 .topbar-text {
-  font-size: 8pt;
-  line-height: 1.15;
-  color: #444;
+  font-size: 7.9pt;
+  line-height: 1.12;
+  color: #2f2f2f;
   text-align: left;
 }
 
-/* 3) Справка: фиксированная ширина справа */
+.topbar-text strong {
+  font-weight: 800;
+  color: #222;
+}
+
+.topbar-text .mono-small {
+  font-family: "DejaVu Sans Mono","Courier New",monospace;
+  font-size: 7.8pt;
+  color: #333;
+}
+
+.topbar-text .verify-link {
+  display: inline-block;
+  margin-top: 0.6mm;
+  font-size: 7.6pt;
+  color: #5c5c5c;
+  text-decoration: none;
+  border-bottom: 0.2mm solid #c7c7c7;
+}
+
 .topbar-meta {
-  width: 40mm;
-  white-space: nowrap;
+  width: 36mm;
+  text-align: right;
+  padding-top: 0.8mm;
 }
 
 .meta-lines {
-  border-left: none;
-  padding-left: 0;
-  font-size: 8pt;
-  line-height: 1.05;
+  font-size: 7.7pt;
+  line-height: 1.08;
+  color: #666;
 }
 
 .meta-lines div {
-  margin-bottom: 1.5mm;
+  margin-bottom: 1mm;
 }
 
-.k { 
-  color: #666; 
-  font-size: 8pt;
-  display: inline-block;
-  min-width: 50px;
+.k {
+  color: #777;
+  font-size: 7.7pt;
 }
 
-.mono-small { 
-  font-family: monospace; 
-  font-size: 8pt; 
+.k b {
+  color: #222;
+  font-weight: 800;
 }
-
-a { color: inherit; text-decoration: underline; }
   </style>
 </head>
 
@@ -568,30 +619,32 @@ a { color: inherit; text-decoration: underline; }
   @endphp
 
   <div class="topbar-brand">
-    <div>Профессиональная система расчета стоимости устранения дефектов ПРИЗМА <a href="https://prismcore.ru">https://prismcore.ru</a></div>
-  </div>
+  <span class="brand-name">ПРИЗМА</span>
+  <span class="brand-sep">—</span>
+  <span class="brand-text">цифровая система расчета</span>
+  <span class="brand-dot">•</span>
+  <a class="brand-link" href="https://prismcore.ru">prismcore.ru</a>
+</div>
 
-  <table class="topbar-table">
+<table class="topbar-table">
   <tr>
     <td class="topbar-qr">
       <img src="{{ $qrSvg }}" class="qr-img" />
     </td>
 
     <td class="topbar-explain">
-  <div class="topbar-text">
-    Документ сформирован в цифровой системе расчета стоимости устранения дефектов мебели.
-    Проверка подлинности:
-    @if($verificationUrl)
-      <a href="{{ $verificationUrl }}">{{ $verificationUrl }}</a>
-    @endif
-  </div>
-</td>
+      <div class="topbar-text">
+  <strong>Проверка подлинности:</strong>
+  <span class="mono-small">0yo9xkyb7h</span><br>
+  <a class="verify-link" href="{{ $verificationUrl }}">verify.prismcore.ru</a>
+</div>
+    </td>
 
     <td class="topbar-meta">
       <div class="meta-lines">
         <div><span class="k">Дата: <b>{{ $revisionDate ?? '20.01.2026' }}</b></span></div>
-        <div><span class="k">Hash:{{ $snapshotHashShort ?? '09c0dff2...769bc59d' }}</span></div>
-        <div><span class="k">Версия: 1</span></div>
+        <div><span class="k">Hash: <span class="mono-small">{{ $snapshotHashShort ?? '09c0dff2...769bc59d' }}</span></span></div>
+        <div><span class="k">Версия: <b>1</b></span></div>
       </div>
     </td>
   </tr>
@@ -769,7 +822,6 @@ a { color: inherit; text-decoration: underline; }
 
     <!-- === 3. ПЛИТЫ === -->
     @if(!empty($report['plates']))
-      @php $useAreaMode = $report['project']['use_area_calc_mode'] ?? false; @endphp
       <div class="section-title keep-with-next">Расчёт плитных материалов</div>
       <table>
         <thead>
@@ -778,12 +830,8 @@ a { color: inherit; text-decoration: underline; }
             <th class="text-right" style="width: 12%;">Площадь м²</th>
             <th class="text-right" style="width: 8%;">Отходы</th>
             <th class="text-right" style="width: 12%;">С отходами</th>
-            @if(!$useAreaMode)
-              <th class="text-right" style="width: 8%;">Листов</th>
-              <th class="text-right" style="width: 14%;">Цена/лист, руб.</th>
-            @else
-              <th class="text-right" style="width: 22%;">Цена/м², руб.</th>
-            @endif
+            <th class="text-right" style="width: 8%;">Листов</th>
+            <th class="text-right" style="width: 14%;">Цена/лист, руб.</th>
             <th class="text-right" style="width: 16%;">Итого, руб.</th>
           </tr>
         </thead>
@@ -799,19 +847,15 @@ a { color: inherit; text-decoration: underline; }
               <td class="text-right mono">{{ number_format($plate['area_details'] ?? 0, 2) }}</td>
               <td class="text-right mono">{{ $waste }}%</td>
               <td class="text-right mono">{{ number_format($plate['area_with_waste'] ?? 0, 2) }}</td>
-              @if(!$useAreaMode)
-                <td class="text-right bold mono">{{ $plate['sheets_count'] ?? 0 }}</td>
-                <td class="text-right mono nowrap">{{ number_format($plate['price_per_sheet'] ?? 0, 2, ',', ' ') }}</td>
-              @else
-                <td class="text-right mono nowrap">{{ number_format($plate['price_per_m2'] ?? 0, 2, ',', ' ') }}</td>
-              @endif
+              <td class="text-right bold mono">{{ $plate['sheets_count'] ?? 0 }}</td>
+              <td class="text-right mono nowrap">{{ number_format($plate['price_per_sheet'] ?? 0, 2, ',', ' ') }}</td>
               <td class="text-right bold mono nowrap">{{ number_format($plate['total_cost'] ?? 0, 2, ',', ' ') }}</td>
             </tr>
           @endforeach
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="{{ $useAreaMode ? 5 : 6 }}" style="text-align: right; font-weight: bold; padding-right: 4mm;">Итого по разделу:</td>
+            <td colspan="6" style="text-align: right; font-weight: bold; padding-right: 4mm;">Итого по разделу:</td>
             <td class="text-right bold mono">
               @php
                 $platesTotal = 0;

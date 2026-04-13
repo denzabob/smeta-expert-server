@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\EvidenceLink;
+use App\Models\EvidenceRecord;
 use App\Models\PriceList;
 use App\Models\PriceListVersion;
 use App\Models\SupplierOperation;
@@ -109,7 +111,6 @@ class PriceListVersionController extends Controller
         $version->items_count = $itemsCount;
 
         $version->loadCount('evidenceLinks');
-        $version->has_evidence = (bool) ($version->evidence_links_count ?? 0);
 
         // Подтягиваем file_path и original_filename из import session, если на версии их нет
         $session = $version->importSessions->first();
@@ -120,7 +121,12 @@ class PriceListVersionController extends Controller
             $version->file_path = $session->file_path;
         }
 
-        return response()->json($version);
+        $data = $version->toArray();
+        $data['evidence_links_count'] = $version->evidence_links_count ?? 0;
+        $data['has_evidence'] = (bool) $data['evidence_links_count'];
+        $data['items_count'] = $itemsCount;
+
+        return response()->json($data);
     }
 
     /**
@@ -579,6 +585,82 @@ class PriceListVersionController extends Controller
     }
 
     /**
+     * List all EvidenceRecords attached to a PriceListVersion.
+     *
+     * GET /api/price-list-versions/{version}/evidence-links
+     */
+    public function listEvidenceLinks(Request $request, PriceListVersion $version): JsonResponse
+    {
+        $this->authorizeVersion($request, $version);
+
+        $links = $version->evidenceLinks()
+            ->with(['evidenceRecord.assets'])
+            ->get();
+
+        $data = $links->map(fn (EvidenceLink $link) => $this->serializeEvidenceLink($link));
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * List all EvidenceRecords attached to an OperationPrice.
+     *
+     * GET /api/operation-prices/{operationPrice}/evidence-links
+     */
+    public function listOperationPriceEvidenceLinks(Request $request, \App\Models\OperationPrice $operationPrice): JsonResponse
+    {
+        // Authorize via version → priceList → supplier (same pattern as H4)
+        $operationPrice->load('priceListVersion.priceList.supplier');
+        if ($operationPrice->priceListVersion->priceList->supplier->user_id !== $request->user()->id) {
+            abort(403, 'Доступ запрещен');
+        }
+
+        $links = $operationPrice->evidenceLinks()
+            ->with(['evidenceRecord.assets'])
+            ->get();
+
+        $data = $links->map(fn (EvidenceLink $link) => $this->serializeEvidenceLink($link));
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Serialize a single EvidenceLink → EvidenceRecord with assets.
+     */
+    private function serializeEvidenceLink(EvidenceLink $link): array
+    {
+        $record = $link->evidenceRecord;
+
+        $assets = $record->assets->map(function (\App\Models\GenericEvidenceAsset $asset) {
+            return [
+                'id'                => $asset->id,
+                'asset_type'        => $asset->asset_type,
+                'original_filename' => $asset->original_filename,
+                'mime_type'         => $asset->mime_type,
+                'file_size'         => $asset->file_size,
+                'download_url'      => $asset->file_path
+                    ? \Illuminate\Support\Facades\Storage::disk('public')->url($asset->file_path)
+                    : null,
+            ];
+        })->values()->all();
+
+        return [
+            'evidence_link_id'    => $link->id,
+            'relation_type'       => $link->relation_type,
+            'evidence_record_id'  => $record->id,
+            'uuid'                => $record->uuid,
+            'source_type'         => $record->source_type,
+            'source_url'          => $record->source_url,
+            'observed_price'      => $record->observed_price,
+            'currency'            => $record->currency,
+            'verification_status' => $record->verification_status,
+            'capture_method'      => $record->capture_method,
+            'observed_at'         => $record->observed_at?->toIso8601String(),
+            'assets'              => $assets,
+        ];
+    }
+
+    /**
      * Authorize price list access.
      */
     private function authorizePriceList(Request $request, PriceList $priceList): void
@@ -586,6 +668,104 @@ class PriceListVersionController extends Controller
         if ($priceList->supplier->user_id !== $request->user()->id) {
             abort(403, 'Доступ запрещен');
         }
+    }
+
+    /**
+     * Attach an existing EvidenceRecord to a PriceListVersion.
+     *
+     * POST /api/price-list-versions/{version}/evidence-links
+     * Body: { evidence_record_id: int }
+     *
+     * Prevents duplicate identical links. Returns 201 on new attach,
+     * 200 with already_attached flag if the link already exists.
+     */
+    public function storeEvidenceLink(Request $request, PriceListVersion $version): JsonResponse
+    {
+        $this->authorizeVersion($request, $version);
+
+        $validated = $request->validate([
+            'evidence_record_id' => 'required|integer|exists:evidence_records,id',
+        ]);
+
+        $recordId = (int) $validated['evidence_record_id'];
+
+        // Guard against duplicate: same record already attached to this version
+        $existing = EvidenceLink::where('evidence_record_id', $recordId)
+            ->where('linkable_type', 'price_list_version')
+            ->where('linkable_id', $version->id)
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'message'          => 'Доказательство уже прикреплено к этой версии прайса',
+                'already_attached' => true,
+                'evidence_link_id' => $existing->id,
+            ], 200);
+        }
+
+        $link = EvidenceLink::create([
+            'evidence_record_id' => $recordId,
+            'linkable_type'      => 'price_list_version',
+            'linkable_id'        => $version->id,
+            'relation_type'      => 'primary',
+        ]);
+
+        return response()->json([
+            'message'          => 'Доказательство прикреплено',
+            'already_attached' => false,
+            'evidence_link_id' => $link->id,
+        ], 201);
+    }
+
+    /**
+     * Attach an existing EvidenceRecord to an OperationPrice.
+     *
+     * POST /api/operation-prices/{operationPrice}/evidence-links
+     * Body: { evidence_record_id: int }
+     *
+     * Prevents duplicate identical links. Returns 201 on new attach,
+     * 200 with already_attached flag if the link already exists.
+     */
+    public function storeOperationPriceEvidenceLink(Request $request, \App\Models\OperationPrice $operationPrice): JsonResponse
+    {
+        // Authorize via version → priceList → supplier (same pattern as linkOperation)
+        $operationPrice->load('priceListVersion.priceList.supplier');
+        if ($operationPrice->priceListVersion->priceList->supplier->user_id !== $request->user()->id) {
+            abort(403, 'Доступ запрещен');
+        }
+
+        $validated = $request->validate([
+            'evidence_record_id' => 'required|integer|exists:evidence_records,id',
+        ]);
+
+        $recordId = (int) $validated['evidence_record_id'];
+
+        // Guard against duplicate: same record already attached to this operation price
+        $existing = EvidenceLink::where('evidence_record_id', $recordId)
+            ->where('linkable_type', 'operation_price')
+            ->where('linkable_id', $operationPrice->id)
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'message'          => 'Доказательство уже прикреплено к этой строке прайса',
+                'already_attached' => true,
+                'evidence_link_id' => $existing->id,
+            ], 200);
+        }
+
+        $link = EvidenceLink::create([
+            'evidence_record_id' => $recordId,
+            'linkable_type'      => 'operation_price',
+            'linkable_id'        => $operationPrice->id,
+            'relation_type'      => 'primary',
+        ]);
+
+        return response()->json([
+            'message'          => 'Доказательство прикреплено',
+            'already_attached' => false,
+            'evidence_link_id' => $link->id,
+        ], 201);
     }
 
     /**
