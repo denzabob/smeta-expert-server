@@ -289,6 +289,97 @@
 
               <!-- 4. Справочные блоки -->
               <div v-else-if="activeSection === 4" class="section-content">
+                <div class="section-title">Настройки расчёта нормо-часа</div>
+                <div class="section-hint">
+                  Эти параметры используются для расчёта стоимости 1 часа подрядных работ и для PDF-обоснования.
+                </div>
+
+                <v-row dense>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model.number="form.labor_employer_insurance_rate_percent"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      label="Страховые начисления работодателя"
+                      suffix="%"
+                      :error-messages="fieldErrors.labor_employer_insurance_rate"
+                    />
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-select
+                      v-model="form.labor_aggregation_strategy"
+                      :items="aggregationStrategyOptions"
+                      item-title="title"
+                      item-value="value"
+                      label="Стратегия агрегации"
+                      :error-messages="fieldErrors.labor_aggregation_strategy"
+                    />
+                  </v-col>
+
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model.number="form.labor_load_factor_calendar_hours"
+                      type="number"
+                      step="1"
+                      min="1"
+                      label="Календарный фонд часов"
+                      :error-messages="fieldErrors.labor_load_factor_calendar_hours"
+                    />
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model.number="form.labor_load_factor_productive_hours"
+                      type="number"
+                      step="1"
+                      min="1"
+                      label="Производительные часы"
+                      :error-messages="fieldErrors.labor_load_factor_productive_hours"
+                    />
+                  </v-col>
+
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model.number="form.labor_planned_profitability_rate_percent"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      label="Плановая рентабельность"
+                      suffix="%"
+                      :error-messages="fieldErrors.labor_planned_profitability_rate"
+                    />
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model.number="form.labor_rate_rounding_scale"
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="6"
+                      label="Точность округления"
+                      hint="Количество знаков после запятой в расчётах."
+                      persistent-hint
+                      :error-messages="fieldErrors.labor_rate_rounding_scale"
+                    />
+                  </v-col>
+
+                  <v-col cols="12">
+                    <div class="labor-helper-block">
+                      <div class="text-body-2 text-medium-emphasis">
+                        Коэффициент загрузки рассчитывается как календарные часы / производительные часы.
+                      </div>
+                      <div class="labor-preview">
+                        {{ loadFactorPreview }}
+                      </div>
+                    </div>
+                  </v-col>
+                </v-row>
+              </div>
+
+              <!-- 5. Справочные блоки -->
+              <div v-else-if="activeSection === 5" class="section-content">
                 <div class="section-title">Справочные блоки</div>
                 <div class="section-hint">UI как в настройках проекта: список, reorder, enable, edit</div>
 
@@ -418,6 +509,13 @@ interface UserSettings {
   show_waste_edge_description: boolean
   show_waste_operations_description: boolean
 
+  labor_employer_insurance_rate_percent: number
+  labor_load_factor_calendar_hours: number
+  labor_load_factor_productive_hours: number
+  labor_planned_profitability_rate_percent: number
+  labor_aggregation_strategy: 'auto' | 'median' | 'mean' | 'min' | 'max'
+  labor_rate_rounding_scale: number
+
   text_blocks: TextBlock[]
 }
 
@@ -426,8 +524,17 @@ const sections = [
   { id: 1, title: 'Общие коэффициенты', icon: 'mdi-tune' },
   { id: 2, title: 'Материалы по умолчанию', icon: 'mdi-package-variant' },
   { id: 3, title: 'Отходы', icon: 'mdi-recycle' },
-  { id: 4, title: 'Справочные блоки', icon: 'mdi-text-box-outline' },
+  { id: 4, title: 'Нормо-час', icon: 'mdi-calculator' },
+  { id: 5, title: 'Справочные блоки', icon: 'mdi-text-box-outline' },
 ]
+
+const aggregationStrategyOptions = [
+  { title: 'Авто', value: 'auto' },
+  { title: 'Медиана', value: 'median' },
+  { title: 'Среднее', value: 'mean' },
+  { title: 'Минимум', value: 'min' },
+  { title: 'Максимум', value: 'max' },
+] as const
 
 const activeSection = ref(0)
 const loading = ref(true)
@@ -459,6 +566,12 @@ const form = ref<UserSettings>({
   show_waste_plate_description: false,
   show_waste_edge_description: false,
   show_waste_operations_description: false,
+  labor_employer_insurance_rate_percent: 30,
+  labor_load_factor_calendar_hours: 160,
+  labor_load_factor_productive_hours: 120,
+  labor_planned_profitability_rate_percent: 15,
+  labor_aggregation_strategy: 'auto',
+  labor_rate_rounding_scale: 2,
   text_blocks: [] as TextBlock[]
 })
 
@@ -470,6 +583,8 @@ const snackbar = ref({
   color: 'info',
   timeout: 3000
 })
+
+const fieldErrors = ref<Record<string, string[]>>({})
 
 const showNotification = (message: string, color: string = 'info', timeout: number = 3000) => {
   snackbar.value = { show: true, message, color, timeout }
@@ -512,15 +627,118 @@ const isDirty = computed(() => {
   return !loading.value && original.value !== '' && serializeForDirty() !== original.value
 })
 
-const buildPayload = (): Partial<UserSettings> => {
+const loadFactorPreview = computed(() => {
+  const calendar = Number(form.value.labor_load_factor_calendar_hours)
+  const productive = Number(form.value.labor_load_factor_productive_hours)
+
+  if (!Number.isFinite(calendar) || !Number.isFinite(productive) || calendar <= 0 || productive <= 0) {
+    return 'Введите положительные значения часов, чтобы увидеть коэффициент.'
+  }
+
+  const factor = calendar / productive
+  const factorLabel = new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(factor)
+
+  return `${calendar} / ${productive} = ${factorLabel}`
+})
+
+const percentToFraction = (value: number | null | undefined): number => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  return numeric / 100
+}
+
+const fractionToPercent = (value: number | null | undefined): number => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  return numeric * 100
+}
+
+const applySettingsToForm = (settingsRes: Record<string, any> = {}) => {
+  const {
+    text_blocks,
+    labor_employer_insurance_rate,
+    labor_planned_profitability_rate,
+    labor_load_factor_calendar_hours,
+    labor_load_factor_productive_hours,
+    labor_aggregation_strategy,
+    labor_rate_rounding_scale,
+    ...otherSettings
+  } = settingsRes || {}
+
+  form.value = {
+    ...form.value,
+    ...otherSettings,
+    labor_employer_insurance_rate_percent: fractionToPercent(labor_employer_insurance_rate),
+    labor_planned_profitability_rate_percent: fractionToPercent(labor_planned_profitability_rate),
+    labor_load_factor_calendar_hours: Number(labor_load_factor_calendar_hours ?? form.value.labor_load_factor_calendar_hours),
+    labor_load_factor_productive_hours: Number(labor_load_factor_productive_hours ?? form.value.labor_load_factor_productive_hours),
+    labor_aggregation_strategy: labor_aggregation_strategy ?? form.value.labor_aggregation_strategy,
+    labor_rate_rounding_scale: Number(labor_rate_rounding_scale ?? form.value.labor_rate_rounding_scale),
+    text_blocks: text_blocks ?? [],
+  }
+}
+
+const validateLaborSettings = (): boolean => {
+  const errors: Record<string, string[]> = {}
+
+  const pushError = (key: string, message: string) => {
+    errors[key] ??= []
+    errors[key].push(message)
+  }
+
+  const insurance = Number(form.value.labor_employer_insurance_rate_percent)
+  if (!Number.isFinite(insurance) || insurance < 0 || insurance > 100) {
+    pushError('labor_employer_insurance_rate', 'Введите значение от 0 до 100%.')
+  }
+
+  const profitability = Number(form.value.labor_planned_profitability_rate_percent)
+  if (!Number.isFinite(profitability) || profitability < 0 || profitability > 100) {
+    pushError('labor_planned_profitability_rate', 'Введите значение от 0 до 100%.')
+  }
+
+  const calendar = Number(form.value.labor_load_factor_calendar_hours)
+  if (!Number.isFinite(calendar) || calendar <= 0) {
+    pushError('labor_load_factor_calendar_hours', 'Введите положительное число часов.')
+  }
+
+  const productive = Number(form.value.labor_load_factor_productive_hours)
+  if (!Number.isFinite(productive) || productive <= 0) {
+    pushError('labor_load_factor_productive_hours', 'Введите положительное число часов.')
+  }
+
+  const rounding = Number(form.value.labor_rate_rounding_scale)
+  if (!Number.isFinite(rounding) || rounding < 0 || rounding > 6) {
+    pushError('labor_rate_rounding_scale', 'Допустимые значения: от 0 до 6.')
+  }
+
+  if (!aggregationStrategyOptions.some(option => option.value === form.value.labor_aggregation_strategy)) {
+    pushError('labor_aggregation_strategy', 'Выберите корректную стратегию агрегации.')
+  }
+
+  fieldErrors.value = errors
+  return Object.keys(errors).length === 0
+}
+
+const buildPayload = (): Record<string, any> => {
   const descOrNull = (d: CoefficientDescription): CoefficientDescription | null => {
     const title = (d.title || '').trim()
     const text = (d.text || '').trim()
     return title || text ? { title, text } : null
   }
 
+  const {
+    labor_employer_insurance_rate_percent,
+    labor_planned_profitability_rate_percent,
+    ...otherForm
+  } = form.value
+
   return {
-    ...form.value,
+    ...otherForm,
+    labor_employer_insurance_rate: percentToFraction(labor_employer_insurance_rate_percent),
+    labor_planned_profitability_rate: percentToFraction(labor_planned_profitability_rate_percent),
     waste_plate_description: descOrNull(plateDesc.value),
     waste_edge_description: descOrNull(edgeDesc.value),
     waste_operations_description: descOrNull(opsDesc.value),
@@ -540,13 +758,8 @@ const loadAll = async () => {
     materials.value = materialsRes || []
     regions.value = regionsRes || []
 
-    // Нормализуем форму (исключаем text_blocks из spread, чтобы использовать default)
-    const { text_blocks, ...otherSettings } = settingsRes || {}
-    form.value = {
-      ...form.value,
-      ...otherSettings,
-      text_blocks: text_blocks ?? []
-    }
+    applySettingsToForm(settingsRes)
+    fieldErrors.value = {}
 
     plateDesc.value = normalizeDesc(settingsRes?.waste_plate_description)
     edgeDesc.value = normalizeDesc(settingsRes?.waste_edge_description)
@@ -563,18 +776,18 @@ const loadAll = async () => {
 
 const onSave = async () => {
   if (saving.value) return
+  if (!validateLaborSettings()) {
+    showNotification('Проверьте значения в настройках расчёта нормо-часа', 'error')
+    return
+  }
+
   saving.value = true
   try {
+    fieldErrors.value = {}
     const payload = buildPayload()
     const { data } = await api.put('/api/user/settings', payload)
 
-    // 同样处理 text_blocks
-    const { text_blocks: _, ...otherData } = data || {}
-    form.value = {
-      ...form.value,
-      ...otherData,
-      text_blocks: data?.text_blocks ?? []
-    }
+    applySettingsToForm(data)
     plateDesc.value = normalizeDesc(data?.waste_plate_description)
     edgeDesc.value = normalizeDesc(data?.waste_edge_description)
     opsDesc.value = normalizeDesc(data?.waste_operations_description)
@@ -583,6 +796,7 @@ const onSave = async () => {
     showNotification('Настройки сохранены', 'success')
   } catch (e: any) {
     console.error('Failed to save user settings:', e)
+    fieldErrors.value = e.response?.data?.errors ?? {}
     showNotification(e.response?.data?.message || e.message || 'Ошибка сохранения', 'error')
   } finally {
     saving.value = false

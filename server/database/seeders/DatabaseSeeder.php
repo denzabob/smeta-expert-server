@@ -23,5 +23,7 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $this->call(MaterialDimensionRulesSeeder::class);
+        $this->call(SystemOperationsSeeder::class);
+        $this->call(OperationApplicationRulesSeeder::class);
     }
 }

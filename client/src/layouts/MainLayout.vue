@@ -257,7 +257,6 @@ const baseNavItems = [
   { title: 'Материалы', to: '/materials', icon: 'mdi-layers' },
   { title: 'Проекты', to: '/projects', icon: 'mdi-cogs' },
   { title: 'Объекты', to: '/detail-types', icon: 'mdi-cogs' },
-  { title: 'Операции', to: '/operations', icon: 'mdi-file-document' },
   { title: 'Профили работ', to: '/work-profiles', icon: 'mdi-briefcase' },
   { title: 'Парсер', to: '/parser', icon: 'mdi-cloud-download' },
 ]

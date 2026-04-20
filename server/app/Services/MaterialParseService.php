@@ -6,6 +6,7 @@ use App\Models\Material;
 use App\Models\MaterialPriceHistory;
 use App\Models\ParsingSession;
 use App\Models\ParsingLog;
+use App\Services\Material\EdgeMaterialNormalizer;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -15,17 +16,20 @@ class MaterialParseService
     protected MaterialDeduplicationService $dedupService;
     protected DomainParseService $domainParseService;
     protected UrlNormalizer $urlNormalizer;
+    protected EdgeMaterialNormalizer $edgeMaterialNormalizer;
 
     public function __construct(
         TrustScoreService $trustScoreService,
         MaterialDeduplicationService $dedupService,
         DomainParseService $domainParseService,
-        UrlNormalizer $urlNormalizer
+        UrlNormalizer $urlNormalizer,
+        EdgeMaterialNormalizer $edgeMaterialNormalizer
     ) {
         $this->trustScoreService = $trustScoreService;
         $this->dedupService = $dedupService;
         $this->domainParseService = $domainParseService;
         $this->urlNormalizer = $urlNormalizer;
+        $this->edgeMaterialNormalizer = $edgeMaterialNormalizer;
     }
 
     /**
@@ -240,6 +244,10 @@ class MaterialParseService
         int $userId,
         ?int $parseSessionId = null
     ): Material {
+        if (($materialData['type'] ?? null) === Material::TYPE_EDGE) {
+            $materialData = $this->edgeMaterialNormalizer->normalize($materialData);
+        }
+
         // Create material
         $material = Material::create(array_merge($materialData, [
             'user_id' => $userId,

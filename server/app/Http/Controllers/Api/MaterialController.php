@@ -11,12 +11,14 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Services\UrlNormalizer;
 use App\Services\MaterialDimensionParser;
+use App\Services\Material\EdgeMaterialNormalizer;
 
 class MaterialController extends Controller
 {
     public function __construct(
         private UrlNormalizer $urlNormalizer,
-        private MaterialDimensionParser $dimensionParser
+        private MaterialDimensionParser $dimensionParser,
+        private EdgeMaterialNormalizer $edgeMaterialNormalizer
     ) {}
     /**
      * Display a listing of the resource.
@@ -162,6 +164,8 @@ class MaterialController extends Controller
             // Centralized dimension parsing for plate materials.
             if ($validated['type'] === 'plate') {
                 $this->applyPlateDimensions($validated, 'materials_store');
+            } elseif ($validated['type'] === Material::TYPE_EDGE) {
+                $validated = $this->edgeMaterialNormalizer->normalize($validated);
             }
 
             $material = Material::create($validated);
@@ -219,6 +223,8 @@ class MaterialController extends Controller
         // Centralized dimension parsing for plate materials.
         if ($validated['type'] === 'plate') {
             $this->applyPlateDimensions($validated, 'materials_update');
+        } elseif ($validated['type'] === Material::TYPE_EDGE) {
+            $validated = $this->edgeMaterialNormalizer->normalize($validated);
         }
 
         $originalPrice = $material->price_per_unit;

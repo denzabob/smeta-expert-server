@@ -42,6 +42,13 @@ class SmetaController extends Controller
         $project = Project::findOrFail($projectId);
         $reportDto = $this->reportService->buildReport($project);
         $report = $reportDto->toArray();
+
+        if (($report['totals']['total_is_valid'] ?? true) === false) {
+            return response()->json([
+                'error' => 'invalid_estimate',
+                'message' => 'Смета содержит ошибки и не может быть использована',
+            ], 422);
+        }
         
         $pdf = Pdf::loadView('smeta.report', compact('report'))
             ->setPaper('a4', 'portrait')

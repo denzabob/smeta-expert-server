@@ -145,14 +145,19 @@ const userGroups: MenuGroup[] = [
     ]
   },
   {
+    title: 'Цены',
+    items: [
+      { title: 'Цены', short: 'Цн', to: '/pricing' },
+    ]
+  },
+  {
     title: 'Справочники',
     items: [
       { title: 'Материалы', short: 'Мт', to: '/materials' },
       { title: 'Готовые изделия', short: 'ГИ', to: '/products' },
       { title: 'Поставщики', short: 'Пс', to: '/suppliers' },
       { title: 'Объекты', short: 'Об', to: '/detail-types' },
-      { title: 'Операции', short: 'Оп', to: '/operations' },
-      { title: 'Профили работ', short: 'ПР', to: '/work-profiles' },
+      { title: 'Труд', short: 'Тр', to: '/pricing/labor' },
     ]
   },
 ]

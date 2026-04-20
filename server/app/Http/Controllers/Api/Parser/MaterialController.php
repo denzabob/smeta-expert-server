@@ -9,11 +9,13 @@ use App\Models\Material;
 use App\Models\MaterialPriceHistory;
 use Carbon\Carbon;
 use App\Services\UrlNormalizer;
+use App\Services\Material\EdgeMaterialNormalizer;
 
 class MaterialController extends Controller
 {
     public function __construct(
-        private UrlNormalizer $urlNormalizer
+        private UrlNormalizer $urlNormalizer,
+        private EdgeMaterialNormalizer $edgeMaterialNormalizer
     ) {}
     /**
      * Создаёт или обновляет материал, полученный от парсера.
@@ -50,6 +52,9 @@ class MaterialController extends Controller
         }
 
         $data = $validator->validated();
+        $normalizedEdge = ($data['type'] ?? null) === Material::TYPE_EDGE
+            ? $this->edgeMaterialNormalizer->normalize($data)
+            : null;
         
         // Определяем время парсинга
         $parsedAt = isset($data['parsed_at']) 
@@ -83,6 +88,14 @@ class MaterialController extends Controller
                 if (isset($data['availability_status']) && 
                     $material->availability_status !== $data['availability_status']) {
                     $material->availability_status = $data['availability_status'];
+                    $needsUpdate = true;
+                }
+
+                if ($material->type === Material::TYPE_EDGE && $normalizedEdge) {
+                    $material->length_mm = $normalizedEdge['length_mm'] ?? $material->length_mm;
+                    $material->width_mm = null;
+                    $material->thickness = $normalizedEdge['thickness'] ?? $material->thickness;
+                    $material->thickness_mm = $normalizedEdge['thickness_mm'] ?? $material->thickness_mm;
                     $needsUpdate = true;
                 }
                 
@@ -140,6 +153,12 @@ class MaterialController extends Controller
                 if (isset($data['availability_status'])) {
                     $material->availability_status = $data['availability_status'];
                 }
+                if ($material->type === Material::TYPE_EDGE && $normalizedEdge) {
+                    $material->length_mm = $normalizedEdge['length_mm'] ?? $material->length_mm;
+                    $material->width_mm = null;
+                    $material->thickness = $normalizedEdge['thickness'] ?? $material->thickness;
+                    $material->thickness_mm = $normalizedEdge['thickness_mm'] ?? $material->thickness_mm;
+                }
                 $material->version += 1;
                 $material->save();
 
@@ -182,6 +201,13 @@ class MaterialController extends Controller
                         $lastHistory->save();
                     }
                 }
+
+                if ($material->type === Material::TYPE_EDGE && $normalizedEdge) {
+                    $material->length_mm = $normalizedEdge['length_mm'] ?? $material->length_mm;
+                    $material->width_mm = null;
+                    $material->thickness = $normalizedEdge['thickness'] ?? $material->thickness;
+                    $material->thickness_mm = $normalizedEdge['thickness_mm'] ?? $material->thickness_mm;
+                }
                 
                 $material->save();
                 
@@ -205,7 +231,7 @@ class MaterialController extends Controller
             }
             
             // Создаём новый парсерный материал
-            $material = Material::create([
+            $createData = [
                 'user_id' => null,
                 'origin' => 'parser',
                 'name' => $data['name'],
@@ -219,7 +245,13 @@ class MaterialController extends Controller
                 'price_checked_at' => $parsedAt, // Сразу ставим время проверки
                 'is_active' => true,
                 'version' => 1,
-            ]);
+            ];
+
+            if (($createData['type'] ?? null) === Material::TYPE_EDGE) {
+                $createData = $this->edgeMaterialNormalizer->normalize($createData);
+            }
+
+            $material = Material::create($createData);
 
             // Первая запись в историю цен
             MaterialPriceHistory::create([
@@ -320,6 +352,10 @@ class MaterialController extends Controller
      */
     protected function processSingleMaterial(array $data): array
     {
+        $normalizedEdge = ($data['type'] ?? null) === Material::TYPE_EDGE
+            ? $this->edgeMaterialNormalizer->normalize($data)
+            : null;
+
         $parsedAt = isset($data['parsed_at']) 
             ? Carbon::parse($data['parsed_at']) 
             : Carbon::now();
@@ -341,6 +377,12 @@ class MaterialController extends Controller
                 if (isset($data['availability_status']) && 
                     $material->availability_status !== $data['availability_status']) {
                     $material->availability_status = $data['availability_status'];
+                    if ($material->type === Material::TYPE_EDGE && $normalizedEdge) {
+                        $material->length_mm = $normalizedEdge['length_mm'] ?? $material->length_mm;
+                        $material->width_mm = null;
+                        $material->thickness = $normalizedEdge['thickness'] ?? $material->thickness;
+                        $material->thickness_mm = $normalizedEdge['thickness_mm'] ?? $material->thickness_mm;
+                    }
                     $material->save();
                 }
                 
@@ -377,6 +419,12 @@ class MaterialController extends Controller
                 if (isset($data['availability_status'])) {
                     $material->availability_status = $data['availability_status'];
                 }
+                if ($material->type === Material::TYPE_EDGE && $normalizedEdge) {
+                    $material->length_mm = $normalizedEdge['length_mm'] ?? $material->length_mm;
+                    $material->width_mm = null;
+                    $material->thickness = $normalizedEdge['thickness'] ?? $material->thickness;
+                    $material->thickness_mm = $normalizedEdge['thickness_mm'] ?? $material->thickness_mm;
+                }
                 $material->version += 1;
                 $material->save();
 
@@ -406,6 +454,12 @@ class MaterialController extends Controller
                 if (isset($data['availability_status'])) {
                     $material->availability_status = $data['availability_status'];
                 }
+                if ($material->type === Material::TYPE_EDGE && $normalizedEdge) {
+                    $material->length_mm = $normalizedEdge['length_mm'] ?? $material->length_mm;
+                    $material->width_mm = null;
+                    $material->thickness = $normalizedEdge['thickness'] ?? $material->thickness;
+                    $material->thickness_mm = $normalizedEdge['thickness_mm'] ?? $material->thickness_mm;
+                }
                 $material->save();
                 
                 return [
@@ -420,7 +474,7 @@ class MaterialController extends Controller
                 throw new \Exception('Cannot create material without valid price');
             }
             
-            $material = Material::create([
+            $createData = [
                 'user_id' => null,
                 'origin' => 'parser',
                 'name' => $data['name'],
@@ -434,7 +488,13 @@ class MaterialController extends Controller
                 'price_checked_at' => $parsedAt,
                 'is_active' => true,
                 'version' => 1,
-            ]);
+            ];
+
+            if (($createData['type'] ?? null) === Material::TYPE_EDGE) {
+                $createData = $this->edgeMaterialNormalizer->normalize($createData);
+            }
+
+            $material = Material::create($createData);
 
             MaterialPriceHistory::create([
                 'material_id' => $material->id,

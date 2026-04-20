@@ -235,9 +235,8 @@
 
     <div class="section-heading">{{ $section['title'] }}</div>
 
-    @if($section['is_internal'])
-      @if($section['section_type'] === 'labor')
-        {{-- ── Labor: single rate + work list ── --}}
+    @if($section['section_type'] === 'labor')
+      @if(!empty($section['internal_entries']))
         <div class="section-note">
           Для монтажно-демонтажных работ, включённых в смету, применена единая стоимость
           1 нормо-часа подрядных работ.
@@ -258,7 +257,7 @@
             </tr>
           </thead>
           <tbody>
-            @foreach($section['entries'] as $i => $entry)
+            @foreach($section['internal_entries'] as $i => $entry)
               <tr>
                 <td style="text-align:center;">{{ $i + 1 }}</td>
                 <td>{{ $entry['entry_title'] }}</td>
@@ -266,7 +265,112 @@
             @endforeach
           </tbody>
         </table>
-      @else
+      @endif
+
+      @if(!empty($section['external_entries']))
+        <div class="section-note">
+          Ниже приведены внешние источники, использованные для подтверждения стоимости
+          труда по вакансиям и опубликованным предложениям работодателей.
+        </div>
+
+        @foreach($section['external_entries'] as $entry)
+          <div class="entry-ext">
+
+            <div class="entry-head">
+              <div class="entry-title">{{ $entry['vacancy_title'] ?? $entry['entry_title'] }}</div>
+              <div class="entry-kind">Внешнее подтверждение стоимости труда</div>
+            </div>
+
+            <table class="card-cols">
+              <tr>
+                <td class="col-meta">
+                  <table class="meta-tbl">
+                    @if(!empty($entry['employer_name']))
+                      <tr>
+                        <td class="ml">Работодатель</td>
+                        <td class="mv">{{ $entry['employer_name'] }}</td>
+                      </tr>
+                    @endif
+                    @if(!empty($entry['source_label']) || !empty($entry['provider_title']))
+                      <tr>
+                        <td class="ml">Источник</td>
+                        <td class="mv">{{ $entry['provider_title'] ?? $entry['source_label'] }}</td>
+                      </tr>
+                    @endif
+                    @if(!empty($entry['region_name']))
+                      <tr>
+                        <td class="ml">Регион</td>
+                        <td class="mv">{{ $entry['region_name'] }}</td>
+                      </tr>
+                    @endif
+                    @if(!empty($entry['salary_display']))
+                      <tr>
+                        <td class="ml">Заработная плата</td>
+                        <td class="mv">{{ $entry['salary_display'] }}</td>
+                      </tr>
+                    @endif
+                    @if(!empty($entry['hours_per_month']))
+                      <tr>
+                        <td class="ml">Часов в месяц</td>
+                        <td class="mv">{{ $entry['hours_per_month'] }}</td>
+                      </tr>
+                    @endif
+                    @if(!empty($entry['hourly_rate_display']))
+                      <tr>
+                        <td class="ml">Расчётная ставка</td>
+                        <td class="mv"><span class="price-val">{{ $entry['hourly_rate_display'] }}</span></td>
+                      </tr>
+                    @endif
+                    @if(!empty($entry['source_date_display']))
+                      <tr>
+                        <td class="ml">Дата источника</td>
+                        <td class="mv">{{ $entry['source_date_display'] }}</td>
+                      </tr>
+                    @endif
+                    @if(!empty($entry['vacancy_excerpt']))
+                      <tr>
+                        <td class="ml">Краткое описание</td>
+                        <td class="mv">{{ $entry['vacancy_excerpt'] }}</td>
+                      </tr>
+                    @endif
+                    @if(!empty($entry['labor_note']))
+                      <tr>
+                        <td class="ml">Примечание</td>
+                        <td class="mv">{{ $entry['labor_note'] }}</td>
+                      </tr>
+                    @endif
+                  </table>
+                </td>
+
+                <td class="col-img">
+                  @if($entry['attachment_mode'] === 'image' && $entry['image_exists'])
+                    <div class="shot-box">
+                      <img src="{{ storage_path('app/public/' . $entry['image_path']) }}" alt="Подтверждающий материал" />
+                    </div>
+                  @elseif($entry['attachment_mode'] === 'document' && !empty($entry['doc_assets']))
+                    @foreach($entry['doc_assets'] as $docAsset)
+                      <div class="asset-doc">
+                        Документ: {{ $docAsset['filename'] ?? $docAsset['type'] }}
+                        @if(!empty($docAsset['mime']))({{ $docAsset['mime'] }})@endif
+                      </div>
+                    @endforeach
+                  @else
+                    <div class="no-attach">{{ $entry['attachment_caption'] }}</div>
+                  @endif
+                </td>
+              </tr>
+            </table>
+
+            @if(!empty($entry['source_url']))
+              <div class="full-url-line">Полная ссылка:&nbsp;<a href="{{ $entry['source_url'] }}">{{ $entry['source_url'] }}</a></div>
+            @endif
+
+            <div class="confirm-line">{{ $entry['confirmation_note'] }}</div>
+          </div>
+        @endforeach
+      @endif
+
+    @elseif($section['is_internal'])
         {{-- ── Other internal sections: name + value table ── --}}
         <div class="section-note">
           Значения по позициям данного раздела приняты по внутренним расчётным параметрам,
@@ -289,7 +393,6 @@
             @endforeach
           </tbody>
         </table>
-      @endif
 
     @else
       {{-- ── Compact 2-column cards for external (material) sections ── --}}

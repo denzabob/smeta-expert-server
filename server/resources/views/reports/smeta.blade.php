@@ -722,6 +722,7 @@
 
       // Final totals (after all tables) — compact when the document is content-heavy
       $totalsCompact  = !empty($report['compact_totals'])  || ($rowCount > 35);
+      $totalIsValid = ($report['totals']['total_is_valid'] ?? true) === true;
     @endphp
 
     <!-- === 1A. СВОДНАЯ ТАБЛИЦА ИТОГОВ === -->
@@ -755,7 +756,13 @@
 
       <div class="summary-grand">
         <div class="grand-label">ИТОГО</div>
-        <div class="grand-value">{{ number_format($report['totals']['grand_total'] ?? 0, 2, ',', ' ') }} руб.</div>
+        <div class="grand-value">
+          @if($totalIsValid && ($report['totals']['grand_total'] ?? null) !== null)
+            {{ number_format($report['totals']['grand_total'], 2, ',', ' ') }} руб.
+          @else
+            —
+          @endif
+        </div>
       </div>
     </div>
 
@@ -1373,6 +1380,11 @@
     <!-- === 5. ОПЕРАЦИИ === -->
     @if(!empty($report['operations']))
       <div class="section-title keep-with-next">Производственные операции</div>
+      @if(($report['totals']['total_is_valid'] ?? true) === false)
+        <div style="margin: 0 0 3mm 0; padding: 2mm 3mm; background: #fffbeb; border: 1px solid #f59e0b; color: #92400e; font-size: 12px;">
+          В смете есть некорректные операции
+        </div>
+      @endif
       <table>
         <thead>
           <tr>
@@ -1390,11 +1402,24 @@
               $opUnit = str_replace('не добавлено', 'отсутствует (не заявлено в исходных данных)', $op['unit'] ?? 'ед.');
             @endphp
             <tr>
-              <td style="max-width: 220px;">{{ $opName }}</td>
+              <td style="max-width: 220px;">
+                {{ $opName }}
+                @if(!empty($op['unit_mismatch']))
+                  <div style="margin-top: 1mm; color: #92400e; font-size: 10px;">
+                    Несовпадение единицы тарифа и расчёта
+                  </div>
+                @endif
+              </td>
               <td class="text-right bold mono">{{ $op['quantity'] ?? 0 }}</td>
               <td class="text-center">{{ $opUnit }}</td>
               <td class="text-right mono nowrap">{{ number_format($op['cost_per_unit'] ?? 0, 2, ',', ' ') }}</td>
-              <td class="text-right bold mono nowrap">{{ number_format($op['total_cost'] ?? 0, 2, ',', ' ') }}</td>
+              <td class="text-right bold mono nowrap">
+                @if(array_key_exists('total_cost', $op) && $op['total_cost'] !== null)
+                  {{ number_format($op['total_cost'], 2, ',', ' ') }}
+                @else
+                  —
+                @endif
+              </td>
             </tr>
           @endforeach
         </tbody>
@@ -1404,7 +1429,11 @@
             <td class="text-right bold mono">
               @php
                 $operationsTotal = 0;
-                foreach ($report['operations'] as $op) { $operationsTotal += ($op['total_cost'] ?? 0); }
+                foreach ($report['operations'] as $op) {
+                  if (($op['is_valid'] ?? true) === true) {
+                    $operationsTotal += ($op['total_cost'] ?? 0);
+                  }
+                }
               @endphp
               {{ number_format($operationsTotal, 2, ',', ' ') }}
             </td>
@@ -1535,10 +1564,16 @@
 
       <div class="total-final">
         <div class="label">ИТОГО:</div>
-        <div class="value">{{ number_format($report['totals']['grand_total'] ?? 0, 2, ',', ' ') }} руб.</div>
+        <div class="value">
+          @if($totalIsValid && ($report['totals']['grand_total'] ?? null) !== null)
+            {{ number_format($report['totals']['grand_total'], 2, ',', ' ') }} руб.
+          @else
+            —
+          @endif
+        </div>
       </div>
 
-      @if(!empty($report['totals']['grand_total']))
+      @if($totalIsValid && !empty($report['totals']['grand_total']))
         <div class="total-words" style="margin-top: 4mm; font-size: 10pt; line-height: 1.6; color: #222;">
           <strong>Прописью:</strong> {{ ucfirst(\App\Helpers\NumberToWords::convert($report['totals']['grand_total'])) }}.
         </div>
@@ -1573,19 +1608,19 @@
           </div>
         </div>
 
-        @if(!empty($justification['sources_stats']))
           <div class="card no-break">
             <div class="card-title">Статистика и итоговая ставка</div>
-            <div style="font-size: 9.2pt; line-height: 1.5;">
-              <div>Использовано источников: <strong>{{ $justification['sources_count_used'] ?? count($justification['sources_stats']) }}</strong></div>
-              <div>Метод агрегации: <strong>{{ ucfirst($justification['calculation_method'] ?? '—') }}</strong></div>
-              @if(($justification['rate_model'] ?? 'labor') === 'contractor')
-                <div>Модель: <strong>стоимость подрядных работ</strong></div>
-                <div style="margin-top: 1.5mm; font-size: 10pt;">Базовая ставка оплаты труда: <strong>{{ number_format($justification['base_rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></div>
-                <div style="font-size: 10pt;">Итоговая подрядная ставка: <strong>{{ number_format($justification['rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></div>
+              <div style="font-size: 9.2pt; line-height: 1.5;">
+                <div>Использовано источников: <strong>{{ $justification['sources_count_used'] ?? count($justification['sources_stats'] ?? []) }}</strong></div>
+              <div>Метод агрегации: <strong>{{ ucfirst($justification['aggregation_method_label'] ?? $justification['calculation_method'] ?? '—') }}</strong></div>
+              <div>Модель: <strong>стоимость подрядных работ</strong></div>
+              @if(!empty($justification['insufficient_data']))
+                <div style="margin-top: 1.5mm; font-size: 10pt; color: #a94442;">
+                  <strong>{{ $justification['additional_note'] ?? 'Недостаточно данных для определения ставки' }}</strong>
+                </div>
               @else
-                <div>Модель: <strong>стоимость часа труда</strong></div>
-                <div style="margin-top: 1.5mm; font-size: 10pt;">Итоговая ставка: <strong>{{ number_format($justification['rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></div>
+                <div style="margin-top: 1.5mm; font-size: 10pt;">Базовая ставка оплаты труда: <strong>{{ number_format((float)($justification['base_rate'] ?? 0), 2, ',', ' ') }} руб./ч</strong></div>
+                <div style="font-size: 10pt;">Итоговая подрядная ставка: <strong>{{ number_format((float)($justification['rate'] ?? 0), 2, ',', ' ') }} руб./ч</strong></div>
               @endif
             </div>
           </div>
@@ -1598,93 +1633,57 @@
                 <tbody>
                   <tr>
                     <td style="width: 65%;">Базовая ставка оплаты труда</td>
-                    <td class="text-right mono" style="width: 35%;"><strong>{{ number_format($bd['base_rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></td>
+                    <td class="text-right mono" style="width: 35%; white-space: nowrap;"><strong>{{ number_format($bd['base_rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></td>
                   </tr>
                   <tr>
-                    <td>Страховые начисления работодателя ({{ number_format($bd['employer_contrib_pct'] ?? 0, 1) }}%)</td>
-                    <td class="text-right mono">+ {{ number_format($bd['contrib_rate'] ?? 0, 2, ',', ' ') }} руб./ч</td>
+                    <td>Страховые начисления работодателя ({{ number_format((float)($justification['employer_insurance_rate_percent'] ?? 0), 1, ',', ' ') }}%)</td>
+                    <td class="text-right mono" style="white-space: nowrap;">+ {{ number_format($bd['contrib_rate'] ?? 0, 2, ',', ' ') }} руб./ч</td>
                   </tr>
                   <tr style="background: #f6f6f6;">
                     <td>Нагруженная ставка труда</td>
-                    <td class="text-right mono"><strong>{{ number_format($bd['loaded_labor_rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></td>
+                    <td class="text-right mono" style="white-space: nowrap;"><strong>{{ number_format($bd['loaded_labor_rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></td>
                   </tr>
                   <tr>
-                    <td>Коэффициент загрузки ({{ $bd['base_hours_month'] ?? 160 }} / {{ $bd['billable_hours_month'] ?? 120 }} = {{ number_format($bd['utilization_k'] ?? 1, 2) }})</td>
-                    <td class="text-right mono">&times; {{ number_format($bd['utilization_k'] ?? 1, 4) }}</td>
+                    <td>Коэффициент загрузки <span style="white-space: nowrap;">({{ $justification['load_factor_calendar_hours'] }} / {{ $justification['load_factor_productive_hours'] }} = {{ number_format((float)($justification['load_factor_value'] ?? 0), 2, ',', ' ') }})</span></td>
+                    <td class="text-right mono" style="white-space: nowrap;">&times; {{ number_format((float)($justification['load_factor_value'] ?? 0), 2, ',', ' ') }}</td>
                   </tr>
                   <tr style="background: #f6f6f6;">
                     <td>Себестоимость часа</td>
-                    <td class="text-right mono"><strong>{{ number_format($bd['cost_rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></td>
+                    <td class="text-right mono" style="white-space: nowrap;"><strong>{{ number_format($bd['cost_rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></td>
                   </tr>
                   <tr>
-                    <td>Плановая рентабельность ({{ number_format($bd['profit_pct'] ?? 0, 1) }}%)</td>
-                    <td class="text-right mono">+ {{ number_format($bd['profit_amount'] ?? 0, 2, ',', ' ') }} руб./ч</td>
+                    <td>Плановая рентабельность ({{ number_format((float)($justification['planned_profitability_rate_percent'] ?? 0), 1, ',', ' ') }}%)</td>
+                    <td class="text-right mono" style="white-space: nowrap;">+ {{ number_format($bd['profit_amount'] ?? 0, 2, ',', ' ') }} руб./ч</td>
                   </tr>
-                  @php
-                    $roundingLabel = match($bd['rounding_mode'] ?? 'none') {
-                      'int' => 'до целого рубля',
-                      '10' => 'до 10 руб.',
-                      '100' => 'до 100 руб.',
-                      default => null,
-                    };
-                  @endphp
-                  @if($roundingLabel)
-                    <tr>
-                      <td>Округление ({{ $roundingLabel }})</td>
-                      <td class="text-right mono">{{ number_format($bd['contractor_rate'] ?? 0, 2, ',', ' ') }} &rarr; {{ number_format($bd['final_rate'] ?? 0, 2, ',', ' ') }}</td>
-                    </tr>
-                  @endif
                   <tr style="background: #e8f5e9; font-size: 10pt;">
                     <td><strong>Итоговая рыночная стоимость 1 часа подрядных работ</strong></td>
-                    <td class="text-right mono"><strong>{{ number_format($bd['final_rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></td>
+                    <td class="text-right mono" style="white-space: nowrap;"><strong>{{ number_format($bd['final_rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong></td>
                   </tr>
                 </tbody>
               </table>
             </div>
           @endif
 
-          @if(strtolower($justification['calculation_method'] ?? '') === 'медиана')
+          @if(!empty($justification['methodology_text']))
             <div class="card">
               <div class="card-title">Методика</div>
               <div style="font-size: 9pt; line-height: 1.35; background: #f6f6f6; border: 1px solid #e1e1e1; padding: 2.5mm 3mm;">
-                <strong>Метод медианы:</strong> Использованы независимые открытые источники, отражающие рыночный спрос и уровень оплаты труда специалистов указанного профиля в регионе на дату расчёта. Применение медианы исключает влияние крайних значений и отражает типичное значение ставки.
+                <strong>Метод {{ $justification['aggregation_method_label'] ?? $justification['calculation_method'] ?? 'расчёта' }}:</strong> {{ $justification['methodology_text'] }}
               </div>
 
               <div style="margin-top: 2mm; font-size: 9pt; line-height: 1.45; background: #f9f9f9; border: 1px solid #e1e1e1; padding: 2.5mm 3mm;">
                 <strong>Расчёт:</strong>
-                @php
-                  $rates = array_column($justification['sources_stats'], 'rate');
-                  $rates = array_map(fn($r) => (float)$r, $rates);
-                  sort($rates);
-                  $count = count($rates);
-                  $ratesStr = implode(', ', array_map(function($r) { return number_format($r, 2, ',', ' '); }, $rates));
-                @endphp
-
-                <div style="margin-top: 1mm;">Отсортированные ставки: <strong>{{ $ratesStr }} руб./ч</strong></div>
-
-                @if($count > 0)
-                  @if($count % 2 == 0)
-                    @php
-                      $mid1 = $rates[$count / 2 - 1];
-                      $mid2 = $rates[$count / 2];
-                      $median = ($mid1 + $mid2) / 2;
-                    @endphp
-                    <div style="margin-top: 1mm;">
-                      Медиана: <strong>({{ number_format($mid1, 2, ',', ' ') }} + {{ number_format($mid2, 2, ',', ' ') }}) / 2 = {{ number_format($median, 2, ',', ' ') }} руб./ч</strong>
-                    </div>
-                  @else
-                    @php $median = $rates[(int)floor($count / 2)]; @endphp
-                    <div style="margin-top: 1mm;">Медиана: <strong>{{ number_format($median, 2, ',', ' ') }} руб./ч</strong></div>
-                  @endif
+                <div style="margin-top: 1mm;">{!! nl2br(e($justification['methodology_formula'] ?? 'Недостаточно данных для расчёта.')) !!}</div>
+                @if(empty($justification['insufficient_data']))
+                  <div style="margin-top: 1mm; font-size: 10pt;">
+                    <strong>Принятая ставка: {{ number_format((float)($justification['rate'] ?? 0), 2, ',', ' ') }} руб./ч</strong>
+                  </div>
                 @endif
-
-                <div style="margin-top: 1mm; font-size: 10pt;">
-                  <strong>Принятая ставка: {{ number_format($justification['rate'] ?? 0, 2, ',', ' ') }} руб./ч</strong>
-                </div>
               </div>
             </div>
           @endif
 
+          @if(!empty($justification['sources_stats']))
           <div class="card">
             <div class="card-title">Источники данных</div>
 
@@ -1705,7 +1704,13 @@
                     <td class="text-center">{{ $sourceIndex }}</td>
                     <td>{{ $source['name'] ?? '—' }}</td>
                     <td>{{ $justification['profile_name'] ?? '—' }}</td>
-                    <td class="text-right mono">{{ number_format((float)($source['rate'] ?? 0), 2, ',', ' ') }}</td>
+                    <td class="text-right mono">
+                      @if(isset($source['rate']))
+                        {{ number_format((float)$source['rate'], 2, ',', ' ') }}
+                      @else
+                        —
+                      @endif
+                    </td>
                     <td style="font-size: 8.6pt;">
                       @if(!empty($source['date']))
                         {{ \Carbon\Carbon::parse($source['date'])->format('d.m.Y') }}
@@ -1730,15 +1735,11 @@
               </div>
 
               <div class="detail-block" style="margin-top: 2mm;">
-                @if(($justification['rate_model'] ?? 'labor') === 'contractor')
-                  В рамках настоящего расчёта определяется рыночная стоимость подрядных работ специалиста: базовая ставка оплаты труда из открытых источников скорректирована на страховые начисления работодателя, фактическую загрузку и плановую рентабельность подрядчика.
-                @else
-                  В рамках настоящего расчёта определяется стоимость трудозатрат специалиста (стоимость рабочего времени), а не стоимость подрядной услуги организации, включающая коммерческую наценку, управленческие расходы и прибыль. Поэтому в качестве базы использованы ставки оплаты труда по региону из открытых источников. Ограничение: источники отражают оплату труда; ставка подрядной услуги может отличаться.
-                @endif
+                В рамках настоящего расчёта определяется рыночная стоимость подрядных работ специалиста: базовая ставка оплаты труда из открытых источников скорректирована на страховые начисления работодателя, фактическую загрузку и плановую рентабельность подрядчика.
               </div>
             @endif
           </div>
-        @endif
+          @endif
 
         @if(!empty($justification['works']))
           <div class="card">
@@ -1758,8 +1759,20 @@
                   <tr>
                     <td style="max-width: 200px;">{{ $work['title'] ?? '—' }}</td>
                     <td class="text-right mono">{{ number_format((float)($work['hours'] ?? 0), 2, ',', ' ') }}</td>
-                    <td class="text-right mono">{{ number_format((float)($work['rate'] ?? 0), 2, ',', ' ') }}</td>
-                    <td class="text-right mono bold">{{ number_format((float)($work['cost'] ?? 0), 2, ',', ' ') }}</td>
+                    <td class="text-right mono">
+                      @if(isset($work['rate']))
+                        {{ number_format((float)$work['rate'], 2, ',', ' ') }}
+                      @else
+                        —
+                      @endif
+                    </td>
+                    <td class="text-right mono bold">
+                      @if(isset($work['cost']))
+                        {{ number_format((float)$work['cost'], 2, ',', ' ') }}
+                      @else
+                        —
+                      @endif
+                    </td>
                   </tr>
                 @endforeach
                 <tr style="background: #efefef;">

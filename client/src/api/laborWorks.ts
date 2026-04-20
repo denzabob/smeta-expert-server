@@ -8,7 +8,8 @@ import api from './axios'
 export interface LaborWork {
   id?: number
   project_id: number
-  position_profile_id?: number | null
+  labor_profile_id?: number | null
+  labor_profile_name?: string | null
   title: string
   basis?: string | null
   hours: number
@@ -20,7 +21,7 @@ export interface LaborWork {
   rate_per_hour?: number | null
   cost_total?: number | null
   rate_snapshot?: any | null
-  cost?: number  // Computed: hours * project.normohour_rate or rate_per_hour
+  cost?: number
   created_at?: string
   updated_at?: string
 }

@@ -115,6 +115,7 @@ class EvidenceRunFinalizer
                 'source_url'         => $item->source_url,
                 'effective_value'    => $item->effective_value,
                 'currency'           => $item->currency,
+                'diagnostics_json'   => $item->diagnostics_json,
             ];
         })->values()->toArray();
 
@@ -128,6 +129,7 @@ class EvidenceRunFinalizer
                     'uuid'      => $a->uuid,
                     'asset_type' => $a->asset_type,
                     'file_path'  => $a->file_path,
+                    'original_filename' => $a->original_filename,
                     'mime_type'  => $a->mime_type,
                     'sha256'     => $a->sha256,
                 ])->values()->toArray();
@@ -172,10 +174,26 @@ class EvidenceRunFinalizer
             'initiated_by' => $run->initiated_by,
         ];
 
+        $laborItems = collect($evidenceItems)
+            ->filter(fn (array $item) => ($item['cost_component'] ?? null) === 'labor_work')
+            ->values();
+
+        $laborSnapshot = [
+            'internal' => $laborItems
+                ->filter(fn (array $item) => ($item['diagnostics_json']['labor_entry_kind'] ?? null) !== 'external')
+                ->values()
+                ->toArray(),
+            'external' => $laborItems
+                ->filter(fn (array $item) => ($item['diagnostics_json']['labor_entry_kind'] ?? null) === 'external')
+                ->values()
+                ->toArray(),
+        ];
+
         return [
             'evidence_coverage_summary' => $coverageSummary,
             'evidence_items'            => $evidenceItems,
             'evidence_records'          => $records,
+            'labor'                     => $laborSnapshot,
             'exceptions'                => $exceptions,
             'generation_meta'           => $generationMeta,
         ];

@@ -36,9 +36,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Relation::morphMap([
+            'material'          => \App\Models\Material::class,
             'project_position'  => \App\Models\ProjectPosition::class,
             'project_fitting'   => \App\Models\ProjectFitting::class,
             'operation'         => \App\Models\Operation::class,
+            'labor'             => \App\Models\ProjectProfileRate::class,
+            'product'           => \App\Models\Material::class,
             'project_labor_work' => \App\Models\ProjectLaborWork::class,
             'expense'           => \App\Models\Expense::class,
             'evidence_record'   => \App\Models\EvidenceRecord::class,

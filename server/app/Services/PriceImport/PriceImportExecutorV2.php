@@ -9,6 +9,7 @@ use App\Models\OperationPrice;
 use App\Models\PriceImportSession;
 use App\Models\PriceListVersion;
 use App\Models\SupplierProductAlias;
+use App\Services\Material\EdgeMaterialNormalizer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -422,7 +423,7 @@ class PriceImportExecutorV2
             // Create new material
             $article = $rawData['sku'] ?? $rawData['article'] ?? 'IMP-' . substr(md5($rawData['name']), 0, 8);
             
-            $material = Material::create([
+            $materialData = [
                 'name' => $rawData['name'],
                 'article' => $article,
                 'type' => $rawData['type'] ?? 'other',
@@ -434,7 +435,13 @@ class PriceImportExecutorV2
                 'user_id' => $userId,
                 'origin' => 'import',
                 'search_name' => TextNormalizer::normalize($rawData['name']),
-            ]);
+            ];
+
+            if (($materialData['type'] ?? null) === Material::TYPE_EDGE) {
+                $materialData = app(EdgeMaterialNormalizer::class)->normalize($materialData);
+            }
+
+            $material = Material::create($materialData);
 
             return $material->id;
         }

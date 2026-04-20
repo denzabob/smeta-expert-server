@@ -12,6 +12,8 @@ class LaborWorkDto
         public float $hours = 0,
         public ?string $note = null,
         public int $sort_order = 0,
+        public ?int $labor_profile_id = null,
+        public ?string $labor_profile_name = null,
         public ?int $project_profile_rate_id = null,
         public ?float $rate_per_hour = null,  // Ставка норм-часа в ₽/ч
         public ?float $cost = null,  // Вычисляемое: hours * rate_per_hour
@@ -28,6 +30,8 @@ class LaborWorkDto
             'hours' => $this->hours,
             'note' => $this->note,
             'sort_order' => $this->sort_order,
+            'labor_profile_id' => $this->labor_profile_id,
+            'labor_profile_name' => $this->labor_profile_name,
             'project_profile_rate_id' => $this->project_profile_rate_id,
             'rate_per_hour' => $this->rate_per_hour,
             'cost' => $this->cost,

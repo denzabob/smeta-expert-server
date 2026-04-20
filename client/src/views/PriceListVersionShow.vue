@@ -1,7 +1,7 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="Аудит версии прайс-листа"
+      title="Цены позиций"
       :subtitle="version ? formatDate(version.effective_date || version.created_at) : undefined"
     >
       <template #prefix>
@@ -26,20 +26,11 @@
 
       <template #actions>
         <ButtonGroup>
-          <EvidenceBadge
-            v-if="version"
-            :count="version.evidence_links_count ?? 0"
-            @click="openEvidenceDrawer(version, 'price_list_version')"
-          />
-          <v-btn
-            variant="text"
-            prepend-icon="mdi-file-document-plus-outline"
-            class="text-none"
-            :disabled="!version"
-            @click="openCreateModal('price_list_version', version!.id, 'Обоснование для версии прайса')"
-          >
-            Добавить обоснование
-          </v-btn>
+          <v-tooltip location="bottom" text="Обоснование добавляется на уровне операций">
+            <template #activator="{ props: tooltipProps }">
+              <v-icon v-bind="tooltipProps" size="small" color="medium-emphasis" class="mx-1">mdi-information-outline</v-icon>
+            </template>
+          </v-tooltip>
           <v-btn
             variant="text"
             prepend-icon="mdi-refresh"
@@ -108,7 +99,12 @@
 
     <SectionCard>
       <div class="d-flex justify-space-between align-center mb-3">
-        <div class="text-h6">Позиции прайс-листа</div>
+        <div>
+          <div class="text-h6">Цены позиций</div>
+          <div class="text-caption text-medium-emphasis mt-1">
+            Каждая операция может быть подтверждена документом, ссылкой или вручно введённой ценой. Нажмите «Добавить» в строке или значок сбоку для просмотра.
+          </div>
+        </div>
       </div>
 
       <v-row class="mb-3" align="center" dense>
@@ -190,7 +186,7 @@
             :color="isLinked(item) ? 'success' : 'warning'"
             variant="tonal"
           >
-            {{ isLinked(item) ? 'Привязана' : 'Не привязана' }}
+            {{ isLinked(item) ? 'Есть в системе' : 'Не связана' }}
           </v-chip>
         </template>
 
@@ -202,6 +198,23 @@
             </div>
             <div v-if="item.price_buy" class="text-caption text-medium-emphasis">
               Закупка: {{ formatPrice(item.price_buy, item.currency) }}
+            </div>
+            <div v-if="item.price_type === 'operation'" class="mt-1">
+              <v-tooltip
+                :text="sourceConfidenceTooltip(item.evidence_links_count ?? 0)"
+                location="bottom"
+              >
+                <template #activator="{ props: tp }">
+                  <v-chip
+                    v-bind="tp"
+                    size="x-small"
+                    :color="sourceConfidenceColor(item.evidence_links_count ?? 0)"
+                    variant="tonal"
+                  >
+                    {{ sourceCountLabel(item.evidence_links_count ?? 0) }}
+                  </v-chip>
+                </template>
+              </v-tooltip>
             </div>
           </div>
         </template>
@@ -231,20 +244,31 @@
               icon="mdi-link-off"
               @click="unlinkItem(item)"
             />
-            <EvidenceBadge
+            <v-tooltip
               v-if="item.price_type === 'operation'"
-              :count="item.evidence_links_count ?? 0"
-              @click="openEvidenceDrawer(item)"
-            />
+              :text="(item.evidence_links_count ?? 0) > 0 ? 'Смотреть обоснования' : 'Нет обоснований'"
+              location="bottom"
+            >
+              <template #activator="{ props: tooltipProps }">
+                <span v-bind="tooltipProps">
+                  <EvidenceBadge
+                    :count="item.evidence_links_count ?? 0"
+                    @click="openEvidenceDrawer(item)"
+                  />
+                </span>
+              </template>
+            </v-tooltip>
             <v-btn
-              v-if="item.price_type === 'operation'"
-              icon="mdi-plus"
+              v-if="item.price_type === 'operation' && item.operation_id"
               size="x-small"
-              variant="text"
+              variant="tonal"
               color="primary"
-              title="Добавить обоснование"
-              @click="openCreateModal('operation_price', item.id, item.title)"
-            />
+              prepend-icon="mdi-plus"
+              class="text-none"
+              @click="openCreateModal('operation', item.operation_id!, item.id, item.title, item.unit ?? undefined)"
+            >
+              Добавить
+            </v-btn>
           </div>
         </template>
       </v-data-table>
@@ -262,8 +286,9 @@
     <!-- Evidence create modal -->
     <EvidenceCreateModal
       v-model="createModal.open"
-      :linkable-type="createModal.linkableType"
-      :linkable-id="createModal.linkableId"
+      :target-type="createModal.targetType"
+      :target-id="createModal.targetId"
+      :unit="createModal.unit"
       :title="createModal.title"
       @created="onEvidenceCreated"
     />
@@ -359,27 +384,26 @@ const evidenceDrawer = ref({
 
 const createModal = ref({
   open: false,
-  linkableType: 'operation_price' as 'operation_price' | 'price_list_version',
-  linkableId: 0,
+  targetType: 'operation' as 'operation' | 'material' | 'labor' | 'product',
+  targetId: 0,
+  operationPriceId: 0,
+  unit: undefined as string | undefined,
   title: '',
 })
 
 function openCreateModal(
-  linkableType: 'operation_price' | 'price_list_version',
-  linkableId: number,
+  targetType: 'operation' | 'material' | 'labor' | 'product',
+  targetId: number,
+  operationPriceId: number,
   title: string,
+  unit?: string,
 ) {
-  createModal.value = { open: true, linkableType, linkableId, title }
+  createModal.value = { open: true, targetType, targetId, operationPriceId, unit, title }
 }
 
 function onEvidenceCreated() {
-  const { linkableType, linkableId } = createModal.value
-  if (linkableType === 'operation_price') {
-    const item = items.value.find(i => i.id === linkableId)
-    if (item) item.evidence_links_count = (item.evidence_links_count ?? 0) + 1
-  } else if (linkableType === 'price_list_version' && version.value?.id === linkableId) {
-    version.value.evidence_links_count = (version.value.evidence_links_count ?? 0) + 1
-  }
+  const item = items.value.find(i => i.id === createModal.value.operationPriceId)
+  if (item) item.evidence_links_count = (item.evidence_links_count ?? 0) + 1
   showSnackbar('Обоснование добавлено', 'success')
 }
 
@@ -398,11 +422,32 @@ const snackbar = ref({
 const itemHeaders = [
   { title: 'Тип', key: 'price_type', sortable: true, width: '120px' },
   { title: 'Название', key: 'title', sortable: true },
-  { title: 'Привязка', key: 'linked', sortable: false, width: '130px' },
-  { title: 'Цена в руб.', key: 'prices', sortable: false, width: '200px' },
+  { title: 'Операция в системе', key: 'linked', sortable: false, width: '160px' },
+  { title: 'Итоговая цена, руб.', key: 'prices', sortable: false, width: '220px' },
   { title: 'Ед. изм.', key: 'unit', sortable: true, width: '100px' },
-  { title: 'Действия', key: 'actions', sortable: false, width: '180px' },
+  { title: 'Обоснование', key: 'actions', sortable: false, width: '200px' },
 ]
+
+function sourceCountLabel(count: number): string {
+  if (count === 0) return 'Нет источников'
+  if (count === 1) return '1 источник'
+  if (count < 5) return `${count} источника`
+  return `${count} источников`
+}
+
+function sourceConfidenceColor(count: number): string {
+  if (count === 0) return 'default'
+  if (count === 1) return 'warning'
+  if (count <= 3) return 'info'
+  return 'success'
+}
+
+function sourceConfidenceTooltip(count: number): string {
+  if (count === 0) return 'Цена не подтверждена'
+  if (count === 1) return 'Низкая надёжность: единственный источник'
+  if (count <= 3) return 'Средняя надёжность: два или более источника'
+  return 'Высокая надёжность: много подтверждающих источников'
+}
 
 function openEvidenceDrawer(item: { id: number; title: string }, linkableType: 'operation_price' | 'price_list_version' = 'operation_price') {
   evidenceDrawer.value = {

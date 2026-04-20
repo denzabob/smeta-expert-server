@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\ProjectRevision;
 use App\Models\RevisionPublication;
+use App\Service\ReportService;
 use App\Services\SnapshotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,8 @@ use chillerlan\QRCode\QROptions;
 class ProjectRevisionController extends Controller
 {
     public function __construct(
-        private SnapshotService $snapshotService
+        private SnapshotService $snapshotService,
+        private ReportService $reportService
     ) {}
 
     /**
@@ -34,6 +36,15 @@ class ProjectRevisionController extends Controller
         $this->authorize('update', $project);
 
         try {
+            $report = $this->reportService->buildReport($project)->toArray();
+            if (($report['totals']['total_is_valid'] ?? true) === false) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'invalid_estimate',
+                    'message' => 'Смета содержит ошибки и не может быть использована',
+                ], 422);
+            }
+
             $revision = $this->snapshotService->createSnapshot(
                 $project,
                 auth()->id()
@@ -148,6 +159,15 @@ class ProjectRevisionController extends Controller
         $revision = $project->revisions()
             ->where('number', $number)
             ->firstOrFail();
+
+        $snapshot = $this->decodeRevisionSnapshot($revision);
+        if (is_array($snapshot) && (($snapshot['totals']['total_is_valid'] ?? true) === false)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'invalid_estimate',
+                'message' => 'Смета содержит ошибки и не может быть использована',
+            ], 422);
+        }
 
         if ($revision->publish()) {
             $publication = RevisionPublication::firstOrCreate(
@@ -362,6 +382,13 @@ class ProjectRevisionController extends Controller
             ], 422);
         }
 
+        if (($snapshot['totals']['total_is_valid'] ?? true) === false) {
+            return response()->json([
+                'error' => 'invalid_estimate',
+                'message' => 'Смета содержит ошибки и не может быть использована',
+            ], 422);
+        }
+
         $pdf = Pdf::loadView('reports.smeta', [
             'report' => $snapshot,
             'qrSvg' => $this->makeQrSvg($this->getPublicUrlForRevision($revision)),
@@ -407,6 +434,13 @@ class ProjectRevisionController extends Controller
         $snapshot = is_string($snapshotRaw)
             ? (json_decode($snapshotRaw, true) ?: [])
             : (is_array($snapshotRaw) ? $snapshotRaw : []);
+
+        if (($snapshot['totals']['total_is_valid'] ?? true) === false) {
+            return response()->json([
+                'error' => 'invalid_estimate',
+                'message' => 'Смета содержит ошибки и не может быть использована',
+            ], 422);
+        }
 
         $justifications = is_array($snapshot['price_justifications'] ?? null)
             ? $snapshot['price_justifications']
@@ -466,6 +500,34 @@ class ProjectRevisionController extends Controller
         } while (RevisionPublication::where('public_id', $id)->exists());
 
         return $id;
+    }
+
+    private function decodeRevisionSnapshot(ProjectRevision $revision): ?array
+    {
+        $snapshotRaw = $revision->getRawOriginal('snapshot_json');
+
+        if (is_array($snapshotRaw)) {
+            return $snapshotRaw;
+        }
+
+        if (!is_string($snapshotRaw)) {
+            return null;
+        }
+
+        $snapshot = json_decode($snapshotRaw, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($snapshot)) {
+            return $snapshot;
+        }
+
+        if (json_last_error() === JSON_ERROR_UTF8 && function_exists('mb_convert_encoding')) {
+            $normalized = mb_convert_encoding($snapshotRaw, 'UTF-8', 'UTF-8');
+            $snapshot = json_decode($normalized, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($snapshot)) {
+                return $snapshot;
+            }
+        }
+
+        return null;
     }
 
     private function getPublicUrlForRevision(ProjectRevision $revision): ?string

@@ -31,6 +31,13 @@ class SmetaPdfController extends Controller
             $report = $this->reportService->buildReport($project);
             $reportArray = $report->toArray();
 
+            if (($reportArray['totals']['total_is_valid'] ?? true) === false) {
+                return response()->json([
+                    'error' => 'invalid_estimate',
+                    'message' => 'Смета содержит ошибки и не может быть использована',
+                ], 422);
+            }
+
             // Generate PDF from Blade template using DomPDF with UTF-8 support
             $publication = RevisionPublication::whereHas('revision', function ($q) use ($project) {
                 $q->where('project_id', $project->id)->where('status', 'published');

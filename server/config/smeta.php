@@ -11,6 +11,18 @@ return [
     */
 
     'calculation_engine_version' => env('CALCULATION_ENGINE_VERSION', '1.0.0'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Applicability Pilots
+    |--------------------------------------------------------------------------
+    |
+    | Feature flags for isolated applicability pilots that must not change the
+    | legacy production paths unless explicitly enabled.
+    |
+    */
+    'cutting_pilot_enabled' => env('SMETA_CUTTING_PILOT_ENABLED', true),
+    'cutting_pilot_debug' => env('SMETA_CUTTING_PILOT_DEBUG', false),
     
     /*
     |--------------------------------------------------------------------------

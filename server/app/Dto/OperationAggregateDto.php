@@ -16,10 +16,14 @@ class OperationAggregateDto
         public string $unit = '',                  // Единица измерения (шт, м, м², часы и т.д.)
         public float $cost_per_unit = 0,          // Стоимость за единицу
         public float $quantity = 0,                // Количество единиц
-        public float $total_cost = 0,              // Итоговая стоимость
+        public ?float $total_cost = 0,             // Итоговая стоимость; null если строка невалидна
         public bool $is_manual = false,            // true = ручной ввод, false = авто-расчёт
         public ?string $updated_at = null,         // Дата последнего обновления
         public ?string $source_url = null,         // Источник информации
+        public bool $is_valid = true,              // false = строка требует внимания и не должна считаться корректной
+        public bool $unit_mismatch = false,        // true = единица правила не совпала с единицей тарифа
+        public ?string $pricing_unit = null,       // Ожидаемая единица тарифа для расчёта
+        public ?string $resolved_price_unit = null,// Единица, пришедшая из resolver
     ) {}
 
     public function toArray(): array
@@ -32,9 +36,14 @@ class OperationAggregateDto
             'cost_per_unit' => $this->cost_per_unit,
             'quantity' => $this->quantity,
             'total_cost' => $this->total_cost,
+            'amount' => $this->total_cost,
             'is_manual' => $this->is_manual,
             'updated_at' => $this->updated_at,
             'source_url' => $this->source_url,
+            'is_valid' => $this->is_valid,
+            'unit_mismatch' => $this->unit_mismatch,
+            'pricing_unit' => $this->pricing_unit,
+            'resolved_price_unit' => $this->resolved_price_unit,
         ];
     }
 }

@@ -35,6 +35,14 @@ class RevisionRunController extends Controller
         $this->authorize('update', $project);
 
         $report = $this->reportService->buildReport($project)->toArray();
+        if (($report['totals']['total_is_valid'] ?? true) === false) {
+            return response()->json([
+                'success' => false,
+                'error' => 'invalid_estimate',
+                'message' => 'Смета содержит ошибки и не может быть использована',
+            ], 422);
+        }
+
         $reportItems = $this->collectReportItems($project, $report);
 
         $run = RevisionRun::create([
@@ -237,6 +245,16 @@ class RevisionRunController extends Controller
     public function finalize(Project $project, int $runId): JsonResponse
     {
         $this->authorize('update', $project);
+
+        $report = $this->reportService->buildReport($project)->toArray();
+        if (($report['totals']['total_is_valid'] ?? true) === false) {
+            return response()->json([
+                'success' => false,
+                'error' => 'invalid_estimate',
+                'message' => 'Смета содержит ошибки и не может быть использована',
+            ], 422);
+        }
+
         $run = RevisionRun::with(['items.priceHistory', 'items.material', 'items.projectFitting', 'items.evidenceArtifacts.assets', 'items.evidenceSubject'])
             ->where('project_id', $project->id)
             ->findOrFail($runId);

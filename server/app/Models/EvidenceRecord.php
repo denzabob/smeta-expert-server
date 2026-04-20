@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class EvidenceRecord extends Model
 {
@@ -60,5 +61,10 @@ class EvidenceRecord extends Model
     public function evidenceItems(): HasMany
     {
         return $this->hasMany(EstimateEvidenceItem::class, 'evidence_record_id');
+    }
+
+    public function laborEvidenceSource(): HasOne
+    {
+        return $this->hasOne(LaborEvidenceSource::class, 'evidence_record_id');
     }
 }

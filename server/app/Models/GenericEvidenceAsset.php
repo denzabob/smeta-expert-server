@@ -19,15 +19,22 @@ class GenericEvidenceAsset extends Model
         'file_size',
         'sha256',
         'metadata_json',
+        'uploaded_by',
     ];
 
     protected $casts = [
         'file_size' => 'integer',
         'metadata_json' => 'array',
+        'uploaded_by' => 'integer',
     ];
 
     public function evidenceRecord(): BelongsTo
     {
         return $this->belongsTo(EvidenceRecord::class, 'evidence_record_id');
+    }
+
+    public function uploader(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'uploaded_by');
     }
 }

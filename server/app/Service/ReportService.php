@@ -16,6 +16,7 @@ use App\Dto\TotalsDto;
 use App\Models\PositionProfile;
 use App\Models\Project;
 use App\Models\ProjectPosition;
+use App\Services\LaborCostCalculationService;
 use App\Services\ProjectProfileRateResolver;
 use App\Services\RateModelCalculator;
 use App\Services\Smeta\SmetaCalculator;
@@ -234,6 +235,9 @@ class ReportService
                 mb_strtolower(trim((string) $operation->name), 'UTF-8'),
                 trim((string) $operation->unit),
                 $pricePart,
+                $operation->is_valid ? 'valid' : 'invalid',
+                (string) $operation->pricing_unit,
+                (string) $operation->resolved_price_unit,
             ]);
 
             if (!isset($grouped[$key])) {
@@ -244,15 +248,25 @@ class ReportService
                     unit: $operation->unit,
                     cost_per_unit: (float) $operation->cost_per_unit,
                     quantity: 0.0,
-                    total_cost: 0.0,
+                    total_cost: $operation->is_valid ? 0.0 : null,
                     is_manual: $operation->is_manual,
                     updated_at: $operation->updated_at,
                     source_url: $operation->source_url,
+                    is_valid: $operation->is_valid,
+                    unit_mismatch: $operation->unit_mismatch,
+                    pricing_unit: $operation->pricing_unit,
+                    resolved_price_unit: $operation->resolved_price_unit,
                 );
             }
 
             $grouped[$key]->quantity += (float) $operation->quantity;
-            $grouped[$key]->total_cost += (float) $operation->total_cost;
+            if ($operation->is_valid) {
+                $grouped[$key]->total_cost = ($grouped[$key]->total_cost ?? 0.0) + (float) ($operation->total_cost ?? 0.0);
+            } else {
+                $grouped[$key]->total_cost = null;
+                $grouped[$key]->is_valid = false;
+                $grouped[$key]->unit_mismatch = $grouped[$key]->unit_mismatch || $operation->unit_mismatch;
+            }
             $grouped[$key]->is_manual = $grouped[$key]->is_manual || $operation->is_manual;
         }
 
@@ -265,18 +279,18 @@ class ReportService
     private function buildLaborWorks(Project $project): array
     {
         $laborWorks = $project->laborWorks()
-            ->with('steps')  // Загрузить подоперации
+            ->with([
+                'steps',
+                'laborProfile' => fn ($query) => $query->withTrashed()->select(['id', 'title']),
+            ])
             ->orderBy('sort_order')
             ->get();
 
-        return $laborWorks->map(function($work) use ($project) {
-            // Получить ставку для работы (либо из профиля, либо дефолтную ставку проекта)
-            $ratePerHour = $work->rate_per_hour ?? $project->normohour_rate ?? 0;
-            
-            $cost = null;
-            if ($ratePerHour > 0) {
-                $cost = round($work->hours * $ratePerHour, 2);
-            }
+        return $laborWorks->map(function($work) {
+            $ratePerHour = $work->rate_per_hour !== null ? (float) $work->rate_per_hour : null;
+            $cost = $work->cost_total !== null
+                ? (float) $work->cost_total
+                : ($ratePerHour !== null ? round($work->hours * $ratePerHour, 2) : null);
 
             // Подготовить подоперации
             $steps = $work->steps()
@@ -301,12 +315,14 @@ class ReportService
                 hours: $work->hours,
                 note: $work->note,
                 sort_order: $work->sort_order,
+                labor_profile_id: $work->labor_profile_id,
+                labor_profile_name: $work->laborProfile?->title,
                 project_profile_rate_id: $work->project_profile_rate_id,
                 rate_per_hour: $ratePerHour,
                 cost: $cost,
                 steps: $steps,
             );
-        })->toArray();
+        })->all();
     }
 
     private function calculateTotals(
@@ -337,7 +353,12 @@ class ReportService
 
         // Суммировать операции
         foreach ($operations as $operation) {
-            $totals->operations_cost += $operation->total_cost;
+            if (!$operation->is_valid) {
+                $totals->total_is_valid = false;
+                continue;
+            }
+
+            $totals->operations_cost += $operation->total_cost ?? 0.0;
         }
 
         // Суммировать фиттинги
@@ -365,8 +386,15 @@ class ReportService
         // grand_total = materials_cost + operations_cost + fittings_cost + expenses_cost + labor_works_cost
         $totals->subtotal = $totals->materials_cost + $totals->operations_cost + 
                            $totals->fittings_cost + $totals->expenses_cost + $totals->labor_works_cost;
-        $totals->total = $totals->subtotal;
-        $totals->grand_total = $totals->subtotal;
+        if ($totals->total_is_valid) {
+            $totals->total = $totals->subtotal;
+            $totals->grand_total = $totals->subtotal;
+            $totals->total_amount = $totals->subtotal;
+        } else {
+            $totals->total = null;
+            $totals->grand_total = null;
+            $totals->total_amount = null;
+        }
 
         return $totals;
     }
@@ -380,24 +408,225 @@ class ReportService
      */
     private function buildProfileRateJustifications(Project $project, array $laborWorkDtos): array
     {
-        // Убедиться что регион проекта загружен
-        if (!$project->relationLoaded('region')) {
-            $project->load('region');
+        $project->loadMissing('region', 'user');
+
+        if (!$project->user) {
+            return [];
         }
 
-        // Загружаем профильные ставки с relations
-        $profileRates = $project->profileRates()
-            ->with(['profile', 'region'])
-            ->orderBy('created_at')
-            ->get();
+        /** @var LaborCostCalculationService $calculationService */
+        $calculationService = app(LaborCostCalculationService::class);
+        $calculation = $calculationService->calculate($project, $project->user);
 
-        // Если есть сохранённые профильные ставки - используем их
-        if ($profileRates->count() > 0) {
-            return $this->buildJustificationsFromSavedRates($project, $profileRates, $laborWorkDtos);
+        $profilesById = [];
+        foreach (($calculation['profiles'] ?? []) as $profilePayload) {
+            if (!isset($profilePayload['labor_profile_id'])) {
+                continue;
+            }
+
+            $profilesById[(int) $profilePayload['labor_profile_id']] = $profilePayload;
         }
 
-        // Иначе строим preview-обоснования из работ
-        return $this->buildJustificationsFromPreview($project, $laborWorkDtos);
+        $worksByProfile = [];
+        foreach ($laborWorkDtos as $work) {
+            if (!($work instanceof LaborWorkDto) || empty($work->labor_profile_id)) {
+                continue;
+            }
+
+            $worksByProfile[(int) $work->labor_profile_id][] = $work;
+        }
+
+        $profileIds = array_values(array_unique(array_merge(
+            array_keys($profilesById),
+            array_keys($worksByProfile)
+        )));
+        sort($profileIds);
+
+        $justifications = [];
+        foreach ($profileIds as $profileId) {
+            $profilePayload = $profilesById[$profileId] ?? null;
+            $works = $worksByProfile[$profileId] ?? [];
+            $profileName = $profilePayload['labor_profile_name']
+                ?? ($works[0]->labor_profile_name ?? null)
+                ?? 'Неизвестный профиль';
+
+            $justifications[] = $this->buildEvidenceBasedJustificationEntry(
+                profileName: $profileName,
+                regionName: $calculation['region']['name'] ?? 'Не указан',
+                calculatedAt: $calculation['calculated_at'] ?? null,
+                profilePayload: $profilePayload,
+                settingsSnapshot: $calculation['settings'] ?? [],
+                works: $works,
+            );
+        }
+
+        return $justifications;
+    }
+
+    private function buildEvidenceBasedJustificationEntry(
+        string $profileName,
+        string $regionName,
+        ?string $calculatedAt,
+        ?array $profilePayload,
+        array $settingsSnapshot,
+        array $works,
+    ): array {
+        $usedSources = $profilePayload['sources']['used_sources'] ?? [];
+        $usedCount = (int) ($profilePayload['sources']['used_count'] ?? count($usedSources));
+        $aggregationMethod = (string) ($profilePayload['aggregation']['method'] ?? 'none');
+        $aggregationMethodLabel = $this->mapCalculationMethodToRussian($aggregationMethod);
+        $baseRate = isset($profilePayload['aggregation']['base_rate']) ? (float) $profilePayload['aggregation']['base_rate'] : null;
+        $finalRate = isset($profilePayload['model']['final_rate']) ? (float) $profilePayload['model']['final_rate'] : null;
+        $employerInsuranceRatePercent = round(((float) ($settingsSnapshot['employer_insurance_rate'] ?? 0)) * 100, 1);
+        $loadFactorCalendarHours = isset($settingsSnapshot['load_factor_calendar_hours']) ? (int) $settingsSnapshot['load_factor_calendar_hours'] : null;
+        $loadFactorProductiveHours = isset($settingsSnapshot['load_factor_productive_hours']) ? (int) $settingsSnapshot['load_factor_productive_hours'] : null;
+        $loadFactorValue = isset($profilePayload['model']['load_factor']) ? (float) $profilePayload['model']['load_factor'] : null;
+        $plannedProfitabilityRatePercent = round(((float) ($settingsSnapshot['planned_profitability_rate'] ?? 0)) * 100, 1);
+        $roundingScale = isset($settingsSnapshot['rounding_scale']) ? (int) $settingsSnapshot['rounding_scale'] : null;
+
+        $sourcesStats = [];
+        $sourceLinks = [];
+        foreach ($usedSources as $source) {
+            $name = trim((string) ($source['provider'] ?? '')) ?: trim((string) ($source['title'] ?? ''));
+            $url = isset($source['source_url']) && $source['source_url'] !== '' ? (string) $source['source_url'] : null;
+
+            $sourcesStats[] = [
+                'name' => $name ?: '—',
+                'rate' => isset($source['hourly_rate']) ? (float) $source['hourly_rate'] : null,
+                'url' => $url,
+                'date' => $source['source_date'] ?? null,
+            ];
+
+            if ($url) {
+                $sourceLinks[$url] = $url;
+            }
+        }
+
+        $worksForDisplay = [];
+        $totalHours = 0.0;
+        $totalCost = 0.0;
+
+        foreach ($works as $work) {
+            if (!($work instanceof LaborWorkDto)) {
+                continue;
+            }
+
+            $displayRate = $finalRate;
+            $workCost = $displayRate !== null ? round((float) $work->hours * $displayRate, 2) : null;
+            $worksForDisplay[] = [
+                'title' => $work->title,
+                'hours' => $work->hours,
+                'rate' => $displayRate,
+                'cost' => $workCost,
+            ];
+            $totalHours += (float) $work->hours;
+            $totalCost += (float) ($workCost ?? 0);
+        }
+
+        $methodology = $this->buildMethodologyPayload(
+            array_map(fn (array $row) => (float) ($row['rate'] ?? 0), array_filter($sourcesStats, fn (array $row) => $row['rate'] !== null)),
+            $aggregationMethod,
+            $baseRate
+        );
+
+        $insufficientData = $finalRate === null || $usedCount === 0;
+
+        return [
+            'profile_name' => $profileName,
+            'rate' => $finalRate,
+            'region' => $regionName,
+            'date' => $calculatedAt ? \Carbon\Carbon::parse($calculatedAt)->format('d.m.Y') : null,
+            'calculation_method' => $aggregationMethodLabel,
+            'calculation_method_code' => $aggregationMethod,
+            'aggregation_method_code' => $aggregationMethod,
+            'aggregation_method_label' => $aggregationMethodLabel,
+            'is_preview' => false,
+            'rate_model' => 'contractor',
+            'base_rate' => $baseRate,
+            'model_params' => null,
+            'model_breakdown' => $this->transformLaborModelBreakdown($profilePayload['model'] ?? [], $baseRate),
+            'employer_insurance_rate_percent' => $employerInsuranceRatePercent,
+            'load_factor_calendar_hours' => $loadFactorCalendarHours,
+            'load_factor_productive_hours' => $loadFactorProductiveHours,
+            'load_factor_value' => $loadFactorValue,
+            'planned_profitability_rate_percent' => $plannedProfitabilityRatePercent,
+            'rounding_scale' => $roundingScale,
+            'sources_count_used' => $usedCount,
+            'sources_stats' => $sourcesStats,
+            'source_links' => array_values($sourceLinks),
+            'works' => $worksForDisplay,
+            'total_hours' => round($totalHours, 2),
+            'total_cost' => round($totalCost, 2),
+            'additional_note' => $insufficientData ? 'Недостаточно данных для определения ставки' : null,
+            'insufficient_data' => $insufficientData,
+            'methodology_text' => $methodology['text'],
+            'methodology_formula' => $methodology['formula'],
+        ];
+    }
+
+    private function transformLaborModelBreakdown(array $model, ?float $baseRate): ?array
+    {
+        $finalRate = $model['final_rate'] ?? null;
+        if ($baseRate === null || $finalRate === null) {
+            return null;
+        }
+
+        return [
+            'base_rate' => (float) $baseRate,
+            'employer_contrib_pct' => round(((float) ($model['insurance_rate'] ?? 0)) * 100, 1),
+            'contrib_rate' => isset($model['insurance_amount']) ? (float) $model['insurance_amount'] : null,
+            'loaded_labor_rate' => isset($model['loaded_rate']) ? (float) $model['loaded_rate'] : null,
+            'base_hours_month' => $model['calendar_hours'] ?? null,
+            'billable_hours_month' => $model['productive_hours'] ?? null,
+            'utilization_k' => isset($model['load_factor']) ? (float) $model['load_factor'] : null,
+            'cost_rate' => isset($model['cost_rate']) ? (float) $model['cost_rate'] : null,
+            'profit_pct' => round(((float) ($model['profitability_rate'] ?? 0)) * 100, 1),
+            'profit_amount' => isset($model['profit_amount']) ? (float) $model['profit_amount'] : null,
+            'contractor_rate' => (float) $finalRate,
+            'final_rate' => (float) $finalRate,
+        ];
+    }
+
+    private function buildMethodologyPayload(array $rates, string $method, ?float $resultRate): array
+    {
+        sort($rates);
+
+        if ($rates === []) {
+            return [
+                'text' => 'Недостаточно валидных рыночных источников для выбора базовой ставки по данному профилю работ.',
+                'formula' => 'Недостаточно данных для расчёта.',
+            ];
+        }
+
+        $ratesStr = implode(', ', array_map(fn ($rate) => number_format((float) $rate, 2, ',', ' '), $rates));
+        $resultLabel = $resultRate !== null ? number_format($resultRate, 2, ',', ' ') . ' руб./ч' : '—';
+
+        return match ($method) {
+            'single' => [
+                'text' => 'Использован единственный валидный рыночный источник по данному профилю работ в регионе расчёта.',
+                'formula' => 'Использована ставка из единственного валидного источника: ' . $resultLabel,
+            ],
+            'mean' => [
+                'text' => 'Использовано среднее арифметическое валидных рыночных источников по профилю работ.',
+                'formula' => 'Ставки: ' . $ratesStr . '. Среднее арифметическое принято как базовая ставка: ' . $resultLabel,
+            ],
+            'median' => [
+                'text' => 'Использованы независимые открытые источники, отражающие рыночный спрос и уровень оплаты труда специалистов указанного профиля в регионе на дату расчёта. Применение медианы исключает влияние крайних значений и отражает типичное значение ставки.',
+                'formula' => 'Отсортированные ставки: ' . $ratesStr . '. Медиана принята как базовая ставка: ' . $resultLabel,
+            ],
+            'min' => [
+                'text' => 'Использовано минимальное значение из валидных рыночных источников по профилю работ.',
+                'formula' => 'Ставки: ' . $ratesStr . '. Принято минимальное значение: ' . $resultLabel,
+            ],
+            'max' => [
+                'text' => 'Использовано максимальное значение из валидных рыночных источников по профилю работ.',
+                'formula' => 'Ставки: ' . $ratesStr . '. Принято максимальное значение: ' . $resultLabel,
+            ],
+            default => [
+                'text' => 'Использован применённый агрегирующий метод для выбора базовой ставки по профилю работ.',
+                'formula' => 'Ставки: ' . $ratesStr . '. Базовая ставка определена методом ' . $this->mapCalculationMethodToRussian($method) . ': ' . $resultLabel,
+            ],
+        };
     }
 
     /**
@@ -710,6 +939,10 @@ class ReportService
             'median' => 'медиана',
             'average' => 'среднее значение',
             'mean' => 'среднее значение',
+            'single' => 'одно значение',
+            'min' => 'минимум',
+            'max' => 'максимум',
+            'none' => 'не определён',
             'mode' => 'мода',
         ];
         

@@ -2,6 +2,8 @@
 
 namespace App\Service;
 
+use App\Models\Material;
+use App\Services\Material\EdgeMaterialNormalizer;
 use App\Services\MaterialDimensionParser;
 
 /**
@@ -11,10 +13,15 @@ use App\Services\MaterialDimensionParser;
 class MaterialNormalizer
 {
     private MaterialDimensionParser $dimensionParser;
+    private EdgeMaterialNormalizer $edgeMaterialNormalizer;
 
-    public function __construct(?MaterialDimensionParser $dimensionParser = null)
+    public function __construct(
+        ?MaterialDimensionParser $dimensionParser = null,
+        ?EdgeMaterialNormalizer $edgeMaterialNormalizer = null
+    )
     {
         $this->dimensionParser = $dimensionParser ?? app(MaterialDimensionParser::class);
+        $this->edgeMaterialNormalizer = $edgeMaterialNormalizer ?? app(EdgeMaterialNormalizer::class);
     }
 
     /**
@@ -48,6 +55,25 @@ class MaterialNormalizer
             source: 'materials_normalize_command',
             options: ['log_failed' => true]
         );
+
+        if ($materialType === Material::TYPE_EDGE || $result['normalized_type'] === self::CLASS_EDGE) {
+            $edge = $this->edgeMaterialNormalizer->normalize([
+                'type' => Material::TYPE_EDGE,
+                'name' => $material['name'] ?? '',
+                'article' => $material['article'] ?? '',
+                'length_mm' => null,
+                'width_mm' => null,
+                'thickness' => null,
+                'thickness_mm' => null,
+            ]);
+
+            $result['length_mm'] = $edge['length_mm'] ?? null;
+            $result['width_mm'] = $edge['width_mm'] ?? null;
+            $result['thickness_mm'] = $edge['thickness_mm'] ?? null;
+            $result['thickness'] = $edge['thickness'] ?? null;
+
+            return $result;
+        }
 
         if ($parsed->success) {
             $result['length_mm'] = $parsed->lengthMm !== null ? (int) round($parsed->lengthMm) : null;

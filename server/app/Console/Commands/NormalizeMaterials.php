@@ -64,6 +64,7 @@ class NormalizeMaterials extends Command
                         'length_mm' => $normalized['length_mm'],
                         'width_mm' => $normalized['width_mm'],
                         'thickness_mm' => $normalized['thickness_mm'],
+                        'thickness' => $normalized['thickness'] ?? $material->thickness,
                     ]);
                     $updated++;
                 }

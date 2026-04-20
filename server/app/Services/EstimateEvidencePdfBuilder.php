@@ -118,32 +118,52 @@ class EstimateEvidencePdfBuilder
         foreach (self::SECTIONS as $sectionKey => $sectionDef) {
             $entries = $allEntries
                 ->filter(fn($e) => in_array($e['cost_component'], $sectionDef['components'], true))
-                ->values()
-                ->toArray();
+                ->values();
 
-            if (empty($entries)) {
+            if ($entries->isEmpty()) {
                 continue;
             }
 
-            $isInternal = collect($entries)->every(fn($e) => !$e['is_external']);
+            if ($sectionKey === 'labor') {
+                $internalEntries = $entries
+                    ->filter(fn ($entry) => ($entry['labor_entry_kind'] ?? 'internal') !== 'external')
+                    ->values()
+                    ->toArray();
+                $externalEntries = $entries
+                    ->filter(fn ($entry) => ($entry['labor_entry_kind'] ?? null) === 'external')
+                    ->values()
+                    ->toArray();
 
-            // For labor sections find the common hourly rate (first non-null accepted_display).
-            $rateDisplay = null;
-            if ($sectionKey === 'labor' && $isInternal) {
-                foreach ($entries as $e) {
-                    if (!empty($e['accepted_display'])) {
-                        $rateDisplay = $e['accepted_display'];
+                $rateDisplay = null;
+                foreach ($internalEntries as $entry) {
+                    if (!empty($entry['accepted_display'])) {
+                        $rateDisplay = $entry['accepted_display'];
                         break;
                     }
                 }
+
+                $sections[] = [
+                    'title' => $sectionDef['label'],
+                    'section_type' => $sectionKey,
+                    'is_internal' => empty($externalEntries) && !empty($internalEntries),
+                    'rate_display' => $rateDisplay,
+                    'entries' => $entries->toArray(),
+                    'internal_entries' => $internalEntries,
+                    'external_entries' => $externalEntries,
+                ];
+
+                continue;
             }
+
+            $entriesArray = $entries->toArray();
+            $isInternal = collect($entriesArray)->every(fn($e) => !$e['is_external']);
 
             $sections[] = [
                 'title'        => $sectionDef['label'],
                 'section_type' => $sectionKey,
                 'is_internal'  => $isInternal,
-                'rate_display' => $rateDisplay,
-                'entries'      => $entries,
+                'rate_display' => null,
+                'entries'      => $entriesArray,
             ];
         }
 
@@ -181,8 +201,13 @@ class EstimateEvidencePdfBuilder
         $costComponent = $item['cost_component'] ?? '';
 
         // Determine whether this is an internally-calculated position.
-        $isInternal = in_array($costComponent, self::INTERNAL_COMPONENTS, true)
-            || ($record !== null && ($record['source_type'] ?? '') === 'internal_calc');
+        $laborEntryKind = $item['diagnostics_json']['labor_entry_kind'] ?? null;
+        $isLaborExternal = $costComponent === 'labor_work' && $laborEntryKind === 'external';
+
+        $isInternal = !$isLaborExternal && (
+            in_array($costComponent, self::INTERNAL_COMPONENTS, true)
+            || ($record !== null && ($record['source_type'] ?? '') === 'internal_calc')
+        );
 
         // ── Attachments ──────────────────────────────────────────────────────
         $assets     = $record['assets'] ?? [];
@@ -261,6 +286,7 @@ class EstimateEvidencePdfBuilder
         return [
             'cost_component'     => $costComponent,
             'is_external'        => !$isInternal,
+            'labor_entry_kind'   => $laborEntryKind,
             'entry_title'        => $item['label'] ?? 'Позиция',
             'entry_kind_label'   => self::COMPONENT_LABELS[$costComponent] ?? '',
             'unit_hint'          => $isInternal ? null : (self::COMPONENT_UNITS[$costComponent] ?? null),
@@ -281,7 +307,83 @@ class EstimateEvidencePdfBuilder
             'doc_assets'         => $docAssetsHuman,
             'price_display'      => $this->formatMoney($observedPrice),
             'accepted_display'   => $this->formatMoney($effectiveValue !== null ? (float) $effectiveValue : null),
+            'provider_title'     => $item['diagnostics_json']['provider_title'] ?? null,
+            'provider_domain'    => $item['diagnostics_json']['provider_domain'] ?? null,
+            'employer_name'      => $item['diagnostics_json']['employer_name'] ?? null,
+            'vacancy_title'      => $item['diagnostics_json']['vacancy_title'] ?? null,
+            'vacancy_description' => $item['diagnostics_json']['vacancy_description'] ?? null,
+            'vacancy_excerpt'    => $item['diagnostics_json']['vacancy_excerpt'] ?? null,
+            'salary_raw_text'    => $item['diagnostics_json']['salary_raw_text'] ?? null,
+            'salary_value'       => $item['diagnostics_json']['salary_value'] ?? null,
+            'salary_value_min'   => $item['diagnostics_json']['salary_value_min'] ?? null,
+            'salary_value_max'   => $item['diagnostics_json']['salary_value_max'] ?? null,
+            'salary_period'      => $item['diagnostics_json']['salary_period'] ?? null,
+            'hours_per_month'    => $item['diagnostics_json']['hours_per_month'] ?? null,
+            'hourly_rate_display' => $this->formatMoney($item['diagnostics_json']['derived_hourly_rate'] ?? $effectiveValue),
+            'salary_display'     => $this->formatSalary(
+                $item['diagnostics_json']['salary_raw_text'] ?? null,
+                $item['diagnostics_json']['salary_value'] ?? null,
+                $item['diagnostics_json']['salary_value_min'] ?? null,
+                $item['diagnostics_json']['salary_value_max'] ?? null,
+                $item['diagnostics_json']['salary_period'] ?? null,
+            ),
+            'region_name'        => $item['diagnostics_json']['region_name'] ?? null,
+            'labor_note'         => $item['diagnostics_json']['note'] ?? null,
+            'source_title'       => $item['diagnostics_json']['source_title'] ?? null,
+            'source_date_display' => $this->formatDate($item['diagnostics_json']['source_date'] ?? null),
         ];
+    }
+
+    private function formatSalary(
+        mixed $salaryRawText,
+        mixed $salaryValue,
+        mixed $salaryValueMin,
+        mixed $salaryValueMax,
+        mixed $salaryPeriod,
+    ): ?string {
+        if (is_string($salaryRawText) && trim($salaryRawText) !== '') {
+            return trim($salaryRawText);
+        }
+
+        $periodLabel = match ($salaryPeriod) {
+            'hour' => 'в час',
+            'day' => 'в день',
+            'month' => 'в месяц',
+            'year' => 'в год',
+            'project' => 'за проект',
+            default => null,
+        };
+
+        if ($salaryValue !== null && $salaryValue !== '') {
+            return trim(($this->formatMoney($salaryValue) ?? '') . ($periodLabel ? ' ' . $periodLabel : ''));
+        }
+
+        if ($salaryValueMin !== null || $salaryValueMax !== null) {
+            $parts = [];
+            if ($salaryValueMin !== null && $salaryValueMin !== '') {
+                $parts[] = 'от ' . $this->formatMoney($salaryValueMin);
+            }
+            if ($salaryValueMax !== null && $salaryValueMax !== '') {
+                $parts[] = 'до ' . $this->formatMoney($salaryValueMax);
+            }
+
+            return trim(implode(' ', $parts) . ($periodLabel ? ' ' . $periodLabel : ''));
+        }
+
+        return null;
+    }
+
+    private function formatDate(?string $date): ?string
+    {
+        if (!$date) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($date)->format('d.m.Y');
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

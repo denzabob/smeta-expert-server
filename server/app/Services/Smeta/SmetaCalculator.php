@@ -8,10 +8,11 @@ use App\Dto\PlateAggregateDto;
 use App\Models\Material;
 use App\Models\MaterialPrice;
 use App\Models\Operation;
+use App\Models\OperationPrice;
 use App\Models\Project;
 use App\Models\ProjectPosition;
-use App\Models\PriceListVersion;
-use App\Services\PriceImport\OperationPriceResolver;
+use App\Services\OperationPricingSummaryService;
+use Illuminate\Support\Collection;
 
 /**
  * SmetaCalculator - центральный сервис для расчётов сметы
@@ -22,16 +23,21 @@ use App\Services\PriceImport\OperationPriceResolver;
  * - Агрегация кромочных материалов (линейная длина, стоимость)
  * - Итоговые расчёты (subtotal, total)
  * 
- * Цены на операции берутся из operation_prices через OperationPriceResolver,
+ * Цены на операции берутся из pricing summary,
  * НЕ из operations.cost_per_unit (legacy поле).
  */
 class SmetaCalculator
 {
-    protected OperationPriceResolver $priceResolver;
+    protected OperationPricingSummaryService $operationPricingSummaryService;
+    protected OperationApplicationResolver $operationApplicationResolver;
 
-    public function __construct(?OperationPriceResolver $priceResolver = null)
+    public function __construct(
+        ?OperationPricingSummaryService $operationPricingSummaryService = null,
+        ?OperationApplicationResolver $operationApplicationResolver = null
+    )
     {
-        $this->priceResolver = $priceResolver ?? new OperationPriceResolver();
+        $this->operationPricingSummaryService = $operationPricingSummaryService ?? app(OperationPricingSummaryService::class);
+        $this->operationApplicationResolver = $operationApplicationResolver ?? new OperationApplicationResolver();
     }
     /**
      * Получить коэффициент отходов для плитных материалов
@@ -491,11 +497,10 @@ class SmetaCalculator
      * 3. Автоматические операции кромкооблицовки
      * 4. Ручные операции из project_manual_operations
      * 
-     * Правило для сверления (auto-drilling):
-     * - Если category = 'drilling' и auto_drilling_enabled = true
-     * - Пересчитываем quantity по позициям: quantity = sum(position.quantity * holes_per_piece)
-     * 
-     * ВАЖНО: Цены берутся из OperationPriceResolver (operation_prices),
+     * Автоматические операции берутся только из OperationApplicationResolver.
+     * Legacy cutting / edging fallback удалён.
+     *
+     * ВАЖНО: Цены берутся из pricing summary,
      * НЕ из operations.cost_per_unit (это legacy поле)!
      * 
      * @param Project $project
@@ -511,6 +516,8 @@ class SmetaCalculator
         try {
             $positions = $project->positions()->with(['material', 'edgeMaterial', 'detailType'])->get();
             $operationsMap = [];
+            $applicationRules = $this->operationApplicationResolver->loadRulesForProject($project);
+            $applicationRuleRows = $this->resolveApplicationRows($project, $positions, $applicationRules);
             
             // 1. Собираем операции из detail_type позиций
             foreach ($positions as $position) {
@@ -546,109 +553,31 @@ class SmetaCalculator
                     $operationsMap[$key]['quantity'] += $qty;
                 }
             }
-            
-            // 2. Собираем операции резки материалов (раскрой ДСП)
-            foreach ($positions as $position) {
-                if (!$position->material_id || !$position->material) {
-                    continue;
+
+            foreach ($applicationRuleRows as $row) {
+                $operation = $row['operation'];
+                $key = 'application_rule_' . $row['rule_id'] . '_' . $operation->id;
+
+                if (!isset($operationsMap[$key])) {
+                    $operationsMap[$key] = [
+                        'operation_id' => $operation->id,
+                        'name' => $operation->name ?? '',
+                        'category' => $operation->category ?? '',
+                        'unit' => $row['pricing_unit'] ?? ($operation->unit ?? 'м²'),
+                        'quantity' => 0,
+                        'is_manual' => false,
+                        'updated_at' => $operation->updated_at?->toDateTimeString(),
+                        'source_url' => $operation->origin === 'user' ? null : 'system',
+                        'application_rule_id' => $row['rule_id'],
+                        'quantity_source' => $row['quantity_source'],
+                        'pricing_unit' => $row['pricing_unit'],
+                        'tariff_binding_type' => $row['tariff_binding_type'],
+                        'tariff_operation_id' => $row['tariff_operation_id'] ?? $operation->id,
+                        'context' => $row['context'] ?? [],
+                    ];
                 }
-                
-                $material = $position->material;
-                if ($material->type !== 'plate') {
-                    continue;
-                }
-                
-                // Рассчитываем площадь материала с учётом отходов
-                $thickness = $material->thickness;
-                $waste = $material->waste_factor ?? 1.0;
-                $area_m2 = (($position->width ?? 0) * ($position->length ?? 0)) / 1_000_000.0;
-                $qty = $area_m2 * $waste * ($position->quantity ?? 1);
-                
-                // Находим операцию резки для этого материала по толщине
-                $query = Operation::where('exclusion_group', 'cutting');
-                if ($thickness !== null) {
-                    $query->where(function ($q) use ($thickness) {
-                        $q->whereNull('min_thickness')->orWhere('min_thickness', '<=', $thickness);
-                    })->where(function ($q) use ($thickness) {
-                        $q->whereNull('max_thickness')->orWhere('max_thickness', '>=', $thickness);
-                    });
-                }
-                $operation = $query->orderByRaw('COALESCE(max_thickness, 9999) - COALESCE(min_thickness, 0) ASC')->first();
-                
-                if ($operation) {
-                    $key = 'cutting_' . $operation->id;
-                    if (!isset($operationsMap[$key])) {
-                        $operationsMap[$key] = [
-                            'operation_id' => $operation->id,
-                            'name' => $operation->name ?? '',
-                            'category' => $operation->category ?? '',
-                            'unit' => $operation->unit ?? 'м²',
-                            'quantity' => 0,
-                            'is_manual' => false,
-                            'updated_at' => $operation->updated_at?->toDateTimeString(),
-                            'source_url' => $operation->origin === 'user' ? null : 'system',
-                        ];
-                    }
-                    $operationsMap[$key]['quantity'] += $qty;
-                }
-            }
-            
-            // 3. Собираем операции кромкооблицовки
-            foreach ($positions as $position) {
-                if (!$position->edge_material_id || !$position->edge_scheme || $position->edge_scheme === 'none') {
-                    continue;
-                }
-                
-                if (!$position->edgeMaterial) {
-                    continue;
-                }
-                
-                $edgeMaterial = $position->edgeMaterial;
-                if ($edgeMaterial->type !== 'edge') {
-                    continue;
-                }
-                
-                $thickness = $edgeMaterial->thickness;
-                $waste = $edgeMaterial->waste_factor ?? 1.0;
-                
-                // Рассчитываем длину кромки по схеме
-                $len_mm = $this->calculateEdgePerimeter(
-                    $position->width ?? 0,
-                    $position->length ?? 0,
-                    1,  // На одну деталь
-                    $position->edge_scheme
-                ) * 1000;  // Преобразуем обратно в мм
-                
-                $len_m = ($len_mm / 1000.0) * ($position->quantity ?? 1);
-                $qty = $len_m * $waste;
-                
-                // Находим операцию кромкооблицовки по толщине
-                $query = Operation::where('exclusion_group', 'edging');
-                if ($thickness !== null) {
-                    $query->where(function ($q) use ($thickness) {
-                        $q->whereNull('min_thickness')->orWhere('min_thickness', '<=', $thickness);
-                    })->where(function ($q) use ($thickness) {
-                        $q->whereNull('max_thickness')->orWhere('max_thickness', '>=', $thickness);
-                    });
-                }
-                $operation = $query->orderByRaw('COALESCE(max_thickness, 9999) - COALESCE(min_thickness, 0) ASC')->first();
-                
-                if ($operation) {
-                    $key = 'edging_' . $operation->id;
-                    if (!isset($operationsMap[$key])) {
-                        $operationsMap[$key] = [
-                            'operation_id' => $operation->id,
-                            'name' => $operation->name ?? '',
-                            'category' => $operation->category ?? '',
-                            'unit' => $operation->unit ?? 'м',
-                            'quantity' => 0,
-                            'is_manual' => false,
-                            'updated_at' => $operation->updated_at?->toDateTimeString(),
-                            'source_url' => $operation->origin === 'user' ? null : 'system',
-                        ];
-                    }
-                    $operationsMap[$key]['quantity'] += $qty;
-                }
+
+                $operationsMap[$key]['quantity'] += $row['quantity'];
             }
             
             // 4. Загружаем manual operations с операциями
@@ -662,24 +591,7 @@ class SmetaCalculator
                     continue;
                 }
 
-                // Определяем количество операций
                 $quantity = $manualOp->quantity ?? 0;
-
-                // Правило для авто-сверления (сверление)
-                if ($operation->category === 'drilling') {
-                    
-                    // Пересчитываем quantity по позициям
-                    // quantity = sum(position.quantity * holes_per_piece)
-                    $totalQuantity = 0;
-                    
-                    foreach ($positions as $position) {
-                        // Стандартное значение holes_per_piece = 8
-                        $holesPerPiece = 8;  // Default value
-                        $totalQuantity += ($position->quantity ?? 1) * $holesPerPiece;
-                    }
-                    
-                    $quantity = max(0, $totalQuantity);
-                }
 
                 $key = 'manual_' . $manualOp->id;
                 if (!isset($operationsMap[$key])) {
@@ -698,23 +610,29 @@ class SmetaCalculator
                 }
             }
 
-            // Получаем все ID операций для batch запроса цен
-            $operationIds = array_unique(array_column($operationsMap, 'operation_id'));
-            
-            // Получаем цены через OperationPriceResolver (batch оптимизация)
-            $prices = $this->priceResolver->getPricesBatch($operationIds, $priceMode, $supplierId);
+            // Получаем все ID тарифных операций для batch запроса pricing summaries
+            $operationIds = array_values(array_unique(array_map(
+                fn (array $entry) => (int) ($entry['tariff_operation_id'] ?? $entry['operation_id']),
+                $operationsMap,
+            )));
+            $pricingSummaries = $this->operationPricingSummaryService->getSummariesForOperations(
+                $operationIds,
+                $project,
+            );
 
             // Преобразуем в OperationAggregateDto и рассчитываем стоимость
             $operationDtos = [];
             foreach ($operationsMap as $entry) {
-                // Получаем цену из resolver, а не из operations.cost_per_unit
-                $priceData = $prices[$entry['operation_id']] ?? $this->priceResolver->getPrice(
-                    $entry['operation_id'],
-                    $priceMode,
-                    $supplierId
-                );
-                $costPerUnit = (float) ($priceData['price'] ?? 0);
-                $totalCost = $entry['quantity'] * $costPerUnit;
+                $tariffOperationId = (int) ($entry['tariff_operation_id'] ?? $entry['operation_id']);
+                $pricingSummary = $pricingSummaries[$tariffOperationId] ?? null;
+                $effectivePrice = $pricingSummary['effective_price'] ?? null;
+                $effectiveSource = $pricingSummary['effective_source'] ?? null;
+                $costPerUnit = $effectivePrice !== null ? (float) $effectivePrice : 0.0;
+                $pricingUnit = $entry['pricing_unit'] ?? $entry['unit'] ?? null;
+                $resolvedPriceUnit = $effectiveSource['unit'] ?? null;
+                $unitMismatch = $this->hasUnitMismatch($pricingUnit, $resolvedPriceUnit);
+                $isValid = $effectivePrice !== null && !$unitMismatch;
+                $totalCost = $isValid ? round($entry['quantity'] * $costPerUnit, 2) : null;
                 
                 $operationDto = new OperationAggregateDto(
                     id: $entry['operation_id'],
@@ -727,6 +645,10 @@ class SmetaCalculator
                     is_manual: $entry['is_manual'],
                     updated_at: $entry['updated_at'],
                     source_url: $entry['source_url'],
+                    is_valid: $isValid,
+                    unit_mismatch: $unitMismatch,
+                    pricing_unit: $pricingUnit,
+                    resolved_price_unit: $resolvedPriceUnit,
                 );
                 
                 $operationDtos[] = $operationDto;
@@ -766,6 +688,29 @@ class SmetaCalculator
         }
     }
 
+    private function resolveApplicationRows(Project $project, Collection $positions, Collection $rules): array
+    {
+        if ($rules->isEmpty()) {
+            return [];
+        }
+
+        $rows = $this->operationApplicationResolver->resolve($project, $positions, $rules);
+
+        return array_values(array_filter(array_map(function (array $row) use ($rules) {
+            $rule = $rules->firstWhere('id', $row['rule_id']);
+            $operation = $rule?->operation;
+
+            if (!$operation) {
+                return null;
+            }
+
+            return [
+                ...$row,
+                'operation' => $operation,
+            ];
+        }, $rows)));
+    }
+
     /**
      * Рассчитать итоговую стоимость операций
      * 
@@ -775,7 +720,7 @@ class SmetaCalculator
     {
         return array_reduce(
             $operations,
-            fn($sum, OperationAggregateDto $op) => $sum + $op->total_cost,
+            fn($sum, OperationAggregateDto $op) => $sum + ($op->is_valid ? ($op->total_cost ?? 0.0) : 0.0),
             0.0
         );
     }
@@ -889,6 +834,16 @@ class SmetaCalculator
             fn($sum, $e) => $sum + $e->cost,
             0.0
         );
+    }
+
+    private function hasUnitMismatch(?string $pricingUnit, ?string $resolvedPriceUnit): bool
+    {
+        $expectedUnit = OperationPrice::normalizeUnit($pricingUnit);
+        $actualUnit = OperationPrice::normalizeUnit($resolvedPriceUnit);
+
+        return $expectedUnit !== null
+            && $actualUnit !== null
+            && $expectedUnit !== $actualUnit;
     }
 }
 

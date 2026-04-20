@@ -502,7 +502,7 @@ class EvidenceRunController extends Controller
     public function listRecords(Request $request): JsonResponse
     {
         $request->validate([
-            'linkable_type'       => 'nullable|string|in:operation_price,price_list_version',
+            'linkable_type'       => 'nullable|string|in:operation_price,price_list_version,operation',
             'linkable_id'         => 'nullable|integer|min:1',
             'verification_status' => 'nullable|string|in:' . implode(',', VerificationStatus::all()),
             'source_type'         => 'nullable|string|in:' . implode(',', SourceType::all()),
@@ -540,6 +540,16 @@ class EvidenceRunController extends Controller
                         ->join('suppliers as s2', 's2.id', '=', 'pl2.supplier_id')
                         ->whereColumn('el2.evidence_record_id', 'evidence_records.id')
                         ->where('s2.user_id', $userId);
+                })
+                // Operation-linked manual evidence is user-scoped by creator, not supplier chain
+                ->orWhere(function ($manual) use ($userId) {
+                    $manual->where('evidence_records.created_by', $userId)
+                        ->whereExists(function ($sub) {
+                            $sub->select(DB::raw(1))
+                                ->from('evidence_links as el3')
+                                ->whereColumn('el3.evidence_record_id', 'evidence_records.id')
+                                ->where('el3.linkable_type', 'operation');
+                        });
                 });
             });
 

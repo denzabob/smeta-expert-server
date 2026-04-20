@@ -4,12 +4,18 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\UserSettings;
+use App\Services\UserLaborSettingsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class UserSettingsController extends Controller
 {
+    public function __construct(
+        private readonly UserLaborSettingsResolver $laborSettingsResolver,
+    ) {
+    }
+
     /**
      * Получить настройки пользователя (создаст если нет)
      *
@@ -20,33 +26,7 @@ class UserSettingsController extends Controller
     {
         $user = $request->user();
 
-        // Получить или создать настройки пользователя
-        $settings = $user->settings()->firstOrCreate(
-            ['user_id' => $user->id],
-            [
-                'region_id' => null,
-                'default_expert_name' => null,
-                'default_number' => null,
-                'waste_coefficient' => 1.0,
-                'repair_coefficient' => 1.0,
-                'waste_plate_coefficient' => null,
-                'waste_edge_coefficient' => null,
-                'waste_operations_coefficient' => null,
-                'apply_waste_to_plate' => true,
-                'apply_waste_to_edge' => true,
-                'apply_waste_to_operations' => false,
-                'use_area_calc_mode' => false,
-                'default_plate_material_id' => null,
-                'default_edge_material_id' => null,
-                'text_blocks' => null,
-                'waste_plate_description' => null,
-                'waste_edge_description' => null,
-                'waste_operations_description' => null,
-                'show_waste_plate_description' => false,
-                'show_waste_edge_description' => false,
-                'show_waste_operations_description' => false,
-            ]
-        );
+        $settings = $this->laborSettingsResolver->getOrCreateSettings($user);
 
         return response()->json($settings);
     }
@@ -85,10 +65,15 @@ class UserSettingsController extends Controller
             'show_waste_plate_description' => ['boolean'],
             'show_waste_edge_description' => ['boolean'],
             'show_waste_operations_description' => ['boolean'],
+            'labor_employer_insurance_rate' => ['numeric', 'min:0', 'max:1'],
+            'labor_load_factor_calendar_hours' => ['integer', 'min:1'],
+            'labor_load_factor_productive_hours' => ['integer', 'min:1'],
+            'labor_planned_profitability_rate' => ['numeric', 'min:0', 'max:1'],
+            'labor_aggregation_strategy' => ['string', Rule::in(UserLaborSettingsResolver::ALLOWED_AGGREGATION_STRATEGIES)],
+            'labor_rate_rounding_scale' => ['integer', 'min:0', 'max:6'],
         ]);
 
-        // Получить или создать настройки
-        $settings = $user->settings()->firstOrCreate(['user_id' => $user->id]);
+        $settings = $this->laborSettingsResolver->getOrCreateSettings($user);
 
         // Обновить только переданные поля
         $settings->update($validated);

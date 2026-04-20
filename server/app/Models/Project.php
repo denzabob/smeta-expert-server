@@ -134,4 +134,10 @@ class Project extends Model
             ->withPivot('role', 'linked_at')
             ->withTimestamps();
     }
+
+    public function laborEvidenceSources()
+    {
+        return $this->belongsToMany(LaborEvidenceSource::class, 'project_labor_evidence_sources')
+            ->withTimestamps();
+    }
 }

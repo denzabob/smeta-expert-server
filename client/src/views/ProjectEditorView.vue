@@ -16,7 +16,8 @@
             color="secondary"
             prepend-icon="mdi-file-pdf-box"
             :loading="pdfLoading"
-            :disabled="pdfLoading"
+            :disabled="pdfLoading || estimateHardInvalid"
+            :title="estimateHardInvalid ? 'Смета содержит ошибки и не может быть использована' : 'Сформировать PDF'"
             @click="generatePdf"
           >
             PDF
@@ -26,7 +27,7 @@
             color="primary"
             prepend-icon="mdi-shield-check"
             :loading="snapshotLoading"
-            :disabled="snapshotLoading"
+            :disabled="snapshotLoading || estimateHardInvalid"
             @click="createSnapshot"
             title="Запустить строгую ревизию с обоснованием цен"
           >
@@ -58,6 +59,16 @@
       :issues="healthIssues"
       @navigate="handleHealthNavigate"
     />
+
+    <v-alert
+      v-if="estimateHardInvalid"
+      type="error"
+      variant="tonal"
+      density="compact"
+      class="ma-4 mb-0"
+    >
+      Смета содержит ошибки и не может быть использована
+    </v-alert>
 
     <div class="workspace-body">
       <!-- Sidebar (desktop only — hidden on mobile via CSS) -->
@@ -424,27 +435,19 @@
           </v-data-table>
         </div>
 
-        <v-navigation-drawer
+        <v-dialog
           v-model="positionDrawer"
-          location="right"
-          :width="compactLayout ? '100vw' : 420"
-          :scrim="compactLayout"
-          temporary
-          class="position-drawer-fixed"
-          :class="{ 'position-drawer-fixed--compact': compactLayout }"
-          :style="{
-            position: 'fixed',
-            top: 0,
-            height: '100vh',
-            maxHeight: '100vh'
-          }"
+          max-width="720"
+          scrollable
         >
+          <v-card>
           <v-toolbar flat>
             <v-toolbar-title>Детали позиции</v-toolbar-title>
             <v-spacer />
             <v-btn icon="mdi-close" variant="text" @click="positionDrawer = false" />
           </v-toolbar>
           <v-divider />
+          <v-card-text style="max-height: 80vh; overflow-y: auto;">
           <v-container v-if="selectedPosition" class="pa-4 position-drawer">
             <v-text-field
               v-model="selectedPosition.custom_name"
@@ -684,7 +687,9 @@
           <v-container v-else class="pa-4">
             <v-alert type="info" variant="tonal">Выберите позицию в таблице.</v-alert>
           </v-container>
-        </v-navigation-drawer>
+          </v-card-text>
+          </v-card>
+        </v-dialog>
 
         <v-dialog v-model="confirmBulkDialog" max-width="480">
           <v-card>
@@ -960,6 +965,15 @@
         <v-chip size="small" variant="tonal" color="primary">Ручных: {{ manualOperationsCount }}</v-chip>
         <v-chip size="small" variant="tonal" color="info" prepend-icon="mdi-currency-rub">Всего: {{ operationsTotal.toFixed(2) }} ₽</v-chip>
       </div>
+        <v-alert
+          v-if="!operationsTotalIsValid"
+          type="warning"
+          variant="tonal"
+          density="compact"
+          class="mb-3"
+        >
+          В смете есть некорректные операции
+        </v-alert>
         <!-- Операции -->
         <v-card-title>
           Операции
@@ -986,9 +1000,21 @@
             {{ (typeof item.quantity === 'number' ? item.quantity : parseFloat(item.quantity || 0)).toFixed(2) }}
           </template>
           <template v-slot:item.name="{ item }">
-            <div class="d-flex align-center ga-1">
-              <span>{{ item.name }}</span>
-              <v-icon v-if="!item.is_manual" size="18" color="blue">mdi-robot</v-icon>
+            <div class="d-flex flex-column ga-1">
+              <div class="d-flex align-center ga-1">
+                <span>{{ item.name }}</span>
+                <v-icon v-if="!item.is_manual" size="18" color="blue">mdi-robot</v-icon>
+              </div>
+              <v-chip
+                v-if="item.unit_mismatch"
+                size="x-small"
+                color="warning"
+                variant="tonal"
+                prepend-icon="mdi-alert"
+                class="align-self-start"
+              >
+                Несовпадение единицы тарифа и расчёта
+              </v-chip>
             </div>
           </template>
 
@@ -997,7 +1023,8 @@
           </template>
 
           <template v-slot:item.total_cost="{ item }">
-            {{ parseFloat(item.total_cost).toFixed(2) }} ₽
+            <span v-if="item.total_cost === null || item.total_cost === undefined">—</span>
+            <span v-else>{{ parseFloat(item.total_cost).toFixed(2) }} ₽</span>
           </template>
 
           <template v-slot:item.source="{ item }">
@@ -1207,7 +1234,6 @@
       <div class="module-summary">
         <v-chip size="small" variant="tonal" color="primary">Работ: {{ laborWorks.length }}</v-chip>
         <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-currency-rub">Итого: {{ (typeof laborWorksTotal === 'number' ? laborWorksTotal : 0).toFixed(2) }} ₽</v-chip>
-        <v-chip v-if="hasMissingLaborRates" size="small" variant="tonal" color="warning" prepend-icon="mdi-alert">Нет ставок</v-chip>
       </div>
         <!-- Монтажно-сборочные работы (нормо-час) -->
         <v-card-title>
@@ -1216,63 +1242,19 @@
           <div>Итого: {{ (typeof laborWorksTotal === 'number' ? laborWorksTotal : 0).toFixed(2) }} ₽</div>
         </v-card-title>
 
-        <!-- Предупреждение об отсутствии ставок для профилей -->
-        <v-alert 
-          v-if="hasMissingLaborRates"
-          type="warning"
-          variant="tonal"
-          class="mb-3"
-          closable
-        >
-          <strong>⚠ Не все профили имеют установленные ставки</strong> — нажмите "Пересчитать ставки" для автоматического расчета или установите значения вручную.
-        </v-alert>
-
         <v-btn prepend-icon="mdi-plus" @click="openLaborWorkDialog" class="mb-3">Добавить работу</v-btn>
-        <v-btn 
-          prepend-icon="mdi-refresh" 
-          @click="recalculateLaborRates" 
-          class="mb-3 ms-3" 
-          variant="outlined"
-          :loading="recalculatingRates"
-          :disabled="recalculatingRates"
-        >
-          Пересчитать ставки
-        </v-btn>
 
-        <!-- Блокировка ставок с индикатором статуса -->
-        
-          <v-btn 
-            :prepend-icon="ratesLocked ? 'mdi-lock' : 'mdi-lock-open'" 
-            @click="lockLaborRates" 
-            class="mb-3 ms-3" 
-            variant="outlined"
-            :color="ratesLocked ? 'success' : 'warning'"
-            :loading="lockingRates"
-            :disabled="lockingRates"
-          >
-            {{ ratesLocked ? 'Ставки заблокированы' : 'Заблокировать ставки' }}
-          </v-btn>
-          
-          <!-- Статус блокировки -->
-          <v-chip 
-            v-if="ratesLocked" 
-            color="success" 
-            text-color="white"
-            prepend-icon="mdi-check-circle"
-            class="mb-3 ms-3"
-          >
-            Заблокирована
-          </v-chip>
-          <v-chip 
-            v-else
-            color="warning" 
-            text-color="white"
-            prepend-icon="mdi-alert-circle"
-            class="mb-3 ms-3"
-          >
-            Не заблокирована
-          </v-chip>
-        
+        <ProjectLaborEvidencePanel
+          :project-id="projectId"
+          class="mb-4"
+          @sources-changed="handleLaborEvidenceSourcesChanged"
+        />
+
+        <ProjectLaborCalculationPanel
+          ref="laborCalculationPanelRef"
+          :project-id="project.id"
+          class="mb-4"
+        />
 
         <v-skeleton-loader v-if="loadingStates.laborWorks" type="table" />
         <div v-else class="labor-works-table">
@@ -1314,6 +1296,9 @@
                   >
                     <div class="cell-name-column">
                       <div class="cell-ellipsis">{{ item.title || '—' }}</div>
+                      <div v-if="item.labor_profile_name" class="text-caption text-medium-emphasis mt-1">
+                        {{ item.labor_profile_name }}
+                      </div>
                       <RowHoverActions
                         :row-id="item.id!"
                         :quick-actions="getLaborQuickActions(item)"
@@ -1661,7 +1646,7 @@
                 icon="mdi-file-pdf-box"
                 title="PDF сметы"
                 :loading="revisionPdfLoading.has(item.number)"
-                :disabled="item.status === 'stale' || revisionPdfLoading.has(item.number)"
+                :disabled="estimateHardInvalid || item.status === 'stale' || revisionPdfLoading.has(item.number)"
                 @click="downloadRevisionPdf(item)"
               />
               <v-btn
@@ -1670,7 +1655,7 @@
                 icon="mdi-file-document-outline"
                 title="PDF обоснований цен"
                 :loading="revisionJustPdfLoading.has(item.number)"
-                :disabled="item.status === 'stale' || revisionJustPdfLoading.has(item.number)"
+                :disabled="estimateHardInvalid || item.status === 'stale' || revisionJustPdfLoading.has(item.number)"
                 @click="downloadPriceJustificationPdf(item)"
               />
               <v-btn
@@ -1708,7 +1693,7 @@
 
         <!-- PDF -->
         <v-divider class="my-4" />
-        <v-btn color="secondary" @click="generatePdf" :loading="pdfLoading" :disabled="pdfLoading">Генерировать PDF</v-btn>
+        <v-btn color="secondary" @click="generatePdf" :loading="pdfLoading" :disabled="pdfLoading || estimateHardInvalid">Генерировать PDF</v-btn>
     </div><!-- /MODULE: REVISIONS -->
 
     <!-- ======================== MODULE: EVIDENCE ======================== -->
@@ -2665,18 +2650,37 @@
           </template>
         </v-text-field>
 
-        <!-- Профиль должности -->
+        <v-alert
+          v-if="laborWorkSubmitError"
+          type="error"
+          variant="tonal"
+          class="mb-3"
+        >
+          {{ laborWorkSubmitError }}
+        </v-alert>
+
+        <v-alert
+          v-if="laborProfiles.length === 0"
+          type="warning"
+          variant="tonal"
+          class="mb-3"
+        >
+          Создайте профиль работ в разделе Pricing → Labor
+        </v-alert>
+
+        <!-- Профиль работ -->
         <v-select
-          v-model="laborWorkForm.position_profile_id"
-          label="Профиль должности *"
-          :items="positionProfiles"
-          item-title="name"
+          v-model="laborWorkForm.labor_profile_id"
+          label="Профиль работ *"
+          :items="laborProfiles"
+          item-title="title"
           item-value="id"
-          placeholder="Выберите профиль для расчета ставки..."
+          placeholder="Выберите профиль работ..."
           density="comfortable"
           class="mb-3"
+          :error-messages="laborWorkProfileErrors"
           :rules="[
-            v => !!v || 'Выберите профиль должности для расчёта ставки'
+            v => !!v || 'Выберите профиль работ'
           ]"
         />
 
@@ -2695,20 +2699,8 @@
           class="mb-3"
         />
 
-        <!-- Информация о стоимости (только если есть часы) -->
         <v-alert v-if="laborWorkForm.hours" type="info" variant="tonal" class="mb-3">
-          <div v-if="project.normohour_rate">
-            <strong>Приблизительная сумма:</strong> {{ (laborWorkForm.hours * (project.normohour_rate || 0)).toFixed(2) }} ₽
-            <div class="text-caption mt-1">
-              ({{ laborWorkForm.hours.toFixed(2) }} ч × {{ (project.normohour_rate || 0).toFixed(2) }} ₽/ч)
-            </div>
-            <div class="text-caption mt-2">
-              * Расчет на основе ставки по умолчанию. Фактическая сумма зависит от назначенного профиля
-            </div>
-          </div>
-          <div v-else>
-            Фактическая сумма будет рассчитана после назначения профиля и установки ставок
-          </div>
+          Фактическая сумма будет рассчитана после назначения профиля и применения ставки по этому профилю.
         </v-alert>
       </v-form>
     </v-card-text>
@@ -3233,7 +3225,6 @@ import { finishedProductsApi } from '@/api/finishedProducts'
 import laborWorksApi, { type LaborWork } from '@/api/laborWorks'
 import { revisionRunApi, evidenceAssetFileUrl, type RevisionRun, type RevisionRunItem, type EvidenceArtifactDetail } from '@/api/revisionRun'
 import { consumePrefetchedProject, setProjectsFlashMessage } from '@/router/projectAccess'
-import ProfileRatesSection from '@/components/ProfileRatesSection.vue'
 import ProjectSettingsModal from '@/components/ProjectSettingsModal.vue'
 import ImportPositionsDialog from '@/components/ImportPositionsDialog.vue'
 import RowHoverActions, { type RowAction } from '@/components/RowHoverActions.vue'
@@ -3241,6 +3232,8 @@ import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceSidebar, { type SidebarModule } from '@/components/workspace/WorkspaceSidebar.vue'
 import ProjectHealthBar, { type HealthIssue } from '@/components/workspace/ProjectHealthBar.vue'
 import EvidenceRunPanel from '@/components/evidence/EvidenceRunPanel.vue'
+import ProjectLaborEvidencePanel from '@/components/project/ProjectLaborEvidencePanel.vue'
+import ProjectLaborCalculationPanel from '@/components/project/ProjectLaborCalculationPanel.vue'
 
 const { smAndDown } = useDisplay()
 const compactLayout = computed(() => smAndDown.value)
@@ -3385,6 +3378,11 @@ interface Material {
 const router = useRouter()
 const route = useRoute()
 const projectId = route.params.id as string
+const laborCalculationPanelRef = ref<{ reload?: () => Promise<void> | void } | null>(null)
+
+function handleLaborEvidenceSourcesChanged() {
+  void laborCalculationPanelRef.value?.reload?.()
+}
 
 const isMissingProjectError = (error: any): boolean => error?.response?.status === 404
 
@@ -3565,9 +3563,12 @@ watch(settingsDrawer, (opened) => {
     positionDrawer.value = false
   }
 })
-watch(positionDrawer, (opened) => {
+watch(positionDrawer, (opened, wasOpen) => {
   if (opened && compactLayout.value) {
     settingsDrawer.value = false
+  }
+  if (!opened && wasOpen) {
+    showNotification('Все изменения сохранены', 'success', 3000)
   }
 })
 
@@ -4454,7 +4455,7 @@ const canRetryRevisionRun = computed(() => {
 })
 const canFinalizeRevisionRun = computed(() => {
   if (!activeRevisionRun.value) return false
-  return activeRevisionRun.value.status === 'READY'
+  return activeRevisionRun.value.status === 'READY' && !estimateHardInvalid.value
 })
 const normohourSourceDialog = ref(false) // ← диалог для редактирования источника нормо-часа
 
@@ -5087,7 +5088,7 @@ const loadReferences = async () => {
       api.get('/api/operations').then(r => r.data),
       api.get('/api/units').then(r => r.data),
       api.get('/api/regions').then(r => r.data?.data || []),
-      api.get('/api/position-profiles').then(r => r.data?.data || [])
+      api.get('/api/pricing/labor/profiles').then(r => r.data?.data || [])
     ])
     detailTypes.value = types
     materials.value = mats
@@ -5095,8 +5096,8 @@ const loadReferences = async () => {
     allOperations.value = ops
     units.value = unitsList || []
     regions.value = regionsData
-    positionProfiles.value = profiles
-    console.log('Position profiles loaded:', profiles.length, 'profiles:', profiles.map((p: any) => ({ id: p.id, name: p.name })))
+    laborProfiles.value = profiles
+    console.log('Labor profiles loaded:', profiles.length, 'profiles:', profiles.map((p: any) => ({ id: p.id, title: p.title })))
     console.log('Regions loaded:', regionsData.length, 'samples:', regionsData.slice(0, 3))
   } finally {
     loadingStates.value.materials = false
@@ -5210,9 +5211,6 @@ const fetchData = async (): Promise<boolean> => {
     // Загрузка операций через встроенную функцию
     await recalcOperations()
     
-    // Загрузка источников нормо-часов
-    await loadNormohourSources()
-
     // Загрузка монтажно-сборочных работ
     await loadLaborWorks()
     
@@ -6315,6 +6313,11 @@ const calculate = async () => {
 }
 
 const generatePdf = async () => {
+  if (estimateHardInvalid.value) {
+    showNotification('Смета содержит ошибки и не может быть использована', 'error')
+    return
+  }
+
   if (!hasRevisions.value) {
     showNotification('Сначала создайте ревизию проекта, затем можно сформировать PDF', 'warning')
     return
@@ -6628,6 +6631,11 @@ const refreshRevisionRun = async (silent = false) => {
 }
 
 const createSnapshot = async () => {
+  if (estimateHardInvalid.value) {
+    showNotification('Смета содержит ошибки и не может быть использована', 'error')
+    return
+  }
+
   snapshotLoading.value = true
   try {
     revisionRunPdfLinks.value = null
@@ -7010,6 +7018,11 @@ const submitManualClose = async () => {
 
 const finalizeRevisionRun = async () => {
   if (!activeRevisionRun.value) return
+  if (estimateHardInvalid.value) {
+    showNotification('Смета содержит ошибки и не может быть использована', 'error')
+    return
+  }
+
   revisionRunFinalizeLoading.value = true
   try {
     const data = await revisionRunApi.finalize(projectId, activeRevisionRun.value.id)
@@ -7113,7 +7126,7 @@ const operations = computed(() => {
       ...o,
       quantity: finalQuantity, // переписываем quantity на рассчитанное
       is_manual: o.type === 'manual' || o.source === 'manual' || !!o.is_manual,
-      total_cost: (finalQuantity ?? 0) * (o.cost_per_unit ?? 0),
+      total_cost: o.is_valid === false ? null : (finalQuantity ?? 0) * (o.cost_per_unit ?? 0),
       _cached_details: getOperationDetails(o) // кэшируем детали здесь
     }
   })
@@ -7145,17 +7158,19 @@ const operationHeaders = [
 
 // === Монтажно-сборочные работы (нормо-час) ===
 const laborWorks = ref<LaborWork[]>([])
-const positionProfiles = ref<any[]>([])
+const laborProfiles = ref<any[]>([])
 const laborWorkDialog = ref(false)
 const laborWorkSaving = ref(false)
 const laborWorkFormRef = ref<any>(null)
 const editingLaborWork = ref<LaborWork | null>(null)
+const laborWorkSubmitError = ref('')
+const laborWorkFieldErrors = ref<Record<string, string[]>>({})
 const laborWorkForm = ref<Partial<LaborWork>>({
   title: '',
   basis: '',
   hours: 0,
   note: '',
-  position_profile_id: null
+  labor_profile_id: null
 })
 
 // === Подоперации (Steps) ===
@@ -7368,6 +7383,8 @@ const laborWorksTotal = computed(() => {
   return laborWorks.value.reduce((sum, work) => sum + (parseFloat(String(work.cost_total)) || 0), 0)
 })
 
+const laborWorkProfileErrors = computed(() => laborWorkFieldErrors.value.labor_profile_id || [])
+
 // Проверить статус блокировки ставок
 const ratesLocked = computed(() => {
   const pr = (project.value as any).profileRates
@@ -7395,16 +7412,6 @@ const ratesLocked = computed(() => {
   console.log('🔐 All rates locked?', result, 'out of', rates.length)
   
   return result
-})
-
-// Пересчитываем costs labor works при изменении ставки нормо-часа
-watch(() => project.value.normohour_rate, (newRate) => {
-  if (laborWorks.value.length > 0) {
-    laborWorks.value = laborWorks.value.map(work => ({
-      ...work,
-      cost: work.hours * (newRate || 0)
-    }))
-  }
 })
 
 // Watch profileRates для отслеживания изменений статуса блокировки
@@ -7640,10 +7647,20 @@ const materialsTotalCost = computed(() => {
 const operationsTotal = computed(() => {
   if (!operations.value || operations.value.length === 0) return 0
   return operations.value.reduce((sum, o) => {
+    if (o.is_valid === false) return sum
     const cost = parseFloat(o.total_cost ?? ((o.quantity || 0) * (o.cost_per_unit || 0))) || 0
     return sum + cost
   }, 0)
 })
+
+const invalidOperationsCount = computed(() => {
+  if (!operations.value) return 0
+  return operations.value.filter(o => o.is_valid === false || !!o.unit_mismatch).length
+})
+
+const operationsTotalIsValid = computed(() => invalidOperationsCount.value === 0)
+
+const estimateHardInvalid = computed(() => !operationsTotalIsValid.value)
 
 // === Workspace computeds ===
 const positionsWithoutMaterial = computed(() => {
@@ -7659,7 +7676,9 @@ const positionsWithPriceIssues = computed(() => {
 
 const autoOperationsTotal = computed(() => {
   if (!operations.value) return 0
-  return operations.value.filter(o => !o.is_manual).reduce((sum, o) => sum + (parseFloat(o.total_cost) || 0), 0)
+  return operations.value
+    .filter(o => !o.is_manual && o.is_valid !== false)
+    .reduce((sum, o) => sum + (parseFloat(o.total_cost) || 0), 0)
 })
 
 const manualOperationsCount = computed(() => {
@@ -7674,6 +7693,8 @@ const facadesTotalCost = computed(() => {
 })
 
 const projectTotalSum = computed(() => {
+  if (estimateHardInvalid.value) return null
+
   const matCost = materialsTotalCost.value || 0
   const opsCost = operationsTotal.value || 0
   const facCost = facadesTotalCost.value || 0
@@ -7703,6 +7724,7 @@ const sidebarModules = computed<SidebarModule[]>(() => [
     label: 'Операции',
     icon: 'mdi-cog-outline',
     count: operations.value.length,
+    warnings: invalidOperationsCount.value,
   },
   {
     key: 'fittings',
@@ -7762,6 +7784,10 @@ const healthIssues = computed<HealthIssue[]>(() => {
 
   if (hasMissingLaborRates.value) {
     issues.push({ severity: 'warning', message: 'Не все профили имеют установленные ставки', action: 'labor', actionLabel: 'Работы' })
+  }
+
+  if (estimateHardInvalid.value) {
+    issues.push({ severity: 'error', message: 'Смета содержит ошибки и не может быть использована', action: 'operations', actionLabel: 'Операции' })
   }
 
   if (activeRevisionRun.value?.status === 'NEEDS_MANUAL') {
@@ -7928,12 +7954,14 @@ const lockLaborRates = async () => {
 
 const openLaborWorkDialog = () => {
   editingLaborWork.value = null
+  laborWorkSubmitError.value = ''
+  laborWorkFieldErrors.value = {}
   laborWorkForm.value = {
     title: '',
     basis: '',
     hours: 0,
     note: '',
-    position_profile_id: null
+    labor_profile_id: null
   }
   laborWorkDialog.value = true
 }
@@ -7943,6 +7971,9 @@ const saveLaborWork = async () => {
   laborWorkSaving.value = true
 
   try {
+    laborWorkSubmitError.value = ''
+    laborWorkFieldErrors.value = {}
+
     if (!laborWorkFormRef.value?.validate()) {
       laborWorkSaving.value = false
       return
@@ -7953,7 +7984,7 @@ const saveLaborWork = async () => {
       basis: laborWorkForm.value.basis || null,
       hours: parseFloat(String(laborWorkForm.value.hours)) || 0,
       note: laborWorkForm.value.note || null,
-      position_profile_id: laborWorkForm.value.position_profile_id || null,
+      labor_profile_id: laborWorkForm.value.labor_profile_id || null,
       hours_source: editingLaborWork.value?.hours_source || 'manual',
       hours_manual: editingLaborWork.value?.hours_manual || parseFloat(String(laborWorkForm.value.hours)) || 0
     }
@@ -7973,7 +8004,10 @@ const saveLaborWork = async () => {
     await loadLaborWorks()
   } catch (e: any) {
     console.error('saveLaborWork error', e)
-    showNotification('Ошибка сохранения работы: ' + (e.response?.data?.message || e.message), 'error')
+    const responseData = e.response?.data
+    laborWorkFieldErrors.value = responseData?.errors || {}
+    laborWorkSubmitError.value = responseData?.message || 'Не удалось сохранить работу'
+    showNotification('Ошибка сохранения работы: ' + (responseData?.message || e.message), 'error')
   } finally {
     laborWorkSaving.value = false
   }
@@ -7981,12 +8015,14 @@ const saveLaborWork = async () => {
 
 const editLaborWork = (item: LaborWork) => {
   editingLaborWork.value = item
+  laborWorkSubmitError.value = ''
+  laborWorkFieldErrors.value = {}
   laborWorkForm.value = {
     title: item.title,
     basis: item.basis || '',
     hours: item.hours,
     note: item.note || '',
-    position_profile_id: item.position_profile_id || null
+    labor_profile_id: item.labor_profile_id || null
   }
   laborWorkDialog.value = true
 }
@@ -8456,61 +8492,18 @@ const deleteStep = async (step: any) => {
 const loadLaborWorks = async () => {
   try {
     loadingStates.value.laborWorks = true
-    // Использовать новый endpoint для автопересчета (preview mode)
-    const response = await api.post(`/api/projects/${projectId}/labor-works/recalculate`, {
-      mode: 'preview'
-    })
-    
-    if (response.data.success && response.data.data.works) {
-      // Логирование первой работы для отладки структуры данных
-      if (response.data.data.works.length > 0) {
-        console.log('📋 Структура первой работы:', response.data.data.works[0])
-        console.log('📋 Все ключи работы:', Object.keys(response.data.data.works[0]))
-      }
-      
-      // Работы уже пересчитаны на бэкенде (отсортированы по sort_order)
-      laborWorks.value = response.data.data.works
-        .map((work: any) => ({
-          ...work,
-          cost: work.cost_total ?? (work.hours * (work.rate_per_hour || 0))
-        }))
-        .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-      
-      // Установить флаг наличия недостающих ставок
-      hasMissingLaborRates.value = response.data.data.has_missing_rates ?? false
-      
-      // Логировать если есть недостающие ставки
-      if (response.data.data.has_missing_rates) {
-        console.warn('⚠️ Есть работы без рассчитанных ставок (нет источников)')
-      }
-    } else {
-      // Fallback на старый метод если новый endpoint не вернул данные
-      const works = await laborWorksApi.getAll(Number(projectId))
-      laborWorks.value = (works || []).map(work => {
-        const rate = work.rate_per_hour ?? (project.value.normohour_rate || 0)
-        return {
-          ...work,
-          cost: work.cost_total ?? (work.hours * rate)
-        }
-      })
-      hasMissingLaborRates.value = false
-    }
+    const works = await laborWorksApi.getAll(Number(projectId))
+    laborWorks.value = (works || [])
+      .map(work => ({
+        ...work,
+        cost: work.cost_total ?? (work.hours * (work.rate_per_hour || 0))
+      }))
+      .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    hasMissingLaborRates.value = false
   } catch (e) {
     console.error('loadLaborWorks error', e)
-    // Fallback на старый метод при ошибке
     hasMissingLaborRates.value = false
-    try {
-      const works = await laborWorksApi.getAll(Number(projectId))
-      laborWorks.value = (works || []).map(work => {
-        const rate = work.rate_per_hour ?? (project.value.normohour_rate || 0)
-        return {
-          ...work,
-          cost: work.cost_total ?? (work.hours * rate)
-        }
-      })
-    } catch (fallbackError) {
-      console.error('loadLaborWorks fallback error', fallbackError)
-    }
+    laborWorks.value = []
   } finally {
     loadingStates.value.laborWorks = false
   }

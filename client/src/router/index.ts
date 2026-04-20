@@ -6,7 +6,6 @@ import { setProjectsFlashMessage, storePrefetchedProject } from './projectAccess
 
 import AppShell from '@/layouts/AppShell.vue'
 import ParserLayout from '@/layouts/ParserLayout.vue'
-import OperationsView from "@/views/OperationsView.vue"
 import DetailTypesView from "@/views/DetailTypesView.vue"
 import { parserRoutes } from './parser'
 
@@ -32,6 +31,10 @@ const router = createRouter({
       name: 'reset-password',
       component: () => import('@/views/ResetPasswordView.vue'),
       meta: { requiresAuth: false }
+    },
+    {
+      path: '/operations',
+      redirect: '/pricing/operations',
     },
     {
       path: '/',
@@ -105,15 +108,38 @@ const router = createRouter({
           meta: { title: 'Объекты' }
         },
         {
-          path: 'operations',
-          name: 'operations',
-          component: OperationsView,
-          meta: { title: 'Операции' }
+          path: 'pricing',
+          name: 'pricing',
+          component: () => import('@/views/PricingHomeView.vue'),
+          meta: { title: 'Цены' }
+        },
+        {
+          path: 'pricing/operations',
+          name: 'pricing-operations',
+          component: () => import('@/views/PricingOperationsView.vue'),
+          meta: { title: 'Ценообразование — Операции' }
+        },
+        {
+          path: 'pricing/labor',
+          name: 'pricing-labor',
+          component: () => import('@/views/PricingLaborView.vue'),
+          meta: { title: 'Ценообразование — Труд' }
+        },
+        {
+          path: 'price-imports',
+          name: 'price-imports',
+          component: () => import('@/views/PriceImportsView.vue'),
+          meta: {
+            title: 'Импорт цен',
+            navLabel: 'Импорт цен',
+            navGroup: 'pricing',
+            icon: 'mdi-file-import-outline',
+          },
         },
         {
           path: 'work-profiles',
           name: 'work-profiles',
-          component: () => import('@/views/WorkProfilesView.vue'),
+          redirect: { name: 'pricing-labor' },
           meta: { title: 'Профили работ' }
         },
         {

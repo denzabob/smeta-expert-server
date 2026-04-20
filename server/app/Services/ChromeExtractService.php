@@ -7,6 +7,7 @@ use App\Models\Material;
 use App\Models\MaterialPriceHistory;
 use App\Models\ParserSupplierCollectProfile;
 use App\Models\UserMaterialLibrary;
+use App\Services\Material\EdgeMaterialNormalizer;
 use App\Services\MaterialTypes\MaterialTypeDetectionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -15,7 +16,8 @@ class ChromeExtractService
 {
     public function __construct(
         private readonly MaterialDimensionParser $dimensionParser,
-        private readonly MaterialTypeDetectionService $materialTypeDetection
+        private readonly MaterialTypeDetectionService $materialTypeDetection,
+        private readonly EdgeMaterialNormalizer $edgeMaterialNormalizer
     ) {
     }
 
@@ -494,11 +496,20 @@ class ChromeExtractService
         $unit = self::unitForMaterialType($materialType);
 
         if ($materialType === Material::TYPE_EDGE) {
-            $lengthMm = $resolvedDimensions['length_mm'];
-            $edgeThickness = $resolvedDimensions['width_mm'];
-            $widthMm = $edgeThickness !== null ? max(1, (int) round($edgeThickness)) : null;
-            $thicknessMm = null;
-            $thicknessDecimal = $edgeThickness !== null ? round($edgeThickness, 2) : null;
+            $normalizedEdge = $this->edgeMaterialNormalizer->normalize([
+                'type' => Material::TYPE_EDGE,
+                'name' => $title,
+                'article' => $article,
+                'length_mm' => $resolvedDimensions['length_mm'],
+                'width_mm' => $resolvedDimensions['width_mm'],
+                'thickness' => $this->toNullableFloat($extractedFields['thickness'] ?? null),
+                'thickness_mm' => null,
+            ]);
+
+            $lengthMm = $normalizedEdge['length_mm'] ?? null;
+            $widthMm = $normalizedEdge['width_mm'] ?? null;
+            $thicknessMm = $normalizedEdge['thickness_mm'] ?? null;
+            $thicknessDecimal = $normalizedEdge['thickness'] ?? null;
         } elseif ($materialType === Material::TYPE_HARDWARE) {
             $thicknessMm = null;
             $lengthMm = null;
@@ -574,15 +585,22 @@ class ChromeExtractService
                 }
 
                 // Update dimensions if provided
-                if ($thicknessMm && !$material->thickness_mm) {
+                if ($resolvedTypeForRecord === Material::TYPE_EDGE) {
+                    $material->length_mm = $lengthMm ?? $material->length_mm;
+                    $material->width_mm = null;
+                    $material->thickness = $thicknessDecimal ?? $material->thickness;
                     $material->thickness_mm = $thicknessMm;
-                    $material->thickness = $thicknessDecimal;
-                }
-                if ($lengthMm && !$material->length_mm) {
-                    $material->length_mm = $lengthMm;
-                }
-                if ($widthMm && !$material->width_mm) {
-                    $material->width_mm = $widthMm;
+                } else {
+                    if ($thicknessMm && !$material->thickness_mm) {
+                        $material->thickness_mm = $thicknessMm;
+                        $material->thickness = $thicknessDecimal;
+                    }
+                    if ($lengthMm && !$material->length_mm) {
+                        $material->length_mm = $lengthMm;
+                    }
+                    if ($widthMm && !$material->width_mm) {
+                        $material->width_mm = $widthMm;
+                    }
                 }
 
                 if ($material->type === null || trim((string) $material->type) === '') {

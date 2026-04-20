@@ -12,6 +12,7 @@ use App\Models\GenericEvidenceAsset;
 use App\Models\UserMaterialLibrary;
 use App\Models\UserSettings;
 use App\Services\DomainParseService;
+use App\Services\Material\EdgeMaterialNormalizer;
 use App\Services\MaterialDeduplicationService;
 use App\Services\MaterialParseService;
 use App\Services\TrustScoreService;
@@ -33,6 +34,7 @@ class MaterialCatalogController extends Controller
     protected DomainParseService $domainParseService;
     protected UrlNormalizer $urlNormalizer;
     protected MaterialConfirmationService $confirmationService;
+    protected EdgeMaterialNormalizer $edgeMaterialNormalizer;
 
     public function __construct(
         MaterialParseService $parseService,
@@ -40,7 +42,8 @@ class MaterialCatalogController extends Controller
         MaterialDeduplicationService $dedupService,
         DomainParseService $domainParseService,
         UrlNormalizer $urlNormalizer,
-        MaterialConfirmationService $confirmationService
+        MaterialConfirmationService $confirmationService,
+        EdgeMaterialNormalizer $edgeMaterialNormalizer
     ) {
         $this->parseService = $parseService;
         $this->trustScoreService = $trustScoreService;
@@ -48,6 +51,7 @@ class MaterialCatalogController extends Controller
         $this->domainParseService = $domainParseService;
         $this->urlNormalizer = $urlNormalizer;
         $this->confirmationService = $confirmationService;
+        $this->edgeMaterialNormalizer = $edgeMaterialNormalizer;
     }
 
     // ========================================================================
@@ -311,6 +315,10 @@ class MaterialCatalogController extends Controller
         $materialData['article'] = $materialData['article'] ?? '';
         // Remove nulls for optional fields so DB column defaults apply (e.g. waste_factor = 1.00)
         $materialData = array_filter($materialData, fn($v) => $v !== null);
+
+        if (($materialData['type'] ?? null) === Material::TYPE_EDGE) {
+            $materialData = $this->edgeMaterialNormalizer->normalize($materialData);
+        }
 
         // Build observation data
         $observationData = [
@@ -698,6 +706,19 @@ class MaterialCatalogController extends Controller
         // Update thickness decimal from thickness_mm
         if (array_key_exists('thickness_mm', $validated)) {
             $validated['thickness'] = $validated['thickness_mm'] ? round($validated['thickness_mm'], 2) : null;
+        }
+
+        $effectiveType = $validated['type'] ?? $material->type;
+        if ($effectiveType === Material::TYPE_EDGE) {
+            $normalized = $this->edgeMaterialNormalizer->normalize(array_merge(
+                $material->only(['name', 'article', 'type', 'length_mm', 'width_mm', 'thickness', 'thickness_mm']),
+                $validated,
+                ['type' => $effectiveType]
+            ));
+
+            foreach (['length_mm', 'width_mm', 'thickness', 'thickness_mm'] as $field) {
+                $validated[$field] = $normalized[$field] ?? null;
+            }
         }
 
         // DB constraint safety: waste_factor cannot be NULL on some environments.

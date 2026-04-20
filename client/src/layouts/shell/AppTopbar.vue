@@ -126,7 +126,6 @@ const pageTitles: Record<string, string> = {
   'projects': 'Проекты',
   'ProjectEditorView': 'Редактор сметы',
   'detail-types': 'Объекты',
-  'operations': 'Операции',
   'work-profiles': 'Профили работ',
   'settings': 'Настройки',
   'settings-project': 'Настройки проекта',

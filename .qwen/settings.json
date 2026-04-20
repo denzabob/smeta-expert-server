@@ -3,5 +3,6 @@
     "allow": [
       "Bash(docker exec *)"
     ]
-  }
+  },
+  "$version": 3
 }

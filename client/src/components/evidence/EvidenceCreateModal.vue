@@ -1,9 +1,9 @@
 <template>
   <v-dialog v-model="dialog" max-width="560" persistent>
-    <v-card>
+    <v-card @paste.capture="handlePaste">
       <v-card-title class="d-flex align-center pa-4 pb-3">
         <v-icon size="small" class="mr-2" color="primary">mdi-file-document-plus-outline</v-icon>
-        <span class="text-subtitle-1 font-weight-medium">{{ title || 'Добавить обоснование' }}</span>
+        <span class="text-subtitle-1 font-weight-medium modal-title">{{ title || 'Добавить обоснование' }}</span>
         <v-spacer />
         <v-btn icon="mdi-close" variant="text" size="small" :disabled="saving" @click="cancel" />
       </v-card-title>
@@ -11,6 +11,11 @@
       <v-divider />
 
       <v-card-text class="pa-4">
+        <div v-if="operationName" class="operation-context mb-4">
+          <div class="operation-context__label">Операция</div>
+          <div class="operation-context__name">{{ operationName }}</div>
+        </div>
+
         <v-form ref="formRef" @submit.prevent="submit">
           <!-- Asserted price -->
           <v-text-field
@@ -47,12 +52,15 @@
             variant="outlined"
             density="compact"
             class="mb-3"
+            @blur="normalizeUrlField"
           />
 
           <!-- Note -->
           <v-textarea
             v-model="form.note"
-            label="Примечание"
+            label="Комментарий (необязательно)"
+            hint="Отображается в источнике и может использоваться в отчёте"
+            persistent-hint
             rows="2"
             variant="outlined"
             density="compact"
@@ -105,13 +113,15 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { evidenceRunApi } from '@/api/evidenceRun'
+import api from '@/api/axios'
 
 const props = defineProps<{
   modelValue: boolean
-  linkableType: 'operation_price' | 'price_list_version'
-  linkableId: number
+  targetType: 'operation' | 'material' | 'labor' | 'product'
+  targetId: number
+  unit?: string
   title?: string
+  operationName?: string
 }>()
 
 const emit = defineEmits<{
@@ -131,11 +141,9 @@ watch(dialog, (val) => {
 })
 
 const sourceTypeOptions = [
-  { label: 'Сайт поставщика', value: 'supplier_website' },
-  { label: 'Ручной ввод', value: 'manual_input' },
-  { label: 'Документ', value: 'document' },
-  { label: 'Расчёт', value: 'internal_calc' },
-  { label: 'Chrome Extension', value: 'chrome_capture' },
+  { label: 'Сайт поставщика', value: 'url' },
+  { label: 'Ручной ввод', value: 'manual' },
+  { label: 'Документ', value: 'file' },
 ]
 
 const formRef = ref<InstanceType<typeof import('vuetify/components').VForm> | null>(null)
@@ -160,7 +168,48 @@ function cancel() {
   dialog.value = false
 }
 
+function normalizeSourceUrl(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+function normalizeUrlField() {
+  form.value.source_url = normalizeSourceUrl(form.value.source_url)
+}
+
+function handlePaste(event: ClipboardEvent) {
+  const clipboardItems = event.clipboardData?.items
+  if (!clipboardItems?.length) return
+
+  const pastedFiles: File[] = []
+
+  for (const item of clipboardItems) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+
+    const file = item.getAsFile()
+    if (!file) continue
+
+    const extension = file.type.split('/')[1] || 'png'
+    pastedFiles.push(
+      new File(
+        [file],
+        `pasted-image-${Date.now()}-${pastedFiles.length + 1}.${extension}`,
+        { type: file.type },
+      ),
+    )
+  }
+
+  if (!pastedFiles.length) return
+
+  event.preventDefault()
+  form.value.files = [...form.value.files, ...pastedFiles]
+}
+
 async function submit() {
+  normalizeUrlField()
+
   const validation = await formRef.value?.validate()
   if (!validation?.valid) return
 
@@ -168,16 +217,19 @@ async function submit() {
   errorMsg.value = null
 
   const fd = new FormData()
-  fd.append('asserted_price', form.value.asserted_price)
+  fd.append('target_type', props.targetType)
+  fd.append('target_id', String(props.targetId))
+  fd.append('value', form.value.asserted_price)
   fd.append('source_type', form.value.source_type)
   if (form.value.source_url) fd.append('source_url', form.value.source_url)
-  if (form.value.note) fd.append('note', form.value.note)
+  if (form.value.note) fd.append('notes', form.value.note)
+  if (props.unit) fd.append('unit', props.unit)
   for (const file of form.value.files) {
     fd.append('files[]', file)
   }
 
   try {
-    await evidenceRunApi.createAndAttach(props.linkableType, props.linkableId, fd)
+    await api.post('/api/pricing/manual-source', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
     dialog.value = false
     emit('created')
   } catch (err: unknown) {
@@ -194,3 +246,40 @@ async function submit() {
   }
 }
 </script>
+
+<style scoped>
+.modal-title {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.operation-context {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(var(--v-theme-primary), 0.05);
+  border: 1px solid rgba(var(--v-theme-primary), 0.12);
+}
+
+.operation-context__label {
+  font-size: 11px;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.operation-context__name {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.84);
+}
+</style>

@@ -5,12 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\LaborProfile;
 
 class ProjectLaborWork extends Model
 {
     protected $fillable = [
         'project_id',
         'position_profile_id',
+        'labor_profile_id',
         'title',
         'basis',
         'hours',
@@ -44,6 +46,14 @@ class ProjectLaborWork extends Model
     }
 
     /**
+     * Отношение к новому профилю работ
+     */
+    public function laborProfile(): BelongsTo
+    {
+        return $this->belongsTo(LaborProfile::class, 'labor_profile_id');
+    }
+
+    /**
      * Отношение к профилю должности
      */
     public function positionProfile(): BelongsTo
@@ -74,8 +84,7 @@ class ProjectLaborWork extends Model
      * Приоритет:
      * 1. Если установлена cost_total (из привязанной ставки) - использовать её
      * 2. Если установлена rate_per_hour (из привязанной ставки) - использовать её для расчёта
-     * 3. Если есть регион-зависимая ставка - использовать project.normohour_rate
-     * 4. Иначе NULL
+     * 3. Иначе NULL
      * 
      * Использование: $work->cost
      */
@@ -91,12 +100,7 @@ class ProjectLaborWork extends Model
             return round($this->hours * (float)$this->rate_per_hour, 2);
         }
 
-        // Приоритет 3: Fallback на ставку проекта (старый способ)
-        if ($this->project && $this->project->normohour_rate) {
-            return round($this->hours * $this->project->normohour_rate, 2);
-        }
-
-        // Приоритет 4: Ставка не найдена
+        // Приоритет 3: Ставка не найдена
         return null;
     }
 

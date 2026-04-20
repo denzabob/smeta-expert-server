@@ -49,7 +49,9 @@ class EvidenceRunItemCollector
         $total = count($descriptors);
 
         foreach ($descriptors as $desc) {
-            $isInternal = in_array($desc['cost_component'], CostComponent::internalOnlyTypes(), true);
+            $isLaborExternal = ($desc['diagnostics_json']['labor_entry_kind'] ?? null) === 'external';
+            $isInternal = !$isLaborExternal
+                && in_array($desc['cost_component'], CostComponent::internalOnlyTypes(), true);
 
             $status = $isInternal ? EvidenceItemStatus::RESOLVED : EvidenceItemStatus::PENDING;
             $resolutionType = $isInternal ? ResolutionType::AUTO : null;
@@ -60,6 +62,12 @@ class EvidenceRunItemCollector
             $normalizedSourceUrl = $this->urlNormalizer->normalize($desc['source_url'] ?? null);
 
             $evidenceRecordId = null;
+            if (!$isInternal && !empty($desc['evidence_record_id'])) {
+                $status = EvidenceItemStatus::RESOLVED;
+                $resolutionType = $desc['resolution_type'] ?? ResolutionType::MANUAL;
+                $evidenceRecordId = (int) $desc['evidence_record_id'];
+            }
+
             if ($isInternal && $desc['effective_value'] !== null) {
                 $record = EvidenceRecord::create([
                     'uuid'                => (string) Str::uuid(),
@@ -77,7 +85,7 @@ class EvidenceRunItemCollector
             }
 
             // Freshness-based auto-resolution for external types
-            if (!$isInternal && !empty($normalizedSourceUrl)) {
+            if (!$isInternal && $evidenceRecordId === null && !empty($normalizedSourceUrl)) {
                 $freshRecord = $this->confirmationService->getFreshRecord(
                     $normalizedSourceUrl,
                     $desc['cost_component'],
@@ -103,6 +111,7 @@ class EvidenceRunItemCollector
                 'source_url'         => $normalizedSourceUrl,
                 'effective_value'    => $desc['effective_value'] ?? null,
                 'currency'           => $desc['currency'] ?? null,
+                'diagnostics_json'   => $desc['diagnostics_json'] ?? null,
             ]);
 
             if ($status === EvidenceItemStatus::RESOLVED) {
@@ -174,6 +183,17 @@ class EvidenceRunItemCollector
     private function collectDescriptors(Project $project, array $report): array
     {
         $items = [];
+        $projectLaborSources = $project->laborEvidenceSources()
+            ->where('is_active', true)
+            ->whereNotNull('evidence_record_id')
+            ->with(['provider', 'region', 'laborProfile'])
+            ->orderByDesc('labor_evidence_sources.id')
+            ->get();
+        $laborSourcesCount = $projectLaborSources->count();
+        $baseLaborDiagnostics = [
+            'labor_evidence_mode' => 'project_scoped',
+            'labor_sources_count' => $laborSourcesCount,
+        ];
 
         // ── Plates ──
         $positions = $project->positions()
@@ -278,6 +298,11 @@ class EvidenceRunItemCollector
             $lwId = (int) ($lw['id'] ?? 0);
             if ($lwId <= 0 || isset($items['labor_work:' . $lwId])) continue;
 
+            $diagnostics = $baseLaborDiagnostics;
+            if ($laborSourcesCount === 0) {
+                $diagnostics['labor_warning'] = 'No labor evidence sources attached';
+            }
+
             $items['labor_work:' . $lwId] = [
                 'cost_component' => CostComponent::LABOR_WORK,
                 'label'          => $lw['title'] ?? 'Работа #' . $lwId,
@@ -286,6 +311,7 @@ class EvidenceRunItemCollector
                 'source_url'     => null,
                 'effective_value' => (float) ($lw['rate_per_hour'] ?? 0),
                 'currency'       => 'RUB',
+                'diagnostics_json' => $diagnostics,
             ];
         }
 
@@ -302,6 +328,54 @@ class EvidenceRunItemCollector
                 'source_url'     => null,
                 'effective_value' => (float) ($exp['cost'] ?? 0),
                 'currency'       => 'RUB',
+            ];
+        }
+
+        // ── External labor evidence ──
+        // Strict project-scoped mode: only explicitly linked sources are used.
+        foreach ($projectLaborSources as $source) {
+            $label = $source->vacancy_title
+                ?: $source->source_title
+                ?: ($source->provider?->title ? 'Вакансия — ' . $source->provider->title : 'Источник труда #' . $source->id);
+
+            $items['labor_external:' . $source->id] = [
+                'cost_component' => CostComponent::LABOR_WORK,
+                'label' => $label,
+                'subject_type' => 'labor_evidence_source',
+                'subject_id' => $source->id,
+                'source_url' => $source->source_url,
+                'effective_value' => $source->derived_hourly_rate !== null
+                    ? (float) $source->derived_hourly_rate
+                    : ($source->salary_value !== null ? (float) $source->salary_value : null),
+                'currency' => $source->currency ?: 'RUB',
+                'evidence_record_id' => $source->evidence_record_id,
+                'resolution_type' => $source->captured_via === 'chrome'
+                    ? ResolutionType::CHROME
+                    : ResolutionType::MANUAL,
+                'diagnostics_json' => [
+                    ...$baseLaborDiagnostics,
+                    'labor_entry_kind' => 'external',
+                    'labor_evidence_source_id' => $source->id,
+                    'provider_title' => $source->provider?->title,
+                    'provider_domain' => $source->provider?->domain,
+                    'employer_name' => $source->employer_name,
+                    'vacancy_title' => $source->vacancy_title,
+                    'vacancy_description' => $source->vacancy_description,
+                    'vacancy_excerpt' => $source->vacancy_excerpt,
+                    'salary_raw_text' => $source->salary_raw_text,
+                    'salary_value' => $source->salary_value !== null ? (float) $source->salary_value : null,
+                    'salary_value_min' => $source->salary_value_min !== null ? (float) $source->salary_value_min : null,
+                    'salary_value_max' => $source->salary_value_max !== null ? (float) $source->salary_value_max : null,
+                    'salary_period' => $source->salary_period,
+                    'derived_hourly_rate' => $source->derived_hourly_rate !== null ? (float) $source->derived_hourly_rate : null,
+                    'hours_per_month' => $source->hours_per_month,
+                    'region_name' => $source->region?->name,
+                    'region_id' => $source->region_id,
+                    'source_title' => $source->source_title,
+                    'source_date' => $source->source_date?->format('Y-m-d'),
+                    'note' => $source->note,
+                    'verification_status' => $source->verification_status,
+                ],
             ];
         }
 

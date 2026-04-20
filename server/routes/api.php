@@ -249,6 +249,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('chrome/capture-observation', [\App\Http\Controllers\Api\GenericChromeController::class, 'captureObservation']);
         Route::post('chrome/generic-items/{itemId}/capture', [\App\Http\Controllers\Api\GenericChromeController::class, 'captureGenericItem']);
         Route::post('chrome/extract-with-evidence', [\App\Http\Controllers\Api\GenericChromeController::class, 'extractWithEvidence']);
+        Route::post('chrome/labor-captures', [\App\Http\Controllers\Api\ChromeLaborCaptureController::class, 'store']);
     });
     
     // ========== Material Catalog (Block 1) ==========
@@ -267,6 +268,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('operations/search', [OperationController::class, 'search']);
     Route::get('operations/categories', [OperationController::class, 'getCategories']);
     Route::get('operations/{operation}/price-links', [OperationController::class, 'priceLinks']);
+    Route::get('operations/{operation}/pricing-summary', [OperationController::class, 'pricingSummary']);
+    Route::get('operations/{operation}/application-rule', [OperationController::class, 'applicationRule']);
+    Route::post('operations/{operation}/application-rule', [OperationController::class, 'storeApplicationRule']);
+    Route::put('operations/{operation}/application-rules/{rule}', [OperationController::class, 'updateApplicationRule']);
+    Route::get('operations/{operation}/price-sources', [\App\Http\Controllers\Api\OperationPriceSourceController::class, 'index']);
+    Route::post('operations/{operation}/price-sources', [\App\Http\Controllers\Api\OperationPriceSourceController::class, 'store']);
+    Route::patch('price-sources/{id}/activate', [\App\Http\Controllers\Api\OperationPriceSourceController::class, 'activate']);
+    Route::delete('price-sources/{id}', [\App\Http\Controllers\Api\OperationPriceSourceController::class, 'destroy']);
     Route::get('units', [\App\Http\Controllers\Api\UnitController::class, 'index']);
     Route::apiResource('operations', OperationController::class);
     Route::apiResource('detail-types', DetailTypeController::class);
@@ -274,8 +283,35 @@ Route::middleware('auth:sanctum')->group(function () {
     // Справочники
     Route::get('regions', [RegionController::class, 'index']);
     Route::apiResource('position-profiles', PositionProfileController::class);
+    Route::prefix('pricing/labor')->group(function () {
+        Route::get('providers', [\App\Http\Controllers\Api\Pricing\Labor\LaborProviderController::class, 'index']);
+        Route::post('providers', [\App\Http\Controllers\Api\Pricing\Labor\LaborProviderController::class, 'store']);
+        Route::get('providers/{id}', [\App\Http\Controllers\Api\Pricing\Labor\LaborProviderController::class, 'show']);
+        Route::put('providers/{id}', [\App\Http\Controllers\Api\Pricing\Labor\LaborProviderController::class, 'update']);
+        Route::delete('providers/{id}', [\App\Http\Controllers\Api\Pricing\Labor\LaborProviderController::class, 'destroy']);
+
+        Route::get('profiles', [\App\Http\Controllers\Api\Pricing\Labor\LaborProfileController::class, 'index']);
+        Route::post('profiles', [\App\Http\Controllers\Api\Pricing\Labor\LaborProfileController::class, 'store']);
+        Route::get('profiles/{id}', [\App\Http\Controllers\Api\Pricing\Labor\LaborProfileController::class, 'show']);
+        Route::put('profiles/{id}', [\App\Http\Controllers\Api\Pricing\Labor\LaborProfileController::class, 'update']);
+        Route::delete('profiles/{id}', [\App\Http\Controllers\Api\Pricing\Labor\LaborProfileController::class, 'destroy']);
+
+        Route::get('sources', [\App\Http\Controllers\Api\Pricing\Labor\LaborEvidenceSourceController::class, 'index']);
+        Route::post('sources', [\App\Http\Controllers\Api\Pricing\Labor\LaborEvidenceSourceController::class, 'store']);
+        Route::get('sources/{id}', [\App\Http\Controllers\Api\Pricing\Labor\LaborEvidenceSourceController::class, 'show']);
+        Route::put('sources/{id}', [\App\Http\Controllers\Api\Pricing\Labor\LaborEvidenceSourceController::class, 'update']);
+        Route::delete('sources/{id}', [\App\Http\Controllers\Api\Pricing\Labor\LaborEvidenceSourceController::class, 'destroy']);
+        Route::get('sources/{id}/assets', [\App\Http\Controllers\Api\Pricing\Labor\LaborEvidenceAssetController::class, 'index']);
+        Route::post('sources/{id}/assets', [\App\Http\Controllers\Api\Pricing\Labor\LaborEvidenceAssetController::class, 'store']);
+        Route::delete('sources/{id}/assets/{assetId}', [\App\Http\Controllers\Api\Pricing\Labor\LaborEvidenceAssetController::class, 'destroy']);
+    });
 
     Route::apiResource('projects', ProjectController::class);
+    Route::get('projects/{project}/labor-sources', [\App\Http\Controllers\Api\ProjectLaborEvidenceSourceController::class, 'index']);
+    Route::post('projects/{project}/labor-sources/attach', [\App\Http\Controllers\Api\ProjectLaborEvidenceSourceController::class, 'attach']);
+    Route::post('projects/{project}/labor-sources/detach', [\App\Http\Controllers\Api\ProjectLaborEvidenceSourceController::class, 'detach']);
+    Route::get('projects/{project}/labor-cost', [\App\Http\Controllers\Api\ProjectLaborCostController::class, 'show']);
+    Route::get('projects/{project}/labor-diagnostics', [\App\Http\Controllers\Api\ProjectLaborDiagnosticsController::class, 'show']);
     Route::post('projects/{project}/positions/bulk', [ProjectPositionController::class, 'bulk']);
     Route::post('projects/{project}/positions/recalculate-prices', [ProjectPositionController::class, 'recalculatePrices']);
     Route::apiResource('projects.positions', ProjectPositionController::class);
@@ -438,6 +474,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('evidence-records/{record}/verification-status', [EvidenceRunController::class, 'updateVerificationStatus']);
     Route::post('evidence-records', [EvidenceRunController::class, 'createRecord']);
     Route::post('evidence-records/{id}/assets', [EvidenceRunController::class, 'uploadAsset']);
+    Route::post('pricing/manual-source', [\App\Http\Controllers\Api\ManualPricingSourceController::class, 'store']);
     
     // ========== Position Import API ==========
     // Upload file and create import session
@@ -650,17 +687,10 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // ========== Price Import API ==========
     Route::get('price-imports', [\App\Http\Controllers\Api\PriceImportController::class, 'index']);
-    Route::post('price-imports/upload', [\App\Http\Controllers\Api\PriceImportController::class, 'upload']);
-    Route::post('price-imports/paste', [\App\Http\Controllers\Api\PriceImportController::class, 'paste']);
-    Route::post('price-imports/reuse', [\App\Http\Controllers\Api\PriceImportController::class, 'reuse']);
-    Route::get('price-imports/{session}', [\App\Http\Controllers\Api\PriceImportController::class, 'show']);
-    Route::patch('price-imports/{session}', [\App\Http\Controllers\Api\PriceImportController::class, 'updateSettings']);
-    Route::post('price-imports/{session}/mapping', [\App\Http\Controllers\Api\PriceImportController::class, 'saveMapping']);
-    Route::get('price-imports/{session}/resolution', [\App\Http\Controllers\Api\PriceImportController::class, 'resolution']);
-    Route::post('price-imports/{session}/bulk-action', [\App\Http\Controllers\Api\PriceImportController::class, 'bulkAction']);
-    Route::post('price-imports/{session}/execute', [\App\Http\Controllers\Api\PriceImportController::class, 'execute']);
-    Route::post('price-imports/{session}/cancel', [\App\Http\Controllers\Api\PriceImportController::class, 'cancel']);
-    Route::delete('price-imports/{session}', [\App\Http\Controllers\Api\PriceImportController::class, 'destroy']);
+    Route::post('price-imports', [\App\Http\Controllers\Api\PriceImportController::class, 'store']);
+    Route::get('price-imports/{id}/items', [\App\Http\Controllers\Api\PriceImportController::class, 'items'])->whereNumber('id');
+    Route::post('price-import-items/{id}/bind', [\App\Http\Controllers\Api\PriceImportController::class, 'bindItem']);
+    Route::post('price-import-items/{id}/ignore', [\App\Http\Controllers\Api\PriceImportController::class, 'ignoreItem']);
     
     Route::get('operations/exclusion-groups', [\App\Http\Controllers\Api\OperationController::class, 'getExclusionGroups']);
     
