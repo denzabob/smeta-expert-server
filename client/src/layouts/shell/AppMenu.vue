@@ -253,21 +253,22 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   width: 100%;
+  min-height: 48px;
   padding: 8px 12px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--md-sys-shape-corner-large);
   background: transparent;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
   color: rgba(var(--v-theme-on-surface), 0.87);
 }
 
 .menu-trigger:hover {
-  background: rgba(var(--v-theme-on-surface), 0.05);
+  background: rgba(var(--v-theme-on-surface), 0.06);
 }
 
 .menu-trigger--open {
-  background: rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-secondary-container), 0.82);
 }
 
 .menu-trigger--rail {
@@ -282,8 +283,8 @@ onUnmounted(() => {
 .logo-placeholder {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
-  background: transparent;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: rgba(var(--v-theme-primary), 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -306,8 +307,8 @@ onUnmounted(() => {
 
 .menu-title {
   flex: 1;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 0.94rem;
+  font-weight: 700;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -326,33 +327,33 @@ onUnmounted(() => {
 
 /* Dropdown Styles */
 .menu-dropdown {
-  background: rgb(var(--v-theme-surface));
-  border-radius: 12px;
-  box-shadow: 
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 2px 4px -1px rgba(0, 0, 0, 0.06),
-    0 0 0 1px rgba(var(--v-theme-on-surface), 0.08);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.04), transparent 160px),
+    var(--ds-surface-card);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  box-shadow: var(--ds-shadow-dropdown);
   overflow: hidden;
   min-width: 240px;
 }
 
 .menu-section {
-  padding: 8px;
+  padding: 10px;
 }
 
 .menu-section-title {
-  padding: 8px 12px 4px;
-  font-size: 11px;
-  font-weight: 600;
+  padding: 8px 12px 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: rgba(var(--v-theme-on-surface), 0.5);
+  letter-spacing: 0.08em;
+  color: rgba(var(--v-theme-on-surface-variant), 0.88);
 }
 
 .menu-divider {
   height: 1px;
-  background: rgba(var(--v-theme-on-surface), 0.08);
-  margin: 0 8px;
+  background: rgba(var(--v-theme-outline-variant), 0.72);
+  margin: 0 10px;
 }
 
 .menu-item {
@@ -360,28 +361,29 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   width: 100%;
+  min-height: 48px;
   padding: 10px 12px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--md-sys-shape-corner-large);
   background: transparent;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
   color: rgba(var(--v-theme-on-surface), 0.87);
   text-align: left;
 }
 
 .menu-item:hover {
-  background: rgba(var(--v-theme-on-surface), 0.05);
+  background: rgba(var(--v-theme-on-surface), 0.06);
 }
 
 .menu-item--active {
-  background: rgba(var(--v-theme-primary), 0.1);
+  background: rgba(var(--v-theme-secondary-container), 0.92);
 }
 
 .menu-item-icon {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--md-sys-shape-corner-medium);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -415,8 +417,8 @@ onUnmounted(() => {
 
 .menu-item-text {
   flex: 1;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .menu-item-check {

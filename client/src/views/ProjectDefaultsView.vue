@@ -12,7 +12,10 @@
       </div>
     </v-alert>
 
-    <SectionCard class="settings-shell">
+    <SectionCard
+      class="settings-shell project-defaults-card"
+      subtitle="Единая MD3-оболочка для настроек новых проектов, материалов, коэффициентов и текстовых блоков."
+    >
       <div class="settings-topbar">
         <v-text-field
           v-model="searchQuery"
@@ -84,7 +87,13 @@
       </div>
     </SectionCard>
 
-    <v-snackbar v-model="snackbar.show" :timeout="snackbar.timeout" :color="snackbar.color" location="bottom right">
+    <v-snackbar
+      v-model="snackbar.show"
+      :timeout="snackbar.timeout"
+      :color="snackbar.color"
+      location="bottom right"
+      class="project-defaults-snackbar"
+    >
       {{ snackbar.message }}
     </v-snackbar>
   </PageContainer>
@@ -319,12 +328,18 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+.project-defaults-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 92%, transparent);
+}
+
 .settings-topbar {
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding: var(--ds-space-14) var(--ds-space-16);
+  border-bottom: 1px solid var(--ds-divider);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--ds-space-10);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-secondary-container), 0.18), rgba(var(--v-theme-surface-container-low), 0.92));
 }
 
 .settings-search {
@@ -345,16 +360,21 @@ onBeforeUnmount(() => {
 .settings-content-scroll {
   flex: 1;
   overflow: auto;
-  padding: 16px;
+  padding: var(--ds-space-16);
 }
 
 .settings-footer {
   position: sticky;
   bottom: 0;
-  padding: 12px 16px;
-  border-top: 1px solid rgba(0,0,0,0.08);
-  background: rgb(var(--v-theme-surface));
+  padding: var(--ds-space-12) var(--ds-space-16);
+  border-top: 1px solid var(--ds-divider);
+  background: rgba(var(--v-theme-surface-container-low), 0.92);
+  backdrop-filter: blur(12px);
 }
 
 .gap-2 { gap: 8px; }
+
+.project-defaults-snackbar :deep(.v-snackbar__wrapper) {
+  border-radius: var(--ds-radius-12);
+}
 </style>

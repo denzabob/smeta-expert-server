@@ -64,15 +64,19 @@ const issueWord = 'проблем'
 
 <style scoped>
 .health-bar {
-  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  background: rgba(var(--v-theme-warning), 0.04);
+  margin-top: 12px;
+  border: 1px solid rgba(var(--v-theme-warning), 0.22);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-warning), 0.08), rgba(var(--v-theme-warning), 0.03));
+  overflow: hidden;
 }
 
 .health-bar__toggle {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 20px;
+  padding: 10px 16px;
   cursor: pointer;
   user-select: none;
 }
@@ -82,9 +86,9 @@ const issueWord = 'проблем'
 }
 
 .health-bar__summary {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: rgba(var(--v-theme-on-surface), 0.8);
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 0.86);
 }
 
 .health-bar__chevron {
@@ -97,34 +101,53 @@ const issueWord = 'проблем'
 }
 
 .health-bar__list {
-  padding: 0 20px 8px;
+  padding: 0 16px 14px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .health-bar__item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 0.8125rem;
+  padding: 10px 12px;
+  border-radius: var(--md-sys-shape-corner-large);
+  font-size: 0.84rem;
+  border: 1px solid transparent;
 }
 
 .health-bar__item--error {
-  background: rgba(var(--v-theme-error), 0.06);
+  background: rgba(var(--v-theme-error-container), 0.72);
+  border-color: rgba(var(--v-theme-error), 0.18);
 }
 
 .health-bar__item--warning {
-  background: rgba(var(--v-theme-warning), 0.06);
+  background: rgba(var(--v-theme-warning), 0.1);
+  border-color: rgba(var(--v-theme-warning), 0.18);
 }
 
 .health-bar__item--info {
-  background: rgba(var(--v-theme-info), 0.04);
+  background: rgba(var(--v-theme-info), 0.08);
+  border-color: rgba(var(--v-theme-info), 0.14);
 }
 
 .health-bar__message {
   flex: 1;
+}
+
+@media (max-width: 760px) {
+  .health-bar__toggle {
+    padding: 10px 12px;
+  }
+
+  .health-bar__list {
+    padding: 0 12px 12px;
+  }
+
+  .health-bar__item {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
 }
 </style>

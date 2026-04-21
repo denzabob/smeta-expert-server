@@ -313,24 +313,25 @@ async function ignoreItem(item: ImportItemRow): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  color: rgba(15, 23, 42, 0.72);
+  gap: var(--ds-space-10);
+  color: var(--ds-text-secondary);
   text-align: center;
 }
 
 .import-items-table__state--error {
-  color: rgb(185, 28, 28);
+  color: rgb(var(--v-theme-error));
 }
 
 .import-items-table__table {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 16px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
   overflow: hidden;
+  background: rgba(var(--v-theme-surface-container-lowest), 0.8);
 }
 
 .import-items-table__name {
   font-weight: 600;
-  color: rgb(15, 23, 42);
+  color: var(--ds-text-primary);
 }
 
 .import-items-table__actions {
@@ -339,13 +340,13 @@ async function ignoreItem(item: ImportItemRow): Promise<void> {
 
 .import-items-table__pending {
   display: grid;
-  gap: 8px;
-  padding: 10px 0;
+  gap: var(--ds-space-8);
+  padding: var(--ds-space-10) 0;
 }
 
 .import-items-table__pending-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-space-8);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -353,13 +354,13 @@ async function ignoreItem(item: ImportItemRow): Promise<void> {
 .import-items-table__row-error {
   font-size: 12px;
   line-height: 1.4;
-  color: rgb(185, 28, 28);
+  color: rgb(var(--v-theme-error));
 }
 
 .import-items-table__linked,
 .import-items-table__ignored {
   font-size: 13px;
-  color: rgba(15, 23, 42, 0.72);
+  color: var(--ds-text-secondary);
 }
 
 @media (max-width: 960px) {

@@ -98,13 +98,23 @@
       </template>
 
       <template #[`item.actions`]="{ item }">
-        <div class="d-flex ga-2 justify-end">
-          <v-btn size="small" variant="text" color="primary" @click="openDetails(item)">
-            Детали
-          </v-btn>
-          <v-btn size="small" variant="text" color="error" @click="detach(item)">
-            Убрать
-          </v-btn>
+        <div class="panel-actions">
+          <v-btn
+            icon="mdi-open-in-new"
+            size="small"
+            variant="text"
+            color="primary"
+            title="Открыть детали"
+            @click="openDetails(item)"
+          />
+          <v-btn
+            icon="mdi-link-off"
+            size="small"
+            variant="text"
+            color="error"
+            title="Убрать источник"
+            @click="detach(item)"
+          />
         </div>
       </template>
     </v-data-table>
@@ -174,9 +184,16 @@
             </template>
 
             <template #[`item.actions`]="{ item }">
-              <v-btn size="small" variant="text" color="primary" @click="openDetails(item)">
-                Просмотр
-              </v-btn>
+              <div class="panel-actions">
+                <v-btn
+                  icon="mdi-open-in-new"
+                  size="small"
+                  variant="text"
+                  color="primary"
+                  title="Просмотр"
+                  @click="openDetails(item)"
+                />
+              </div>
             </template>
           </v-data-table>
         </v-card-text>
@@ -241,7 +258,7 @@ const headers = [
   { title: 'Регион', key: 'region.name', sortable: false },
   { title: 'Ставка', key: 'rate', sortable: false, align: 'end' as const },
   { title: 'Подтверждение', key: 'assets', sortable: false },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const },
+  { title: 'Действия', key: 'actions', sortable: false, align: 'center' as const },
 ]
 
 const attachHeaders = [
@@ -249,7 +266,7 @@ const attachHeaders = [
   { title: 'Вакансия', key: 'vacancy_title', sortable: false },
   { title: 'Провайдер', key: 'provider', sortable: false },
   { title: 'Ставка', key: 'rate', sortable: false, align: 'end' as const },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const },
+  { title: 'Действия', key: 'actions', sortable: false, align: 'center' as const },
 ]
 
 const filteredAvailableSources = computed(() => {
@@ -353,6 +370,38 @@ function openDetails(source: LaborEvidenceSource) {
   padding: 8px 0 4px;
 }
 
+.sources-table :deep(.v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.82);
+}
+
+.sources-table :deep(thead th) {
+  height: 52px !important;
+  border-bottom: 1px solid var(--ds-divider) !important;
+  background: rgba(var(--v-theme-surface-container-lowest), 0.92) !important;
+}
+
+.sources-table :deep(thead th .v-data-table-header__content) {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-secondary);
+}
+
+.sources-table :deep(tbody td) {
+  vertical-align: top;
+  border-bottom-color: var(--ds-divider) !important;
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+}
+
+.sources-table :deep(.v-data-table-footer) {
+  border-top: 1px solid var(--ds-divider);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.7);
+}
+
 .source-title-cell__title {
   font-weight: 600;
   line-height: 1.35;
@@ -401,6 +450,15 @@ function openDetails(source: LaborEvidenceSource) {
 .rate-cell__value {
   font-weight: 600;
   text-align: right;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 84px;
+  margin: 0 auto;
 }
 
 @media (max-width: 900px) {

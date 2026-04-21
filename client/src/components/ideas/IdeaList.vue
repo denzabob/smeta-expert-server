@@ -1,5 +1,5 @@
 <template>
-  <div class="d-flex flex-column ga-3">
+  <div class="idea-list">
     <IdeaCard
       v-for="idea in ideas"
       :key="idea.id"
@@ -10,7 +10,7 @@
       @clear-vote="$emit('clear-vote', $event)"
     />
 
-    <v-alert v-if="ideas.length === 0" type="info" variant="tonal">
+    <v-alert v-if="ideas.length === 0" type="info" variant="tonal" class="idea-list__empty">
       Идеи не найдены.
     </v-alert>
   </div>
@@ -27,3 +27,15 @@ defineEmits<{
   (e: 'clear-vote', id: number): void
 }>()
 </script>
+
+<style scoped>
+.idea-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.idea-list__empty {
+  border-radius: var(--ds-radius-16);
+}
+</style>

@@ -215,29 +215,33 @@ onMounted(loadSessions)
   --devices-title: rgb(var(--v-theme-on-surface));
   --devices-subtitle: rgba(var(--v-theme-on-surface), 0.65);
   --devices-hover: rgba(var(--v-theme-on-surface), 0.08);
-  --devices-icon-bg: rgba(var(--v-theme-on-surface), 0.1);
-  --devices-border: rgba(var(--v-theme-on-surface), 0.12);
+  --devices-icon-bg: rgba(var(--v-theme-secondary-container), 0.92);
+  --devices-border: rgba(var(--v-theme-outline-variant), 0.72);
 }
 
 .devices-panel {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 16px;
 }
 
 /* ── Section ── */
 .devices-section {
-  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--devices-border);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.03), transparent 120px),
+    rgba(var(--v-theme-surface-container-low), 0.92);
 }
 
 .devices-section__title {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--devices-section-title, #888);
-  margin-bottom: 8px;
-  padding: 0 4px;
+  color: rgba(var(--v-theme-on-surface-variant), 0.88);
+  margin-bottom: 12px;
 }
 
 /* ── Session item ── */
@@ -245,13 +249,15 @@ onMounted(loadSessions)
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 8px;
-  border-radius: 8px;
-  transition: background 0.15s ease;
+  padding: 12px 14px;
+  border-radius: var(--md-sys-shape-corner-large);
+  border: 1px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .session-item:hover {
   background: var(--devices-hover, #f5f5f5);
+  border-color: rgba(var(--v-theme-outline-variant), 0.72);
 }
 
 .session-item__icon {
@@ -262,7 +268,7 @@ onMounted(loadSessions)
   align-items: center;
   justify-content: center;
   background: var(--devices-icon-bg, #f0f0f0);
-  border-radius: 50%;
+  border-radius: var(--md-sys-shape-corner-large);
 }
 
 .session-item__body {
@@ -292,16 +298,16 @@ onMounted(loadSessions)
 .devices-empty {
   display: flex;
   align-items: center;
-  padding: 12px 8px;
+  padding: 14px 16px;
   font-size: 13px;
   color: var(--devices-subtitle, #888);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.92);
 }
 
 /* ── Terminate ── */
 .devices-terminate {
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--devices-border, #eee);
+  padding-top: 4px;
 }
 
 .terminate-btn {
@@ -309,17 +315,18 @@ onMounted(loadSessions)
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 12px 8px;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
+  padding: 14px 16px;
+  background: rgba(var(--v-theme-error-container), 0.46);
+  border: 1px solid rgba(var(--v-theme-error), 0.18);
+  border-radius: var(--md-sys-shape-corner-extra-large);
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .terminate-btn:hover:not(:disabled) {
-  background: var(--devices-hover, #f5f5f5);
+  background: rgba(var(--v-theme-error-container), 0.62);
+  border-color: rgba(var(--v-theme-error), 0.28);
 }
 
 .terminate-btn--disabled {
@@ -329,7 +336,7 @@ onMounted(loadSessions)
 
 .terminate-btn__icon {
   flex-shrink: 0;
-  color: #c62828;
+  color: rgb(var(--v-theme-error));
 }
 
 .terminate-btn__text {
@@ -340,8 +347,8 @@ onMounted(loadSessions)
 
 .terminate-btn__label {
   font-size: 14px;
-  font-weight: 500;
-  color: #c62828;
+  font-weight: 700;
+  color: rgb(var(--v-theme-error));
 }
 
 .terminate-btn__hint {
@@ -354,13 +361,13 @@ onMounted(loadSessions)
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px 0;
+  padding: 16px 0 4px;
 }
 
 .skeleton-block {
   height: 52px;
-  background: var(--devices-icon-bg, #f0f0f0);
-  border-radius: 8px;
+  background: rgba(var(--v-theme-surface-container-highest), 0.92);
+  border-radius: var(--md-sys-shape-corner-large);
   animation: pulse 1.4s ease-in-out infinite;
 }
 
@@ -371,6 +378,17 @@ onMounted(loadSessions)
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+@media (max-width: 760px) {
+  .devices-section {
+    padding: 14px;
+  }
+
+  .session-item,
+  .terminate-btn {
+    padding: 12px;
+  }
 }
 
 </style>

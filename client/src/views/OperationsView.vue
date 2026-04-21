@@ -14,7 +14,10 @@
       </template>
     </PageHeader>
 
-    <SectionCard>
+    <SectionCard
+      class="operations-card"
+      subtitle="Справочник операций, связи со строками прайсов и точка входа в импорт в общем MD3-паттерне."
+    >
       <template #title>Технологические операции</template>
 
       <v-data-table
@@ -22,7 +25,7 @@
         :items="operations"
         :loading="loading"
         density="compact"
-        class="operations-compact-table"
+        class="operations-compact-table operations-table"
       >
         <template #item.linked_prices_count="{ item }">
           <div class="d-flex align-center ga-2">
@@ -50,7 +53,7 @@
             <v-btn v-if="item.origin === 'user'" variant="text" icon size="small" @click="editOperation(item)">
               <v-icon size="18">mdi-pencil</v-icon>
             </v-btn>
-            <v-btn v-if="item.origin === 'user'" variant="text" icon size="small" @click="deleteOperation(item)">
+            <v-btn v-if="item.origin === 'user'" variant="text" icon size="small" color="error" @click="deleteOperation(item)">
               <v-icon size="18">mdi-delete</v-icon>
             </v-btn>
           </div>
@@ -65,7 +68,7 @@
     />
 
     <v-dialog v-model="dialog" max-width="600">
-      <v-card>
+      <v-card class="operations-dialog-card">
         <v-card-title>{{ editing ? 'Редактировать операцию' : 'Новая операция' }}</v-card-title>
         <v-card-text>
           <v-form v-model="valid">
@@ -107,7 +110,7 @@
     </v-dialog>
 
     <v-dialog v-model="linksDialog.show" max-width="1100">
-      <v-card>
+      <v-card class="operations-dialog-card">
         <v-card-title>
           Связи из прайса: {{ linksDialog.operation?.name }}
         </v-card-title>
@@ -151,7 +154,7 @@
     </v-dialog>
 
     <v-dialog v-model="rebindDialog.show" max-width="650">
-      <v-card>
+      <v-card class="operations-dialog-card">
         <v-card-title>Перепривязка операции</v-card-title>
         <v-card-text>
           <div class="text-body-2 mb-3">
@@ -547,6 +550,44 @@ fetchOperations()
 </script>
 
 <style scoped>
+.operations-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+:deep(.operations-table .v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.78);
+}
+
+:deep(.operations-table thead th) {
+  height: 52px !important;
+  border-bottom: 1px solid var(--ds-divider) !important;
+  background: rgba(var(--v-theme-surface-container-lowest), 0.92) !important;
+}
+
+:deep(.operations-table thead th .v-data-table-header__content) {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-secondary);
+}
+
+:deep(.operations-table tbody td) {
+  vertical-align: top;
+  border-bottom-color: var(--ds-divider) !important;
+}
+
+:deep(.operations-table .v-data-table-footer) {
+  border-top: 1px solid var(--ds-divider);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.7);
+}
+
+:deep(.operations-dialog-card) {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 94%, white 6%);
+}
+
 :deep(.operations-compact-table .v-data-table__td),
 :deep(.operations-compact-table .v-data-table__th) {
   padding-top: 6px !important;
@@ -561,9 +602,11 @@ fetchOperations()
 .actions-cell {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 2px;
+  justify-content: center;
+  gap: 6px;
   white-space: nowrap;
   flex-wrap: nowrap;
+  min-width: 84px;
+  margin: 0 auto;
 }
 </style>

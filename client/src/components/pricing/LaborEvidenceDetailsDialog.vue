@@ -3,10 +3,11 @@
     :model-value="modelValue"
     max-width="980"
     scrollable
+    content-class="labor-evidence-details-dialog"
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <v-card v-if="currentSource">
-      <v-card-title class="d-flex align-center justify-space-between flex-wrap ga-3">
+    <v-card v-if="currentSource" class="labor-evidence-dialog">
+      <v-card-title class="labor-evidence-dialog__title d-flex align-center justify-space-between flex-wrap ga-3">
         <div>
           <div class="text-h6">{{ currentSource.vacancy_title || currentSource.source_title || 'Источник обоснования труда' }}</div>
           <div class="text-body-2 text-medium-emphasis">
@@ -20,7 +21,7 @@
 
       <v-divider />
 
-      <v-card-text class="pa-5">
+      <v-card-text class="labor-evidence-dialog__body pa-5">
         <v-alert
           v-if="feedback.message"
           :type="feedback.type"
@@ -490,6 +491,29 @@ function detectAssetType(file: File): 'screenshot' | 'document' | null {
 </script>
 
 <style scoped>
+.labor-evidence-dialog {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 94%, white 6%);
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  box-shadow: var(--ds-shadow-modal);
+}
+
+.labor-evidence-dialog__title {
+  min-height: 76px;
+  padding: var(--ds-space-16) var(--ds-space-20);
+  border-bottom: 1px solid var(--ds-divider);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--v-theme-secondary-container), 0.24),
+      rgba(var(--v-theme-surface-container-low), 0.9)
+    );
+}
+
+.labor-evidence-dialog__body {
+  background: rgba(var(--v-theme-surface-container-low), 0.54);
+}
+
 .completeness-grid {
   display: flex;
   flex-wrap: wrap;
@@ -504,26 +528,36 @@ function detectAssetType(file: File): 'screenshot' | 'document' | null {
 .detail-row {
   display: grid;
   gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.78);
 }
 
 .detail-label {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.55);
+  color: var(--ds-text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.05em;
 }
 
 .detail-value {
   font-size: 14px;
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--ds-text-primary);
+  line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
 .upload-card {
-  padding: 14px 16px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 16px;
-  background: #fafafa;
+  padding: 16px 18px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--v-theme-primary-container), 0.2),
+      rgba(var(--v-theme-surface-container-high), 0.74)
+    );
 }
 
 .upload-card__head {
@@ -541,6 +575,7 @@ function detectAssetType(file: File): 'screenshot' | 'document' | null {
 .asset-title {
   font-size: 14px;
   font-weight: 600;
+  color: var(--ds-text-primary);
 }
 
 .screenshot-grid {
@@ -550,14 +585,25 @@ function detectAssetType(file: File): 'screenshot' | 'document' | null {
 }
 
 .shot-card {
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-12);
   overflow: hidden;
-  background: #f7f7f7;
+  background: rgba(var(--v-theme-surface-container-lowest), 0.84);
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.shot-card:hover {
+  border-color: var(--ds-border-strong);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.96);
+  transform: translateY(-1px);
 }
 
 .shot-link {
   display: block;
+  background: rgba(var(--v-theme-surface-container-high), 0.52);
 }
 
 .shot-image {
@@ -571,6 +617,8 @@ function detectAssetType(file: File): 'screenshot' | 'document' | null {
   display: flex;
   justify-content: space-between;
   padding: 8px 10px;
+  border-top: 1px solid var(--ds-divider);
+  background: rgba(var(--v-theme-surface-container-high), 0.54);
 }
 
 .document-list {
@@ -583,16 +631,27 @@ function detectAssetType(file: File): 'screenshot' | 'document' | null {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.8);
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.document-row:hover {
+  border-color: var(--ds-border-strong);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.94);
+  transform: translateY(-1px);
 }
 
 .document-link {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: inherit;
+  color: var(--ds-text-primary);
   text-decoration: none;
   overflow-wrap: anywhere;
 }
@@ -603,9 +662,13 @@ function detectAssetType(file: File): 'screenshot' | 'document' | null {
 }
 
 .detail-text {
+  padding: 14px 16px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.78);
   white-space: pre-wrap;
   line-height: 1.45;
-  color: rgba(0, 0, 0, 0.8);
+  color: var(--ds-text-primary);
 }
 
 .details-toggle-btn {
@@ -615,6 +678,12 @@ function detectAssetType(file: File): 'screenshot' | 'document' | null {
 }
 
 @media (max-width: 760px) {
+  .labor-evidence-dialog__title,
+  .labor-evidence-dialog__body {
+    padding-left: var(--ds-space-16);
+    padding-right: var(--ds-space-16);
+  }
+
   .upload-card__head,
   .document-row {
     flex-direction: column;

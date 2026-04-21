@@ -13,7 +13,7 @@
     </PageHeader>
 
     <!-- ── Table card ────────────────────────────────────────────────────── -->
-    <SectionCard>
+    <SectionCard class="projects-card" subtitle="Рабочий список проектов, статусы ревизий и быстрые действия.">
       <!-- Search + filter controls inside the card, above the table -->
       <TableToolbar>
         <template #search>
@@ -150,8 +150,8 @@
     </v-snackbar>
 
     <!-- Delete confirmation dialog ───────────────────────────────────────── -->
-    <v-dialog v-model="deleteConfirmDialog" max-width="480">
-      <v-card>
+      <v-dialog v-model="deleteConfirmDialog" max-width="480">
+      <v-card class="projects-confirm-dialog">
         <v-card-title>Архивирование проекта</v-card-title>
         <v-card-text>
           <p class="text-body-2 mb-4">
@@ -393,6 +393,14 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.projects-card :deep(.v-card-text) {
+  padding-top: 10px !important;
+}
+
+.projects-card :deep(.ds-table-toolbar) {
+  padding-bottom: 16px;
+}
+
 /* ── Case number: primary anchor ─────────────────────────────────────────── */
 .pj-case-link {
   font-weight: 700;
@@ -460,7 +468,7 @@ onMounted(async () => {
   justify-content: center;
   height: 22px;
   padding: 0 8px;
-  border-radius: 6px;
+  border-radius: 999px;
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -505,17 +513,21 @@ onMounted(async () => {
 .pj-actions {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 2px;
   justify-content: flex-end;
 }
 
 /* ── Delete dialog inline code ───────────────────────────────────────────── */
+.projects-confirm-dialog {
+  border-radius: var(--md-sys-shape-corner-extra-large);
+}
+
 .pj-confirm-code {
   font-family: ui-monospace, 'Cascadia Code', monospace;
   font-size: 0.8125rem;
   padding: 1px 5px;
-  border-radius: 4px;
-  background: rgba(var(--v-theme-on-surface-variant), 0.1);
+  border-radius: 999px;
+  background: rgba(var(--v-theme-secondary-container), 0.92);
   color: rgb(var(--v-theme-on-surface));
 }
 </style>

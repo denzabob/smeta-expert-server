@@ -34,7 +34,10 @@
       Контакт: {{ contactLine }}
     </div>
 
-    <SectionCard>
+    <SectionCard
+      class="supplier-sources-card"
+      subtitle="Источники цен, версии и действия по поставщику в общем MD3-паттерне разделов и состояний."
+    >
       <div class="d-flex flex-wrap align-center ga-3 mb-3">
         <div>
           <div class="text-h6">Источники цен поставщика</div>
@@ -77,7 +80,7 @@
         :headers="sourceHeaders"
         :items="filteredSources"
         :loading="loadingAll"
-        class="elevation-1"
+        class="supplier-sources-table"
         density="comfortable"
         item-key="row_key"
         item-value="row_key"
@@ -245,7 +248,7 @@
     </SectionCard>
 
     <v-dialog v-model="showAddSourceDialog" max-width="700" persistent>
-      <v-card>
+      <v-card class="supplier-dialog-card">
         <v-card-title>Добавить источник цен</v-card-title>
         <v-card-text>
           <div class="add-source-steps mb-3">
@@ -366,7 +369,7 @@
     </v-dialog>
 
     <v-dialog v-model="showPriceListDialog" max-width="600px" persistent>
-      <v-card>
+      <v-card class="supplier-dialog-card">
         <v-card-title>
           <span class="text-h6">{{ editPriceListMode ? 'Редактировать' : 'Создать' }} табличный прайс</span>
         </v-card-title>
@@ -991,6 +994,10 @@ onMounted(async () => {
   z-index: 2;
 }
 
+.supplier-sources-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
 .info-strip {
   display: flex;
   flex-wrap: wrap;
@@ -1003,9 +1010,24 @@ onMounted(async () => {
   gap: 8px;
 }
 
+.supplier-sources-table :deep(.v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.76);
+}
+
+.supplier-sources-card :deep(.v-btn-toggle) {
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface-container-high), 0.72);
+}
+
+.supplier-dialog-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 94%, white 6%);
+}
+
 .source-row-highlight-cell {
-  background-color: rgba(33, 150, 243, 0.12) !important;
+  background-color: rgba(var(--v-theme-secondary-container), 0.72) !important;
   transition: background-color 0.4s ease;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-10);
 }
 </style>

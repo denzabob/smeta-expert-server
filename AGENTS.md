@@ -2,11 +2,41 @@
 
 
 
+\## Repository context
+
+
+
+This repository is a production SaaS system for estimate calculation, expert pricing, furniture-related evidence collection, reporting, verification, and supporting business workflows.
+
+
+
+Main stack:
+
+\- Laravel / PHP backend
+
+\- Vue 3 frontend
+
+\- Vuetify UI layer
+
+\- PDF generation
+
+\- import/export flows
+
+\- browser extension integration
+
+\- revision / evidence / verification flows
+
+
+
+This is not a generic CRUD project. Many tasks affect cross-layer business behavior, legal-style documents, pricing logic, or backward compatibility of existing workflows.
+
+
+
 \## Primary operating mode for this repository
 
 
 
-For any non-trivial task, especially architecture, pricing, estimate, evidence, report, import, or cross-layer work, the agent must follow this strict loop:
+For any non-trivial task, especially architecture, pricing, estimate, evidence, report, import, PDF, extension, revision, verification, or cross-layer work, the agent must follow this strict loop:
 
 
 
@@ -104,8 +134,6 @@ Always separate:
 
 Do not invent architecture that is not present in code.
 
-
-
 Do not assume a future refactor is already safe.
 
 
@@ -143,6 +171,232 @@ When introducing new domain behavior:
 \- keep old and new flows side by side during migration where reasonable
 
 \- do not collapse multiple domain problems into one implementation block
+
+
+
+\## High-risk domains
+
+
+
+Treat the following as high-risk cross-domain areas:
+
+\- estimate totals and pricing logic
+
+\- evidence collection, linkage, and freshness logic
+
+\- revision runs and revision item resolution
+
+\- PDF generation and legal-style evidence appendices
+
+\- import/export pipelines
+
+\- browser extension request/response contracts
+
+\- public verification flows
+
+\- project settings that affect pricing, evidence, or document generation
+
+
+
+For these areas:
+
+\- prefer analysis-first
+
+\- avoid silent scope expansion
+
+\- do not replace existing flows without explicit approval
+
+\- document compatibility and rollback considerations
+
+
+
+\## UI and design-system rules
+
+
+
+This repository is moving toward a unified MD3-inspired semantic design system on top of Vue 3 + Vuetify.
+
+
+
+For UI tasks:
+
+\- prefer global theme roles, semantic tokens, and shared layout wrappers over page-local styling
+
+\- do not introduce one-off visual patterns if the problem can be solved by extending the shared design system
+
+\- do not hardcode colors, radii, shadows, or spacing when reusable tokens/components already exist
+
+\- preserve high-density enterprise usability; do not make dense operational screens unnecessarily airy or decorative
+
+\- keep desktop and mobile behavior stable
+
+\- preserve predictable states: hover, focus, disabled, error, loading
+
+\- for major UI changes, identify whether the correct scope is foundation/shared component level or feature-screen level before editing
+
+
+
+If a new visual pattern is needed:
+
+\- first define where it belongs in the shared system
+
+\- then apply it in the concrete screen
+
+\- do not create a local mini-design-system inside one page
+
+
+
+\## Dense operational UI rule
+
+
+
+This repository contains dense operational screens for estimate work, evidence review, settings, admin workflows, and data-heavy editing.
+
+
+
+For such screens:
+
+\- preserve information density and scan speed
+
+\- do not import auth/marketing page spacing or composition blindly
+
+\- prefer compact clarity over decorative spacing
+
+\- any global token or primitive change that affects dense screens must be called out explicitly as a risk
+
+
+
+\## UI validation for foundation / theme blocks
+
+
+
+For any block that changes theme, tokens, global styles, or shared UI primitives, targeted validation must include:
+
+
+
+\- build result
+
+\- manual smoke-check plan for the pilot screen
+
+\- manual smoke-check plan for 2-3 existing non-pilot screens
+
+\- explicit list of states not verified yet
+
+
+
+At minimum, manual verification should mention:
+
+\- desktop
+
+\- mobile
+
+\- hover
+
+\- focus
+
+\- error
+
+\- disabled
+
+\- loading
+
+\- dark/light theme if applicable
+
+
+
+\## Global UI blast-radius rule
+
+
+
+If the task touches global theme files, semantic tokens, design-system styles, shared visual primitives, or shell surfaces, the agent must explicitly report:
+
+
+
+\- which existing UI areas may be affected indirectly
+
+\- which existing screens should be manually smoke-checked
+
+\- which visual changes are expected and acceptable
+
+\- which changes would count as regressions
+
+
+
+Do not treat a foundation-level change as isolated to the requested pilot screen unless that isolation is confirmed in code.
+
+
+
+\## Legacy migration rules
+
+
+
+This repository contains active legacy flows that must often coexist with newer implementations.
+
+
+
+Therefore:
+
+\- do not remove legacy code paths unless the task explicitly includes removal
+
+\- do not assume older flows are unused
+
+\- prefer bridges, adapters, feature flags, or side-by-side migration paths
+
+\- if a new implementation overlaps an old one, explicitly document both paths and compatibility expectations
+
+
+
+\## DB / migration safety
+
+
+
+When touching schema or persistence:
+
+\- do not introduce destructive migrations unless explicitly justified
+
+\- call out any drop/rename/backfill risk clearly
+
+\- include migration safety notes in the report
+
+\- state whether rollback is straightforward or risky
+
+\- avoid broad data rewrites inside a mixed implementation block
+
+
+
+\## PDF / document rules
+
+
+
+PDF and formal document outputs are business-critical and may be legally important.
+
+
+
+When changing PDF or document generation:
+
+\- preserve document meaning, structure, and traceability
+
+\- avoid mixing domain recalculation and template redesign in the same block
+
+\- consider paginated A4 behavior, section stability, and backward compatibility
+
+\- explicitly state what visual or semantic output changed
+
+
+
+\## Extension / API compatibility
+
+
+
+When changing browser extension or related API endpoints:
+
+\- preserve request/response compatibility unless explicitly approved
+
+\- do not silently rename payload fields or semantic statuses
+
+\- validate not only controller logic but the end-to-end interaction chain where possible
+
+\- call out any user-visible change in extension behavior
 
 
 
@@ -235,4 +489,6 @@ After coding, return:
 \- no replacing legacy flow unless explicitly requested
 
 \- no hidden API contract changes
+
+\- no unsupported claims of completion or verification
 

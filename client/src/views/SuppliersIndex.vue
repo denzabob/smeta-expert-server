@@ -27,7 +27,10 @@
       </template>
     </PageHeader>
 
-    <SectionCard>
+    <SectionCard
+      class="suppliers-card"
+      subtitle="Единый список поставщиков с MD3-поверхностями для фильтров, таблицы и операций управления."
+    >
       <TableToolbar>
         <template #search>
           <v-text-field
@@ -182,7 +185,7 @@
 
     <!-- Create/Edit Dialog -->
     <v-dialog v-model="showDialog" max-width="600px" persistent>
-      <v-card>
+      <v-card class="supplier-dialog-card">
         <v-card-title>
           <span class="text-h5">{{ editMode ? 'Редактировать' : 'Создать' }} поставщика</span>
         </v-card-title>
@@ -468,3 +471,28 @@ watch(typeFilter, () => {
   fetchSuppliers()
 })
 </script>
+
+<style scoped>
+.suppliers-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+.suppliers-card :deep(.ds-table-toolbar) {
+  margin-bottom: var(--ds-space-4);
+}
+
+.suppliers-card :deep(.v-btn-toggle) {
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface-container-high), 0.7);
+}
+
+.suppliers-card :deep(.soft-data-table .v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.78);
+}
+
+.supplier-dialog-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 94%, white 6%);
+}
+</style>

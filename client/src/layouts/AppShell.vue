@@ -17,9 +17,9 @@
     />
 
     <!-- Main content area -->
-    <v-main class="app-main" :class="{ 'app-main--mobile-header': compactNav }">
+    <v-main class="app-main md3-app-shell" :class="{ 'app-main--mobile-header': compactNav }">
       <!-- Page content -->
-      <div class="page-content">
+      <div class="page-content md3-app-shell__content">
         <router-view />
       </div>
     </v-main>
@@ -174,8 +174,8 @@ watch(
 .app-main {
   min-height: 100vh;
   background:
-    radial-gradient(1200px 520px at -8% -16%, rgba(56, 189, 248, 0.1), transparent 55%),
-    radial-gradient(900px 440px at 108% 4%, rgba(14, 165, 233, 0.08), transparent 60%),
+    radial-gradient(1200px 520px at -8% -16%, rgba(var(--v-theme-primary), 0.1), transparent 55%),
+    radial-gradient(900px 440px at 108% 4%, rgba(var(--v-theme-tertiary), 0.08), transparent 60%),
     rgb(var(--v-theme-background));
 }
 
@@ -183,9 +183,30 @@ watch(
   padding-top: 56px;
 }
 
+.md3-app-shell {
+  position: relative;
+}
+
+.md3-app-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.04), transparent 220px),
+    linear-gradient(120deg, rgba(var(--v-theme-secondary), 0.03), transparent 38%);
+}
+
 .page-content {
+  position: relative;
+  z-index: 1;
   padding: 24px;
   min-height: 100vh;
+}
+
+.md3-app-shell__content {
+  max-width: 1600px;
+  margin: 0 auto;
 }
 
 /* Mobile header */
@@ -199,8 +220,9 @@ watch(
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  background: rgb(var(--v-theme-surface));
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  background: rgba(var(--v-theme-surface-container-low), 0.94);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
   z-index: 100;
 }
 
@@ -211,19 +233,20 @@ watch(
   width: 40px;
   height: 40px;
   border: none;
-  border-radius: 12px;
+  border-radius: 9999px;
   background: transparent;
   color: rgb(var(--v-theme-on-surface));
   cursor: pointer;
 }
 
 .mobile-menu-btn:active {
-  background: rgba(var(--v-theme-on-surface), 0.12);
+  background: rgba(var(--v-theme-primary), 0.12);
 }
 
 .mobile-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   color: rgb(var(--v-theme-on-surface));
 }
 

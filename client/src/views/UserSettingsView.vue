@@ -5,7 +5,10 @@
       subtitle="Эти значения подставляются в новые проекты и могут быть изменены в конкретном проекте."
     />
 
-    <SectionCard class="settings-shell">
+    <SectionCard
+      class="settings-shell"
+      subtitle="Значения по умолчанию для новых проектов, коэффициентов, материалов и справочных блоков."
+    >
       <div class="usd-body">
         <SettingsShell
           :sections="sections"
@@ -19,7 +22,7 @@
 
             <template v-else>
               <!-- 0. Регион и режим расчёта -->
-              <div v-if="activeSection === 0" class="section-content">
+              <div v-if="activeSection === 0" class="section-content usd-section-content">
                 <div class="section-title">Регион и режим расчёта</div>
                 <div class="section-hint">Используются при создании новых проектов</div>
 
@@ -46,7 +49,7 @@
               </div>
 
               <!-- 1. Общие коэффициенты -->
-              <div v-else-if="activeSection === 1" class="section-content">
+              <div v-else-if="activeSection === 1" class="section-content usd-section-content">
                 <div class="section-title">Общие коэффициенты</div>
                 <div class="section-hint">Применяются к новым проектам, если клиент явно не передал значения</div>
 
@@ -73,7 +76,7 @@
               </div>
 
               <!-- 2. Материалы по умолчанию -->
-              <div v-else-if="activeSection === 2" class="section-content">
+              <div v-else-if="activeSection === 2" class="section-content usd-section-content">
                 <div class="section-title">Материалы по умолчанию</div>
                 <div class="section-hint">Будут подставляться в новые проекты</div>
 
@@ -102,50 +105,54 @@
               </div>
 
               <!-- 3. Отходы -->
-              <div v-else-if="activeSection === 3" class="section-content">
+              <div v-else-if="activeSection === 3" class="section-content usd-section-content">
                 <div class="section-title">Коэффициенты отходов</div>
                 <div class="section-hint">Специфичные коэффициенты для каждого типа материала</div>
 
-                <div class="d-flex flex-column gap-4">
+                <div class="usd-waste-list">
                   <!-- Плитные -->
-                      <div class="d-flex align-center gap-3" style="flex-wrap: nowrap;">
-                        <span class="text-subtitle-2 font-weight-bold" style="min-width: 80px;">Плитные</span>
-                        <v-text-field
-                          v-model.number="form.waste_plate_coefficient"
-                          type="number"
-                          step="0.01"
-                          min="1"
-                          density="compact"
-                          hide-details
-                          style="max-width: 100px; flex-shrink: 0;"
-                          placeholder="1.00"
-                          hint="1.00 = без изменения"
-                          persistent-hint
-                        />
-                        <v-switch
-                          v-model="form.apply_waste_to_plate"
-                          hide-details
-                          density="compact"
-                          color="#86e975"
-                          label="Применять"
-                          style="flex-shrink: 0;"
-                        />
-                        <v-switch
-                          v-model="form.show_waste_plate_description"
-                          :disabled="!plateDesc.title && !plateDesc.text"
-                          hide-details
-                          density="compact"
-                          color="#86e975"
-                          label="В отчёте"
-                          style="flex-shrink: 0;"
-                        />
-                        <div style="flex-grow: 1;"></div>
+                      <div class="usd-waste-row">
+                        <div class="usd-waste-main">
+                          <span class="text-subtitle-2 font-weight-bold usd-waste-label">Плитные</span>
+                          <v-text-field
+                            v-model.number="form.waste_plate_coefficient"
+                            type="number"
+                            step="0.01"
+                            min="1"
+                            density="compact"
+                            hide-details
+                            class="usd-waste-field"
+                            placeholder="1.00"
+                            hint="1.00 = без изменения"
+                            persistent-hint
+                          />
+                        </div>
+                        <div class="usd-waste-controls">
+                          <v-switch
+                            v-model="form.apply_waste_to_plate"
+                            hide-details
+                            density="compact"
+                            color="primary"
+                            label="Применять"
+                            class="usd-waste-toggle"
+                          />
+                          <v-switch
+                            v-model="form.show_waste_plate_description"
+                            :disabled="!plateDesc.title && !plateDesc.text"
+                            hide-details
+                            density="compact"
+                            color="primary"
+                            label="В отчёте"
+                            class="usd-waste-toggle"
+                          />
+                        </div>
                         <v-btn
                           size="small"
-                          variant="outlined"
+                          variant="tonal"
+                          color="primary"
                           @click="showPlateDescDialog = true"
                           title="Редактировать описание"
-                          style="flex-shrink: 0;"
+                          class="usd-waste-action"
                         >
                           <v-icon size="small" class="mr-1">mdi-pencil</v-icon>
                           Описание
@@ -153,44 +160,48 @@
                       </div>
 
                       <!-- Кромка -->
-                      <div class="d-flex align-center gap-3" style="flex-wrap: nowrap;">
-                        <span class="text-subtitle-2 font-weight-bold" style="min-width: 80px;">Кромка</span>
-                        <v-text-field
-                          v-model.number="form.waste_edge_coefficient"
-                          type="number"
-                          step="0.01"
-                          min="1"
-                          density="compact"
-                          hide-details
-                          style="max-width: 100px; flex-shrink: 0;"
-                          placeholder="1.00"
-                          hint="1.00 = без изменения"
-                          persistent-hint
-                        />
-                        <v-switch
-                          v-model="form.apply_waste_to_edge"
-                          hide-details
-                          density="compact"
-                          color="#86e975"
-                          label="Применять"
-                          style="flex-shrink: 0;"
-                        />
-                        <v-switch
-                          v-model="form.show_waste_edge_description"
-                          :disabled="!edgeDesc.title && !edgeDesc.text"
-                          hide-details
-                          density="compact"
-                          color="#86e975"
-                          label="В отчёте"
-                          style="flex-shrink: 0;"
-                        />
-                        <div style="flex-grow: 1;"></div>
+                      <div class="usd-waste-row">
+                        <div class="usd-waste-main">
+                          <span class="text-subtitle-2 font-weight-bold usd-waste-label">Кромка</span>
+                          <v-text-field
+                            v-model.number="form.waste_edge_coefficient"
+                            type="number"
+                            step="0.01"
+                            min="1"
+                            density="compact"
+                            hide-details
+                            class="usd-waste-field"
+                            placeholder="1.00"
+                            hint="1.00 = без изменения"
+                            persistent-hint
+                          />
+                        </div>
+                        <div class="usd-waste-controls">
+                          <v-switch
+                            v-model="form.apply_waste_to_edge"
+                            hide-details
+                            density="compact"
+                            color="primary"
+                            label="Применять"
+                            class="usd-waste-toggle"
+                          />
+                          <v-switch
+                            v-model="form.show_waste_edge_description"
+                            :disabled="!edgeDesc.title && !edgeDesc.text"
+                            hide-details
+                            density="compact"
+                            color="primary"
+                            label="В отчёте"
+                            class="usd-waste-toggle"
+                          />
+                        </div>
                         <v-btn
                           size="small"
-                          variant="outlined"
+                          variant="tonal"
+                          color="primary"
                           @click="showEdgeDescDialog = true"
                           title="Редактировать описание"
-                          style="flex-shrink: 0;"
+                          class="usd-waste-action"
                         >
                           <v-icon size="small" class="mr-1">mdi-pencil</v-icon>
                           Описание
@@ -198,44 +209,48 @@
                       </div>
 
                       <!-- Операции -->
-                      <div class="d-flex align-center gap-3" style="flex-wrap: nowrap;">
-                        <span class="text-subtitle-2 font-weight-bold" style="min-width: 80px;">Операции</span>
-                        <v-text-field
-                          v-model.number="form.waste_operations_coefficient"
-                          type="number"
-                          step="0.01"
-                          min="1"
-                          density="compact"
-                          hide-details
-                          style="max-width: 100px; flex-shrink: 0;"
-                          placeholder="1.00"
-                          hint="1.00 = без изменения"
-                          persistent-hint
-                        />
-                        <v-switch
-                          v-model="form.apply_waste_to_operations"
-                          hide-details
-                          density="compact"
-                          color="#86e975"
-                          label="Применять"
-                          style="flex-shrink: 0;"
-                        />
-                        <v-switch
-                          v-model="form.show_waste_operations_description"
-                          :disabled="!opsDesc.title && !opsDesc.text"
-                          hide-details
-                          density="compact"
-                          color="#86e975"
-                          label="В отчёте"
-                          style="flex-shrink: 0;"
-                        />
-                        <div style="flex-grow: 1;"></div>
+                      <div class="usd-waste-row">
+                        <div class="usd-waste-main">
+                          <span class="text-subtitle-2 font-weight-bold usd-waste-label">Операции</span>
+                          <v-text-field
+                            v-model.number="form.waste_operations_coefficient"
+                            type="number"
+                            step="0.01"
+                            min="1"
+                            density="compact"
+                            hide-details
+                            class="usd-waste-field"
+                            placeholder="1.00"
+                            hint="1.00 = без изменения"
+                            persistent-hint
+                          />
+                        </div>
+                        <div class="usd-waste-controls">
+                          <v-switch
+                            v-model="form.apply_waste_to_operations"
+                            hide-details
+                            density="compact"
+                            color="primary"
+                            label="Применять"
+                            class="usd-waste-toggle"
+                          />
+                          <v-switch
+                            v-model="form.show_waste_operations_description"
+                            :disabled="!opsDesc.title && !opsDesc.text"
+                            hide-details
+                            density="compact"
+                            color="primary"
+                            label="В отчёте"
+                            class="usd-waste-toggle"
+                          />
+                        </div>
                         <v-btn
                           size="small"
-                          variant="outlined"
+                          variant="tonal"
+                          color="primary"
                           @click="showOpsDescDialog = true"
                           title="Редактировать описание"
-                          style="flex-shrink: 0;"
+                          class="usd-waste-action"
                         >
                           <v-icon size="small" class="mr-1">mdi-pencil</v-icon>
                           Описание
@@ -246,11 +261,11 @@
                 <!-- Description dialogs -->
                 <v-dialog v-model="showPlateDescDialog" max-width="500">
                   <v-card title="Описание плитных материалов">
-                    <v-card-text>
-                      <v-text-field v-model="plateDesc.title" label="Заголовок" class="mb-4" />
+                    <v-card-text class="usd-dialog-form">
+                      <v-text-field v-model="plateDesc.title" label="Заголовок" />
                       <v-textarea v-model="plateDesc.text" label="Текст описания" rows="6" />
                     </v-card-text>
-                    <v-card-actions>
+                    <v-card-actions class="usd-dialog-actions">
                       <v-spacer></v-spacer>
                       <v-btn variant="text" @click="showPlateDescDialog = false">Закрыть</v-btn>
                       <v-btn color="primary" variant="flat" @click="showPlateDescDialog = false">Сохранить</v-btn>
@@ -260,11 +275,11 @@
 
                 <v-dialog v-model="showEdgeDescDialog" max-width="500">
                   <v-card title="Описание кромочных материалов">
-                    <v-card-text>
-                      <v-text-field v-model="edgeDesc.title" label="Заголовок" class="mb-4" />
+                    <v-card-text class="usd-dialog-form">
+                      <v-text-field v-model="edgeDesc.title" label="Заголовок" />
                       <v-textarea v-model="edgeDesc.text" label="Текст описания" rows="6" />
                     </v-card-text>
-                    <v-card-actions>
+                    <v-card-actions class="usd-dialog-actions">
                       <v-spacer></v-spacer>
                       <v-btn variant="text" @click="showEdgeDescDialog = false">Закрыть</v-btn>
                       <v-btn color="primary" variant="flat" @click="showEdgeDescDialog = false">Сохранить</v-btn>
@@ -274,11 +289,11 @@
 
                 <v-dialog v-model="showOpsDescDialog" max-width="500">
                   <v-card title="Описание операций">
-                    <v-card-text>
-                      <v-text-field v-model="opsDesc.title" label="Заголовок" class="mb-4" />
+                    <v-card-text class="usd-dialog-form">
+                      <v-text-field v-model="opsDesc.title" label="Заголовок" />
                       <v-textarea v-model="opsDesc.text" label="Текст описания" rows="6" />
                     </v-card-text>
-                    <v-card-actions>
+                    <v-card-actions class="usd-dialog-actions">
                       <v-spacer></v-spacer>
                       <v-btn variant="text" @click="showOpsDescDialog = false">Закрыть</v-btn>
                       <v-btn color="primary" variant="flat" @click="showOpsDescDialog = false">Сохранить</v-btn>
@@ -288,7 +303,7 @@
               </div>
 
               <!-- 4. Справочные блоки -->
-              <div v-else-if="activeSection === 4" class="section-content">
+              <div v-else-if="activeSection === 4" class="section-content usd-section-content">
                 <div class="section-title">Настройки расчёта нормо-часа</div>
                 <div class="section-hint">
                   Эти параметры используются для расчёта стоимости 1 часа подрядных работ и для PDF-обоснования.
@@ -389,7 +404,7 @@
               </div>
 
               <!-- 5. Справочные блоки -->
-              <div v-else-if="activeSection === 5" class="section-content">
+              <div v-else-if="activeSection === 5" class="section-content usd-section-content">
                 <div class="section-title">Справочные блоки</div>
                 <div class="section-hint">UI как в настройках проекта: список, reorder, enable, edit</div>
 
@@ -931,20 +946,157 @@ onBeforeUnmount(() => {
   flex-direction: column;
 }
 
+.usd-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 .section-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-size: 1.02rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
 }
 
 .section-hint {
   font-size: 0.875rem;
-  opacity: 0.75;
-  margin-bottom: 12px;
+  line-height: 1.55;
+  opacity: 0.82;
+  margin-bottom: 14px;
 }
 
 .gap-1 { gap: 4px; }
 .gap-2 { gap: 8px; }
 .gap-3 { gap: 12px; }
+
+.settings-shell :deep(.v-card-text) {
+  padding-top: 10px !important;
+}
+
+.settings-shell :deep(.ss-content) {
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.03), transparent 140px),
+    transparent;
+}
+
+.settings-shell :deep(.labor-helper-block) {
+  padding: 16px 18px;
+  border-radius: var(--md-sys-shape-corner-large);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  background: rgba(var(--v-theme-surface-container-low), 0.82);
+}
+
+.settings-shell :deep(.labor-preview) {
+  margin-top: 8px;
+  font-weight: 700;
+  color: rgb(var(--v-theme-primary));
+}
+
+.usd-waste-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.usd-waste-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.8);
+}
+
+.usd-waste-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1 1 240px;
+  min-width: 220px;
+}
+
+.usd-waste-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  flex: 1 1 320px;
+}
+
+.usd-waste-label {
+  min-width: 92px;
+}
+
+.usd-waste-field {
+  max-width: 110px;
+  flex: 0 0 110px;
+}
+
+.usd-waste-toggle,
+.usd-waste-action {
+  flex-shrink: 0;
+}
+
+.usd-waste-action {
+  margin-left: auto;
+}
+
+.usd-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.usd-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 960px) {
+  .usd-waste-row {
+    align-items: stretch;
+  }
+
+  .usd-waste-main,
+  .usd-waste-controls {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .usd-waste-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .usd-waste-field {
+    max-width: 100%;
+    flex: 1 1 140px;
+  }
+
+  .usd-waste-action {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 960px) {
+  .usd-body {
+    height: auto;
+    min-height: 70vh;
+  }
+}
+
+@media (max-width: 760px) {
+  .usd-dialog-actions {
+    flex-wrap: wrap;
+  }
+
+  .usd-dialog-actions > :deep(.v-btn) {
+    flex: 1 1 calc(50% - 4px);
+  }
+}
 </style>
 

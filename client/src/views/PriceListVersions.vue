@@ -25,12 +25,15 @@
       </template>
     </PageHeader>
 
-    <SectionCard>
+    <SectionCard
+      class="price-list-versions-card"
+      subtitle="Список версий прайс-листа, их статусов, источников и связанных обоснований в общем MD3-паттерне."
+    >
       <v-data-table
         :headers="headers"
         :items="versions"
         :loading="loading"
-        class="elevation-1"
+        class="price-list-versions-table"
         item-key="id"
         density="comfortable"
       >
@@ -154,6 +157,18 @@
                 </v-list-item>
               </v-list>
             </v-menu>
+          </div>
+        </template>
+
+        <template #no-data>
+          <div class="versions-empty-state text-center pa-8">
+            <div class="text-subtitle-1 mb-2">Версии ещё не загружены</div>
+            <div class="text-medium-emphasis mb-4">
+              Здесь появятся импортированные, архивные и активные версии выбранного прайс-листа.
+            </div>
+            <v-btn variant="text" prepend-icon="mdi-refresh" class="text-none" @click="fetchVersions">
+              Обновить список
+            </v-btn>
           </div>
         </template>
       </v-data-table>
@@ -398,3 +413,21 @@ onMounted(async () => {
   await fetchVersions()
 })
 </script>
+
+<style scoped>
+.price-list-versions-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+.price-list-versions-table :deep(.v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.78);
+}
+
+.versions-empty-state {
+  border: 1px dashed var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
+  background: rgba(var(--v-theme-surface-container-high), 0.48);
+}
+</style>

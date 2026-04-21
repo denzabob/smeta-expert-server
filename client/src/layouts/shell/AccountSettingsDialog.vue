@@ -244,9 +244,9 @@ async function saveProfile() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(var(--v-theme-on-surface), 0.42);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(var(--v-theme-on-surface), 0.34);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .dialog-container {
@@ -256,9 +256,12 @@ async function saveProfile() {
 }
 
 .dialog-content {
-  background: rgb(var(--v-theme-surface));
-  border-radius: 16px;
-  box-shadow: 0 12px 32px rgba(5, 10, 20, 0.35);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.04), transparent 180px),
+    var(--ds-surface-card);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  box-shadow: var(--ds-shadow-modal);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -271,19 +274,20 @@ async function saveProfile() {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
 }
 
 .dialog-title {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: rgb(var(--v-theme-on-surface));
   margin: 0;
 }
 
 .close-btn {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -291,7 +295,7 @@ async function saveProfile() {
   color: rgb(var(--v-theme-on-surface-variant));
   background: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: 9999px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -311,20 +315,21 @@ async function saveProfile() {
 }
 
 .section-panel--wide {
-  max-width: 520px;
+  max-width: 640px;
 }
 
 .section-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 700;
   color: rgb(var(--v-theme-on-surface));
   margin: 0 0 4px;
 }
 
 .section-desc {
-  font-size: 13px;
+  font-size: 0.84rem;
   color: rgb(var(--v-theme-on-surface-variant));
   margin: 0 0 24px;
+  line-height: 1.55;
 }
 
 .settings-form {
@@ -336,50 +341,56 @@ async function saveProfile() {
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .form-label {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 0.82rem;
+  font-weight: 700;
   color: rgb(var(--v-theme-on-surface));
 }
 
 .form-input {
-  padding: 10px 12px;
-  font-size: 14px;
+  min-height: 48px;
+  padding: 12px 16px;
+  font-size: 0.95rem;
   color: rgb(var(--v-theme-on-surface));
-  background: rgba(var(--v-theme-on-surface), 0.05);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.2);
-  border-radius: 12px;
-  transition: border-color 0.15s ease;
+  background: var(--md-sys-color-surface-container-highest);
+  border: 1px solid rgba(var(--v-theme-outline), 0.72);
+  border-radius: var(--md-sys-shape-corner-large);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: rgba(var(--v-theme-primary), 0.7);
+  border-color: rgba(var(--v-theme-primary), 0.9);
+  box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), 0.14);
 }
 
 .form-input--readonly {
-  background: rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-surface-container-high), 0.92);
   color: rgb(var(--v-theme-on-surface-variant));
 }
 
 .form-hint {
-  font-size: 12px;
+  font-size: 0.76rem;
   color: rgb(var(--v-theme-on-surface-variant));
 }
 
 .form-actions {
+  display: flex;
+  gap: 12px;
   padding-top: 8px;
+  justify-content: flex-start;
 }
 
 .btn {
+  min-height: 40px;
   padding: 10px 20px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 0.86rem;
+  font-weight: 700;
   border: none;
-  border-radius: 12px;
+  border-radius: 9999px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -400,11 +411,11 @@ async function saveProfile() {
 
 .btn--secondary {
   color: rgb(var(--v-theme-on-surface));
-  background: rgba(var(--v-theme-on-surface), 0.12);
+  background: rgba(var(--v-theme-secondary-container), 0.92);
 }
 
 .btn--secondary:hover:not(:disabled) {
-  background: rgba(var(--v-theme-on-surface), 0.2);
+  background: rgba(var(--v-theme-secondary), 0.24);
 }
 
 .btn--danger {
@@ -417,9 +428,9 @@ async function saveProfile() {
 }
 
 .form-message {
-  padding: 10px 12px;
-  font-size: 13px;
-  border-radius: 4px;
+  padding: 12px 14px;
+  font-size: 0.84rem;
+  border-radius: var(--md-sys-shape-corner-medium);
 }
 
 .form-message--success {
@@ -434,26 +445,28 @@ async function saveProfile() {
 
 .data-section {
   padding: 16px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  border-radius: 12px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.92);
 }
 
 .data-section--danger {
   border-color: rgba(var(--v-theme-error), 0.35);
-  background: rgba(var(--v-theme-error), 0.08);
+  background: rgba(var(--v-theme-error-container), 0.72);
 }
 
 .data-title {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 0.92rem;
+  font-weight: 700;
   color: rgb(var(--v-theme-on-surface));
   margin: 0 0 8px;
 }
 
 .data-desc {
-  font-size: 13px;
+  font-size: 0.84rem;
   color: rgb(var(--v-theme-on-surface-variant));
   margin: 0 0 12px;
+  line-height: 1.55;
 }
 
 /* Transition */
@@ -481,30 +494,31 @@ async function saveProfile() {
 .confirm-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(var(--v-theme-on-surface), 0.5);
+  background: rgba(var(--v-theme-on-surface), 0.42);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 16px;
+  border-radius: var(--md-sys-shape-corner-extra-large);
 }
 
 .confirm-dialog {
-  background: rgb(var(--v-theme-surface-bright));
-  border-radius: 16px;
+  background: rgb(var(--v-theme-surface-container-low));
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
   padding: 24px;
   max-width: 320px;
-  box-shadow: 0 8px 24px rgba(5, 10, 20, 0.35);
+  box-shadow: var(--ds-shadow-modal);
 }
 
 .confirm-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 700;
   color: rgb(var(--v-theme-on-surface));
   margin: 0 0 8px;
 }
 
 .confirm-text {
-  font-size: 14px;
+  font-size: 0.9rem;
   color: rgb(var(--v-theme-on-surface-variant));
   margin: 0 0 20px;
   line-height: 1.5;

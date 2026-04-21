@@ -1,21 +1,31 @@
 <template>
-  <v-container>
-    <div class="d-flex justify-space-between align-center mb-4">
-      <div>
-        <h1 class="text-h5 mb-1 ideas-title">У вас есть идея?<br />Предлагайте свои идеи по улучшению Призма</h1>
-        <div class="text-body-2 text-medium-emphasis">Предложения, голосование и обсуждение</div>
+  <PageContainer>
+    <PageHeader
+      title="Идеи"
+      subtitle="Предложения команды, голосование и прозрачный список улучшений для Призмы."
+    >
+      <template #actions>
+        <v-btn color="primary" variant="flat" prepend-icon="mdi-lightbulb-on-outline" @click="router.push({ name: 'ideas-create' })">
+          Создать идею
+        </v-btn>
+      </template>
+    </PageHeader>
+
+    <div class="ideas-hero">
+      <div class="ideas-hero__title">У вас есть идея?</div>
+      <div class="ideas-hero__text">
+        Предлагайте улучшения, голосуйте за полезные инициативы и отслеживайте, какие из них планируются к внедрению.
       </div>
-      <v-btn color="primary" @click="router.push({ name: 'ideas-create' })">
-        Создать идею
-      </v-btn>
     </div>
 
-    <v-row>
-      <v-col cols="12" md="3">
-        <v-card class="ideas-surface">
-          <v-card-text>
-            <div class="text-subtitle-2 mb-2">Статусы</div>
-            <v-list nav density="compact" class="status-menu-list pa-0 mb-4">
+    <div class="ideas-layout">
+      <aside class="ideas-sidebar">
+        <SectionCard class="ideas-filter-card" subtitle="Быстрые срезы по статусам и тегам.">
+          <template #title>Навигация</template>
+
+          <div class="ideas-filter-section">
+            <div class="ideas-filter-section__title">Статусы</div>
+            <v-list nav density="compact" class="status-menu-list pa-0">
               <v-list-item
                 v-for="item in statusMenuItems"
                 :key="item.value || 'all'"
@@ -30,13 +40,15 @@
                 <v-list-item-title>{{ item.title }}</v-list-item-title>
 
                 <template #append>
-                  <span class="text-caption text-medium-emphasis">{{ item.count }}</span>
+                  <span class="status-menu-item__count">{{ item.count }}</span>
                 </template>
               </v-list-item>
             </v-list>
+          </div>
 
-            <div class="text-subtitle-2 mb-2">Теги</div>
-            <v-chip-group column>
+          <div class="ideas-filter-section">
+            <div class="ideas-filter-section__title">Теги</div>
+            <div v-if="availableTags.length" class="ideas-tags">
               <v-chip
                 v-for="tag in availableTags"
                 :key="tag"
@@ -46,43 +58,45 @@
               >
                 {{ tag }}
               </v-chip>
-            </v-chip-group>
-          </v-card-text>
-        </v-card>
-      </v-col>
-
-      <v-col cols="12" md="9">
-        <v-card class="mb-3 ideas-surface">
-          <v-card-text>
-            <v-row>
-              <v-col cols="12" md="8">
-                <v-text-field
-                  class="idea-form-field"
-                  v-model="search"
-                  label="Поиск"
-                  variant="solo-filled"
-                  density="comfortable"
-                  clearable
-                  @keydown.enter.prevent="applyFilters"
-                />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-select
-                  class="idea-form-field"
-                  v-model="sort"
-                  :items="sortOptions"
-                  label="Сортировка"
-                  variant="solo-filled"
-                  density="comfortable"
-                  @update:model-value="applyFilters"
-                />
-              </v-col>
-            </v-row>
-            <div class="filters-bar mt-2">
-              <v-btn variant="tonal" @click="applyFilters" :loading="loading">Применить</v-btn>
             </div>
-          </v-card-text>
-        </v-card>
+            <div v-else class="ideas-filter-empty">
+              Теги появятся после загрузки идей.
+            </div>
+          </div>
+        </SectionCard>
+      </aside>
+
+      <section class="ideas-content md3-content-stack">
+        <SectionCard class="ideas-toolbar-card" subtitle="Поиск и сортировка предложений в общем MD3-паттерне.">
+          <template #title>Лента идей</template>
+
+          <div class="ideas-toolbar">
+            <v-text-field
+              class="ideas-toolbar__search"
+              v-model="search"
+              label="Поиск по идеям"
+              prepend-inner-icon="mdi-magnify"
+              variant="solo-filled"
+              density="comfortable"
+              clearable
+              hide-details
+              @keydown.enter.prevent="applyFilters"
+            />
+            <v-select
+              class="ideas-toolbar__sort"
+              v-model="sort"
+              :items="sortOptions"
+              label="Сортировка"
+              variant="solo-filled"
+              density="comfortable"
+              hide-details
+              @update:model-value="applyFilters"
+            />
+            <v-btn variant="tonal" color="primary" :loading="loading" @click="applyFilters">
+              Применить
+            </v-btn>
+          </div>
+        </SectionCard>
 
         <IdeaList
           :ideas="ideas"
@@ -92,17 +106,20 @@
           @clear-vote="onClearVote"
         />
 
-        <div class="d-flex justify-center mt-4" v-if="meta.last_page > 1">
+        <div class="ideas-pagination" v-if="meta.last_page > 1">
           <v-pagination v-model="page" :length="meta.last_page" @update:model-value="loadIdeas" />
         </div>
-      </v-col>
-    </v-row>
-  </v-container>
+      </section>
+    </div>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 import IdeaList from '@/components/ideas/IdeaList.vue'
 import { IDEA_STATUS_LABELS, ideasApi, type IdeaItem, type IdeaSort, type IdeaStatus } from '@/api/ideas'
 
@@ -267,11 +284,117 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.ideas-hero {
+  padding: 18px 20px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-18);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary-container), 0.32), rgba(var(--v-theme-surface-container-low), 0.92));
+}
+
+.ideas-hero__title {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--ds-text-primary);
+}
+
+.ideas-hero__text {
+  margin-top: 8px;
+  max-width: 780px;
+  color: var(--ds-text-secondary);
+  line-height: 1.55;
+}
+
+.ideas-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.ideas-sidebar,
+.ideas-content {
+  min-width: 0;
+}
+
+.ideas-filter-card,
+.ideas-toolbar-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+.ideas-filter-section + .ideas-filter-section {
+  margin-top: 18px;
+}
+
+.ideas-filter-section__title {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-secondary);
+}
+
 .status-menu-list :deep(.v-list-item-title) {
   font-weight: 500;
 }
 
+.status-menu-list {
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-14);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.82);
+}
+
+.status-menu-item {
+  min-height: 42px;
+}
+
+.status-menu-item__count {
+  font-size: 12px;
+  color: var(--ds-text-tertiary);
+}
+
 .status-menu-item :deep(.v-list-item__append) {
   margin-inline-start: 8px;
+}
+
+.ideas-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ideas-filter-empty {
+  font-size: 13px;
+  color: var(--ds-text-tertiary);
+}
+
+.ideas-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.ideas-pagination {
+  display: flex;
+  justify-content: center;
+}
+
+@media (max-width: 1024px) {
+  .ideas-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .ideas-hero {
+    padding: 16px;
+  }
+
+  .ideas-toolbar {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

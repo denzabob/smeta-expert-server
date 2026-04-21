@@ -11,7 +11,7 @@
       {{ errorMessage }}
     </v-alert>
 
-    <v-form ref="formRef" v-model="formValid" @submit.prevent="submit">
+    <v-form ref="formRef" v-model="formValid" class="md3-auth-form" @submit.prevent="submit">
       <v-text-field
         ref="emailRef"
         v-model="form.email"
@@ -19,6 +19,7 @@
         type="email"
         autocomplete="email"
         :rules="[rules.required, rules.email]"
+        class="md3-auth-form__field"
       />
 
       <v-text-field
@@ -28,10 +29,11 @@
         autocomplete="current-password"
         :rules="[rules.required]"
         :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
+        class="md3-auth-form__field"
         @click:append-inner="showPassword = !showPassword"
       />
 
-      <div class="mt-2">
+      <div class="md3-auth-form__actions">
         <v-btn
           color="primary"
           class="text-none"
@@ -39,25 +41,24 @@
           :loading="loading"
           :disabled="!formValid"
           type="submit"
+          size="large"
         >
           Войти
         </v-btn>
 
         <v-btn
-          variant="text"
+          variant="tonal"
           size="small"
-          class="text-none px-0 mt-2"
+          class="text-none justify-start"
           @click="emit('forgot')"
         >
           Забыли пароль?
         </v-btn>
-      </div>
 
-      <div class="mt-2">
         <v-btn
           variant="text"
           size="small"
-          class="text-none px-0"
+          class="text-none justify-start"
           @click="emit('register')"
         >
           Нет аккаунта? Зарегистрироваться

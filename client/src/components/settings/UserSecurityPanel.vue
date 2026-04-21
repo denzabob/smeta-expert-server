@@ -5,7 +5,7 @@
       <h3 class="section-title">Вход и безопасность</h3>
       <p class="section-desc">Управление паролем, PIN-кодом и безопасностью аккаунта</p>
 
-      <div class="security-list">
+      <div class="security-list md3-section-stack">
         <!-- Почта для сброса пароля -->
         <button class="security-item" disabled>
           <span class="security-item__icon">
@@ -118,7 +118,7 @@
         <h3 class="sub-header__title">Сменить пароль</h3>
       </div>
 
-      <form @submit.prevent="submitPassword" class="settings-form">
+      <form @submit.prevent="submitPassword" class="settings-form md3-form-stack">
         <div class="form-group">
           <label class="form-label">Текущий пароль</label>
           <div class="input-wrapper">
@@ -170,7 +170,7 @@
         <div v-if="pwError" class="form-message form-message--error">{{ pwError }}</div>
         <div v-if="pwSuccess" class="form-message form-message--success">{{ pwSuccess }}</div>
 
-        <div class="form-actions">
+        <div class="form-actions md3-actions-row">
           <button
             type="button"
             class="btn btn--secondary"
@@ -198,7 +198,7 @@
         <h3 class="sub-header__title">Способы входа</h3>
       </div>
 
-      <div class="auth-methods-view">
+      <div class="auth-methods-view md3-section-stack">
         <v-alert
           v-if="authMethodsError"
           type="error"
@@ -225,7 +225,7 @@
 
         <div v-if="authMethodsLoading" class="auth-loading">Загрузка способов входа...</div>
 
-        <div class="auth-method-card">
+        <div class="auth-method-card md3-section-block">
           <div class="auth-method-card__header">
             <div>
               <div class="auth-method-card__title">Телефон</div>
@@ -236,7 +236,7 @@
             </span>
           </div>
 
-          <div v-if="phoneChangeStep === 'form'" class="auth-inline-form">
+          <div v-if="phoneChangeStep === 'form'" class="auth-inline-form md3-form-stack--compact">
             <div class="form-group">
               <label class="form-label">Новый номер телефона</label>
               <input
@@ -261,7 +261,7 @@
               />
             </div>
 
-            <div class="form-actions">
+            <div class="form-actions md3-actions-row">
               <button class="btn btn--secondary" type="button" @click="resetPhoneChange">Очистить</button>
               <button
                 class="btn btn--primary"
@@ -274,7 +274,7 @@
             </div>
           </div>
 
-          <div v-if="phoneChangeStep === 'verify'" class="auth-inline-form">
+          <div v-if="phoneChangeStep === 'verify'" class="auth-inline-form md3-form-stack--compact">
             <p class="auth-verify-hint" v-if="phoneChange.verificationMethod === 'code'">
               Введите код, отправленный на новый номер.
             </p>
@@ -293,7 +293,7 @@
               />
             </div>
 
-            <div class="form-actions">
+            <div class="form-actions md3-actions-row">
               <button class="btn btn--secondary" type="button" @click="cancelPhoneVerify">Отмена</button>
               <button
                 class="btn btn--secondary"
@@ -315,7 +315,7 @@
           </div>
         </div>
 
-        <div class="auth-method-card">
+        <div class="auth-method-card md3-section-block">
           <div class="auth-method-card__header">
             <div>
               <div class="auth-method-card__title">Email</div>
@@ -326,7 +326,7 @@
             </span>
           </div>
 
-          <div class="auth-inline-form">
+          <div class="auth-inline-form md3-form-stack--compact">
             <div class="form-group">
               <label class="form-label">Новый email</label>
               <input
@@ -349,7 +349,7 @@
               />
             </div>
 
-            <div class="form-actions">
+            <div class="form-actions md3-actions-row">
               <button
                 v-if="authMethods?.email.value && !authMethods?.email.verified"
                 class="btn btn--secondary"
@@ -371,7 +371,7 @@
           </div>
         </div>
 
-        <div class="auth-method-card">
+        <div class="auth-method-card md3-section-block">
           <div class="auth-method-card__header">
             <div>
               <div class="auth-method-card__title">Пароль</div>
@@ -381,7 +381,7 @@
             </div>
           </div>
 
-          <div class="form-actions">
+          <div class="form-actions md3-actions-row">
             <button
               v-if="authMethods?.password.enabled"
               class="btn btn--secondary"
@@ -396,7 +396,7 @@
           </div>
         </div>
 
-        <div class="auth-method-card">
+        <div class="auth-method-card md3-section-block">
           <div class="auth-method-card__header">
             <div>
               <div class="auth-method-card__title">Внешние аккаунты</div>
@@ -404,11 +404,11 @@
             </div>
           </div>
 
-          <div v-if="providerConnectionRows.length" class="available-providers-list">
+          <div v-if="providerConnectionRows.length" class="available-providers-list md3-section-stack">
             <div
               v-for="providerItem in providerConnectionRows"
               :key="providerItem.provider"
-              class="linked-provider-row"
+              class="linked-provider-row md3-inline-settings-row"
             >
               <div>
                 <div class="linked-provider-row__title">{{ providerItem.label }}</div>
@@ -464,14 +464,14 @@
         <h3 class="sub-header__title">Расширение Chrome</h3>
       </div>
 
-      <div class="chrome-token-section">
+      <div class="chrome-token-section md3-section-stack">
         <p class="chrome-token-desc">
           Для подключения расширения «Призма» к вашему аккаунту необходим токен доступа.
           Скопируйте токен и вставьте его в настройках расширения.
         </p>
 
         <!-- Token display (after generation) -->
-        <div v-if="chromeToken" class="token-display">
+        <div v-if="chromeToken" class="token-display md3-section-block">
           <div class="token-display__header">
             <v-icon size="18" color="success">mdi-check-circle</v-icon>
             <span>Новый токен создан</span>
@@ -488,7 +488,7 @@
         </div>
 
         <!-- Generate form -->
-        <div v-if="!chromeToken" class="chrome-token-form">
+        <div v-if="!chromeToken" class="chrome-token-form md3-form-stack">
           <p v-if="chromeHasToken" class="form-hint">
             Токен уже выпущен. Для безопасности его нельзя показать повторно. Нажмите «Создать новый токен», если нужно заменить текущий.
           </p>
@@ -498,7 +498,7 @@
 
           <div v-if="chromeError" class="form-message form-message--error">{{ chromeError }}</div>
 
-          <div class="form-actions">
+          <div class="form-actions md3-actions-row">
             <button
               type="button"
               class="btn btn--secondary"
@@ -1122,9 +1122,6 @@ onUnmounted(() => {
 
 /* ─── List items ─── */
 .security-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
   margin-top: 8px;
 }
 
@@ -1133,17 +1130,19 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 12px;
+  padding: 14px 16px;
   background: transparent;
-  border: none;
-  border-radius: 6px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.64);
+  border-radius: var(--ds-radius-16);
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .security-item:hover:not(:disabled):not(.security-item--disabled) {
   background: var(--security-hover, #f5f5f5);
+  border-color: rgba(var(--v-theme-primary), 0.26);
+  transform: translateY(-1px);
 }
 
 .security-item:disabled,
@@ -1235,9 +1234,6 @@ onUnmounted(() => {
 
 /* ─── Form ─── */
 .settings-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
   max-width: 400px;
 }
 
@@ -1294,9 +1290,8 @@ onUnmounted(() => {
 }
 
 .form-actions {
-  display: flex;
-  gap: 12px;
   padding-top: 8px;
+  justify-content: flex-start;
 }
 
 .btn {
@@ -1387,9 +1382,6 @@ onUnmounted(() => {
 
 /* ─── Auth methods view ─── */
 .auth-methods-view {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
   max-width: 560px;
 }
 
@@ -1399,10 +1391,7 @@ onUnmounted(() => {
 }
 
 .auth-method-card {
-  border: 1px solid var(--security-input-border, #ddd);
-  border-radius: 8px;
-  padding: 12px;
-  background: var(--security-input-bg, #fff);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.82);
 }
 
 .auth-method-card__header {
@@ -1444,33 +1433,18 @@ onUnmounted(() => {
   background: #fef3c7;
 }
 
-.auth-inline-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
 .auth-verify-hint {
   font-size: 12px;
   color: var(--security-subtitle, #777);
   margin: 0;
 }
 
-.linked-providers-list,
-.available-providers-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .linked-provider-row {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px;
+  padding: 12px 14px;
   border: 1px solid var(--security-input-border, #e4e4e4);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-14);
+  background: rgba(var(--v-theme-surface), 0.9);
 }
 
 .linked-provider-row__title {
@@ -1515,12 +1489,6 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
-.chrome-token-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
 .form-hint {
   font-size: 13px;
   color: var(--security-subtitle, #888);
@@ -1528,10 +1496,8 @@ onUnmounted(() => {
 }
 
 .token-display {
-  background: var(--security-token-bg, #F0FDF4);
   border: 1px solid var(--security-token-border, #BBF7D0);
-  border-radius: 8px;
-  padding: 14px;
+  background: var(--security-token-bg, #F0FDF4);
 }
 
 .token-display__header {

@@ -33,7 +33,10 @@
       </template>
     </PageHeader>
 
-    <SectionCard>
+    <SectionCard
+      class="materials-list-card"
+      subtitle="Список материалов, фильтры, история цен и импорт в едином MD3-слое приложения."
+    >
       <TableToolbar>
         <template #search>
           <v-text-field
@@ -87,7 +90,7 @@
           :headers="dynamicHeaders"
           :items="filteredMaterials"
           :loading="loading"
-          class="elevation-1"
+          class="materials-table"
           item-key="id"
           density="comfortable"
         >
@@ -1216,8 +1219,17 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.materials-list-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+:deep(.materials-table .v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.78);
+}
+
 .text-none {
   text-transform: none;
 }
 </style>
-

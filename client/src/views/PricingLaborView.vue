@@ -11,7 +11,7 @@
       </template>
     </PageHeader>
 
-    <v-tabs v-model="activeTab" color="primary" class="mb-4">
+    <v-tabs v-model="activeTab" color="primary" class="mb-4 labor-tabs">
       <v-tab value="sources">Источники</v-tab>
       <v-tab value="profiles">Профили</v-tab>
       <v-tab value="providers">Источники сайтов</v-tab>
@@ -19,7 +19,10 @@
 
     <v-window v-model="activeTab">
       <v-window-item value="sources">
-        <SectionCard>
+        <SectionCard
+          class="labor-card"
+          subtitle="Источники ставок труда, сгруппированные по профилям работ и готовые к использованию в отчётах."
+        >
           <template #title>Источники обоснования труда</template>
 
           <div class="section-head">
@@ -73,11 +76,14 @@
                 item-value="id"
                 density="compact"
                 :loading="loading.sources"
+                class="labor-table"
               >
                 <template #[`item.vacancy_title`]="{ item }">
                   <div class="source-title-cell">
-                    <div class="source-title-cell__title">{{ item.vacancy_title || item.source_title || 'Без названия' }}</div>
-                    <div class="source-title-cell__meta">{{ item.employer_name || 'Работодатель не указан' }}</div>
+                    <button type="button" class="source-title-cell__link" @click="openDetails(item)">
+                      <div class="source-title-cell__title">{{ item.vacancy_title || item.source_title || 'Без названия' }}</div>
+                      <div class="source-title-cell__meta">{{ item.employer_name || 'Работодатель не указан' }}</div>
+                    </button>
                   </div>
                 </template>
 
@@ -104,16 +110,23 @@
                 </template>
 
                 <template #[`item.actions`]="{ item }">
-                  <div class="d-flex ga-1 justify-end">
-                    <v-btn size="small" variant="text" color="primary" @click="openDetails(item)">
-                      Детали
-                    </v-btn>
-                    <v-btn size="small" variant="text" color="primary" @click="openSourceDialog(item)">
-                      Изменить
-                    </v-btn>
-                    <v-btn size="small" variant="text" color="error" @click="removeSource(item)">
-                      Удалить
-                    </v-btn>
+                  <div class="source-actions">
+                    <v-btn
+                      icon="mdi-pencil"
+                      size="small"
+                      variant="text"
+                      color="primary"
+                      class="source-actions__icon"
+                      @click="openSourceDialog(item)"
+                    />
+                    <v-btn
+                      icon="mdi-delete"
+                      size="small"
+                      variant="text"
+                      color="error"
+                      class="source-actions__icon"
+                      @click="removeSource(item)"
+                    />
                   </div>
                 </template>
               </v-data-table>
@@ -138,11 +151,14 @@
                 item-value="id"
                 density="compact"
                 :loading="loading.sources"
+                class="labor-table"
               >
                 <template #[`item.vacancy_title`]="{ item }">
                   <div class="source-title-cell">
-                    <div class="source-title-cell__title">{{ item.vacancy_title || item.source_title || 'Без названия' }}</div>
-                    <div class="source-title-cell__meta">{{ item.employer_name || 'Работодатель не указан' }}</div>
+                    <button type="button" class="source-title-cell__link" @click="openDetails(item)">
+                      <div class="source-title-cell__title">{{ item.vacancy_title || item.source_title || 'Без названия' }}</div>
+                      <div class="source-title-cell__meta">{{ item.employer_name || 'Работодатель не указан' }}</div>
+                    </button>
                   </div>
                 </template>
 
@@ -169,16 +185,23 @@
                 </template>
 
                 <template #[`item.actions`]="{ item }">
-                  <div class="d-flex ga-1 justify-end">
-                    <v-btn size="small" variant="text" color="primary" @click="openDetails(item)">
-                      Детали
-                    </v-btn>
-                    <v-btn size="small" variant="text" color="primary" @click="openSourceDialog(item)">
-                      Изменить
-                    </v-btn>
-                    <v-btn size="small" variant="text" color="error" @click="removeSource(item)">
-                      Удалить
-                    </v-btn>
+                  <div class="source-actions">
+                    <v-btn
+                      icon="mdi-pencil"
+                      size="small"
+                      variant="text"
+                      color="primary"
+                      class="source-actions__icon"
+                      @click="openSourceDialog(item)"
+                    />
+                    <v-btn
+                      icon="mdi-delete"
+                      size="small"
+                      variant="text"
+                      color="error"
+                      class="source-actions__icon"
+                      @click="removeSource(item)"
+                    />
                   </div>
                 </template>
               </v-data-table>
@@ -188,7 +211,10 @@
       </v-window-item>
 
       <v-window-item value="profiles">
-        <SectionCard>
+        <SectionCard
+          class="labor-card"
+          subtitle="Справочник профилей работ для группировки источников и настройки расчёта трудовых ставок."
+        >
           <template #title>Профили работ</template>
 
           <div class="section-head">
@@ -207,11 +233,40 @@
             item-value="id"
             density="compact"
             :loading="loading.profiles"
+            class="labor-table"
           >
+            <template #[`item.title`]="{ item }">
+              <div class="reference-cell">
+                <div class="reference-cell__title">{{ item.title || 'Без названия' }}</div>
+              </div>
+            </template>
+
+            <template #[`item.description`]="{ item }">
+              <div class="reference-cell">
+                <div class="reference-cell__text">
+                  {{ item.description || 'Описание не заполнено' }}
+                </div>
+              </div>
+            </template>
+
             <template #[`item.actions`]="{ item }">
-              <div class="d-flex ga-1 justify-end">
-                <v-btn size="small" variant="text" color="primary" @click="openProfileDialog(item)">Изменить</v-btn>
-                <v-btn size="small" variant="text" color="error" @click="removeProfile(item)">Удалить</v-btn>
+              <div class="source-actions">
+                <v-btn
+                  icon="mdi-pencil"
+                  size="small"
+                  variant="text"
+                  color="primary"
+                  class="source-actions__icon"
+                  @click="openProfileDialog(item)"
+                />
+                <v-btn
+                  icon="mdi-delete"
+                  size="small"
+                  variant="text"
+                  color="error"
+                  class="source-actions__icon"
+                  @click="removeProfile(item)"
+                />
               </div>
             </template>
           </v-data-table>
@@ -219,7 +274,10 @@
       </v-window-item>
 
       <v-window-item value="providers">
-        <SectionCard>
+        <SectionCard
+          class="labor-card"
+          subtitle="Каталог сайтов и справочных провайдеров, доступных при заполнении источников труда."
+        >
           <template #title>Каталог сайтов и источников</template>
 
           <div class="section-head">
@@ -238,11 +296,54 @@
             item-value="id"
             density="compact"
             :loading="loading.providers"
+            class="labor-table"
           >
+            <template #[`item.title`]="{ item }">
+              <div class="reference-cell">
+                <div class="reference-cell__title">{{ item.title || 'Без названия' }}</div>
+                <div v-if="item.domain" class="reference-cell__meta">{{ item.domain }}</div>
+              </div>
+            </template>
+
+            <template #[`item.domain`]="{ item }">
+              <div class="reference-chip-wrap">
+                <span class="reference-chip">{{ item.domain || '—' }}</span>
+              </div>
+            </template>
+
+            <template #[`item.base_url`]="{ item }">
+              <div class="reference-cell">
+                <a
+                  v-if="item.base_url"
+                  :href="item.base_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="reference-link"
+                >
+                  {{ item.base_url }}
+                </a>
+                <div v-else class="reference-cell__text">—</div>
+              </div>
+            </template>
+
             <template #[`item.actions`]="{ item }">
-              <div class="d-flex ga-1 justify-end">
-                <v-btn size="small" variant="text" color="primary" @click="openProviderDialog(item)">Изменить</v-btn>
-                <v-btn size="small" variant="text" color="error" @click="removeProvider(item)">Удалить</v-btn>
+              <div class="source-actions">
+                <v-btn
+                  icon="mdi-pencil"
+                  size="small"
+                  variant="text"
+                  color="primary"
+                  class="source-actions__icon"
+                  @click="openProviderDialog(item)"
+                />
+                <v-btn
+                  icon="mdi-delete"
+                  size="small"
+                  variant="text"
+                  color="error"
+                  class="source-actions__icon"
+                  @click="removeProvider(item)"
+                />
               </div>
             </template>
           </v-data-table>
@@ -251,107 +352,147 @@
     </v-window>
 
     <v-dialog v-model="sourceDialog" max-width="860" scrollable>
-      <v-card>
-        <v-card-title>{{ editingSource ? 'Редактировать источник' : 'Новый источник труда' }}</v-card-title>
-        <v-card-text class="pa-5">
+      <v-card class="labor-dialog-card labor-source-dialog">
+        <v-card-title class="labor-source-dialog__title">
+          <div>
+            <div>{{ editingSource ? 'Редактировать источник' : 'Новый источник труда' }}</div>
+            <div class="labor-source-dialog__subtitle">
+              Источник труда, который можно открыть в деталях, привязать к проекту и использовать в обосновании.
+            </div>
+          </div>
+        </v-card-title>
+        <v-card-text class="labor-source-dialog__body pa-5">
           <v-alert v-if="sourceSubmitError" type="error" variant="tonal" class="mb-4" closable @click:close="sourceSubmitError = ''">
             {{ sourceSubmitError }}
           </v-alert>
-          <v-form @submit.prevent="saveSource">
-            <v-row dense>
-              <v-col cols="12" md="8">
-                <v-text-field v-model="sourceForm.vacancy_title" label="Название вакансии" variant="outlined" density="compact" />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-text-field v-model="sourceForm.employer_name" label="Работодатель" variant="outlined" density="compact" />
-              </v-col>
-              <v-col cols="12" md="8">
-                <v-select
-                  v-model="sourceForm.provider_id"
-                  :items="providerOptions"
-                  item-title="title"
-                  item-value="id"
-                  label="Сайт / источник"
-                  variant="outlined"
-                  density="compact"
-                  :error-messages="sourceProviderErrors"
-                />
-              </v-col>
-              <v-col cols="12" md="4" class="d-flex align-center">
-                <v-btn variant="text" prepend-icon="mdi-plus" @click="openProviderDialog()">
-                  Новый источник
-                </v-btn>
-              </v-col>
-              <v-col cols="12" md="6">
-                <v-select
-                  v-model="sourceForm.region_id"
-                  :items="regionOptions"
-                  item-title="title"
-                  item-value="id"
-                  label="Регион"
-                  variant="outlined"
-                  density="compact"
-                  :error-messages="sourceRegionErrors"
-                />
-              </v-col>
-              <v-col cols="12" md="6">
-                <v-select
-                  v-model="sourceForm.labor_profile_id"
-                  :items="profileOptions"
-                  item-title="title"
-                  item-value="id"
-                  label="Профиль работ"
-                  variant="outlined"
-                  density="compact"
-                  :error-messages="sourceProfileErrors"
-                />
-              </v-col>
-              <v-col cols="12">
-                <v-text-field
-                  v-model="sourceForm.source_url"
-                  label="Ссылка на источник"
-                  variant="outlined"
-                  density="compact"
-                  :error-messages="sourceUrlErrors"
-                />
-              </v-col>
-              <v-col cols="12" md="6">
-                <v-text-field v-model="sourceForm.source_title" label="Название источника" variant="outlined" density="compact" />
-              </v-col>
-              <v-col cols="12" md="6">
-                <v-text-field v-model="sourceForm.source_date" label="Дата источника" type="date" variant="outlined" density="compact" />
-              </v-col>
-              <v-col cols="12">
-                <v-textarea v-model="sourceForm.salary_raw_text" label="Текст зарплаты / ставки" variant="outlined" density="compact" rows="2" />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-text-field v-model.number="sourceForm.salary_value" label="Сумма" type="number" variant="outlined" density="compact" />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-text-field v-model.number="sourceForm.salary_value_min" label="Минимум" type="number" variant="outlined" density="compact" />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-text-field v-model.number="sourceForm.salary_value_max" label="Максимум" type="number" variant="outlined" density="compact" />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-select v-model="sourceForm.salary_period" :items="salaryPeriods" label="Период оплаты" variant="outlined" density="compact" clearable />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-text-field v-model.number="sourceForm.hours_per_month" label="Часов в месяц" type="number" variant="outlined" density="compact" />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-text-field v-model.number="sourceForm.derived_hourly_rate" label="Ставка за час" type="number" variant="outlined" density="compact" />
-              </v-col>
-              <v-col cols="12">
-                <v-textarea v-model="sourceForm.vacancy_description" label="Описание вакансии" variant="outlined" density="compact" rows="4" />
-              </v-col>
-              <v-col cols="12">
-                <v-textarea v-model="sourceForm.note" label="Примечание" variant="outlined" density="compact" rows="2" />
-              </v-col>
-            </v-row>
+          <v-form @submit.prevent="saveSource" class="labor-source-form">
+            <section class="labor-form-section">
+              <div class="labor-form-section__head">
+                <div class="labor-form-section__title">Вакансия и контекст</div>
+                <div class="labor-form-section__text">Основные сведения об источнике и его принадлежности к профилю работ.</div>
+              </div>
+              <v-row dense>
+                <v-col cols="12" md="8">
+                  <v-text-field v-model="sourceForm.vacancy_title" label="Название вакансии" variant="outlined" density="compact" />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field v-model="sourceForm.employer_name" label="Работодатель" variant="outlined" density="compact" />
+                </v-col>
+                <v-col cols="12" md="8">
+                  <v-select
+                    v-model="sourceForm.provider_id"
+                    :items="providerOptions"
+                    item-title="title"
+                    item-value="id"
+                    label="Сайт / источник"
+                    variant="outlined"
+                    density="compact"
+                    :error-messages="sourceProviderErrors"
+                  />
+                </v-col>
+                <v-col cols="12" md="4" class="labor-form-section__aside">
+                  <v-btn variant="text" prepend-icon="mdi-plus" @click="openProviderDialog()">
+                    Новый источник
+                  </v-btn>
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-select
+                    v-model="sourceForm.region_id"
+                    :items="regionOptions"
+                    item-title="title"
+                    item-value="id"
+                    label="Регион"
+                    variant="outlined"
+                    density="compact"
+                    :error-messages="sourceRegionErrors"
+                  />
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-select
+                    v-model="sourceForm.labor_profile_id"
+                    :items="profileOptions"
+                    item-title="title"
+                    item-value="id"
+                    label="Профиль работ"
+                    variant="outlined"
+                    density="compact"
+                    :error-messages="sourceProfileErrors"
+                  />
+                </v-col>
+              </v-row>
+            </section>
+
+            <section class="labor-form-section">
+              <div class="labor-form-section__head">
+                <div class="labor-form-section__title">Ссылка и датировка</div>
+                <div class="labor-form-section__text">Поля для привязки к исходной публикации и фиксации даты наблюдения.</div>
+              </div>
+              <v-row dense>
+                <v-col cols="12">
+                  <v-text-field
+                    v-model="sourceForm.source_url"
+                    label="Ссылка на источник"
+                    variant="outlined"
+                    density="compact"
+                    :error-messages="sourceUrlErrors"
+                  />
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-text-field v-model="sourceForm.source_title" label="Название источника" variant="outlined" density="compact" />
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-text-field v-model="sourceForm.source_date" label="Дата источника" type="date" variant="outlined" density="compact" />
+                </v-col>
+              </v-row>
+            </section>
+
+            <section class="labor-form-section">
+              <div class="labor-form-section__head">
+                <div class="labor-form-section__title">Ставка и расчёт</div>
+                <div class="labor-form-section__text">Сохраните исходный текст зарплаты и при необходимости заполните нормализованные значения.</div>
+              </div>
+              <v-row dense>
+                <v-col cols="12">
+                  <v-textarea v-model="sourceForm.salary_raw_text" label="Текст зарплаты / ставки" variant="outlined" density="compact" rows="2" />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field v-model.number="sourceForm.salary_value" label="Сумма" type="number" variant="outlined" density="compact" />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field v-model.number="sourceForm.salary_value_min" label="Минимум" type="number" variant="outlined" density="compact" />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field v-model.number="sourceForm.salary_value_max" label="Максимум" type="number" variant="outlined" density="compact" />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-select v-model="sourceForm.salary_period" :items="salaryPeriods" label="Период оплаты" variant="outlined" density="compact" clearable />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field v-model.number="sourceForm.hours_per_month" label="Часов в месяц" type="number" variant="outlined" density="compact" />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field v-model.number="sourceForm.derived_hourly_rate" label="Ставка за час" type="number" variant="outlined" density="compact" />
+                </v-col>
+              </v-row>
+            </section>
+
+            <section class="labor-form-section">
+              <div class="labor-form-section__head">
+                <div class="labor-form-section__title">Описание и примечания</div>
+                <div class="labor-form-section__text">Текст вакансии и внутренние заметки для дальнейшей проверки источника.</div>
+              </div>
+              <v-row dense>
+                <v-col cols="12">
+                  <v-textarea v-model="sourceForm.vacancy_description" label="Описание вакансии" variant="outlined" density="compact" rows="4" />
+                </v-col>
+                <v-col cols="12">
+                  <v-textarea v-model="sourceForm.note" label="Примечание" variant="outlined" density="compact" rows="2" />
+                </v-col>
+              </v-row>
+            </section>
           </v-form>
         </v-card-text>
-        <v-card-actions class="px-5 pb-5">
+        <v-card-actions class="labor-source-dialog__actions px-5 pb-5">
           <v-spacer />
           <v-btn variant="text" @click="sourceDialog = false">Отмена</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving.source" :disabled="!canSubmitSource" @click="saveSource">
@@ -362,14 +503,27 @@
     </v-dialog>
 
     <v-dialog v-model="providerDialog" max-width="520">
-      <v-card>
-        <v-card-title>{{ editingProvider ? 'Редактировать источник' : 'Новый источник' }}</v-card-title>
-        <v-card-text class="pa-5">
-          <v-text-field v-model="providerForm.title" label="Название" variant="outlined" density="compact" class="mb-3" />
-          <v-text-field v-model="providerForm.domain" label="Домен" variant="outlined" density="compact" class="mb-3" />
-          <v-text-field v-model="providerForm.base_url" label="Базовая ссылка" variant="outlined" density="compact" />
+      <v-card class="labor-dialog-card labor-simple-dialog">
+        <v-card-title class="labor-simple-dialog__title">
+          <div>
+            <div>{{ editingProvider ? 'Редактировать источник' : 'Новый источник' }}</div>
+            <div class="labor-simple-dialog__subtitle">
+              Справочник сайтов и провайдеров, доступных при создании источников труда.
+            </div>
+          </div>
+        </v-card-title>
+        <v-card-text class="labor-simple-dialog__body pa-5">
+          <section class="labor-form-section labor-form-section--compact">
+            <div class="labor-form-section__head">
+              <div class="labor-form-section__title">Основные данные</div>
+              <div class="labor-form-section__text">Название, домен и базовая ссылка для выбора в labor-форме.</div>
+            </div>
+            <v-text-field v-model="providerForm.title" label="Название" variant="outlined" density="compact" class="mb-3" />
+            <v-text-field v-model="providerForm.domain" label="Домен" variant="outlined" density="compact" class="mb-3" />
+            <v-text-field v-model="providerForm.base_url" label="Базовая ссылка" variant="outlined" density="compact" />
+          </section>
         </v-card-text>
-        <v-card-actions class="px-5 pb-5">
+        <v-card-actions class="labor-simple-dialog__actions px-5 pb-5">
           <v-spacer />
           <v-btn variant="text" @click="providerDialog = false">Отмена</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving.provider" @click="saveProvider">Сохранить</v-btn>
@@ -378,13 +532,26 @@
     </v-dialog>
 
     <v-dialog v-model="profileDialog" max-width="520">
-      <v-card>
-        <v-card-title>{{ editingProfile ? 'Редактировать профиль' : 'Новый профиль' }}</v-card-title>
-        <v-card-text class="pa-5">
-          <v-text-field v-model="profileForm.title" label="Название" variant="outlined" density="compact" class="mb-3" />
-          <v-textarea v-model="profileForm.description" label="Описание" variant="outlined" density="compact" rows="3" />
+      <v-card class="labor-dialog-card labor-simple-dialog">
+        <v-card-title class="labor-simple-dialog__title">
+          <div>
+            <div>{{ editingProfile ? 'Редактировать профиль' : 'Новый профиль' }}</div>
+            <div class="labor-simple-dialog__subtitle">
+              Профиль работ для группировки источников и дальнейшего расчёта трудовых ставок.
+            </div>
+          </div>
+        </v-card-title>
+        <v-card-text class="labor-simple-dialog__body pa-5">
+          <section class="labor-form-section labor-form-section--compact">
+            <div class="labor-form-section__head">
+              <div class="labor-form-section__title">Описание профиля</div>
+              <div class="labor-form-section__text">Короткое название и пояснение для команды, работающей с labor-источниками.</div>
+            </div>
+            <v-text-field v-model="profileForm.title" label="Название" variant="outlined" density="compact" class="mb-3" />
+            <v-textarea v-model="profileForm.description" label="Описание" variant="outlined" density="compact" rows="3" />
+          </section>
         </v-card-text>
-        <v-card-actions class="px-5 pb-5">
+        <v-card-actions class="labor-simple-dialog__actions px-5 pb-5">
           <v-spacer />
           <v-btn variant="text" @click="profileDialog = false">Отмена</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving.profile" @click="saveProfile">Сохранить</v-btn>
@@ -489,20 +656,20 @@ const sourceHeaders = [
   { title: 'Зарплата / ставка', key: 'rate', sortable: false, align: 'end' as const },
   { title: 'Подтверждение', key: 'assets', sortable: false, align: 'center' as const },
   { title: 'Создано', key: 'created_at', sortable: false },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const },
+  { title: 'Действия', key: 'actions', sortable: false, align: 'center' as const },
 ]
 
 const providerHeaders = [
   { title: 'Название', key: 'title', sortable: false },
   { title: 'Домен', key: 'domain', sortable: false },
   { title: 'Базовая ссылка', key: 'base_url', sortable: false },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const },
+  { title: 'Действия', key: 'actions', sortable: false, align: 'center' as const },
 ]
 
 const profileHeaders = [
   { title: 'Название', key: 'title', sortable: false },
   { title: 'Описание', key: 'description', sortable: false },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const },
+  { title: 'Действия', key: 'actions', sortable: false, align: 'center' as const },
 ]
 
 const salaryPeriods = [
@@ -948,6 +1115,52 @@ function normalizeSourceUrl(value: string | null | undefined): string {
 </script>
 
 <style scoped>
+.labor-tabs {
+  border-radius: var(--ds-radius-14);
+  background: rgba(var(--v-theme-surface-container-low), 0.86);
+  padding: var(--ds-space-6);
+}
+
+.labor-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+.labor-table :deep(.v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.8);
+}
+
+.labor-table :deep(thead th) {
+  height: 52px !important;
+  border-bottom: 1px solid var(--ds-divider) !important;
+  background: rgba(var(--v-theme-surface-container-lowest), 0.92) !important;
+}
+
+.labor-table :deep(thead th .v-data-table-header__content) {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-secondary);
+}
+
+.labor-table :deep(tbody td) {
+  vertical-align: top;
+  border-bottom-color: var(--ds-divider) !important;
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+}
+
+.labor-table :deep(tbody tr:last-child td) {
+  border-bottom: 0 !important;
+}
+
+.labor-table :deep(.v-data-table-footer) {
+  border-top: 1px solid var(--ds-divider);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.7);
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -959,11 +1172,12 @@ function normalizeSourceUrl(value: string | null | undefined): string {
 .section-head__title {
   font-size: 15px;
   font-weight: 600;
+  color: var(--ds-text-primary);
 }
 
 .section-head__text {
   margin-top: 4px;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--ds-text-secondary);
   max-width: 720px;
 }
 
@@ -977,52 +1191,257 @@ function normalizeSourceUrl(value: string | null | undefined): string {
 }
 
 .profile-group-card {
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 18px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-18);
   overflow: hidden;
-  background: #fff;
+  background: rgba(var(--v-theme-surface-container-high), 0.72);
 }
 
 .profile-group-card--legacy {
   border-style: dashed;
-  background: #fffaf4;
+  background: color-mix(in srgb, rgba(var(--v-theme-warning), 0.12) 65%, rgba(var(--v-theme-surface-container-high), 0.88));
 }
 
 .profile-group-card__head {
   padding: 16px 18px 10px;
+  border-bottom: 1px solid var(--ds-divider);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.48);
 }
 
 .profile-group-card__title {
   font-size: 16px;
   font-weight: 700;
   line-height: 1.3;
+  color: var(--ds-text-primary);
 }
 
 .profile-group-card__count {
   font-weight: 500;
-  color: rgba(0, 0, 0, 0.56);
+  color: var(--ds-text-secondary);
 }
 
 .profile-group-card__meta {
   margin-top: 4px;
   font-size: 13px;
-  color: rgba(0, 0, 0, 0.58);
+  color: var(--ds-text-secondary);
 }
 
 .source-title-cell__title {
   font-weight: 600;
   line-height: 1.35;
+  color: var(--ds-text-primary);
+}
+
+.source-title-cell__link {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-title-cell__link:hover .source-title-cell__title,
+.source-title-cell__link:focus-visible .source-title-cell__title {
+  color: rgb(var(--v-theme-primary));
+}
+
+.source-title-cell__link:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 4px;
+  border-radius: var(--ds-radius-8);
 }
 
 .source-title-cell__meta {
   margin-top: 2px;
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.56);
+  color: var(--ds-text-secondary);
+}
+
+.source-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 96px;
+  margin: 0 auto;
+}
+
+.source-actions__icon {
+  border-radius: var(--ds-radius-full) !important;
+}
+
+.reference-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.reference-cell__title {
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ds-text-primary);
+}
+
+.reference-cell__meta,
+.reference-cell__text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ds-text-secondary);
+}
+
+.reference-chip-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.reference-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-full);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.86);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ds-text-secondary);
+}
+
+.reference-link {
+  color: var(--ds-text-primary);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.reference-link:hover,
+.reference-link:focus-visible {
+  color: rgb(var(--v-theme-primary));
+}
+
+.labor-dialog-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 94%, white 6%);
+}
+
+.labor-source-dialog__title {
+  min-height: 80px;
+  padding: var(--ds-space-16) var(--ds-space-20);
+  border-bottom: 1px solid var(--ds-divider);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--v-theme-secondary-container), 0.28),
+      rgba(var(--v-theme-surface-container-low), 0.92)
+    );
+}
+
+.labor-source-dialog__subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--ds-text-secondary);
+}
+
+.labor-source-dialog__body {
+  background: rgba(var(--v-theme-surface-container-low), 0.56);
+}
+
+.labor-source-dialog__actions {
+  border-top: 1px solid var(--ds-divider);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.72);
+}
+
+.labor-source-form {
+  display: grid;
+  gap: 16px;
+}
+
+.labor-form-section {
+  padding: 16px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.82);
+}
+
+.labor-form-section--compact {
+  padding: 18px;
+}
+
+.labor-form-section__head {
+  margin-bottom: 14px;
+}
+
+.labor-form-section__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ds-text-primary);
+}
+
+.labor-form-section__text {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ds-text-secondary);
+}
+
+.labor-form-section__aside {
+  display: flex;
+  align-items: center;
+}
+
+.labor-simple-dialog__title {
+  min-height: 76px;
+  padding: var(--ds-space-16) var(--ds-space-20);
+  border-bottom: 1px solid var(--ds-divider);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--v-theme-secondary-container), 0.24),
+      rgba(var(--v-theme-surface-container-low), 0.9)
+    );
+}
+
+.labor-simple-dialog__subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--ds-text-secondary);
+}
+
+.labor-simple-dialog__body {
+  background: rgba(var(--v-theme-surface-container-low), 0.56);
+}
+
+.labor-simple-dialog__actions {
+  border-top: 1px solid var(--ds-divider);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.72);
 }
 
 @media (max-width: 900px) {
   .section-head {
     flex-direction: column;
+  }
+
+  .source-actions {
+    justify-content: flex-start;
+    margin: 0;
+  }
+
+  .labor-source-dialog__title,
+  .labor-source-dialog__body,
+  .labor-source-dialog__actions,
+  .labor-simple-dialog__title,
+  .labor-simple-dialog__body,
+  .labor-simple-dialog__actions {
+    padding-left: var(--ds-space-16);
+    padding-right: var(--ds-space-16);
+  }
+
+  .labor-form-section__aside {
+    align-items: flex-start;
   }
 }
 </style>

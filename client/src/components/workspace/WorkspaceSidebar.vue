@@ -61,51 +61,57 @@ defineEmits<{
 .workspace-sidebar {
   width: 200px;
   min-width: 200px;
-  background: rgb(var(--v-theme-surface));
-  border-right: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.04), transparent 160px),
+    rgba(var(--v-theme-surface-container-low), 0.84);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-extra-large);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 10px 0;
 }
 
 .workspace-sidebar__modules {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 8px;
+  gap: 4px;
+  padding: 0 10px;
 }
 
 .sidebar-module-btn {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  min-height: 46px;
+  padding: 11px 14px;
   border: none;
   background: transparent;
-  border-radius: 8px;
+  border-radius: var(--md-sys-shape-corner-large);
   cursor: pointer;
   font-size: 0.875rem;
-  color: rgba(var(--v-theme-on-surface), 0.75);
-  transition: background 0.15s, color 0.15s;
+  font-weight: 500;
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
+  transition: background 0.15s, color 0.15s, transform 0.15s;
   text-align: left;
   width: 100%;
   position: relative;
 }
 
 .sidebar-module-btn:hover {
-  background: rgba(var(--v-theme-primary), 0.08);
-  color: rgba(var(--v-theme-on-surface), 0.95);
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  color: rgb(var(--v-theme-on-surface));
+  transform: translateY(-1px);
 }
 
 .sidebar-module-btn--active {
-  background: rgba(var(--v-theme-primary), 0.12);
-  color: rgb(var(--v-theme-primary));
-  font-weight: 600;
+  background: rgba(var(--v-theme-secondary-container), 0.92);
+  color: rgb(var(--v-theme-on-secondary-container));
+  font-weight: 700;
 }
 
 .sidebar-module-btn--active:hover {
-  background: rgba(var(--v-theme-primary), 0.16);
+  background: rgba(var(--v-theme-secondary-container), 0.96);
 }
 
 .sidebar-module-btn__label {
@@ -146,6 +152,7 @@ defineEmits<{
   .workspace-sidebar {
     width: 56px;
     min-width: 56px;
+    padding: 10px 0;
   }
 
   .sidebar-module-btn__label,
@@ -157,6 +164,7 @@ defineEmits<{
   .sidebar-module-btn {
     justify-content: center;
     padding: 10px;
+    min-height: 44px;
   }
 }
 </style>

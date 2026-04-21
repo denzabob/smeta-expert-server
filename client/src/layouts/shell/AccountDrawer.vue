@@ -158,7 +158,8 @@ onBeforeUnmount(() => {
   align-items: flex-end;
   justify-content: flex-start;
   padding: 16px;
-  background: rgba(var(--v-theme-on-surface), 0.32);
+  background: rgba(var(--v-theme-on-surface), 0.28);
+  backdrop-filter: blur(10px);
 }
 
 .drawer-container {
@@ -169,20 +170,21 @@ onBeforeUnmount(() => {
 }
 
 .drawer-content {
-  --drawer-bg: rgb(var(--v-theme-surface));
-  --drawer-border: rgba(var(--v-theme-on-surface), 0.12);
+  --drawer-bg: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+  --drawer-border: rgba(var(--v-theme-outline-variant), 0.72);
   --drawer-text: rgb(var(--v-theme-on-surface));
-  --drawer-muted: rgba(var(--v-theme-on-surface), 0.55);
-  --drawer-hover: rgba(var(--v-theme-on-surface), 0.07);
+  --drawer-muted: rgba(var(--v-theme-on-surface-variant), 0.88);
+  --drawer-hover: rgba(var(--v-theme-on-surface), 0.06);
   --drawer-avatar-bg: rgba(var(--v-theme-primary), 0.15);
   --drawer-avatar-text: rgb(var(--v-theme-primary));
   --drawer-danger: rgb(var(--v-theme-error));
   --drawer-danger-hover: rgba(var(--v-theme-error), 0.12);
-  --drawer-active-bg: rgba(var(--v-theme-primary), 0.18);
-  --drawer-active-text: rgb(var(--v-theme-on-surface));
+  --drawer-active-bg: rgba(var(--v-theme-secondary-container), 0.92);
+  --drawer-active-text: rgb(var(--v-theme-on-secondary-container));
   background: var(--drawer-bg);
-  border-radius: 16px;
-  box-shadow: 0 12px 32px rgba(5, 10, 20, 0.32);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  border: 1px solid var(--drawer-border);
+  box-shadow: var(--ds-shadow-modal);
   overflow: hidden;
 }
 
@@ -191,7 +193,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 16px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(var(--v-theme-primary), 0.05), transparent 100%);
 }
 
 .user-block {
@@ -201,8 +204,8 @@ onBeforeUnmount(() => {
 }
 
 .user-avatar {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--drawer-avatar-bg);
   color: var(--drawer-avatar-text);
@@ -219,14 +222,14 @@ onBeforeUnmount(() => {
 }
 
 .user-name {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 700;
   color: var(--drawer-text);
   line-height: 1.3;
 }
 
 .user-email {
-  font-size: 13px;
+  font-size: 0.8rem;
   color: var(--drawer-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -234,13 +237,13 @@ onBeforeUnmount(() => {
 }
 
 .close-btn {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 8px;
+  border-radius: 9999px;
   background: transparent;
   color: var(--drawer-muted);
   cursor: pointer;
@@ -255,19 +258,19 @@ onBeforeUnmount(() => {
 .drawer-divider {
   height: 1px;
   background: var(--drawer-border);
-  margin: 0 12px;
+  margin: 0 14px;
 }
 
 .drawer-divider--inner {
-  margin: 4px 12px;
+  margin: 6px 14px;
 }
 
 .drawer-nav {
-  padding: 6px 8px;
+  padding: 8px 10px;
 }
 
 .theme-quick {
-  padding: 10px 16px;
+  padding: 14px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -275,26 +278,27 @@ onBeforeUnmount(() => {
 }
 
 .theme-quick__label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 700;
   color: var(--drawer-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
 }
 
 .theme-toggle {
   display: flex;
   border: 1px solid var(--drawer-border);
-  border-radius: 10px;
+  border-radius: var(--md-sys-shape-corner-large);
   overflow: hidden;
+  background: rgba(var(--v-theme-surface-container-high), 0.74);
 }
 
 .theme-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 28px;
+  width: 38px;
+  height: 34px;
   border: none;
   background: transparent;
   color: var(--drawer-muted);
@@ -314,12 +318,14 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 11px;
   width: 100%;
-  padding: 9px 10px;
+  min-height: 46px;
+  padding: 10px 12px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--md-sys-shape-corner-large);
   background: transparent;
   color: var(--drawer-text);
-  font-size: 14px;
+  font-size: 0.9rem;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
   transition: background 0.13s;
@@ -339,7 +345,7 @@ onBeforeUnmount(() => {
 
 .drawer-item-icon {
   flex-shrink: 0;
-  opacity: 0.8;
+  opacity: 0.88;
 }
 
 .drawer-item-text { flex: 1; }

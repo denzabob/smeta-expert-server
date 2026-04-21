@@ -5,7 +5,7 @@
     size="large"
     :loading="loading"
     :disabled="loading"
-    class="yandex-login-btn"
+    class="yandex-login-btn md3-auth-provider"
     @click="redirectToYandex"
   >
     <template #prepend>

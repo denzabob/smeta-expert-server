@@ -16,7 +16,10 @@
       </template>
     </PageHeader>
 
-    <SectionCard>
+    <SectionCard
+      class="catalog-card"
+      subtitle="Каталог материалов и ценовых наблюдений в едином MD3-паттерне для фильтров, таблиц и состояний."
+    >
       <!-- Mode switcher -->
       <v-btn-toggle v-model="currentMode" mandatory density="comfortable" color="primary" class="mb-4 catalog-mode-tabs">
         <v-btn value="own" prepend-icon="mdi-account">Мои</v-btn>
@@ -116,7 +119,7 @@
         :headers="tableHeaders"
         :items="store.materials"
         :loading="store.loading"
-        class="elevation-1"
+        class="catalog-table"
         item-key="id"
         density="comfortable"
         :items-per-page="store.perPage"
@@ -277,9 +280,9 @@
         </template>
 
         <template #no-data>
-          <div class="text-center pa-6">
+          <div class="catalog-empty-state text-center pa-6">
             <v-icon size="64" color="grey-lighten-1" class="mb-3">mdi-package-variant</v-icon>
-            <div class="text-h6 text-grey">{{ noDataText }}</div>
+            <div class="text-h6">{{ noDataText }}</div>
             <div v-if="activeFilterBadges.length" class="mt-3 d-flex justify-center flex-wrap ga-2">
               <v-chip
                 v-for="badge in activeFilterBadges"
@@ -836,6 +839,16 @@ watch(
 </script>
 
 <style scoped>
+.catalog-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+.catalog-card :deep(.v-card-text) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-8);
+}
+
 .catalog-mode-tabs :deep(.v-slide-group__content) {
   gap: 4px;
 }
@@ -844,5 +857,25 @@ watch(
   border-bottom-left-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
   margin-bottom: 2px;
+}
+
+.catalog-mode-tabs :deep(.v-btn--active) {
+  background: rgba(var(--v-theme-secondary-container), 0.78) !important;
+}
+
+.catalog-table :deep(.v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.72);
+}
+
+.catalog-empty-state {
+  border: 1px dashed var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
+  background: rgba(var(--v-theme-surface-container-high), 0.48);
+}
+
+.catalog-empty-state .text-h6 {
+  color: var(--ds-text-primary);
 }
 </style>

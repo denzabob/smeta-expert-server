@@ -56,7 +56,10 @@
       />
     </div>
 
-    <SectionCard>
+    <SectionCard
+      class="pricing-operations-card"
+      subtitle="Список операций, текущие цены и быстрый переход к настройке правил и источников в едином MD3-паттерне."
+    >
       <template #title>Операции</template>
 
       <div v-if="hasGlobalSummaryError" class="summary-error-banner">
@@ -202,6 +205,8 @@
       location="right"
       :width="440"
       temporary
+      scrim
+      class="pricing-operations-drawer"
     >
       <template v-if="drawer.operation">
         <!-- Header -->
@@ -457,7 +462,7 @@
     />
 
     <v-dialog v-model="quickCreateDialog.open" max-width="560">
-      <v-card>
+      <v-card class="pricing-operations-dialog-card">
         <v-card-title>Добавить операцию</v-card-title>
         <v-card-text class="quick-create-dialog">
           <v-alert
@@ -502,7 +507,7 @@
     </v-dialog>
 
     <v-dialog v-model="deleteDialog.open" max-width="460">
-      <v-card>
+      <v-card class="pricing-operations-dialog-card">
         <v-card-title>Удалить операцию</v-card-title>
         <v-card-text class="delete-dialog__body">
           <v-alert
@@ -1887,7 +1892,7 @@ onBeforeUnmount(() => {
 .operation-name-cell__title {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.82);
+  color: var(--ds-text-primary);
 }
 
 .operation-name-cell__issue {
@@ -1897,7 +1902,11 @@ onBeforeUnmount(() => {
 }
 
 .no-price-hint {
-  color: rgba(0, 0, 0, 0.3);
+  color: var(--ds-text-tertiary);
+}
+
+.pricing-operations-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
 }
 
 .operations-empty-state {
@@ -1906,29 +1915,32 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 40px 20px;
+  border: 1px dashed var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
+  background: rgba(var(--v-theme-surface-container-high), 0.46);
   text-align: center;
 }
 
 .operations-empty-state__title {
   font-size: 16px;
   font-weight: 700;
-  color: rgba(0, 0, 0, 0.82);
+  color: var(--ds-text-primary);
 }
 
 .operations-empty-state__text {
   max-width: 360px;
   font-size: 13px;
   line-height: 1.45;
-  color: rgba(0, 0, 0, 0.56);
+  color: var(--ds-text-secondary);
 }
 
 .summary-error-banner {
   margin: 12px 16px 0;
   padding: 10px 12px;
   border: 1px solid rgba(var(--v-theme-warning), 0.18);
-  border-radius: 10px;
+  border-radius: var(--ds-radius-10);
   background: rgba(var(--v-theme-warning), 0.06);
-  color: rgba(0, 0, 0, 0.68);
+  color: var(--ds-text-secondary);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
@@ -1939,10 +1951,11 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
-  padding: 10px 14px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
+  padding: 14px 16px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-14);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-secondary-container), 0.34), rgba(var(--v-theme-surface-container-low), 0.92));
 }
 
 .preview-project-bar__copy {
@@ -1954,7 +1967,7 @@ onBeforeUnmount(() => {
 .preview-project-bar__label {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.66);
+  color: var(--ds-text-primary);
   white-space: nowrap;
 }
 
@@ -1962,7 +1975,7 @@ onBeforeUnmount(() => {
 .quick-create-dialog__subhint {
   font-size: 12px;
   line-height: 1.45;
-  color: rgba(0, 0, 0, 0.54);
+  color: var(--ds-text-secondary);
 }
 
 .preview-project-bar__select {
@@ -1970,13 +1983,37 @@ onBeforeUnmount(() => {
   min-width: 260px;
 }
 
+:deep(.pricing-operations-table .v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.8);
+}
+
 /* ── Drawer ── */
+.pricing-operations-drawer :deep(.v-navigation-drawer__content) {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+.pricing-operations-drawer {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  left: auto !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-left: 1px solid var(--ds-border-color) !important;
+  border-right: none !important;
+  z-index: 2400 !important;
+}
+
 .drawer-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   padding: 16px;
   gap: 8px;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-secondary-container), 0.26), rgba(var(--v-theme-surface-container-low), 0.9));
 }
 
 .drawer-header__main {
@@ -1992,13 +2029,13 @@ onBeforeUnmount(() => {
 .drawer-title {
   font-size: 15px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.85);
+  color: var(--ds-text-primary);
   margin-bottom: 2px;
 }
 
 .drawer-subtitle {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
+  color: var(--ds-text-tertiary);
 }
 
 .drawer-body {
@@ -2020,11 +2057,15 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--ds-radius-10);
+  background: rgba(var(--v-theme-surface-container-high), 0.72);
+  border: 1px solid var(--ds-border-color);
 }
 
 .meta-label {
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.45);
+  color: var(--ds-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
@@ -2032,6 +2073,7 @@ onBeforeUnmount(() => {
 .meta-value {
   font-size: 13px;
   font-weight: 500;
+  color: var(--ds-text-primary);
 }
 
 .section-kicker {
@@ -2039,16 +2081,16 @@ onBeforeUnmount(() => {
   line-height: 1.4;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: rgba(0, 0, 0, 0.48);
+  color: var(--ds-text-tertiary);
   margin-bottom: 8px;
 }
 
 .calculation-block {
   padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid rgba(var(--v-theme-primary), 0.18);
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
   background:
-    linear-gradient(135deg, rgba(var(--v-theme-primary), 0.06), rgba(255, 255, 255, 0.9));
+    linear-gradient(135deg, rgba(var(--v-theme-primary-container), 0.72), rgba(var(--v-theme-surface-container-high), 0.86));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2072,26 +2114,26 @@ onBeforeUnmount(() => {
   font-size: 18px;
   line-height: 1.35;
   font-weight: 700;
-  color: rgba(0, 0, 0, 0.84);
+  color: var(--ds-text-primary);
 }
 
 .calculation-block__operator {
   font-size: 16px;
   font-weight: 700;
-  color: rgba(0, 0, 0, 0.42);
+  color: var(--ds-text-tertiary);
 }
 
 .calculation-block__source-inline,
 .calculation-block__formula-note {
   font-size: 13px;
   line-height: 1.45;
-  color: rgba(0, 0, 0, 0.56);
+  color: var(--ds-text-secondary);
 }
 
 .calculation-block__muted {
   font-size: 16px;
   line-height: 1.4;
-  color: rgba(0, 0, 0, 0.4);
+  color: var(--ds-text-tertiary);
 }
 
 .calculation-block__actions {
@@ -2110,7 +2152,7 @@ onBeforeUnmount(() => {
 
 .calculation-block__empty {
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--ds-radius-10);
   border: 1px solid rgba(var(--v-theme-warning), 0.18);
   background: rgba(var(--v-theme-warning), 0.06);
 }
@@ -2118,21 +2160,21 @@ onBeforeUnmount(() => {
 .calculation-block__empty-title {
   font-size: 13px;
   font-weight: 700;
-  color: rgba(0, 0, 0, 0.8);
+  color: var(--ds-text-primary);
 }
 
 .calculation-block__empty-text {
   margin-top: 4px;
   font-size: 12px;
   line-height: 1.45;
-  color: rgba(0, 0, 0, 0.58);
+  color: var(--ds-text-secondary);
 }
 
 .calculation-preview {
   padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--ds-radius-10);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.74);
+  border: 1px solid var(--ds-border-color);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2141,7 +2183,7 @@ onBeforeUnmount(() => {
 .calculation-preview__title {
   font-size: 12px;
   font-weight: 700;
-  color: rgba(0, 0, 0, 0.66);
+  color: var(--ds-text-secondary);
 }
 
 .calculation-preview__row {
@@ -2151,11 +2193,11 @@ onBeforeUnmount(() => {
   gap: 12px;
   font-size: 13px;
   line-height: 1.45;
-  color: rgba(0, 0, 0, 0.58);
+  color: var(--ds-text-secondary);
 }
 
 .calculation-preview__row strong {
-  color: rgba(0, 0, 0, 0.84);
+  color: var(--ds-text-primary);
   font-weight: 700;
   text-align: right;
 }
@@ -2163,7 +2205,7 @@ onBeforeUnmount(() => {
 .calculation-preview__fallback {
   font-size: 13px;
   line-height: 1.45;
-  color: rgba(0, 0, 0, 0.5);
+  color: var(--ds-text-tertiary);
 }
 
 .drawer-details-panels {
@@ -2179,15 +2221,15 @@ onBeforeUnmount(() => {
 
 .detail-card {
   padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  background: rgba(0, 0, 0, 0.02);
+  border-radius: var(--ds-radius-10);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-high), 0.66);
 }
 
 .detail-card__title {
   font-size: 13px;
   font-weight: 700;
-  color: rgba(0, 0, 0, 0.76);
+  color: var(--ds-text-primary);
   margin-bottom: 10px;
 }
 
@@ -2203,12 +2245,12 @@ onBeforeUnmount(() => {
   gap: 12px;
   font-size: 12px;
   line-height: 1.45;
-  color: rgba(0, 0, 0, 0.58);
+  color: var(--ds-text-secondary);
 }
 
 .detail-card__row strong {
   text-align: right;
-  color: rgba(0, 0, 0, 0.82);
+  color: var(--ds-text-primary);
   font-weight: 600;
 }
 
@@ -2241,9 +2283,9 @@ onBeforeUnmount(() => {
   gap: 12px;
   width: 100%;
   padding: 14px 16px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.92);
   text-align: left;
   transition: border-color 0.2s ease, background 0.2s ease;
 }
@@ -2266,7 +2308,11 @@ onBeforeUnmount(() => {
 .quick-create-option__label {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.82);
+  color: var(--ds-text-primary);
+}
+
+.pricing-operations-dialog-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 94%, white 6%);
 }
 
 .applicability-card {

@@ -405,29 +405,34 @@ watch(() => authStore.isAuthenticated, (authed) => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.04), transparent 180px),
+    var(--ds-surface-page);
 }
 .notifications-screen__body {
   flex: 1;
   overflow-y: auto;
+  padding: 12px;
 }
 
 /* Sidebar always fixed to viewport */
 .app-sidebar {
-  --sidebar-bg: rgb(var(--v-theme-surface));
-  --sidebar-border: rgba(var(--v-theme-on-surface), 0.12);
+  --sidebar-bg: color-mix(in srgb, var(--md-sys-color-surface-container-low) 92%, transparent);
+  --sidebar-border: rgba(var(--v-theme-outline-variant), 0.72);
   --sidebar-text: rgb(var(--v-theme-on-surface));
-  --sidebar-muted: rgba(var(--v-theme-on-surface), 0.65);
-  --sidebar-hover: rgba(var(--v-theme-on-surface), 0.08);
-  --sidebar-active-bg: rgba(var(--v-theme-primary), 0.18);
-  --sidebar-active-text: rgb(var(--v-theme-on-surface));
+  --sidebar-muted: rgba(var(--v-theme-on-surface-variant), 0.88);
+  --sidebar-hover: rgba(var(--v-theme-on-surface), 0.06);
+  --sidebar-active-bg: rgba(var(--v-theme-secondary-container), 0.92);
+  --sidebar-active-text: rgb(var(--v-theme-on-secondary-container));
   --sidebar-accent: rgb(var(--v-theme-primary));
-  --sidebar-avatar-bg: rgba(var(--v-theme-on-surface), 0.1);
+  --sidebar-avatar-bg: rgba(var(--v-theme-primary), 0.14);
   position: fixed !important;
   top: 0 !important;
   height: 100vh !important;
   max-height: 100vh !important;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
+  backdrop-filter: blur(14px);
 }
 
 /* Override Vuetify's navigation drawer - make it truly fixed */
@@ -441,13 +446,16 @@ watch(() => authStore.isAuthenticated, (authed) => {
 .app-sidebar:deep(.v-navigation-drawer__content) {
   overflow-y: auto;
   height: 100%;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.05), transparent 180px),
+    var(--sidebar-bg);
 }
 
 .sidebar-inner {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 8px;
+  padding: 12px 10px 10px;
   cursor: default;
 }
 
@@ -469,22 +477,22 @@ watch(() => authStore.isAuthenticated, (authed) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px;
-  min-height: 52px;
+  padding: 6px 4px 8px;
+  min-height: 56px;
 }
 
 .header-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border: none;
-  border-radius: 6px;
+  border-radius: 9999px;
   background: transparent;
   color: var(--sidebar-text);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, transform 0.15s ease;
   flex-shrink: 0;
 }
 
@@ -505,13 +513,13 @@ watch(() => authStore.isAuthenticated, (authed) => {
 .sidebar-divider {
   height: 1px;
   background: var(--sidebar-border);
-  margin: 8px 4px;
+  margin: 10px 6px;
 }
 
 .section-divider {
   height: 1px;
   background: var(--sidebar-border);
-  margin: 8px 8px;
+  margin: 12px 8px;
 }
 
 /* Navigation */
@@ -522,11 +530,11 @@ watch(() => authStore.isAuthenticated, (authed) => {
 }
 
 .section-title {
-  padding: 12px 12px 6px;
-  font-size: 11px;
-  font-weight: 600;
+  padding: 12px 14px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.08em;
   color: var(--sidebar-muted);
 }
 
@@ -535,15 +543,17 @@ watch(() => authStore.isAuthenticated, (authed) => {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 10px 12px;
+  min-height: 48px;
+  padding: 12px 14px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--md-sys-shape-corner-large);
   background: transparent;
   color: var(--sidebar-text);
-  font-size: 14px;
+  font-size: 0.92rem;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
   position: relative;
 }
 
@@ -554,23 +564,24 @@ watch(() => authStore.isAuthenticated, (authed) => {
 .nav-item--active {
   background: var(--sidebar-active-bg);
   color: var(--sidebar-active-text);
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .nav-item--active::before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
+  left: 8px;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
   background: var(--sidebar-accent);
-  border-radius: 0 2px 2px 0;
+  border-radius: 999px;
 }
 
 .nav-item--rail {
   justify-content: center;
   padding: 12px;
+  min-height: 52px;
 }
 
 .nav-item--rail .nav-item-icon {
@@ -580,7 +591,7 @@ watch(() => authStore.isAuthenticated, (authed) => {
 .nav-item-icon {
   flex-shrink: 0;
   color: inherit;
-  opacity: 0.8;
+  opacity: 0.88;
 }
 
 .nav-item--active .nav-item-icon {
@@ -603,22 +614,26 @@ watch(() => authStore.isAuthenticated, (authed) => {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 10px;
+  min-height: 60px;
+  padding: 12px;
   border: none;
-  border-radius: 8px;
-  background: transparent;
+  border-radius: calc(var(--md-sys-shape-corner-large) + 4px);
+  background: rgba(var(--v-theme-surface-container-high), 0.62);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.64);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
   text-align: left;
 }
 
 .account-btn:hover {
-  background: var(--sidebar-hover);
+  background: rgba(var(--v-theme-secondary-container), 0.54);
+  border-color: rgba(var(--v-theme-outline), 0.72);
 }
 
 .account-btn--rail {
   justify-content: center;
-  padding: 10px;
+  min-height: 52px;
+  padding: 8px;
 }
 
 .account-avatar {
@@ -626,11 +641,11 @@ watch(() => authStore.isAuthenticated, (authed) => {
   height: 36px;
   border-radius: 50%;
   background: var(--sidebar-avatar-bg);
-  color: var(--sidebar-text);
+  color: rgb(var(--v-theme-primary));
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 14px;
   flex-shrink: 0;
 }
@@ -641,8 +656,8 @@ watch(() => authStore.isAuthenticated, (authed) => {
 }
 
 .account-name {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 0.84rem;
+  font-weight: 700;
   color: var(--sidebar-text);
   white-space: nowrap;
   overflow: hidden;
@@ -650,7 +665,7 @@ watch(() => authStore.isAuthenticated, (authed) => {
 }
 
 .account-email {
-  font-size: 11px;
+  font-size: 0.74rem;
   color: var(--sidebar-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -660,5 +675,15 @@ watch(() => authStore.isAuthenticated, (authed) => {
 .account-chevron {
   color: var(--sidebar-muted);
   flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .sidebar-inner {
+    padding: 10px 8px 8px;
+  }
+
+  .notifications-screen__body {
+    padding: 8px;
+  }
 }
 </style>

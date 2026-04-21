@@ -8,7 +8,7 @@
     </template>
 
     <!-- ── Error ──────────────────────────────────────────────────────────── -->
-    <v-alert v-else-if="loadError && !store.authStatus" type="error" variant="tonal" class="mb-4">
+      <v-alert v-else-if="loadError && !store.authStatus" type="error" variant="tonal" class="acc-sec__stack-item">
       Не удалось загрузить данные безопасности.
       <template #append>
         <v-btn variant="text" size="small" @click="reload">Повторить</v-btn>
@@ -24,10 +24,10 @@
         variant="flat"
         density="comfortable"
         prepend-icon="mdi-alert-circle"
-        class="mb-4"
+        class="acc-sec__stack-item"
       >
         <div class="text-body-2 font-weight-medium">Аккаунт под угрозой</div>
-        <div class="text-caption mt-1">
+        <div class="acc-sec__critical-text">
           У вас нет ни одного способа восстановить доступ к аккаунту самостоятельно.
         </div>
       </v-alert>
@@ -37,7 +37,7 @@
         v-if="store.authStatus.recommended_actions.length > 0 || store.authStatus.blocked_actions.length > 0"
         :status="store.authStatus"
         @action="handleRecommendedAction"
-        class="mb-4"
+        class="acc-sec__stack-item"
       />
 
       <!-- 2. Способы входа -->
@@ -55,17 +55,17 @@
         @unlink-yandex="doUnlinkYandex"
         @enable-pin="openPinSetup"
         @disable-pin="openPinDisable"
-        class="mb-4"
+        class="acc-sec__stack-item"
       />
 
       <!-- 3. Восстановление / Надёжность аккаунта -->
-      <RecoveryReadinessCard :status="store.authStatus" class="mb-4" />
+      <RecoveryReadinessCard :status="store.authStatus" class="acc-sec__stack-item" />
 
       <!-- 4. Активные сессии -->
       <SessionsCard
         :sessions="store.sessions"
         :loading="store.sessionsLoading"
-        class="mb-4"
+        class="acc-sec__stack-item"
       />
 
       <!-- 5. Доверенные устройства -->
@@ -73,11 +73,11 @@
         v-if="store.authStatus.can_manage_trusted_devices"
         :devices="store.devices"
         :loading="store.devicesLoading"
-        class="mb-4"
+        class="acc-sec__stack-item"
       />
 
       <!-- 6. Расширение Chrome -->
-      <div class="acc-sec__card acc-sec__card--chrome mb-4">
+      <div class="acc-sec__card acc-sec__card--chrome acc-sec__stack-item">
         <!-- Header -->
         <div class="acc-sec__card-header">
           <v-icon icon="mdi-google-chrome" size="20" class="acc-sec__card-icon acc-sec__card-icon--chrome" />
@@ -90,7 +90,7 @@
         </div>
 
         <!-- Status badges -->
-        <div class="acc-sec__status-row mt-3">
+        <div class="acc-sec__status-row acc-sec__section-space">
           <div class="acc-sec__status-item">
             <span class="acc-sec__status-label">Расширение</span>
             <span class="acc-sec__status-badge acc-sec__status-badge--neutral">
@@ -113,7 +113,7 @@
         </div>
 
         <!-- Token value — shown immediately after generation -->
-        <div v-if="chromeTokenJustCreated" class="acc-sec__token-box mt-3">
+        <div v-if="chromeTokenJustCreated" class="acc-sec__token-box acc-sec__section-space">
           <div class="acc-sec__token-label">
             <v-icon icon="mdi-check-circle" size="15" color="success" class="mr-1" />
             Токен создан — скопируйте и вставьте в расширение
@@ -134,7 +134,7 @@
         </div>
 
         <!-- Primary actions -->
-        <div class="acc-sec__card-actions mt-3">
+        <div class="acc-sec__card-actions acc-sec__section-space">
           <a
             :href="CHROME_EXTENSION_STORE_URL"
             target="_blank"
@@ -156,7 +156,7 @@
         </div>
 
         <!-- Secondary / destructive actions -->
-        <div class="acc-sec__card-actions acc-sec__card-actions--secondary mt-2">
+        <div class="acc-sec__card-actions acc-sec__card-actions--secondary">
           <button class="acc-sec__btn acc-sec__btn--ghost" :disabled="chromeSaving" @click="doGenerateChromeToken">
             <v-icon size="14" class="mr-1">mdi-refresh</v-icon>
             {{ chromeSaving ? 'Генерация...' : (chromeHasToken ? 'Пересоздать токен' : 'Создать токен') }}
@@ -172,10 +172,10 @@
           </button>
         </div>
 
-        <div v-if="chromeError" class="acc-sec__inline-error mt-2">{{ chromeError }}</div>
+        <div v-if="chromeError" class="acc-sec__inline-error">{{ chromeError }}</div>
 
         <!-- Step-by-step guide -->
-        <div class="acc-sec__chrome-steps mt-3">
+        <div class="acc-sec__chrome-steps acc-sec__section-space">
           <div class="acc-sec__chrome-steps-title">Как подключить расширение</div>
           <ol class="acc-sec__chrome-steps-list">
             <li>Установите расширение из Chrome Web Store</li>
@@ -210,38 +210,41 @@
 
   <!-- ── Phone change dialog ─────────────────────────────────────────────── -->
   <v-dialog v-model="phoneDialogOpen" max-width="440" persistent :scrim="false">
-    <v-card rounded="xl" class="pa-6">
-      <div class="text-subtitle-1 font-weight-semibold mb-4">Изменить номер телефона</div>
-      <v-alert v-if="phoneError" type="error" variant="tonal" density="compact" closable class="mb-3" @click:close="phoneError = ''">{{ phoneError }}</v-alert>
-      <v-alert v-if="phoneSuccess" type="success" variant="tonal" density="compact" closable class="mb-3" @click:close="phoneSuccess = ''">{{ phoneSuccess }}</v-alert>
+    <v-card rounded="xl" class="acc-sec__dialog-card">
+      <div class="acc-sec__dialog-title">Изменить номер телефона</div>
+      <v-alert v-if="phoneError" type="error" variant="tonal" density="compact" closable class="acc-sec__dialog-alert" @click:close="phoneError = ''">{{ phoneError }}</v-alert>
+      <v-alert v-if="phoneSuccess" type="success" variant="tonal" density="compact" closable class="acc-sec__dialog-alert" @click:close="phoneSuccess = ''">{{ phoneSuccess }}</v-alert>
 
       <template v-if="phoneStep === 'form'">
-        <div class="acc-sec__field mb-3">
+        <div class="acc-sec__dialog-form">
+          <div class="acc-sec__field">
           <label class="acc-sec__label">Новый номер телефона</label>
           <input v-model="phoneForm.phone" type="text" class="acc-sec__input" placeholder="+7 (999) 123-45-67" inputmode="tel" autocomplete="tel" @input="onPhoneInput" />
         </div>
-        <div v-if="phoneForm.needPassword" class="acc-sec__field mb-3">
+        <div v-if="phoneForm.needPassword" class="acc-sec__field">
           <label class="acc-sec__label">Текущий пароль</label>
           <input v-model="phoneForm.password" type="password" class="acc-sec__input" placeholder="Введите пароль" autocomplete="current-password" />
         </div>
-        <div class="d-flex justify-end" style="gap:8px">
+        <div class="acc-sec__dialog-actions">
           <button class="acc-sec__btn acc-sec__btn--secondary" @click="phoneDialogOpen = false">Отмена</button>
           <button class="acc-sec__btn acc-sec__btn--primary" :disabled="phoneForm.requesting" @click="doRequestPhoneChange">
             {{ phoneForm.requesting ? 'Отправка...' : 'Подтвердить номер' }}
           </button>
         </div>
+        </div>
       </template>
 
       <template v-else-if="phoneStep === 'verify'">
-        <p class="text-body-2 text-medium-emphasis mb-3">
+        <div class="acc-sec__dialog-form">
+        <p class="acc-sec__dialog-body-text">
           <template v-if="phoneForm.verificationMethod === 'code'">Введите код, отправленный на новый номер.</template>
           <template v-else>Позвоните на {{ phoneForm.callPhonePretty || phoneForm.callPhone }} и нажмите «Проверить звонок».</template>
         </p>
-        <div v-if="phoneForm.verificationMethod === 'code'" class="acc-sec__field mb-4">
+        <div v-if="phoneForm.verificationMethod === 'code'" class="acc-sec__field">
           <label class="acc-sec__label">Код подтверждения</label>
           <input v-model="phoneForm.code" type="text" class="acc-sec__input" placeholder="6 цифр" maxlength="6" />
         </div>
-        <div class="d-flex justify-end" style="gap:8px">
+        <div class="acc-sec__dialog-actions">
           <button
             class="acc-sec__btn acc-sec__btn--secondary"
             :disabled="phoneResendCountdown > 0 || phoneForm.resending"
@@ -253,29 +256,32 @@
             {{ phoneForm.verifying ? 'Проверка...' : phoneForm.verificationMethod === 'call' ? 'Проверить звонок' : 'Подтвердить' }}
           </button>
         </div>
+        </div>
       </template>
     </v-card>
   </v-dialog>
 
   <!-- ── Email change dialog ─────────────────────────────────────────────── -->
   <v-dialog v-model="emailDialogOpen" max-width="440" persistent :scrim="false">
-    <v-card rounded="xl" class="pa-6">
-      <div class="text-subtitle-1 font-weight-semibold mb-4">Изменить email</div>
-      <v-alert v-if="emailError" type="error" variant="tonal" density="compact" closable class="mb-3" @click:close="emailError = ''">{{ emailError }}</v-alert>
-      <v-alert v-if="emailSuccess" type="success" variant="tonal" density="compact" class="mb-3">{{ emailSuccess }}</v-alert>
-      <div class="acc-sec__field mb-3">
+    <v-card rounded="xl" class="acc-sec__dialog-card">
+      <div class="acc-sec__dialog-title">Изменить email</div>
+      <v-alert v-if="emailError" type="error" variant="tonal" density="compact" closable class="acc-sec__dialog-alert" @click:close="emailError = ''">{{ emailError }}</v-alert>
+      <v-alert v-if="emailSuccess" type="success" variant="tonal" density="compact" class="acc-sec__dialog-alert">{{ emailSuccess }}</v-alert>
+      <div class="acc-sec__dialog-form">
+      <div class="acc-sec__field">
         <label class="acc-sec__label">Новый email</label>
         <input v-model="emailForm.email" type="email" class="acc-sec__input" placeholder="name@example.com" autocomplete="email" />
       </div>
-      <div v-if="emailForm.needPassword" class="acc-sec__field mb-3">
+      <div v-if="emailForm.needPassword" class="acc-sec__field">
         <label class="acc-sec__label">Текущий пароль</label>
         <input v-model="emailForm.password" type="password" class="acc-sec__input" placeholder="Введите пароль" autocomplete="current-password" />
       </div>
-      <div class="d-flex justify-end" style="gap:8px">
+      <div class="acc-sec__dialog-actions">
         <button class="acc-sec__btn acc-sec__btn--secondary" @click="emailDialogOpen = false">Отмена</button>
         <button class="acc-sec__btn acc-sec__btn--primary" :disabled="emailForm.saving" @click="doSubmitEmailChange">
           {{ emailForm.saving ? 'Сохранение...' : 'Изменить email' }}
         </button>
+      </div>
       </div>
     </v-card>
   </v-dialog>
@@ -674,15 +680,31 @@ function copyChromeToken() {
 
 <style scoped>
 .acc-sec {
-  /* Remove default max-width constraints from cards inside modal */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* ── Static card for Chrome token ─────────────────────────────────────── */
 .acc-sec__card {
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  border-radius: 12px;
-  padding: 16px;
-  background: rgb(var(--v-theme-surface-bright));
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  padding: 18px;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.04), transparent 140px),
+    rgba(var(--v-theme-surface-container-low), 0.96);
+}
+
+.acc-sec__stack-item {
+  margin: 0 !important;
+}
+
+.acc-sec__critical-text {
+  margin-top: 6px;
+}
+
+.acc-sec__section-space {
+  margin-top: 16px;
 }
 
 .acc-sec__card-header {
@@ -698,16 +720,17 @@ function copyChromeToken() {
 }
 
 .acc-sec__card-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 0.96rem;
+  font-weight: 700;
   color: rgb(var(--v-theme-on-surface));
   line-height: 1.4;
 }
 
 .acc-sec__card-desc {
-  font-size: 12px;
-  color: rgba(var(--v-theme-on-surface), 0.6);
-  margin-top: 2px;
+  font-size: 0.82rem;
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  margin-top: 4px;
+  line-height: 1.55;
 }
 
 .acc-sec__card-actions {
@@ -721,13 +744,15 @@ function copyChromeToken() {
 .acc-sec__btn {
   display: inline-flex;
   align-items: center;
-  padding: 7px 14px;
-  font-size: 13px;
-  font-weight: 500;
+  justify-content: center;
+  min-height: 40px;
+  padding: 10px 18px;
+  font-size: 0.84rem;
+  font-weight: 700;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--md-sys-shape-corner-full);
   cursor: pointer;
-  transition: background 0.13s;
+  transition: background 0.13s, color 0.13s, border-color 0.13s;
   white-space: nowrap;
 }
 
@@ -746,12 +771,12 @@ function copyChromeToken() {
 }
 
 .acc-sec__btn--secondary {
-  background: rgba(var(--v-theme-on-surface), 0.1);
-  color: rgb(var(--v-theme-on-surface));
+  background: rgba(var(--v-theme-secondary-container), 0.92);
+  color: rgb(var(--v-theme-on-secondary-container));
 }
 
 .acc-sec__btn--secondary:hover:not(:disabled) {
-  background: rgba(var(--v-theme-on-surface), 0.18);
+  background: rgba(var(--v-theme-secondary), 0.24);
 }
 
 .acc-sec__btn--danger {
@@ -765,10 +790,10 @@ function copyChromeToken() {
 
 /* ── Token display ────────────────────────────────────────────────────── */
 .acc-sec__token-box {
-  background: rgba(var(--v-theme-on-surface), 0.04);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
-  border-radius: 10px;
-  padding: 12px;
+  background: rgba(var(--v-theme-surface-container-lowest), 0.92);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-large);
+  padding: 14px;
 }
 
 .acc-sec__token-label {
@@ -791,9 +816,9 @@ function copyChromeToken() {
   font-size: 12px;
   color: rgb(var(--v-theme-on-surface));
   word-break: break-all;
-  background: rgba(var(--v-theme-on-surface), 0.06);
-  padding: 4px 8px;
-  border-radius: 6px;
+  background: rgba(var(--v-theme-surface-container-highest), 0.9);
+  padding: 8px 10px;
+  border-radius: var(--md-sys-shape-corner-medium);
 }
 
 .acc-sec__token-copy {
@@ -818,29 +843,31 @@ function copyChromeToken() {
 .acc-sec__field {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
 }
 
 .acc-sec__label {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 0.8rem;
+  font-weight: 700;
   color: rgb(var(--v-theme-on-surface));
 }
 
 .acc-sec__input {
-  padding: 9px 12px;
-  font-size: 14px;
+  min-height: 48px;
+  padding: 12px 14px;
+  font-size: 0.92rem;
   color: rgb(var(--v-theme-on-surface));
-  background: rgba(var(--v-theme-on-surface), 0.05);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.2);
-  border-radius: 10px;
-  transition: border-color 0.13s;
+  background: rgba(var(--v-theme-surface-container-highest), 0.94);
+  border: 1px solid rgba(var(--v-theme-outline), 0.72);
+  border-radius: var(--md-sys-shape-corner-large);
+  transition: border-color 0.13s, box-shadow 0.13s;
   width: 100%;
 }
 
 .acc-sec__input:focus {
   outline: none;
-  border-color: rgba(var(--v-theme-primary), 0.7);
+  border-color: rgba(var(--v-theme-primary), 0.9);
+  box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), 0.14);
 }
 
 /* ── PIN center ───────────────────────────────────────────────────────── */
@@ -851,6 +878,7 @@ function copyChromeToken() {
 
 /* ── Error inline ─────────────────────────────────────────────────────── */
 .acc-sec__inline-error {
+  margin-top: 12px;
   font-size: 12px;
   color: rgb(var(--v-theme-error));
 }
@@ -936,7 +964,7 @@ function copyChromeToken() {
 .acc-sec__btn--ghost {
   background: transparent;
   color: rgba(var(--v-theme-on-surface), 0.6);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.15);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.92);
 }
 
 .acc-sec__btn--ghost:hover:not(:disabled) {
@@ -954,6 +982,7 @@ function copyChromeToken() {
 }
 
 .acc-sec__card-actions--secondary {
+  margin-top: 12px;
   opacity: 0.9;
 }
 
@@ -978,5 +1007,58 @@ function copyChromeToken() {
   font-size: 12px;
   color: rgba(var(--v-theme-on-surface), 0.65);
   line-height: 1.7;
+}
+
+.acc-sec__dialog-card {
+  padding: 24px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.04), transparent 120px),
+    rgba(var(--v-theme-surface-container-low), 0.98);
+}
+
+.acc-sec__dialog-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: rgb(var(--v-theme-on-surface));
+  margin-bottom: 16px;
+}
+
+.acc-sec__dialog-alert {
+  margin-bottom: 12px;
+}
+
+.acc-sec__dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.acc-sec__dialog-body-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+}
+
+.acc-sec__dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .acc-sec__card {
+    padding: 16px;
+  }
+
+  .acc-sec__dialog-card {
+    padding: 18px 16px;
+  }
+
+  .acc-sec__dialog-actions > * {
+    flex: 1 1 100%;
+  }
 }
 </style>

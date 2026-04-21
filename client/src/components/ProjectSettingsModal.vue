@@ -7,7 +7,7 @@
         <v-card-text class="px-4 pb-2">
           В настройках проекта есть несохранённые изменения. Что сделать?
         </v-card-text>
-        <v-card-actions class="pa-4 pt-2 gap-2">
+        <v-card-actions class="pa-4 pt-2 gap-2 md3-actions-row">
           <v-btn variant="text" @click="showUnsavedDialog = false">Остаться</v-btn>
           <v-spacer />
           <v-btn variant="outlined" color="error" @click="discardAndClose">Отменить изменения</v-btn>
@@ -20,7 +20,7 @@
     <v-dialog v-model="coefficientDescriptionDialog" max-width="600" :z-index="1400">
       <v-card>
         <v-card-title class="pa-4">Редактировать описание для {{ getCoefficientTypeLabel() }}</v-card-title>
-        <v-card-text class="px-4 pb-2">
+        <v-card-text class="px-4 pb-2 md3-form-stack">
           <v-text-field
             v-model="coefficientDescriptionForm.title"
             label="Заголовок"
@@ -28,7 +28,6 @@
             placeholder="Например: Причина использования коэффициента"
             counter="200"
             maxlength="200"
-            class="mb-3"
           />
           <v-textarea
             v-model="coefficientDescriptionForm.text"
@@ -41,7 +40,7 @@
             @paste="onPasteCoefficientDescription"
           />
         </v-card-text>
-        <v-card-actions class="pa-4 pt-2">
+        <v-card-actions class="pa-4 pt-2 md3-actions-row">
           <v-spacer />
           <v-btn variant="text" @click="closeCoefficientDescriptionDialog">Отменить</v-btn>
           <v-btn color="primary" variant="flat" @click="saveCoefficientDescription">Сохранить</v-btn>
@@ -101,9 +100,9 @@
             :is-mobile="isMobile"
             :nav-width="220"
           >
-            <v-form>
+            <v-form class="md3-section-stack">
               <!-- Section 0: Основное -->
-              <div v-if="activeSettingsSection === 0" class="psm-section">
+              <div v-if="activeSettingsSection === 0" class="psm-section md3-section-stack">
                 <div class="psm-section-title">Основное</div>
                 <div class="psm-section-hint">Базовые сведения о проекте (дела), объекте и эксперте</div>
                 <v-card variant="outlined" class="psm-content-card">
@@ -150,7 +149,7 @@
               </div>
 
               <!-- Section 1: Коэффициенты -->
-              <div v-if="activeSettingsSection === 1" class="psm-section">
+              <div v-if="activeSettingsSection === 1" class="psm-section md3-section-stack">
                 <div class="psm-section-title">Коэффициенты</div>
                 <div class="psm-section-hint">Применяются при расчёте стоимости материалов</div>
                 <v-card variant="outlined" class="psm-content-card">
@@ -183,7 +182,7 @@
                     <v-divider class="my-4" />
 
                     <div class="mb-3">
-                      <div class="d-flex align-center gap-3">
+                      <div class="md3-inline-settings-row">
                         <span class="text-subtitle-2 psm-mode-label" :class="{ 'psm-mode-label--active': !projectData.use_area_calc_mode }">Расчёт по листам</span>
                         <v-switch v-model="projectData.use_area_calc_mode" hide-details density="compact" color="primary" />
                         <span class="text-subtitle-2 psm-mode-label" :class="{ 'psm-mode-label--active': projectData.use_area_calc_mode }">Расчёт по площади</span>
@@ -195,7 +194,7 @@
               </div>
 
               <!-- Section 2: Материалы -->
-              <div v-if="activeSettingsSection === 2" class="psm-section">
+              <div v-if="activeSettingsSection === 2" class="psm-section md3-section-stack">
                 <div class="psm-section-title">Материалы по умолчанию</div>
                 <div class="psm-section-hint">Подставляются при добавлении новых позиций</div>
                 <v-card variant="outlined" class="psm-content-card">
@@ -248,14 +247,14 @@
               </div>
 
               <!-- Section 3: Отходы -->
-              <div v-if="activeSettingsSection === 3" class="psm-section">
+              <div v-if="activeSettingsSection === 3" class="psm-section md3-section-stack">
                 <div class="psm-section-title">Коэффициенты отходов</div>
                 <div class="psm-section-hint">Специфичные коэффициенты для каждого типа материала</div>
                 <v-card variant="outlined" class="psm-content-card">
                   <v-card-text>
-                    <div class="d-flex flex-column gap-4">
+                    <div class="psm-waste-list">
                       <!-- Плитные -->
-                      <div class="psm-waste-row">
+                      <div class="psm-waste-row md3-inline-settings-row">
                         <span class="text-subtitle-2 font-weight-bold psm-waste-label">Плитные</span>
                         <v-text-field
                           v-model.number="projectData.waste_plate_coefficient"
@@ -267,7 +266,7 @@
                           class="psm-waste-field"
                           :placeholder="String(projectData.waste_coefficient || 1.2)"
                         />
-                        <v-switch v-model="projectData.apply_waste_to_plate" hide-details density="compact" color="#86e975" label="Применять" class="flex-shrink-0" />
+                        <v-switch v-model="projectData.apply_waste_to_plate" hide-details density="compact" color="#86e975" label="Применять" class="psm-waste-toggle" />
                         <v-switch
                           v-model="projectData.show_waste_plate_description"
                           :disabled="!projectData.waste_plate_description?.title && !projectData.waste_plate_description?.text"
@@ -275,16 +274,16 @@
                           density="compact"
                           color="#86e975"
                           label="В отчёте"
-                          class="flex-shrink-0"
+                          class="psm-waste-toggle"
                         />
-                        <div class="flex-grow-1" />
-                        <v-btn size="small" variant="outlined" @click="openCoefficientDescriptionDialog('plate')" class="flex-shrink-0">
+                        <div class="psm-waste-spacer" />
+                        <v-btn size="small" variant="outlined" @click="openCoefficientDescriptionDialog('plate')" class="psm-waste-action">
                           <v-icon size="small" class="mr-1">mdi-pencil</v-icon>Описание
                         </v-btn>
                       </div>
 
                       <!-- Кромка -->
-                      <div class="psm-waste-row">
+                      <div class="psm-waste-row md3-inline-settings-row">
                         <span class="text-subtitle-2 font-weight-bold psm-waste-label">Кромка</span>
                         <v-text-field
                           v-model.number="projectData.waste_edge_coefficient"
@@ -296,7 +295,7 @@
                           class="psm-waste-field"
                           :placeholder="String(projectData.waste_coefficient || 1.1)"
                         />
-                        <v-switch v-model="projectData.apply_waste_to_edge" hide-details density="compact" color="#86e975" label="Применять" class="flex-shrink-0" />
+                        <v-switch v-model="projectData.apply_waste_to_edge" hide-details density="compact" color="#86e975" label="Применять" class="psm-waste-toggle" />
                         <v-switch
                           v-model="projectData.show_waste_edge_description"
                           :disabled="!projectData.waste_edge_description?.title && !projectData.waste_edge_description?.text"
@@ -304,16 +303,16 @@
                           density="compact"
                           color="#86e975"
                           label="В отчёте"
-                          class="flex-shrink-0"
+                          class="psm-waste-toggle"
                         />
-                        <div class="flex-grow-1" />
-                        <v-btn size="small" variant="outlined" @click="openCoefficientDescriptionDialog('edge')" class="flex-shrink-0">
+                        <div class="psm-waste-spacer" />
+                        <v-btn size="small" variant="outlined" @click="openCoefficientDescriptionDialog('edge')" class="psm-waste-action">
                           <v-icon size="small" class="mr-1">mdi-pencil</v-icon>Описание
                         </v-btn>
                       </div>
 
                       <!-- Операции -->
-                      <div class="psm-waste-row">
+                      <div class="psm-waste-row md3-inline-settings-row">
                         <span class="text-subtitle-2 font-weight-bold psm-waste-label">Операции</span>
                         <v-text-field
                           v-model.number="projectData.waste_operations_coefficient"
@@ -325,7 +324,7 @@
                           class="psm-waste-field"
                           :placeholder="String(projectData.waste_coefficient || 1.0)"
                         />
-                        <v-switch v-model="projectData.apply_waste_to_operations" hide-details density="compact" color="#86e975" label="Применять" class="flex-shrink-0" />
+                        <v-switch v-model="projectData.apply_waste_to_operations" hide-details density="compact" color="#86e975" label="Применять" class="psm-waste-toggle" />
                         <v-switch
                           v-model="projectData.show_waste_operations_description"
                           :disabled="!projectData.waste_operations_description?.title && !projectData.waste_operations_description?.text"
@@ -333,10 +332,10 @@
                           density="compact"
                           color="#86e975"
                           label="В отчёте"
-                          class="flex-shrink-0"
+                          class="psm-waste-toggle"
                         />
-                        <div class="flex-grow-1" />
-                        <v-btn size="small" variant="outlined" @click="openCoefficientDescriptionDialog('operations')" class="flex-shrink-0">
+                        <div class="psm-waste-spacer" />
+                        <v-btn size="small" variant="outlined" @click="openCoefficientDescriptionDialog('operations')" class="psm-waste-action">
                           <v-icon size="small" class="mr-1">mdi-pencil</v-icon>Описание
                         </v-btn>
                       </div>
@@ -346,7 +345,7 @@
               </div>
 
               <!-- Section 4: Справочные блоки -->
-              <div v-if="activeSettingsSection === 4" class="psm-section">
+              <div v-if="activeSettingsSection === 4" class="psm-section md3-section-stack">
                 <div class="psm-section-title">Справочные блоки сметы</div>
                 <div class="psm-section-hint">Дополнительные текстовые блоки в конце PDF-отчёта</div>
 
@@ -883,19 +882,34 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
 
 /* Waste rows */
 .psm-waste-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.8);
 }
 
 .psm-waste-label {
-  min-width: 80px;
+  min-width: 92px;
 }
 
 .psm-waste-field {
-  max-width: 100px;
+  max-width: 110px;
+  flex: 0 0 110px;
+}
+
+.psm-waste-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.psm-waste-toggle,
+.psm-waste-action {
   flex-shrink: 0;
+}
+
+.psm-waste-spacer {
+  flex: 1 1 auto;
 }
 
 /* Footer */
@@ -914,6 +928,15 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
 
   .psm-waste-row {
     flex-wrap: wrap;
+  }
+
+  .psm-waste-spacer {
+    display: none;
+  }
+
+  .psm-waste-field {
+    max-width: 100%;
+    flex: 1 1 140px;
   }
 }
 </style>

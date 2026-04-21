@@ -1,18 +1,15 @@
 <template>
-  <v-container class="price-imports-view" fluid>
-    <div class="price-imports-view__header">
-      <div>
-        <div class="price-imports-view__eyebrow">Price Import</div>
-        <h1 class="price-imports-view__title">Импорты</h1>
-        <p class="price-imports-view__subtitle">
-          История загруженных прайсов и текущий статус привязки строк к операциям.
-        </p>
-      </div>
-
-      <v-btn color="primary" variant="flat" @click="openCreateDialog">
-        Создать импорт
-      </v-btn>
-    </div>
+  <PageContainer class="price-imports-view">
+    <PageHeader
+      title="Импорты"
+      subtitle="История загруженных прайсов и текущий статус привязки строк к операциям."
+    >
+      <template #actions>
+        <v-btn color="primary" variant="flat" class="text-none" @click="openCreateDialog">
+          Создать импорт
+        </v-btn>
+      </template>
+    </PageHeader>
 
     <v-alert
       v-if="pageError"
@@ -24,7 +21,10 @@
       {{ pageError }}
     </v-alert>
 
-    <v-card class="price-imports-view__card" rounded="xl" elevation="0">
+    <SectionCard
+      class="price-imports-view__card"
+      subtitle="Журнал импортов, прогресс обработки и быстрый переход к строкам для ручной привязки."
+    >
       <div v-if="loading" class="price-imports-view__state">
         <v-progress-circular indeterminate size="20" width="2" color="primary" />
         <span>Загрузка импортов...</span>
@@ -57,13 +57,15 @@
           </div>
         </button>
       </div>
-    </v-card>
+    </SectionCard>
 
     <v-navigation-drawer
       :model-value="drawer.open"
       location="right"
       temporary
+      scrim
       width="760"
+      class="price-imports-view__drawer-shell"
       @update:model-value="handleDrawerToggle"
     >
       <div class="price-imports-view__drawer">
@@ -91,12 +93,12 @@
     </v-navigation-drawer>
 
     <v-dialog v-model="createDialog.open" max-width="860">
-      <v-card rounded="xl">
+      <v-card class="price-imports-view__dialog-card" rounded="xl">
         <v-card-title class="price-imports-view__dialog-title">
           Создать импорт
         </v-card-title>
 
-        <v-card-text class="price-imports-view__dialog-body">
+        <v-card-text class="price-imports-view__dialog-body md3-form-stack">
           <v-alert
             v-if="createDialog.error"
             type="error"
@@ -106,11 +108,11 @@
             {{ createDialog.error }}
           </v-alert>
 
-          <div class="price-imports-view__rows">
+          <div class="price-imports-view__rows md3-section-stack">
             <div
               v-for="(row, index) in createDialog.rows"
               :key="row.id"
-              class="price-imports-view__row"
+              class="price-imports-view__row md3-section-block"
             >
               <v-text-field
                 v-model="row.name"
@@ -162,7 +164,7 @@
           </v-btn>
         </v-card-text>
 
-        <v-card-actions class="price-imports-view__dialog-actions">
+        <v-card-actions class="price-imports-view__dialog-actions md3-actions-row">
           <v-btn variant="text" :disabled="createDialog.submitting" @click="closeCreateDialog">
             Отмена
           </v-btn>
@@ -177,13 +179,16 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-container>
+  </PageContainer>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
 import api from '@/api/axios'
+import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
 import ImportItemsTable, { type ImportItemRow } from '@/components/imports/ImportItemsTable.vue'
 
 type ImportStatus = 'pending' | 'processed' | 'failed'
@@ -446,43 +451,12 @@ function statusColor(status: ImportStatus): string {
 
 <style scoped>
 .price-imports-view {
-  padding: 28px;
   display: grid;
-  gap: 20px;
-}
-
-.price-imports-view__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.price-imports-view__eyebrow {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgb(148, 163, 184);
-}
-
-.price-imports-view__title {
-  margin: 6px 0 0;
-  font-size: clamp(28px, 4vw, 40px);
-  line-height: 1.05;
-  font-weight: 800;
-  color: rgb(15, 23, 42);
-}
-
-.price-imports-view__subtitle {
-  margin: 10px 0 0;
-  max-width: 760px;
-  color: rgba(15, 23, 42, 0.7);
+  gap: var(--ds-space-20);
 }
 
 .price-imports-view__card {
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.98));
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
 }
 
 .price-imports-view__state {
@@ -490,8 +464,8 @@ function statusColor(status: ImportStatus): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  color: rgba(15, 23, 42, 0.72);
+  gap: var(--ds-space-10);
+  color: var(--ds-text-secondary);
 }
 
 .price-imports-view__list {
@@ -500,15 +474,15 @@ function statusColor(status: ImportStatus): string {
 
 .price-imports-view__item {
   border: 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  border-bottom: 1px solid var(--ds-divider);
   background: transparent;
-  padding: 20px 24px;
+  padding: var(--ds-space-16) var(--ds-space-20);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--ds-space-12);
   text-align: left;
-  transition: background-color 0.18s ease;
+  transition: background-color 0.18s ease, transform 0.18s ease;
 }
 
 .price-imports-view__item:last-child {
@@ -516,81 +490,100 @@ function statusColor(status: ImportStatus): string {
 }
 
 .price-imports-view__item:hover {
-  background: rgba(241, 245, 249, 0.75);
+  background: var(--ds-surface-hover);
+}
+
+.price-imports-view__item:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: -2px;
 }
 
 .price-imports-view__item-title {
   font-size: 18px;
   font-weight: 700;
-  color: rgb(15, 23, 42);
+  color: var(--ds-text-primary);
 }
 
 .price-imports-view__item-meta {
-  margin-top: 6px;
-  color: rgba(15, 23, 42, 0.68);
+  margin-top: var(--ds-space-6);
+  color: var(--ds-text-secondary);
 }
 
 .price-imports-view__item-side {
   display: grid;
   justify-items: end;
-  gap: 10px;
+  gap: var(--ds-space-10);
 }
 
 .price-imports-view__open-link {
   font-size: 14px;
   font-weight: 600;
-  color: rgb(37, 99, 235);
+  color: rgb(var(--v-theme-primary));
+}
+
+.price-imports-view__drawer-shell :deep(.v-navigation-drawer__content) {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+.price-imports-view__drawer-shell {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  left: auto !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-left: 1px solid var(--ds-border-color) !important;
+  border-right: none !important;
+  z-index: 2400 !important;
 }
 
 .price-imports-view__drawer {
   height: 100%;
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 18px;
-  padding: 24px;
+  gap: var(--ds-space-16);
+  padding: var(--ds-space-20);
 }
 
 .price-imports-view__drawer-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--ds-space-12);
 }
 
 .price-imports-view__drawer-title {
   font-size: 24px;
   font-weight: 800;
-  color: rgb(15, 23, 42);
+  color: var(--ds-text-primary);
 }
 
 .price-imports-view__drawer-meta {
-  margin-top: 8px;
-  color: rgba(15, 23, 42, 0.68);
+  margin-top: var(--ds-space-8);
+  color: var(--ds-text-secondary);
+}
+
+.price-imports-view__dialog-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 94%, white 6%);
 }
 
 .price-imports-view__dialog-title {
-  padding: 20px 24px 0;
+  padding: var(--ds-space-20) var(--ds-space-20) 0;
   font-size: 22px;
   font-weight: 800;
-  color: rgb(15, 23, 42);
+  color: var(--ds-text-primary);
 }
 
 .price-imports-view__dialog-body {
-  padding-top: 20px;
-  display: grid;
-  gap: 16px;
-}
-
-.price-imports-view__rows {
-  display: grid;
-  gap: 14px;
+  padding-top: var(--ds-space-20);
 }
 
 .price-imports-view__row {
   display: grid;
   grid-template-columns: minmax(220px, 1.6fr) minmax(140px, 0.8fr) minmax(120px, 0.6fr) auto;
-  gap: 12px;
+  gap: var(--ds-space-12);
   align-items: start;
+  background: rgba(var(--v-theme-surface-container-high), 0.62);
 }
 
 .price-imports-view__row-actions {
@@ -600,20 +593,10 @@ function statusColor(status: ImportStatus): string {
 }
 
 .price-imports-view__dialog-actions {
-  padding: 0 24px 20px;
-  justify-content: flex-end;
- }
+  padding: 0 var(--ds-space-20) var(--ds-space-20);
+}
 
 @media (max-width: 960px) {
-  .price-imports-view {
-    padding: 16px;
-  }
-
-  .price-imports-view__header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .price-imports-view__item {
     padding: 16px;
     flex-direction: column;

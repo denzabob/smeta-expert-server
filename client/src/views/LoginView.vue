@@ -1,9 +1,34 @@
 <template>
-  <v-container class="fill-height login-page" fluid>
-      <v-row class="auth-content ma-0" align="center" justify="center">
-        <v-col cols="12" sm="auto" class="auth-col">
-          <v-card class="login-card">
-          <v-card-title class="text-h6">{{ cardTitle }}</v-card-title>
+  <v-container class="fill-height login-page md3-auth-page" fluid>
+      <v-row class="auth-content md3-auth-shell ma-0" align="center" justify="center">
+        <v-col cols="12" md="6" class="d-none d-md-flex">
+          <section class="md3-auth-hero">
+            <div>
+              <div class="md3-auth-hero__eyebrow">Material 3 Foundation</div>
+              <h1 class="md3-auth-hero__title">СметаЭксперт для рабочих процессов.</h1>
+              <p class="md3-auth-hero__body">
+                Пилотный экран новой глобальной дизайн-системы. Основа строится на общих
+                semantic tokens, tonal surfaces и предсказуемой форме компонентов, чтобы
+                затем поэтапно перевести на неё весь сервис.
+              </p>
+            </div>
+
+            <div class="md3-auth-hero__highlights">
+              <div class="md3-auth-hero__metric">
+                <div class="md3-auth-hero__metric-label">Основа</div>
+                <div class="md3-auth-hero__metric-value">Глобальные MD3 tokens и совместимая тема Vuetify</div>
+              </div>
+              <div class="md3-auth-hero__metric">
+                <div class="md3-auth-hero__metric-label">Приоритет</div>
+                <div class="md3-auth-hero__metric-value">Безопасная миграция без поломки текущих экранов</div>
+              </div>
+            </div>
+          </section>
+        </v-col>
+
+        <v-col cols="12" md="6" lg="5" class="auth-col">
+          <v-card class="login-card md3-auth-card">
+          <v-card-title class="text-h5">{{ cardTitle }}</v-card-title>
 
           <v-card-text class="auth-card-text">
             <v-alert
@@ -46,10 +71,8 @@
             <template v-else-if="mode === 'phone'">
               <AuthPhoneLogin @verified="onPhoneVerified" />
 
-              <div class="auth-divider my-4">
-                <v-divider />
-                <span class="text-caption text-medium-emphasis px-2">или</span>
-                <v-divider />
+              <div class="auth-divider md3-auth-separator my-4">
+                <span class="md3-auth-separator__label">или</span>
               </div>
 
               <YandexLoginButton class="mb-3" />
@@ -76,10 +99,8 @@
                 @login-success="onLoginSuccess"
               />
 
-              <div class="auth-divider my-4">
-                <v-divider />
-                <span class="text-caption text-medium-emphasis px-2">или</span>
-                <v-divider />
+              <div class="auth-divider md3-auth-separator my-4">
+                <span class="md3-auth-separator__label">или</span>
               </div>
 
               <v-btn
@@ -448,10 +469,6 @@ const navigateAfterLogin = async () => {
 </script>
 
 <style scoped>
-.text-none {
-  text-transform: none;
-}
-
 .auth-card-text {
   padding: 12px;
 }
@@ -460,7 +477,6 @@ const navigateAfterLogin = async () => {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
-  background-color: rgb(var(--v-theme-background));
   padding: 16px 12px;
 }
 
@@ -468,6 +484,7 @@ const navigateAfterLogin = async () => {
   position: relative;
   z-index: 1;
   width: 100%;
+  row-gap: 20px;
 }
 
 .auth-col {
@@ -476,7 +493,7 @@ const navigateAfterLogin = async () => {
 }
 
 .login-card {
-  width: min(380px, calc(100vw - 24px));
+  width: min(430px, calc(100vw - 24px));
   max-width: 100%;
 }
 
@@ -492,10 +509,6 @@ const navigateAfterLogin = async () => {
 .auth-divider {
   display: flex;
   align-items: center;
-}
-
-.auth-divider .v-divider {
-  flex: 1;
 }
 
 @media (max-width: 600px) {

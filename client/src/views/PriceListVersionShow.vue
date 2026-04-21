@@ -44,10 +44,14 @@
       </template>
     </PageHeader>
 
-    <SectionCard v-if="version">
+    <SectionCard
+      v-if="version"
+      class="price-version-summary-card"
+      subtitle="Ключевые параметры версии: статус, источник и общее количество позиций."
+    >
       <v-row dense>
         <v-col cols="12" md="4">
-          <v-card class="h-100">
+          <v-card class="h-100 price-version-stat-card">
             <v-card-text>
               <div class="text-caption text-medium-emphasis">Статус</div>
               <v-chip
@@ -61,7 +65,7 @@
           </v-card>
         </v-col>
         <v-col cols="12" md="4">
-          <v-card class="h-100">
+          <v-card class="h-100 price-version-stat-card">
             <v-card-text>
               <div class="text-caption text-medium-emphasis">Источник</div>
               <div class="mt-1">
@@ -87,7 +91,7 @@
           </v-card>
         </v-col>
         <v-col cols="12" md="4">
-          <v-card class="h-100">
+          <v-card class="h-100 price-version-stat-card">
             <v-card-text>
               <div class="text-caption text-medium-emphasis">Всего позиций</div>
               <div class="text-h5 mt-1">{{ version.items_count || 0 }}</div>
@@ -97,7 +101,10 @@
       </v-row>
     </SectionCard>
 
-    <SectionCard>
+    <SectionCard
+      class="price-version-items-card"
+      subtitle="Позиции версии, их привязка к системе и доступные обоснования по каждой операции."
+    >
       <div class="d-flex justify-space-between align-center mb-3">
         <div>
           <div class="text-h6">Цены позиций</div>
@@ -151,7 +158,7 @@
         :headers="itemHeaders"
         :items="items"
         :loading="loading"
-        class="elevation-1"
+        class="price-version-items-table"
         item-key="id"
         density="comfortable"
       >
@@ -271,6 +278,18 @@
             </v-btn>
           </div>
         </template>
+
+        <template #no-data>
+          <div class="price-version-empty-state text-center pa-8">
+            <div class="text-subtitle-1 mb-2">Позиции для этой версии не найдены</div>
+            <div class="text-medium-emphasis mb-4">
+              Проверьте фильтры или обновите данные версии, если импорт был выполнен недавно.
+            </div>
+            <v-btn variant="text" prepend-icon="mdi-refresh" class="text-none" @click="fetchItems">
+              Обновить список
+            </v-btn>
+          </div>
+        </template>
       </v-data-table>
     </SectionCard>
 
@@ -295,7 +314,7 @@
 
     <!-- Link Operation Dialog -->
     <v-dialog v-model="linkDialog.show" max-width="600" persistent>
-      <v-card>
+      <v-card class="price-version-link-dialog">
         <v-card-title>Привязка к базовой операции</v-card-title>
         <v-card-text>
           <div class="mb-3 text-medium-emphasis">
@@ -761,3 +780,33 @@ onMounted(async () => {
   await fetchItems()
 })
 </script>
+
+<style scoped>
+.price-version-summary-card,
+.price-version-items-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+.price-version-stat-card {
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-14);
+  background: rgba(var(--v-theme-surface-container-high), 0.68);
+  box-shadow: none;
+}
+
+.price-version-items-table :deep(.v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.78);
+}
+
+.price-version-link-dialog {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 94%, white 6%);
+}
+
+.price-version-empty-state {
+  border: 1px dashed var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
+  background: rgba(var(--v-theme-surface-container-high), 0.48);
+}
+</style>

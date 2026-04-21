@@ -66,7 +66,7 @@
     </div>
 
     <v-dialog v-model="showTypeSelector" max-width="520">
-      <v-card>
+      <v-card class="pricing-dialog-card">
         <v-card-title class="pa-4 pb-2">
           <div class="text-subtitle-1 font-weight-medium">Добавить цену</div>
           <div class="type-selector-subtitle">
@@ -253,7 +253,7 @@ function handlePriceCreated() {
   display: flex;
   align-items: center;
   margin-top: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .selected-operation-card {
@@ -262,10 +262,11 @@ function handlePriceCreated() {
   justify-content: space-between;
   gap: 16px;
   margin-top: 12px;
-  padding: 14px 16px;
-  border: 1px solid rgba(var(--v-theme-primary), 0.14);
-  border-radius: 12px;
-  background: rgba(var(--v-theme-primary), 0.05);
+  padding: 18px 20px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-secondary-container), 0.56), rgba(var(--v-theme-surface-container-low), 0.96));
 }
 
 .selected-operation-card__body {
@@ -273,19 +274,19 @@ function handlePriceCreated() {
 }
 
 .selected-operation-card__label {
-  font-size: 11px;
+  font-size: 0.72rem;
   line-height: 1.3;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: rgba(0, 0, 0, 0.5);
+  letter-spacing: 0.08em;
+  color: rgba(var(--v-theme-on-surface-variant), 0.88);
 }
 
 .selected-operation-card__name {
   margin-top: 4px;
-  font-size: 15px;
+  font-size: 1rem;
   line-height: 1.35;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.84);
+  font-weight: 700;
+  color: rgb(var(--v-theme-on-surface));
   overflow-wrap: anywhere;
 }
 
@@ -296,18 +297,20 @@ function handlePriceCreated() {
 .pricing-home-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
 .pricing-section-card {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
-  background: white;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  padding: 22px 20px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.04), transparent 120px),
+    var(--ds-surface-card);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .pricing-section-card--available {
@@ -315,8 +318,9 @@ function handlePriceCreated() {
 }
 
 .pricing-section-card--available:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  border-color: rgba(var(--v-theme-primary), 0.4);
+  box-shadow: var(--ds-shadow-dropdown);
+  border-color: rgba(var(--v-theme-primary), 0.38);
+  transform: translateY(-1px);
 }
 
 .pricing-section-icon {
@@ -329,25 +333,30 @@ function handlePriceCreated() {
 }
 
 .pricing-section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.85);
-  margin-bottom: 2px;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: rgb(var(--v-theme-on-surface));
+  margin-bottom: 4px;
 }
 
 .pricing-section-desc {
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.5);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
 }
 
 .pricing-section-action {
   flex-shrink: 0;
 }
 
+.pricing-dialog-card {
+  border-radius: var(--md-sys-shape-corner-extra-large);
+}
+
 .type-selector-subtitle {
   margin-top: 4px;
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.5);
+  font-size: 0.84rem;
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
 }
 
 .type-selector-grid {
@@ -360,18 +369,19 @@ function handlePriceCreated() {
   align-items: center;
   gap: 14px;
   width: 100%;
-  padding: 14px 16px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 10px;
-  background: #fff;
+  min-height: 72px;
+  padding: 16px 16px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: rgba(var(--v-theme-surface-container-low), 0.92);
   text-align: left;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .type-option-card:hover {
   border-color: rgba(var(--v-theme-primary), 0.3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  background: rgba(var(--v-theme-primary), 0.02);
+  box-shadow: var(--ds-shadow-dropdown);
+  background: rgba(var(--v-theme-secondary-container), 0.52);
 }
 
 .type-option-body {
@@ -380,15 +390,16 @@ function handlePriceCreated() {
 }
 
 .type-option-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.84);
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: rgb(var(--v-theme-on-surface));
 }
 
 .type-option-desc {
   margin-top: 2px;
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.5);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: rgba(var(--v-theme-on-surface-variant), 0.9);
 }
 
 @media (max-width: 640px) {

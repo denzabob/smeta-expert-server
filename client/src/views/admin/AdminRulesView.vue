@@ -34,7 +34,7 @@
 
     <!-- Dimension Rules Section -->
     <template v-if="ruleType === 'dimensions'">
-      <v-card variant="outlined" class="mb-4">
+      <v-card variant="outlined" class="mb-4 admin-rules-filter-card">
         <v-card-text>
           <v-row align="center" dense>
             <v-col cols="12" sm="4">
@@ -82,7 +82,7 @@
         </v-card-text>
       </v-card>
 
-      <v-card variant="outlined" :loading="dimLoading">
+      <v-card variant="outlined" :loading="dimLoading" class="admin-rules-table-card">
         <v-data-table-server
           :headers="dimensionHeaders"
           :items="dimensionRules"
@@ -91,30 +91,31 @@
           :page="dimPage"
           :items-per-page="dimPerPage"
           density="comfortable"
+          class="admin-rules-table"
           @update:page="dimPage = $event; loadDimensionRules()"
           @update:items-per-page="dimPerPage = $event; loadDimensionRules()"
         >
           <template #item.name="{ item }">
-            <div>
-              <div class="font-weight-medium">{{ item.name }}</div>
-              <div v-if="item.description" class="text-caption text-medium-emphasis text-truncate" style="max-width: 300px;">
+            <div class="rules-cell">
+              <div class="rules-cell__title">{{ item.name }}</div>
+              <div v-if="item.description" class="rules-cell__meta text-truncate" style="max-width: 300px;">
                 {{ item.description }}
               </div>
             </div>
           </template>
 
           <template #item.scope="{ item }">
-            <div class="text-body-2">
+            <div class="rules-cell">
               <v-chip v-if="item.material_type" size="small" variant="tonal">
                 {{ materialTypeLabel(item.material_type) }}
               </v-chip>
-              <span v-else class="text-medium-emphasis">Любой</span>
-              <div class="text-caption text-medium-emphasis">{{ item.source || 'Любой источник' }}</div>
+              <span v-else class="rules-cell__meta">Любой</span>
+              <div class="rules-cell__meta">{{ item.source || 'Любой источник' }}</div>
             </div>
           </template>
 
           <template #item.dimensions="{ item }">
-            <div class="text-caption">
+            <div class="rules-cell__meta">
               <span v-if="item.expected_result?.length_mm">Д: {{ item.expected_result.length_mm }}</span>
               <span v-if="item.expected_result?.width_mm" class="ml-2">Ш: {{ item.expected_result.width_mm }}</span>
               <span v-if="item.expected_result?.thickness_mm" class="ml-2">Т: {{ item.expected_result.thickness_mm }}</span>
@@ -132,7 +133,7 @@
           </template>
 
           <template #item.actions="{ item }">
-            <div class="d-flex gap-1">
+            <div class="admin-rules-actions">
               <v-btn size="x-small" variant="text" icon="mdi-pencil" @click="openEditDimension(item)" />
               <v-btn size="x-small" variant="text" icon="mdi-delete" color="error" @click="deleteDimensionRule(item)" />
             </div>
@@ -151,7 +152,7 @@
 
     <!-- Type Patterns Section -->
     <template v-if="ruleType === 'types'">
-      <v-card variant="outlined" class="mb-4">
+      <v-card variant="outlined" class="mb-4 admin-rules-filter-card">
         <v-card-text>
           <v-row align="center" dense>
             <v-col cols="12" sm="4">
@@ -199,7 +200,7 @@
         </v-card-text>
       </v-card>
 
-      <v-card variant="outlined" :loading="typeLoading">
+      <v-card variant="outlined" :loading="typeLoading" class="admin-rules-table-card">
         <v-data-table-server
           :headers="typeHeaders"
           :items="typePatterns"
@@ -208,11 +209,12 @@
           :page="typePage"
           :items-per-page="typePerPage"
           density="comfortable"
+          class="admin-rules-table"
           @update:page="typePage = $event; loadTypePatterns()"
           @update:items-per-page="typePerPage = $event; loadTypePatterns()"
         >
           <template #item.pattern="{ item }">
-            <div>
+            <div class="rules-cell">
               <code class="text-body-2">{{ truncatePattern(item.pattern) }}</code>
             </div>
           </template>
@@ -224,7 +226,7 @@
           </template>
 
           <template #item.priority="{ item }">
-            <span class="text-caption">{{ item.priority }}</span>
+            <span class="rules-cell__meta">{{ item.priority }}</span>
           </template>
 
           <template #item.is_active="{ item }">
@@ -234,7 +236,7 @@
           </template>
 
           <template #item.actions="{ item }">
-            <div class="d-flex gap-1">
+            <div class="admin-rules-actions">
               <v-btn size="x-small" variant="text" icon="mdi-pencil" @click="openEditType(item)" />
               <v-btn size="x-small" variant="text" icon="mdi-delete" color="error" @click="deleteTypePattern(item)" />
             </div>
@@ -463,7 +465,7 @@ const dimensionHeaders = [
   { title: 'Размеры', key: 'dimensions', sortable: false, width: 180 },
   { title: 'Статус', key: 'is_active', sortable: false, width: 100 },
   { title: 'Обновлено', key: 'updated_at', sortable: false, width: 100 },
-  { title: '', key: 'actions', sortable: false, width: 120 }
+  { title: 'Действия', key: 'actions', sortable: false, width: 120, align: 'center' as const }
 ]
 
 const typeHeaders = [
@@ -471,7 +473,7 @@ const typeHeaders = [
   { title: 'Тип материала', key: 'material_type', sortable: false, width: 150 },
   { title: 'Приоритет', key: 'priority', sortable: false, width: 100 },
   { title: 'Статус', key: 'is_active', sortable: false, width: 100 },
-  { title: '', key: 'actions', sortable: false, width: 120 }
+  { title: 'Действия', key: 'actions', sortable: false, width: 120, align: 'center' as const }
 ]
 
 let dimSearchTimeout: ReturnType<typeof setTimeout> | null = null
@@ -676,18 +678,78 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.gap-1 {
+.admin-rules-filter-card,
+.admin-rules-table-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+}
+
+.admin-rules-table :deep(.v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.82);
+}
+
+.admin-rules-table :deep(thead th) {
+  height: 52px !important;
+  border-bottom: 1px solid var(--ds-divider) !important;
+  background: rgba(var(--v-theme-surface-container-lowest), 0.92) !important;
+}
+
+.admin-rules-table :deep(thead th .v-data-table-header__content) {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-secondary);
+}
+
+.admin-rules-table :deep(tbody td) {
+  vertical-align: top;
+  border-bottom-color: var(--ds-divider) !important;
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+}
+
+.admin-rules-table :deep(.v-data-table-footer) {
+  border-top: 1px solid var(--ds-divider);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.7);
+}
+
+.rules-cell {
+  display: grid;
   gap: 4px;
 }
 
-.gap-2 {
-  gap: 8px;
+.rules-cell__title {
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ds-text-primary);
+}
+
+.rules-cell__meta {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ds-text-secondary);
+}
+
+.admin-rules-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 84px;
+  margin: 0 auto;
 }
 
 code {
-  background: rgba(var(--v-theme-on-surface), 0.08);
-  padding: 2px 6px;
-  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-10);
+  background: rgba(var(--v-theme-surface-container-high), 0.72);
   font-size: 12px;
+  color: var(--ds-text-primary);
 }
 </style>

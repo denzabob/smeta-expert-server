@@ -73,18 +73,21 @@ const formatSum = (n: number) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  background: rgb(var(--v-theme-surface));
-  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  gap: 16px;
+  padding: 16px 20px;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.035), transparent 140px),
+    rgba(var(--v-theme-surface-container-low), 0.96);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  gap: 18px;
   flex-wrap: wrap;
-  min-height: 56px;
+  min-height: 72px;
 }
 
 .workspace-header__left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
   flex-wrap: wrap;
   min-width: 0;
   flex: 1;
@@ -97,16 +100,18 @@ const formatSum = (n: number) => {
 }
 
 .workspace-header__project-name {
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: clamp(1.1rem, 1.4vw, 1.32rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   margin: 0;
+  color: rgb(var(--v-theme-on-surface));
 }
 
 .workspace-header__stats {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -115,6 +120,7 @@ const formatSum = (n: number) => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* Shimmer placeholder chips */
@@ -136,5 +142,36 @@ const formatSum = (n: number) => {
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+@media (max-width: 760px) {
+  .workspace-header {
+    padding: 14px 16px;
+    min-height: auto;
+  }
+
+  .workspace-header__left,
+  .workspace-header__title,
+  .workspace-header__actions {
+    width: 100%;
+  }
+
+  .workspace-header__title {
+    min-width: 0;
+  }
+
+  .workspace-header__project-name {
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  .workspace-header__actions {
+    justify-content: stretch;
+  }
+
+  .workspace-header__actions :deep(.v-btn) {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
 }
 </style>

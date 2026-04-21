@@ -1,16 +1,16 @@
 <template>
   <v-dialog v-model="dialog" max-width="1000" persistent scrollable>
-    <v-card>
-      <v-card-title class="d-flex align-center">
+    <v-card class="price-import-dialog">
+      <v-card-title class="d-flex align-center price-import-dialog__title">
         <v-icon class="mr-2">mdi-file-import</v-icon>
         Импорт прайса {{ targetType === 'operations' ? 'операций' : 'материалов' }}
         <v-spacer></v-spacer>
         <v-chip :color="statusColor" size="small">{{ statusText }}</v-chip>
       </v-card-title>
 
-      <v-card-text class="pa-0">
+      <v-card-text class="pa-0 price-import-dialog__body">
         <!-- Step 1: Upload / Paste -->
-        <v-stepper v-model="step" :items="steps" flat hide-actions>
+        <v-stepper v-model="step" :items="steps" flat hide-actions class="price-import-dialog__stepper">
           <!-- Upload Step -->
           <template v-slot:item.1>
             <!-- Show warning if supplier not selected -->
@@ -23,10 +23,10 @@
               <strong>Сначала выберите поставщика и прайс-лист</strong> для начала импорта
             </v-alert>
 
-            <v-container>
+            <v-container class="price-import-dialog__step-content md3-section-stack">
               <v-row>
                 <v-col cols="12" md="6">
-                  <v-card variant="outlined" class="pa-4">
+                  <v-card variant="outlined" class="pa-4 price-import-dialog__panel">
                     <v-card-title class="text-subtitle-1">
                       <v-icon class="mr-2">mdi-file-upload</v-icon>
                       Загрузить файл
@@ -51,7 +51,7 @@
                   </v-card>
                 </v-col>
                 <v-col cols="12" md="6">
-                  <v-card variant="outlined" class="pa-4">
+                  <v-card variant="outlined" class="pa-4 price-import-dialog__panel">
                     <v-card-title class="text-subtitle-1">
                       <v-icon class="mr-2">mdi-content-paste</v-icon>
                       Вставить из буфера
@@ -182,7 +182,7 @@
 
           <!-- Mapping Step -->
           <template v-slot:item.2>
-            <v-container v-if="preview">
+            <v-container v-if="preview" class="price-import-dialog__step-content md3-section-stack">
               <v-alert type="info" variant="tonal" class="mb-4">
                 <strong>Шаг 2:</strong> Укажите какие колонки соответствуют каким полям.
                 <div class="mt-1">
@@ -247,7 +247,7 @@
 
               <!-- Preview Table with Mapping -->
               <v-sheet
-                class="price-preview-table-container"
+                class="price-preview-table-container price-import-dialog__preview-shell"
                 border
                 rounded="lg"
                 elevation="0"
@@ -329,7 +329,7 @@
 
           <!-- Resolution Step -->
           <template v-slot:item.3>
-            <v-container v-if="resolutionData">
+            <v-container v-if="resolutionData" class="price-import-dialog__step-content md3-section-stack">
               <!-- Stats -->
               <v-row class="mb-4">
                 <v-col cols="auto">
@@ -373,7 +373,11 @@
               </v-alert>
 
               <!-- Selection info and bulk actions -->
-              <v-card v-if="resolutionFilter !== 'auto_matched'" variant="outlined" class="mb-4 pa-3">
+              <v-card
+                v-if="resolutionFilter !== 'auto_matched'"
+                variant="outlined"
+                class="mb-4 pa-3 price-import-dialog__selection-card"
+              >
                 <v-row align="center" dense>
                   <v-col cols="auto">
                     <div class="d-flex align-center ga-2">
@@ -443,7 +447,7 @@
                 :show-select="resolutionFilter !== 'auto_matched'"
                 item-value="row_index"
                 density="compact"
-                class="resolution-table"
+                class="resolution-table price-import-dialog__resolution-table"
               >
                 <!-- Название из прайса -->
                 <template #item.raw_data.name="{ item }: { item: ResolutionItem }">
@@ -2478,9 +2482,55 @@ loadSuppliers()
 </script>
 
 <style scoped>
+.price-import-dialog {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 94%, white 6%);
+}
+
+.price-import-dialog__title {
+  min-height: 72px;
+  padding: var(--ds-space-16) var(--ds-space-20);
+  border-bottom: 1px solid var(--ds-divider);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-secondary-container), 0.28), rgba(var(--v-theme-surface-container-low), 0.92));
+}
+
+.price-import-dialog__body {
+  background: rgba(var(--v-theme-surface-container-low), 0.56);
+}
+
+.price-import-dialog__step-content {
+  padding-top: var(--ds-space-16);
+  padding-bottom: var(--ds-space-20);
+}
+
+.price-import-dialog__stepper {
+  background: transparent !important;
+}
+
+.price-import-dialog__stepper :deep(.v-stepper-header) {
+  background: rgba(var(--v-theme-surface-container-lowest), 0.82);
+  border-bottom: 1px solid var(--ds-divider);
+}
+
+.price-import-dialog__stepper :deep(.v-stepper-window) {
+  background: transparent;
+}
+
+.price-import-dialog__panel,
+.price-import-dialog__selection-card {
+  border-color: var(--ds-border-color) !important;
+  background: rgba(var(--v-theme-surface-container-high), 0.68);
+  border-radius: var(--ds-radius-16);
+}
+
 .price-preview-table-container {
   max-height: 350px;
   overflow: auto;
+}
+
+.price-import-dialog__preview-shell {
+  border-color: var(--ds-border-color) !important;
+  background: rgba(var(--v-theme-surface-container-lowest), 0.82);
 }
 
 .price-preview-table {
@@ -2510,22 +2560,22 @@ loadSuppliers()
 }
 
 .mapping-row th {
-  background-color: #f5f5f5;
+  background-color: rgba(var(--v-theme-surface-container-high), 0.96);
   position: sticky;
   top: 0;
   z-index: 4;
-  border-bottom: 2px solid #1976d2;
+  border-bottom: 2px solid rgba(var(--v-theme-primary), 0.72);
 }
 
 .header-row th {
-  background-color: #fafafa;
+  background-color: rgba(var(--v-theme-surface-container-low), 0.96);
   position: sticky;
   top: 48px;
   z-index: 3;
 }
 
 .header-source-row {
-  background-color: rgba(25, 118, 210, 0.08);
+  background-color: rgba(var(--v-theme-secondary-container), 0.46);
 }
 
 .bg-primary-lighten-5 {
@@ -2553,6 +2603,12 @@ loadSuppliers()
   height: 48px !important;
 }
 
+.price-import-dialog__resolution-table :deep(.v-table__wrapper) {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.8);
+}
+
 .resolution-table :deep(.v-data-table__td) {
   padding-top: 4px !important;
   padding-bottom: 4px !important;
@@ -2572,5 +2628,16 @@ loadSuppliers()
   width: 100%;
   min-width: 180px;
   max-width: 280px;
+}
+
+@media (max-width: 960px) {
+  .price-import-dialog__title {
+    padding: var(--ds-space-14) var(--ds-space-16);
+  }
+
+  .price-import-dialog__step-content {
+    padding-top: var(--ds-space-12);
+    padding-bottom: var(--ds-space-16);
+  }
 }
 </style>

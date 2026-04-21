@@ -10,8 +10,8 @@
     />
 
     <v-sheet
-      class="idea-dropzone upload-zone pa-4"
-      :class="{ 'idea-dropzone--active': isDragging }"
+      class="idea-dropzone upload-zone attachment-uploader__dropzone"
+      :class="{ 'idea-dropzone--active': isDragging, 'attachment-uploader__dropzone--disabled': disabled }"
       rounded
       @click="openFileDialog"
       @dragenter.prevent="onDragEnter"
@@ -19,20 +19,23 @@
       @dragleave.prevent="onDragLeave"
       @drop.prevent="onDrop"
     >
-      <div class="text-subtitle-2">Скриншоты</div>
-      <div class="text-body-2 text-medium-emphasis">
+      <div class="attachment-uploader__title">Скриншоты</div>
+      <div class="attachment-uploader__text">
         Перетащите файлы сюда, нажмите для выбора или вставьте изображение через Ctrl+V.
       </div>
-      <div class="text-caption text-medium-emphasis mt-1">
+      <div class="attachment-uploader__caption">
         До {{ maxFiles }} файлов, форматы: PNG, JPG, WEBP.
       </div>
     </v-sheet>
 
-    <div v-if="files.length" class="mt-3 d-flex flex-wrap ga-2">
+    <div v-if="files.length" class="attachment-uploader__chips">
       <v-chip
         v-for="(file, index) in files"
         :key="`${file.name}-${index}`"
+        color="primary"
+        variant="tonal"
         closable
+        :disabled="disabled"
         @click:close="removeFile(index)"
       >
         {{ file.name }}
@@ -44,8 +47,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
-const props = withDefaults(defineProps<{ modelValue: File[]; maxFiles?: number }>(), {
+const props = withDefaults(defineProps<{ modelValue: File[]; maxFiles?: number; disabled?: boolean }>(), {
   maxFiles: 5,
+  disabled: false,
 })
 
 const emit = defineEmits<{
@@ -60,6 +64,9 @@ const files = computed(() => props.modelValue ?? [])
 const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
 function openFileDialog() {
+  if (props.disabled) {
+    return
+  }
   fileInputRef.value?.click()
 }
 
@@ -73,10 +80,16 @@ function onFileInput(event: Event) {
 }
 
 function onDragEnter() {
+  if (props.disabled) {
+    return
+  }
   isDragging.value = true
 }
 
 function onDragOver() {
+  if (props.disabled) {
+    return
+  }
   isDragging.value = true
 }
 
@@ -89,18 +102,29 @@ function onDragLeave(event: DragEvent) {
 }
 
 function onDrop(event: DragEvent) {
+  if (props.disabled) {
+    return
+  }
   isDragging.value = false
   const dropped = Array.from(event.dataTransfer?.files ?? [])
   addFiles(dropped)
 }
 
 function removeFile(index: number) {
+  if (props.disabled) {
+    return
+  }
+
   const next = [...files.value]
   next.splice(index, 1)
   emit('update:modelValue', next)
 }
 
 function addFiles(newFiles: File[]) {
+  if (props.disabled) {
+    return
+  }
+
   const next = [...files.value]
 
   for (const file of newFiles) {
@@ -121,6 +145,10 @@ function addFiles(newFiles: File[]) {
 }
 
 function onPaste(event: ClipboardEvent) {
+  if (props.disabled) {
+    return
+  }
+
   const items = Array.from(event.clipboardData?.items ?? [])
   const pastedFiles: File[] = []
 
@@ -146,3 +174,60 @@ onBeforeUnmount(() => {
   document.removeEventListener('paste', onPaste)
 })
 </script>
+
+<style scoped>
+.attachment-uploader__dropzone {
+  padding: 18px;
+  border: 1px dashed color-mix(in srgb, rgb(var(--v-theme-primary)) 38%, var(--ds-border-color));
+  border-radius: var(--ds-radius-18);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary-container), 0.18), rgba(var(--v-theme-surface-container-lowest), 0.92));
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.attachment-uploader__dropzone:hover {
+  border-color: rgba(var(--v-theme-primary), 0.46);
+  transform: translateY(-1px);
+}
+
+.attachment-uploader__dropzone--disabled {
+  opacity: 0.72;
+  cursor: default;
+  transform: none;
+}
+
+.attachment-uploader__dropzone--disabled:hover {
+  border-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 38%, var(--ds-border-color));
+  transform: none;
+}
+
+.attachment-uploader__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ds-text-primary);
+}
+
+.attachment-uploader__text {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ds-text-secondary);
+}
+
+.attachment-uploader__caption {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ds-text-tertiary);
+}
+
+.attachment-uploader__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+</style>
