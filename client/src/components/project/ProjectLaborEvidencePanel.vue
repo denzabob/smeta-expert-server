@@ -67,7 +67,6 @@
           </div>
           <div v-if="item.employer_name" class="source-title-cell__meta">{{ item.employer_name }}</div>
           <div class="source-title-cell__domain">{{ laborSourceDomain(item) }}</div>
-          <div v-if="laborDescriptionPreview(item)" class="source-title-cell__description">{{ laborDescriptionPreview(item) }}</div>
         </div>
       </template>
 
@@ -210,7 +209,6 @@ import EmptyState from '@/components/layout/EmptyState.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
 import LaborEvidenceDetailsDialog from '@/components/pricing/LaborEvidenceDetailsDialog.vue'
 import {
-  laborDescriptionPreview,
   laborEvidenceApi,
   laborEvidenceRecordOf,
   laborSalaryTypeLabel,
@@ -377,14 +375,6 @@ function openDetails(source: LaborEvidenceSource) {
   margin-top: 2px;
   font-size: 12px;
   color: rgba(0, 0, 0, 0.48);
-}
-
-.source-title-cell__description {
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: rgba(0, 0, 0, 0.66);
-  white-space: pre-wrap;
 }
 
 .provider-cell {

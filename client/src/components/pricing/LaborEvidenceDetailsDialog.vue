@@ -217,16 +217,27 @@
           </v-col>
         </v-row>
 
-        <div v-if="currentSource.vacancy_excerpt || currentSource.vacancy_description" class="mt-5">
-          <div class="asset-title">Описание вакансии</div>
-          <div class="detail-text">
-            {{ normalizedDescription }}
-          </div>
-        </div>
-
         <div v-if="currentSource.note" class="mt-5">
           <div class="asset-title">Примечание</div>
           <div class="detail-text">{{ currentSource.note }}</div>
+        </div>
+
+        <div v-if="normalizedDescription" class="mt-5">
+          <v-btn
+            variant="text"
+            color="primary"
+            class="details-toggle-btn px-0"
+            @click="descriptionExpanded = !descriptionExpanded"
+          >
+            {{ descriptionExpanded ? 'Скрыть описание' : 'Подробнее...' }}
+          </v-btn>
+
+          <div v-if="descriptionExpanded" class="mt-3">
+            <div class="asset-title">Описание вакансии</div>
+            <div class="detail-text">
+              {{ normalizedDescription }}
+            </div>
+          </div>
         </div>
       </v-card-text>
     </v-card>
@@ -265,6 +276,7 @@ const currentSource = ref<LaborEvidenceSource | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
 const deletingAssetId = ref<number | null>(null)
+const descriptionExpanded = ref(false)
 const feedback = reactive<{
   type: 'success' | 'error' | 'warning'
   message: string
@@ -278,6 +290,7 @@ watch(
   async ([isOpen, sourceId]) => {
     currentSource.value = props.source ? cloneSource(props.source) : null
     clearFeedback()
+    descriptionExpanded.value = false
 
     if (isOpen && sourceId) {
       await refreshSource()
@@ -593,6 +606,12 @@ function detectAssetType(file: File): 'screenshot' | 'document' | null {
   white-space: pre-wrap;
   line-height: 1.45;
   color: rgba(0, 0, 0, 0.8);
+}
+
+.details-toggle-btn {
+  min-width: auto;
+  font-weight: 600;
+  text-transform: none;
 }
 
 @media (max-width: 760px) {
