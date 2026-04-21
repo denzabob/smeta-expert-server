@@ -1692,9 +1692,9 @@
                 <tr>
                   <th style="width: 6%; text-align: center;">№</th>
                   <th style="width: 34%;">Источник</th>
-                  <th style="width: 20%;">Профиль</th>
-                  <th style="width: 20%; text-align: right;">Ставка, руб./ч</th>
-                  <th style="width: 20%;">Дата</th>
+                  <th style="width: 18%;">Профиль</th>
+                  <th style="width: 24%;">Зарплата / ставка</th>
+                  <th style="width: 18%;">Дата / доказательство</th>
                 </tr>
               </thead>
               <tbody>
@@ -1702,20 +1702,42 @@
                 @foreach($justification['sources_stats'] as $source)
                   <tr>
                     <td class="text-center">{{ $sourceIndex }}</td>
-                    <td>{{ $source['name'] ?? '—' }}</td>
-                    <td>{{ $justification['profile_name'] ?? '—' }}</td>
-                    <td class="text-right mono">
-                      @if(isset($source['rate']))
-                        {{ number_format((float)$source['rate'], 2, ',', ' ') }}
-                      @else
-                        —
+                    <td style="font-size: 8.5pt; line-height: 1.35;">
+                      <div><strong>{{ $source['provider_title'] ?? $source['name'] ?? '—' }}</strong></div>
+                      @if(!empty($source['vacancy_title']))
+                        <div style="margin-top: 0.5mm;">Вакансия: {{ $source['vacancy_title'] }}</div>
+                      @endif
+                      @if(!empty($source['employer_name']))
+                        <div>Работодатель: {{ $source['employer_name'] }}</div>
                       @endif
                     </td>
-                    <td style="font-size: 8.6pt;">
-                      @if(!empty($source['date']))
-                        {{ \Carbon\Carbon::parse($source['date'])->format('d.m.Y') }}
+                    <td>{{ $justification['profile_name'] ?? '—' }}</td>
+                    <td style="font-size: 8.5pt; line-height: 1.35;">
+                      @if(!empty($source['salary_display']))
+                        <div>{{ $source['salary_display'] }}</div>
                       @else
-                        —
+                        <div>—</div>
+                      @endif
+                      @if(isset($source['derived_hourly_rate']) && $source['derived_hourly_rate'] !== null)
+                        <div class="mono" style="margin-top: 0.5mm;">Расчётная ставка: {{ number_format((float)$source['derived_hourly_rate'], 2, ',', ' ') }} руб./ч</div>
+                      @elseif(isset($source['rate']))
+                        <div class="mono" style="margin-top: 0.5mm;">Использовано в расчёте: {{ number_format((float)$source['rate'], 2, ',', ' ') }} руб./ч</div>
+                      @endif
+                    </td>
+                    <td style="font-size: 8.3pt; line-height: 1.35;">
+                      @if(!empty($source['date']))
+                        <div>{{ \Carbon\Carbon::parse($source['date'])->format('d.m.Y') }}</div>
+                      @else
+                        <div>—</div>
+                      @endif
+                      <div style="margin-top: 0.5mm;">Скриншот:
+                        <strong>{{ !empty($source['has_screenshot']) ? 'Есть' : 'Нет' }}</strong>
+                      </div>
+                      @if(!empty($source['captured_via']))
+                        <div>Источник: {{ $source['captured_via'] === 'chrome' ? 'Chrome capture' : $source['captured_via'] }}</div>
+                      @endif
+                      @if(isset($source['confidence']) && $source['confidence'] !== null)
+                        <div>Confidence: {{ number_format((float)$source['confidence'], 2, ',', ' ') }}</div>
                       @endif
                     </td>
                   </tr>

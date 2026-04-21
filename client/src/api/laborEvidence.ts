@@ -75,6 +75,7 @@ export interface LaborEvidenceSource {
   employer_name: string | null
   vacancy_title: string | null
   vacancy_description: string | null
+  vacancy_description_plain?: string | null
   vacancy_excerpt: string | null
   salary_raw_text: string | null
   salary_value: string | number | null
@@ -108,6 +109,7 @@ export interface PaginatedResponse<T> {
 
 export interface UserSettingsResponse {
   region_id: number | null
+  labor_salary_range_strategy?: 'avg' | 'min' | 'max'
 }
 
 export interface LaborSourcePayload {
@@ -120,6 +122,7 @@ export interface LaborSourcePayload {
   employer_name?: string | null
   vacancy_title?: string | null
   vacancy_description?: string | null
+  vacancy_description_plain?: string | null
   vacancy_excerpt?: string | null
   salary_raw_text?: string | null
   salary_value?: number | null
@@ -149,6 +152,8 @@ export interface ProjectLaborCostProfile {
       source_url: string | null
       source_date: string | null
       normalization_method: string | null
+      selected_salary_amount?: number | null
+      salary_range_strategy?: string | null
       hourly_rate: number
     }>
     skipped_sources?: Array<{
@@ -179,6 +184,31 @@ export interface ProjectLaborCostProfile {
     final_rate: number | null
     rounding_scale: number
   } | null
+  settings?: {
+    aggregation_strategy: string
+    salary_range_strategy: 'avg' | 'min' | 'max'
+    employer_insurance_rate: number
+    load_factor_calendar_hours: number
+    load_factor_productive_hours: number
+    planned_profitability_rate: number
+    rounding_scale: number
+  }
+  calculation_breakdown?: {
+    base_rate: number | null
+    insurance_rate: number
+    insurance_amount: number | null
+    loaded_rate: number | null
+    load_factor: number | null
+    calendar_hours?: number
+    productive_hours?: number
+    cost_rate: number | null
+    profitability_rate: number
+    profit_amount: number | null
+    final_rate: number | null
+    salary_range_strategy: 'avg' | 'min' | 'max'
+    aggregation_method: string
+    rounding_scale: number
+  } | null
   warnings: string[]
 }
 
@@ -203,6 +233,7 @@ export interface ProjectLaborCostResponse {
   deprecated_project_level_rate: boolean
   settings?: {
     aggregation_strategy: string
+    salary_range_strategy?: 'avg' | 'min' | 'max'
     employer_insurance_rate: number
     load_factor_calendar_hours: number
     load_factor_productive_hours: number
@@ -239,6 +270,84 @@ export function laborProfileOf(source: LaborEvidenceSource): LaborProfile | null
 
 export function laborEvidenceRecordOf(source: LaborEvidenceSource): LaborEvidenceRecord | null {
   return source.evidenceRecord || source.evidence_record || null
+}
+
+export function laborCurrencySymbol(currency: string | null | undefined): string {
+  if ((currency || '').toUpperCase() === 'RUB') return '₽'
+  return currency || 'RUB'
+}
+
+export function laborFormatMoney(value: string | number | null | undefined): string {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+
+  return new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(numeric)
+}
+
+export function laborSalaryPeriodSuffix(period: LaborEvidenceSource['salary_period']): string {
+  return ({
+    hour: ' / ч',
+    day: ' / день',
+    month: ' / мес',
+    year: ' / год',
+    project: ' / проект',
+  } as Record<string, string>)[period || ''] || ''
+}
+
+export function laborSourceDomain(source: LaborEvidenceSource): string {
+  try {
+    return new URL(source.source_url).hostname.replace(/^www\./, '')
+  } catch {
+    return source.provider?.title || '—'
+  }
+}
+
+export function laborSalaryTypeLabel(source: LaborEvidenceSource): string | null {
+  if (source.salary_value_min !== null && source.salary_value_min !== undefined && source.salary_value_max !== null && source.salary_value_max !== undefined) {
+    return 'Диапазон'
+  }
+
+  if (source.salary_value !== null && source.salary_value !== undefined) {
+    return 'Фикс'
+  }
+
+  return null
+}
+
+export function laborSourceRateLabel(source: LaborEvidenceSource): string {
+  const currency = laborCurrencySymbol(source.currency)
+
+  if (source.derived_hourly_rate !== null && source.derived_hourly_rate !== undefined) {
+    return `${laborFormatMoney(source.derived_hourly_rate)} ${currency} / ч`
+  }
+
+  if (source.salary_value_min !== null && source.salary_value_min !== undefined && source.salary_value_max !== null && source.salary_value_max !== undefined) {
+    return `${laborFormatMoney(source.salary_value_min)} – ${laborFormatMoney(source.salary_value_max)} ${currency}${laborSalaryPeriodSuffix(source.salary_period)}`
+  }
+
+  if (source.salary_value !== null && source.salary_value !== undefined) {
+    return `${laborFormatMoney(source.salary_value)} ${currency}${laborSalaryPeriodSuffix(source.salary_period)}`
+  }
+
+  if (source.salary_raw_text) {
+    return source.salary_raw_text
+  }
+
+  return '—'
+}
+
+export function laborNormalizedDescription(source: LaborEvidenceSource): string {
+  return source.vacancy_description_plain || source.vacancy_excerpt || source.vacancy_description || ''
+}
+
+export function laborDescriptionPreview(source: LaborEvidenceSource, maxLength = 180): string | null {
+  const text = laborNormalizedDescription(source).trim()
+  if (!text) return null
+
+  return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...` : text
 }
 
 export const laborEvidenceApi = {

@@ -11,6 +11,10 @@ class LaborEvidenceSource extends Model
 {
     use SoftDeletes;
 
+    protected $appends = [
+        'vacancy_description_plain',
+    ];
+
     protected $fillable = [
         'user_id',
         'region_id',
@@ -82,5 +86,35 @@ class LaborEvidenceSource extends Model
     public function scopeOwnedBy($query, int $userId)
     {
         return $query->where('user_id', $userId);
+    }
+
+    public function getVacancyDescriptionPlainAttribute(): ?string
+    {
+        return $this->normalizeVacancyDescription($this->vacancy_description);
+    }
+
+    private function normalizeVacancyDescription(?string $description): ?string
+    {
+        $raw = trim((string) $description);
+        if ($raw === '') {
+            return null;
+        }
+
+        $normalized = preg_replace('/<\s*br\s*\/?>/iu', "\n", $raw) ?? $raw;
+        $normalized = preg_replace('/<\s*\/p\s*>/iu', "\n\n", $normalized) ?? $normalized;
+        $normalized = preg_replace('/<\s*\/div\s*>/iu', "\n", $normalized) ?? $normalized;
+        $normalized = preg_replace('/<\s*li[^>]*>/iu', "\n— ", $normalized) ?? $normalized;
+        $normalized = preg_replace('/<\s*\/li\s*>/iu', '', $normalized) ?? $normalized;
+        $normalized = preg_replace('/<\s*\/?(ul|ol|p|div|strong|b|span)[^>]*>/iu', '', $normalized) ?? $normalized;
+        $normalized = strip_tags($normalized);
+        $normalized = html_entity_decode($normalized, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $normalized = preg_replace("/\r\n|\r/u", "\n", $normalized) ?? $normalized;
+        $normalized = preg_replace("/[ \t]+/u", ' ', $normalized) ?? $normalized;
+        $normalized = preg_replace("/\n{3,}/u", "\n\n", $normalized) ?? $normalized;
+        $normalized = preg_replace("/[ \t]+\n/u", "\n", $normalized) ?? $normalized;
+        $normalized = preg_replace("/\n[ \t]+/u", "\n", $normalized) ?? $normalized;
+        $normalized = trim($normalized);
+
+        return $normalized !== '' ? $normalized : $raw;
     }
 }

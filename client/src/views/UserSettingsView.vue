@@ -317,6 +317,16 @@
                       :error-messages="fieldErrors.labor_aggregation_strategy"
                     />
                   </v-col>
+                  <v-col cols="12" md="6">
+                    <v-select
+                      v-model="form.labor_salary_range_strategy"
+                      :items="salaryRangeStrategyOptions"
+                      item-title="title"
+                      item-value="value"
+                      label="Стратегия выбора ставки из диапазона"
+                      :error-messages="fieldErrors.labor_salary_range_strategy"
+                    />
+                  </v-col>
 
                   <v-col cols="12" md="6">
                     <v-text-field
@@ -514,6 +524,7 @@ interface UserSettings {
   labor_load_factor_productive_hours: number
   labor_planned_profitability_rate_percent: number
   labor_aggregation_strategy: 'auto' | 'median' | 'mean' | 'min' | 'max'
+  labor_salary_range_strategy: 'avg' | 'min' | 'max'
   labor_rate_rounding_scale: number
 
   text_blocks: TextBlock[]
@@ -532,6 +543,12 @@ const aggregationStrategyOptions = [
   { title: 'Авто', value: 'auto' },
   { title: 'Медиана', value: 'median' },
   { title: 'Среднее', value: 'mean' },
+  { title: 'Минимум', value: 'min' },
+  { title: 'Максимум', value: 'max' },
+] as const
+
+const salaryRangeStrategyOptions = [
+  { title: 'Среднее', value: 'avg' },
   { title: 'Минимум', value: 'min' },
   { title: 'Максимум', value: 'max' },
 ] as const
@@ -571,6 +588,7 @@ const form = ref<UserSettings>({
   labor_load_factor_productive_hours: 120,
   labor_planned_profitability_rate_percent: 15,
   labor_aggregation_strategy: 'auto',
+  labor_salary_range_strategy: 'avg',
   labor_rate_rounding_scale: 2,
   text_blocks: [] as TextBlock[]
 })
@@ -664,6 +682,7 @@ const applySettingsToForm = (settingsRes: Record<string, any> = {}) => {
     labor_load_factor_calendar_hours,
     labor_load_factor_productive_hours,
     labor_aggregation_strategy,
+    labor_salary_range_strategy,
     labor_rate_rounding_scale,
     ...otherSettings
   } = settingsRes || {}
@@ -676,6 +695,7 @@ const applySettingsToForm = (settingsRes: Record<string, any> = {}) => {
     labor_load_factor_calendar_hours: Number(labor_load_factor_calendar_hours ?? form.value.labor_load_factor_calendar_hours),
     labor_load_factor_productive_hours: Number(labor_load_factor_productive_hours ?? form.value.labor_load_factor_productive_hours),
     labor_aggregation_strategy: labor_aggregation_strategy ?? form.value.labor_aggregation_strategy,
+    labor_salary_range_strategy: labor_salary_range_strategy ?? form.value.labor_salary_range_strategy,
     labor_rate_rounding_scale: Number(labor_rate_rounding_scale ?? form.value.labor_rate_rounding_scale),
     text_blocks: text_blocks ?? [],
   }
@@ -716,6 +736,10 @@ const validateLaborSettings = (): boolean => {
 
   if (!aggregationStrategyOptions.some(option => option.value === form.value.labor_aggregation_strategy)) {
     pushError('labor_aggregation_strategy', 'Выберите корректную стратегию агрегации.')
+  }
+
+  if (!salaryRangeStrategyOptions.some(option => option.value === form.value.labor_salary_range_strategy)) {
+    pushError('labor_salary_range_strategy', 'Выберите корректную стратегию выбора ставки.')
   }
 
   fieldErrors.value = errors

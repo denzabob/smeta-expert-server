@@ -70,6 +70,7 @@ class UserSettingsController extends Controller
             'labor_load_factor_productive_hours' => ['integer', 'min:1'],
             'labor_planned_profitability_rate' => ['numeric', 'min:0', 'max:1'],
             'labor_aggregation_strategy' => ['string', Rule::in(UserLaborSettingsResolver::ALLOWED_AGGREGATION_STRATEGIES)],
+            'labor_salary_range_strategy' => ['string', Rule::in(UserLaborSettingsResolver::ALLOWED_SALARY_RANGE_STRATEGIES)],
             'labor_rate_rounding_scale' => ['integer', 'min:0', 'max:6'],
         ]);
 

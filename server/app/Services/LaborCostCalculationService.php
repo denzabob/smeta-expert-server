@@ -44,7 +44,11 @@ class LaborCostCalculationService
                 'skipped_sources' => [],
             ];
 
-            $normalization = $this->normalizeSource($source, $settings['rounding_scale']);
+            $normalization = $this->normalizeSource(
+                $source,
+                $settings['rounding_scale'],
+                $settings['salary_range_strategy']
+            );
 
             if (!$normalization['used']) {
                 $skippedPayload = $this->buildSkippedSourcePayload($source, $normalization['reason']);
@@ -62,6 +66,8 @@ class LaborCostCalculationService
                 'source_url' => $source->source_url,
                 'source_date' => $source->source_date?->toDateString(),
                 'normalization_method' => $normalization['method'],
+                'selected_salary_amount' => $normalization['selected_salary_amount'] ?? null,
+                'salary_range_strategy' => $normalization['salary_range_strategy'] ?? null,
                 'hourly_rate' => $normalization['hourly_rate'],
             ];
         }
@@ -104,6 +110,21 @@ class LaborCostCalculationService
                 'normalized_rates' => $bucket['normalized_rates'],
                 'aggregation' => $aggregation,
                 'model' => $model,
+                'settings' => [
+                    'aggregation_strategy' => $settings['aggregation_strategy'],
+                    'salary_range_strategy' => $settings['salary_range_strategy'],
+                    'employer_insurance_rate' => $settings['insurance_rate'],
+                    'load_factor_calendar_hours' => $settings['calendar_hours'],
+                    'load_factor_productive_hours' => $settings['productive_hours'],
+                    'planned_profitability_rate' => $settings['profitability_rate'],
+                    'rounding_scale' => $settings['rounding_scale'],
+                ],
+                'calculation_breakdown' => $this->buildCalculationBreakdown(
+                    $aggregation['base_rate'],
+                    $aggregation['method'],
+                    $model,
+                    $settings
+                ),
                 'warnings' => $profileWarnings,
             ];
 
@@ -145,6 +166,7 @@ class LaborCostCalculationService
             'deprecated_project_level_rate' => true,
             'settings' => [
                 'aggregation_strategy' => $settings['aggregation_strategy'],
+                'salary_range_strategy' => $settings['salary_range_strategy'],
                 'employer_insurance_rate' => $settings['insurance_rate'],
                 'load_factor_calendar_hours' => $settings['calendar_hours'],
                 'load_factor_productive_hours' => $settings['productive_hours'],
@@ -193,7 +215,7 @@ class LaborCostCalculationService
         ];
     }
 
-    private function normalizeSource(LaborEvidenceSource $source, int $roundingScale): array
+    private function normalizeSource(LaborEvidenceSource $source, int $roundingScale, string $salaryRangeStrategy): array
     {
         if (!$source->evidence_record_id) {
             return [
@@ -206,11 +228,13 @@ class LaborCostCalculationService
             return [
                 'used' => true,
                 'method' => 'derived_hourly_rate',
+                'selected_salary_amount' => null,
+                'salary_range_strategy' => null,
                 'hourly_rate' => round((float) $source->derived_hourly_rate, $roundingScale),
             ];
         }
 
-        $baseAmount = $this->extractSalaryAmount($source);
+        $baseAmount = $this->extractSalaryAmount($source, $salaryRangeStrategy);
         if ($baseAmount === null) {
             return [
                 'used' => false,
@@ -223,6 +247,8 @@ class LaborCostCalculationService
             return [
                 'used' => true,
                 'method' => 'hourly_salary',
+                'selected_salary_amount' => round($baseAmount, $roundingScale),
+                'salary_range_strategy' => $this->hasSalaryRange($source) ? $salaryRangeStrategy : null,
                 'hourly_rate' => round($baseAmount, $roundingScale),
             ];
         }
@@ -233,6 +259,8 @@ class LaborCostCalculationService
             return [
                 'used' => true,
                 'method' => 'monthly_salary',
+                'selected_salary_amount' => round($baseAmount, $roundingScale),
+                'salary_range_strategy' => $this->hasSalaryRange($source) ? $salaryRangeStrategy : null,
                 'hourly_rate' => round($baseAmount / $hoursPerMonth, $roundingScale),
             ];
         }
@@ -243,7 +271,7 @@ class LaborCostCalculationService
         ];
     }
 
-    private function extractSalaryAmount(LaborEvidenceSource $source): ?float
+    private function extractSalaryAmount(LaborEvidenceSource $source, string $salaryRangeStrategy): ?float
     {
         if ($source->salary_value !== null) {
             return (float) $source->salary_value;
@@ -253,7 +281,11 @@ class LaborCostCalculationService
         $max = $source->salary_value_max !== null ? (float) $source->salary_value_max : null;
 
         if ($min !== null && $max !== null) {
-            return ($min + $max) / 2;
+            return match ($salaryRangeStrategy) {
+                'min' => $min,
+                'max' => $max,
+                default => ($min + $max) / 2,
+            };
         }
 
         if ($min !== null) {
@@ -265,6 +297,13 @@ class LaborCostCalculationService
         }
 
         return null;
+    }
+
+    private function hasSalaryRange(LaborEvidenceSource $source): bool
+    {
+        return $source->salary_value === null
+            && $source->salary_value_min !== null
+            && $source->salary_value_max !== null;
     }
 
     private function aggregateRates(array $rates, string $strategy, int $roundingScale): array
@@ -355,6 +394,26 @@ class LaborCostCalculationService
             'profit_amount' => round($profitAmount, $roundingScale),
             'final_rate' => round($finalRate, $roundingScale),
             'rounding_scale' => $roundingScale,
+        ];
+    }
+
+    private function buildCalculationBreakdown(?float $baseRate, string $aggregationMethod, array $model, array $settings): array
+    {
+        return [
+            'base_rate' => $baseRate,
+            'insurance_rate' => $model['insurance_rate'],
+            'insurance_amount' => $model['insurance_amount'],
+            'loaded_rate' => $model['loaded_rate'],
+            'load_factor' => $model['load_factor'],
+            'calendar_hours' => $model['calendar_hours'] ?? $settings['calendar_hours'],
+            'productive_hours' => $model['productive_hours'] ?? $settings['productive_hours'],
+            'cost_rate' => $model['cost_rate'],
+            'profitability_rate' => $model['profitability_rate'],
+            'profit_amount' => $model['profit_amount'],
+            'final_rate' => $model['final_rate'],
+            'salary_range_strategy' => $settings['salary_range_strategy'],
+            'aggregation_method' => $aggregationMethod,
+            'rounding_scale' => $model['rounding_scale'],
         ];
     }
 }

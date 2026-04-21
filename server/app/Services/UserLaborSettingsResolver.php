@@ -15,6 +15,12 @@ class UserLaborSettingsResolver
         'max',
     ];
 
+    public const ALLOWED_SALARY_RANGE_STRATEGIES = [
+        'avg',
+        'min',
+        'max',
+    ];
+
     /**
      * Вернуть user_settings пользователя, создав запись с дефолтами при необходимости.
      */
@@ -35,6 +41,7 @@ class UserLaborSettingsResolver
      *     productive_hours: int,
      *     profitability_rate: float,
      *     aggregation_strategy: string,
+     *     salary_range_strategy: string,
      *     rounding_scale: int
      * }
      */
@@ -47,6 +54,11 @@ class UserLaborSettingsResolver
             $strategy = UserSettings::DEFAULT_LABOR_AGGREGATION_STRATEGY;
         }
 
+        $salaryRangeStrategy = (string) ($settings->labor_salary_range_strategy ?: UserSettings::DEFAULT_LABOR_SALARY_RANGE_STRATEGY);
+        if (!in_array($salaryRangeStrategy, self::ALLOWED_SALARY_RANGE_STRATEGIES, true)) {
+            $salaryRangeStrategy = UserSettings::DEFAULT_LABOR_SALARY_RANGE_STRATEGY;
+        }
+
         $calendarHours = (int) ($settings->labor_load_factor_calendar_hours ?: UserSettings::DEFAULT_LABOR_LOAD_FACTOR_CALENDAR_HOURS);
         $productiveHours = (int) ($settings->labor_load_factor_productive_hours ?: UserSettings::DEFAULT_LABOR_LOAD_FACTOR_PRODUCTIVE_HOURS);
         $roundingScale = (int) ($settings->labor_rate_rounding_scale ?? UserSettings::DEFAULT_LABOR_RATE_ROUNDING_SCALE);
@@ -57,6 +69,7 @@ class UserLaborSettingsResolver
             'productive_hours' => max(1, $productiveHours),
             'profitability_rate' => (float) ($settings->labor_planned_profitability_rate ?? UserSettings::DEFAULT_LABOR_PLANNED_PROFITABILITY_RATE),
             'aggregation_strategy' => $strategy,
+            'salary_range_strategy' => $salaryRangeStrategy,
             'rounding_scale' => max(0, $roundingScale),
         ];
     }

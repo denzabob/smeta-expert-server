@@ -3,6 +3,7 @@ client/dist/
 chrome-extension/
 vendor/
 docs/
+chrome-extension/
 
 .env
 server/.env

@@ -39,6 +39,7 @@ class UserSettings extends Model
     public const DEFAULT_LABOR_LOAD_FACTOR_PRODUCTIVE_HOURS = 120;
     public const DEFAULT_LABOR_PLANNED_PROFITABILITY_RATE = 0.15;
     public const DEFAULT_LABOR_AGGREGATION_STRATEGY = 'auto';
+    public const DEFAULT_LABOR_SALARY_RANGE_STRATEGY = 'avg';
     public const DEFAULT_LABOR_RATE_ROUNDING_SCALE = 2;
 
     protected $table = 'user_settings';
@@ -71,6 +72,7 @@ class UserSettings extends Model
         'labor_load_factor_productive_hours',
         'labor_planned_profitability_rate',
         'labor_aggregation_strategy',
+        'labor_salary_range_strategy',
         'labor_rate_rounding_scale',
     ];
 
@@ -92,6 +94,7 @@ class UserSettings extends Model
         'labor_load_factor_productive_hours' => 'integer',
         'labor_planned_profitability_rate' => 'decimal:4',
         'labor_aggregation_strategy' => 'string',
+        'labor_salary_range_strategy' => 'string',
         'labor_rate_rounding_scale' => 'integer',
         'text_blocks' => 'array',
         'waste_plate_description' => 'array',
@@ -128,6 +131,7 @@ class UserSettings extends Model
             'labor_load_factor_productive_hours' => self::DEFAULT_LABOR_LOAD_FACTOR_PRODUCTIVE_HOURS,
             'labor_planned_profitability_rate' => self::DEFAULT_LABOR_PLANNED_PROFITABILITY_RATE,
             'labor_aggregation_strategy' => self::DEFAULT_LABOR_AGGREGATION_STRATEGY,
+            'labor_salary_range_strategy' => self::DEFAULT_LABOR_SALARY_RANGE_STRATEGY,
             'labor_rate_rounding_scale' => self::DEFAULT_LABOR_RATE_ROUNDING_SCALE,
         ];
     }

@@ -68,20 +68,43 @@
               <div class="metric-card__label">Рынок</div>
               <div class="metric-card__value">{{ marketRangeLabel(profile) }}</div>
               <div class="metric-card__hint">
-                База: {{ rateLabel(profile.aggregation?.base_rate) }}
+                База: {{ rateLabel(profile.calculation_breakdown?.base_rate ?? profile.aggregation?.base_rate) }}
               </div>
             </div>
 
             <div class="metric-card metric-card--accent">
               <div class="metric-card__label">Итог</div>
-              <div class="metric-card__value">{{ rateLabel(profile.model?.final_rate) }}</div>
+              <div class="metric-card__value">{{ rateLabel(profile.calculation_breakdown?.final_rate ?? profile.model?.final_rate) }}</div>
               <div class="metric-card__hint">
                 Метод: {{ aggregationLabel(profile.aggregation?.method) }}
               </div>
             </div>
           </div>
 
-          <div class="breakdown-grid">
+          <div v-if="profile.calculation_breakdown" class="breakdown-formula">
+            <div class="breakdown-formula__title">Прозрачный расчёт</div>
+            <div class="breakdown-formula__line">
+              База ({{ aggregationLabel(profile.calculation_breakdown.aggregation_method) }}):
+              <strong>{{ rateLabel(profile.calculation_breakdown.base_rate) }}</strong>
+            </div>
+            <div class="breakdown-formula__line">
+              + Страховые начисления ({{ percentLabel(profile.calculation_breakdown.insurance_rate) }}):
+              <strong>{{ rateLabel(profile.calculation_breakdown.loaded_rate) }}</strong>
+            </div>
+            <div class="breakdown-formula__line">
+              × Коэффициент загрузки ({{ factorLabel(profile.calculation_breakdown.load_factor) }}):
+              <strong>{{ rateLabel(profile.calculation_breakdown.cost_rate) }}</strong>
+            </div>
+            <div class="breakdown-formula__line">
+              + Рентабельность ({{ percentLabel(profile.calculation_breakdown.profitability_rate) }}):
+              <strong>{{ rateLabel(profile.calculation_breakdown.final_rate) }}</strong>
+            </div>
+            <div class="breakdown-formula__meta">
+              Стратегия диапазона: {{ salaryRangeStrategyLabel(profile.calculation_breakdown.salary_range_strategy) }}
+            </div>
+          </div>
+
+          <div v-else class="breakdown-grid">
             <div class="breakdown-row">
               <span class="breakdown-label">Нагрузка с взносами</span>
               <span class="breakdown-value">{{ rateLabel(profile.model?.loaded_rate) }}</span>
@@ -160,6 +183,11 @@ function factorLabel(value: number | null | undefined): string {
   return formatNumber(value, 4)
 }
 
+function percentLabel(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—'
+  return `${formatNumber(value * 100)}%`
+}
+
 function formatNumber(value: number, maximumFractionDigits = 2): string {
   return new Intl.NumberFormat('ru-RU', {
     minimumFractionDigits: 0,
@@ -173,6 +201,7 @@ function marketRangeLabel(profile: ProjectLaborCostProfile): string {
   const sorted = [...profile.normalized_rates].sort((a, b) => a - b)
   const min = sorted[0]
   const max = sorted[sorted.length - 1]
+  if (min === undefined || max === undefined) return 'Нет данных'
 
   if (min === max) {
     return rateLabel(min)
@@ -190,6 +219,14 @@ function aggregationLabel(method: string | null | undefined): string {
     max: 'максимум',
     none: 'нет данных',
   } as Record<string, string>)[method || 'none'] || method || '—'
+}
+
+function salaryRangeStrategyLabel(strategy: string | null | undefined): string {
+  return ({
+    avg: 'среднее',
+    min: 'минимум',
+    max: 'максимум',
+  } as Record<string, string>)[strategy || ''] || '—'
 }
 
 function warningLabel(warning: string): string {
@@ -298,6 +335,41 @@ defineExpose({
   margin-top: 16px;
 }
 
+.breakdown-formula {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #f8faf5;
+  border: 1px solid rgba(110, 140, 70, 0.14);
+}
+
+.breakdown-formula__title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(0, 0, 0, 0.55);
+  margin-bottom: 10px;
+}
+
+.breakdown-formula__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.breakdown-formula__line:first-of-type {
+  border-top: 0;
+}
+
+.breakdown-formula__meta {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.58);
+}
+
 .breakdown-row {
   display: flex;
   justify-content: space-between;
@@ -325,6 +397,10 @@ defineExpose({
   }
 
   .breakdown-row {
+    flex-direction: column;
+  }
+
+  .breakdown-formula__line {
     flex-direction: column;
   }
 

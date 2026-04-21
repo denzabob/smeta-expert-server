@@ -1,6 +1,6 @@
 <template>
   <SectionCard class="labor-evidence-panel">
-    <template #title>Labor Evidence Sources</template>
+    <template #title>Источники обоснования труда</template>
 
     <div class="panel-head">
       <div class="panel-copy">
@@ -10,7 +10,7 @@
         </div>
       </div>
       <v-btn color="primary" variant="flat" prepend-icon="mdi-link-plus" @click="openAttachDialog">
-        Attach sources
+        Добавить источники
       </v-btn>
     </div>
 
@@ -20,7 +20,7 @@
       variant="tonal"
       class="mb-4"
     >
-      No labor evidence attached — report will not include labor justification
+      Для проекта пока не привязаны источники труда, поэтому блок обоснования не будет полным.
     </v-alert>
 
     <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-4" />
@@ -49,22 +49,52 @@
     >
       <template #[`item.vacancy_title`]="{ item }">
         <div class="source-title-cell">
-          <div class="source-title-cell__title">{{ item.vacancy_title || item.source_title || 'Без названия' }}</div>
-          <div class="source-title-cell__meta">{{ item.employer_name || 'Работодатель не указан' }}</div>
+          <div class="source-title-head">
+            <div class="source-title-cell__title">{{ item.vacancy_title || item.source_title || 'Без названия' }}</div>
+            <v-btn
+              v-if="item.source_url"
+              :href="item.source_url"
+              target="_blank"
+              rel="noopener noreferrer"
+              icon
+              size="x-small"
+              variant="text"
+              color="primary"
+              title="Открыть источник"
+            >
+              <v-icon size="16">mdi-open-in-new</v-icon>
+            </v-btn>
+          </div>
+          <div v-if="item.employer_name" class="source-title-cell__meta">{{ item.employer_name }}</div>
+          <div class="source-title-cell__domain">{{ laborSourceDomain(item) }}</div>
+          <div v-if="laborDescriptionPreview(item)" class="source-title-cell__description">{{ laborDescriptionPreview(item) }}</div>
         </div>
       </template>
 
       <template #[`item.provider`]="{ item }">
-        {{ item.provider?.title || '—' }}
+        <div class="provider-cell">
+          <div class="provider-cell__title">{{ item.provider?.title || laborSourceDomain(item) }}</div>
+          <div v-if="item.employer_name" class="provider-cell__meta">{{ item.employer_name }}</div>
+        </div>
       </template>
 
       <template #[`item.rate`]="{ item }">
-        {{ sourceRateLabel(item) }}
+        <div class="rate-cell">
+          <div class="rate-cell__value">{{ laborSourceRateLabel(item) }}</div>
+          <v-chip
+            v-if="laborSalaryTypeLabel(item)"
+            size="x-small"
+            variant="tonal"
+            color="primary"
+          >
+            {{ laborSalaryTypeLabel(item) }}
+          </v-chip>
+        </div>
       </template>
 
       <template #[`item.assets`]="{ item }">
         <v-chip size="x-small" variant="tonal" :color="hasScreenshot(item) ? 'success' : 'grey'">
-          {{ hasScreenshot(item) ? 'Есть скриншот' : 'Без скриншота' }}
+          {{ hasScreenshot(item) ? 'Скриншот' : 'Нет' }}
         </v-chip>
       </template>
 
@@ -83,7 +113,7 @@
     <v-dialog v-model="attachDialog" max-width="1040" scrollable>
       <v-card>
         <v-card-title class="d-flex align-center justify-space-between">
-          <span>Attach labor evidence sources</span>
+          <span>Добавить источники труда</span>
           <v-btn icon variant="text" @click="attachDialog = false">
             <v-icon>mdi-close</v-icon>
           </v-btn>
@@ -115,8 +145,24 @@
 
             <template #[`item.vacancy_title`]="{ item }">
               <div class="source-title-cell">
-                <div class="source-title-cell__title">{{ item.vacancy_title || item.source_title || 'Без названия' }}</div>
-                <div class="source-title-cell__meta">{{ item.employer_name || 'Работодатель не указан' }}</div>
+                <div class="source-title-head">
+                  <div class="source-title-cell__title">{{ item.vacancy_title || item.source_title || 'Без названия' }}</div>
+                  <v-btn
+                    v-if="item.source_url"
+                    :href="item.source_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    icon
+                    size="x-small"
+                    variant="text"
+                    color="primary"
+                    title="Открыть источник"
+                  >
+                    <v-icon size="16">mdi-open-in-new</v-icon>
+                  </v-btn>
+                </div>
+                <div v-if="item.employer_name" class="source-title-cell__meta">{{ item.employer_name }}</div>
+                <div class="source-title-cell__domain">{{ laborSourceDomain(item) }}</div>
               </div>
             </template>
 
@@ -125,7 +171,7 @@
             </template>
 
             <template #[`item.rate`]="{ item }">
-              {{ sourceRateLabel(item) }}
+              {{ laborSourceRateLabel(item) }}
             </template>
 
             <template #[`item.actions`]="{ item }">
@@ -164,8 +210,12 @@ import EmptyState from '@/components/layout/EmptyState.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
 import LaborEvidenceDetailsDialog from '@/components/pricing/LaborEvidenceDetailsDialog.vue'
 import {
+  laborDescriptionPreview,
   laborEvidenceApi,
   laborEvidenceRecordOf,
+  laborSalaryTypeLabel,
+  laborSourceDomain,
+  laborSourceRateLabel,
   type LaborEvidenceSource,
 } from '@/api/laborEvidence'
 
@@ -192,7 +242,7 @@ const headers = [
   { title: 'Провайдер', key: 'provider', sortable: false },
   { title: 'Регион', key: 'region.name', sortable: false },
   { title: 'Ставка', key: 'rate', sortable: false, align: 'end' as const },
-  { title: 'Evidence', key: 'assets', sortable: false },
+  { title: 'Подтверждение', key: 'assets', sortable: false },
   { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ]
 
@@ -234,13 +284,6 @@ async function loadAttachedSources() {
 async function loadAvailableSources() {
   const response = await laborEvidenceApi.listSources({ per_page: 100 })
   availableSources.value = response.data || []
-}
-
-function sourceRateLabel(source: LaborEvidenceSource): string {
-  if (source.derived_hourly_rate) return `${source.derived_hourly_rate} ${source.currency || 'RUB'} / ч`
-  if (source.salary_raw_text) return source.salary_raw_text
-  if (source.salary_value) return `${source.salary_value} ${source.currency || 'RUB'}`
-  return '—'
 }
 
 function hasScreenshot(source: LaborEvidenceSource): boolean {
@@ -317,10 +360,57 @@ function openDetails(source: LaborEvidenceSource) {
   line-height: 1.35;
 }
 
+.source-title-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
 .source-title-cell__meta {
   margin-top: 2px;
   font-size: 12px;
   color: rgba(0, 0, 0, 0.56);
+}
+
+.source-title-cell__domain {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.48);
+}
+
+.source-title-cell__description {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(0, 0, 0, 0.66);
+  white-space: pre-wrap;
+}
+
+.provider-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.provider-cell__title {
+  font-weight: 500;
+}
+
+.provider-cell__meta {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.56);
+}
+
+.rate-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.rate-cell__value {
+  font-weight: 600;
+  text-align: right;
 }
 
 @media (max-width: 900px) {

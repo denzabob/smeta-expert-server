@@ -43,7 +43,7 @@
 
         <div class="completeness-grid mb-5">
           <v-chip :color="hasScreenshot ? 'success' : 'warning'" variant="tonal" size="small">
-            {{ hasScreenshot ? 'Скриншот приложен' : 'Нет скриншота' }}
+            {{ hasScreenshot ? 'Скриншот' : 'Нет' }}
           </v-chip>
           <v-chip :color="hasSalaryData ? 'success' : 'warning'" variant="tonal" size="small">
             {{ hasSalaryData ? 'Есть данные по ставке' : 'Нет данных по ставке' }}
@@ -58,7 +58,11 @@
             <div class="detail-list">
               <div class="detail-row">
                 <span class="detail-label">Источник</span>
-                <span class="detail-value">{{ currentSource.provider?.title || '—' }}</span>
+                <span class="detail-value">{{ currentSource.provider?.title || sourceDomain }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Домен</span>
+                <span class="detail-value">{{ sourceDomain }}</span>
               </div>
               <div class="detail-row">
                 <span class="detail-label">Регион</span>
@@ -216,7 +220,7 @@
         <div v-if="currentSource.vacancy_excerpt || currentSource.vacancy_description" class="mt-5">
           <div class="asset-title">Описание вакансии</div>
           <div class="detail-text">
-            {{ currentSource.vacancy_excerpt || currentSource.vacancy_description }}
+            {{ normalizedDescription }}
           </div>
         </div>
 
@@ -233,10 +237,15 @@
 import { computed, reactive, ref, watch } from 'vue'
 import {
   laborAssetUrl,
+  laborCurrencySymbol,
   laborEvidenceApi,
   laborEvidenceRecordOf,
+  laborFormatMoney,
+  laborNormalizedDescription,
   laborProfileOf,
   laborRegionLabel,
+  laborSourceDomain,
+  laborSourceRateLabel,
   type LaborEvidenceAsset,
   type LaborEvidenceRecord,
   type LaborEvidenceSource,
@@ -301,20 +310,27 @@ const hasSalaryData = computed(() => {
 const salaryLabel = computed(() => {
   const source = currentSource.value
   if (!source) return '—'
-  if (source.salary_raw_text) return source.salary_raw_text
-  if (source.salary_value) return `${source.salary_value} ${source.currency || 'RUB'}`
-  if (source.salary_value_min || source.salary_value_max) {
-    const from = source.salary_value_min ? `от ${source.salary_value_min}` : ''
-    const to = source.salary_value_max ? `до ${source.salary_value_max}` : ''
-    return `${from} ${to}`.trim() || '—'
-  }
-  return '—'
+  return laborSourceRateLabel(source)
 })
 
 const hourlyRateLabel = computed(() => {
   const source = currentSource.value
   if (!source?.derived_hourly_rate) return '—'
-  return `${source.derived_hourly_rate} ${source.currency || 'RUB'} / ч`
+  return `${laborFormatMoney(source.derived_hourly_rate)} ${laborCurrencySymbol(source.currency)} / ч`
+})
+
+const normalizedDescription = computed(() => {
+  const source = currentSource.value
+  if (!source) return ''
+
+  return laborNormalizedDescription(source)
+})
+
+const sourceDomain = computed(() => {
+  const source = currentSource.value
+  if (!source?.source_url) return '—'
+
+  return laborSourceDomain(source)
 })
 
 function cloneSource(source: LaborEvidenceSource): LaborEvidenceSource {

@@ -13,6 +13,7 @@ use App\Dto\PositionDto;
 use App\Dto\ProjectMetaDto;
 use App\Dto\ReportDto;
 use App\Dto\TotalsDto;
+use App\Models\LaborEvidenceSource;
 use App\Models\PositionProfile;
 use App\Models\Project;
 use App\Models\ProjectPosition;
@@ -441,6 +442,7 @@ class ReportService
             array_keys($worksByProfile)
         )));
         sort($profileIds);
+        $evidenceById = $this->loadProjectLaborEvidenceById($project);
 
         $justifications = [];
         foreach ($profileIds as $profileId) {
@@ -457,6 +459,7 @@ class ReportService
                 profilePayload: $profilePayload,
                 settingsSnapshot: $calculation['settings'] ?? [],
                 works: $works,
+                evidenceById: $evidenceById,
             );
         }
 
@@ -470,6 +473,7 @@ class ReportService
         ?array $profilePayload,
         array $settingsSnapshot,
         array $works,
+        array $evidenceById,
     ): array {
         $usedSources = $profilePayload['sources']['used_sources'] ?? [];
         $usedCount = (int) ($profilePayload['sources']['used_count'] ?? count($usedSources));
@@ -486,15 +490,29 @@ class ReportService
 
         $sourcesStats = [];
         $sourceLinks = [];
+        $vacancyEvidence = [];
         foreach ($usedSources as $source) {
-            $name = trim((string) ($source['provider'] ?? '')) ?: trim((string) ($source['title'] ?? ''));
-            $url = isset($source['source_url']) && $source['source_url'] !== '' ? (string) $source['source_url'] : null;
+            $sourceId = isset($source['source_id']) ? (int) $source['source_id'] : null;
+            /** @var LaborEvidenceSource|null $evidence */
+            $evidence = ($sourceId && isset($evidenceById[$sourceId])) ? $evidenceById[$sourceId] : null;
+            $evidenceRow = $this->buildVacancyEvidenceRow($source, $evidence);
+            $name = trim((string) ($evidenceRow['provider_title'] ?? '')) ?: trim((string) ($source['provider'] ?? '')) ?: trim((string) ($source['title'] ?? ''));
+            $url = $evidenceRow['source_url'] ?? null;
+            $vacancyEvidence[] = $evidenceRow;
 
             $sourcesStats[] = [
                 'name' => $name ?: '—',
                 'rate' => isset($source['hourly_rate']) ? (float) $source['hourly_rate'] : null,
                 'url' => $url,
-                'date' => $source['source_date'] ?? null,
+                'date' => $evidenceRow['source_date'] ?? null,
+                'provider_title' => $evidenceRow['provider_title'],
+                'vacancy_title' => $evidenceRow['vacancy_title'],
+                'employer_name' => $evidenceRow['employer_name'],
+                'salary_display' => $evidenceRow['salary_display'],
+                'derived_hourly_rate' => $evidenceRow['derived_hourly_rate'],
+                'confidence' => $evidenceRow['confidence'],
+                'captured_via' => $evidenceRow['captured_via'],
+                'has_screenshot' => $evidenceRow['has_screenshot'],
             ];
 
             if ($url) {
@@ -554,6 +572,7 @@ class ReportService
             'sources_count_used' => $usedCount,
             'sources_stats' => $sourcesStats,
             'source_links' => array_values($sourceLinks),
+            'vacancy_evidence' => $vacancyEvidence,
             'works' => $worksForDisplay,
             'total_hours' => round($totalHours, 2),
             'total_cost' => round($totalCost, 2),
@@ -562,6 +581,121 @@ class ReportService
             'methodology_text' => $methodology['text'],
             'methodology_formula' => $methodology['formula'],
         ];
+    }
+
+    private function loadProjectLaborEvidenceById(Project $project): array
+    {
+        return $project->laborEvidenceSources()
+            ->with(['provider', 'evidenceRecord.assets'])
+            ->get()
+            ->keyBy('id')
+            ->all();
+    }
+
+    private function buildVacancyEvidenceRow(array $usedSource, ?LaborEvidenceSource $evidence): array
+    {
+        $providerTitle = trim((string) ($evidence?->provider?->title ?? ''))
+            ?: trim((string) ($usedSource['provider'] ?? ''))
+            ?: '—';
+
+        $sourceUrl = trim((string) ($evidence?->source_url ?? ''))
+            ?: trim((string) ($usedSource['source_url'] ?? ''))
+            ?: null;
+
+        $salaryValue = $evidence?->salary_value !== null ? (float) $evidence->salary_value : null;
+        $salaryValueMin = $evidence?->salary_value_min !== null ? (float) $evidence->salary_value_min : null;
+        $salaryValueMax = $evidence?->salary_value_max !== null ? (float) $evidence->salary_value_max : null;
+        $derivedHourlyRate = $evidence?->derived_hourly_rate !== null ? (float) $evidence->derived_hourly_rate : null;
+        $confidence = $this->extractLaborEvidenceConfidence($evidence);
+
+        return [
+            'provider_title' => $providerTitle,
+            'source_url' => $sourceUrl,
+            'vacancy_title' => trim((string) ($evidence?->vacancy_title ?? '')) ?: trim((string) ($usedSource['title'] ?? '')) ?: null,
+            'employer_name' => trim((string) ($evidence?->employer_name ?? '')) ?: trim((string) ($usedSource['employer_name'] ?? '')) ?: null,
+            'salary_raw_text' => $evidence?->salary_raw_text,
+            'salary_value' => $salaryValue,
+            'salary_value_min' => $salaryValueMin,
+            'salary_value_max' => $salaryValueMax,
+            'salary_period' => $evidence?->salary_period,
+            'salary_display' => $this->formatLaborSalaryEvidence(
+                salaryValue: $salaryValue,
+                salaryValueMin: $salaryValueMin,
+                salaryValueMax: $salaryValueMax,
+                salaryPeriod: $evidence?->salary_period,
+                salaryRawText: $evidence?->salary_raw_text,
+            ),
+            'derived_hourly_rate' => $derivedHourlyRate,
+            'source_date' => $evidence?->source_date?->toDateString() ?? ($usedSource['source_date'] ?? null),
+            'confidence' => $confidence,
+            'captured_via' => $evidence?->captured_via ?? null,
+            'has_screenshot' => $evidence?->evidenceRecord?->assets?->contains(fn ($asset) => $asset->asset_type === 'screenshot') ?? false,
+        ];
+    }
+
+    private function extractLaborEvidenceConfidence(?LaborEvidenceSource $evidence): ?float
+    {
+        if (!$evidence?->evidenceRecord) {
+            return null;
+        }
+
+        $metadataConfidence = $evidence->evidenceRecord->metadata_json['confidence'] ?? null;
+        if (is_numeric($metadataConfidence)) {
+            return round((float) $metadataConfidence, 2);
+        }
+
+        if ($evidence->evidenceRecord->confidence_score !== null) {
+            return round(((float) $evidence->evidenceRecord->confidence_score) / 100, 2);
+        }
+
+        return null;
+    }
+
+    private function formatLaborSalaryEvidence(
+        ?float $salaryValue,
+        ?float $salaryValueMin,
+        ?float $salaryValueMax,
+        ?string $salaryPeriod,
+        ?string $salaryRawText,
+    ): ?string {
+        $periodLabel = $this->mapSalaryPeriodToLabel($salaryPeriod);
+
+        if ($salaryValue !== null) {
+            return $this->formatMoney($salaryValue) . ($periodLabel ? ' / ' . $periodLabel : '');
+        }
+
+        if ($salaryValueMin !== null && $salaryValueMax !== null) {
+            return $this->formatMoney($salaryValueMin) . '–' . $this->formatMoney($salaryValueMax) . ($periodLabel ? ' / ' . $periodLabel : '');
+        }
+
+        if ($salaryValueMin !== null) {
+            return 'от ' . $this->formatMoney($salaryValueMin) . ($periodLabel ? ' / ' . $periodLabel : '');
+        }
+
+        if ($salaryValueMax !== null) {
+            return 'до ' . $this->formatMoney($salaryValueMax) . ($periodLabel ? ' / ' . $periodLabel : '');
+        }
+
+        $salaryRawText = trim((string) ($salaryRawText ?? ''));
+
+        return $salaryRawText !== '' ? $salaryRawText : null;
+    }
+
+    private function mapSalaryPeriodToLabel(?string $salaryPeriod): ?string
+    {
+        return match (trim((string) $salaryPeriod)) {
+            'hour' => 'hour',
+            'day' => 'day',
+            'month' => 'month',
+            'year' => 'year',
+            'project' => 'project',
+            default => null,
+        };
+    }
+
+    private function formatMoney(float $amount): string
+    {
+        return number_format($amount, 0, ',', ' ') . ' ₽';
     }
 
     private function transformLaborModelBreakdown(array $model, ?float $baseRate): ?array
