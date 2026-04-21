@@ -12,6 +12,7 @@
   let pageInfo = null;
   let currentTemplate = null;
   let capturedFields = {};
+  let currentMode = 'material';
   let userInfo = null;
   let domainTemplates = [];
   let detectedMaterialUnit = 'шт';
@@ -20,6 +21,21 @@
   let templateAutoApplied = false;
   let analyzeTimer = null;
   const ANALYZE_DEBOUNCE_MS = 400;
+  const MODE_STORAGE_KEY = 'prizmCaptureMode';
+
+  const materialFormState = {
+    get capturedFields() {
+      return capturedFields;
+    },
+  };
+  let laborFormState = createInitialLaborFormState();
+  let laborProfiles = [];
+  let laborProfilesLoaded = false;
+  let laborCapturedMeta = {};
+  let laborFieldMeta = createInitialLaborFieldMeta();
+  let laborValidationErrors = {};
+  let laborDetailsExpanded = false;
+  let laborSalaryPeriodTouched = false;
 
   // ============================================================
   // DOM refs
@@ -50,6 +66,18 @@
   const firstRunHelper = $('#first-run-helper');
   const btnDismissOnboarding = $('#btn-dismiss-onboarding');
   const btnSuggestTemplate = $('#btn-suggest-template');
+  const modeBadge = $('#mode-badge');
+  const btnModeMaterial = $('#btn-mode-material');
+  const btnModeLabor = $('#btn-mode-labor');
+  const materialModePanel = $('#material-mode-panel');
+  const laborModePanel = $('#labor-mode-panel');
+  const laborProfileHint = $('#labor-profile-hint');
+  const btnAddLabor = $('#btn-add-labor');
+  const laborResult = $('#labor-result');
+  const laborDetails = $('#labor-details');
+  const btnLaborDetailsToggle = $('#btn-labor-details-toggle');
+  const laborConfidence = $('#labor-confidence');
+  const laborSubmitHint = $('#labor-submit-hint');
 
   // Capture
   const btnValidate = $('#btn-validate');
@@ -96,6 +124,67 @@
   const DEFAULT_API_URL = 'https://app.prismcore.ru/api';
   const ONBOARDING_KEY = 'prizm_onboarding_seen_v1';
   const SUCCESS_COUNTER_KEY = 'prizm_success_counter_by_domain_v1';
+  const LABOR_FIELDS = [
+    'vacancy_title',
+    'employer_name',
+    'provider_title',
+    'provider_domain',
+    'source_url',
+    'source_title',
+    'source_date',
+    'labor_profile_id',
+    'vacancy_description',
+    'salary_raw_text',
+    'salary_value',
+    'salary_value_min',
+    'salary_value_max',
+    'salary_period',
+    'hours_per_month',
+    'derived_hourly_rate',
+    'currency',
+    'note',
+  ];
+  const laborFieldRefs = {
+    vacancy_title: $('#labor-vacancy-title'),
+    employer_name: $('#labor-employer-name'),
+    provider_title: $('#labor-provider-title'),
+    provider_domain: $('#labor-provider-domain'),
+    source_url: $('#labor-source-url'),
+    source_title: $('#labor-source-title'),
+    source_date: $('#labor-source-date'),
+    labor_profile_id: $('#labor-profile-id'),
+    vacancy_description: $('#labor-vacancy-description'),
+    salary_raw_text: $('#labor-salary-raw-text'),
+    salary_value: $('#labor-salary-value'),
+    salary_value_min: $('#labor-salary-min'),
+    salary_value_max: $('#labor-salary-max'),
+    salary_period: $('#labor-salary-period'),
+    hours_per_month: $('#labor-hours-per-month'),
+    derived_hourly_rate: $('#labor-derived-hourly-rate'),
+    currency: $('#labor-currency'),
+    note: $('#labor-note'),
+  };
+  const laborErrorRefs = {
+    labor_profile_id: $('#labor-error-labor_profile_id'),
+    source_url: $('#labor-error-source_url'),
+    vacancy_title: $('#labor-error-vacancy_title'),
+    salary_raw_text: $('#labor-error-salary_raw_text'),
+    salary_period: $('#labor-error-salary_period'),
+    employer_name: $('#labor-error-employer_name'),
+  };
+  const laborSourceRefs = {
+    vacancy_title: $('#labor-source-vacancy_title'),
+    source_url: $('#labor-source-source_url'),
+    salary_raw_text: $('#labor-source-salary_raw_text'),
+    salary_period: $('#labor-source-salary_period'),
+    employer_name: $('#labor-source-employer_name'),
+    source_date: $('#labor-source-source_date'),
+    source_title: $('#labor-source-source_title'),
+    salary_value: $('#labor-source-salary_value'),
+    salary_value_min: $('#labor-source-salary_value_min'),
+    salary_value_max: $('#labor-source-salary_value_max'),
+    vacancy_description: $('#labor-source-vacancy_description'),
+  };
 
   // ============================================================
   // Helpers
@@ -154,6 +243,317 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  function createInitialLaborFormState() {
+    return {
+      vacancy_title: '',
+      employer_name: '',
+      provider_title: '',
+      provider_domain: '',
+      source_url: '',
+      source_title: '',
+      source_date: '',
+      labor_profile_id: '',
+      vacancy_description: '',
+      salary_raw_text: '',
+      salary_value: '',
+      salary_value_min: '',
+      salary_value_max: '',
+      salary_period: '',
+      hours_per_month: '160',
+      derived_hourly_rate: '',
+      currency: 'RUB',
+      note: '',
+    };
+  }
+
+  function createInitialLaborFieldMeta() {
+    return {
+      confidence: null,
+      fields: {},
+    };
+  }
+
+  function showLaborResult(message, type = 'success') {
+    if (!laborResult) return;
+    showResult(laborResult, message, type);
+  }
+
+  function clearLaborResult() {
+    if (!laborResult) return;
+    laborResult.className = 'result-message hidden';
+    laborResult.textContent = '';
+  }
+
+  function setLaborDetailsExpanded(expanded) {
+    laborDetailsExpanded = !!expanded;
+    laborDetails?.classList.toggle('hidden', !laborDetailsExpanded);
+    btnLaborDetailsToggle?.setAttribute('aria-expanded', laborDetailsExpanded ? 'true' : 'false');
+  }
+
+  function getLaborSourceLabel(source) {
+    const map = {
+      schema: 'Schema',
+      offer: 'Offer',
+      dom: 'DOM',
+      site_fallback: 'DOM',
+      parsed: 'Parsed',
+      manual: 'Manual',
+    };
+    return map[source] || '';
+  }
+
+  function renderLaborMeta() {
+    Object.entries(laborSourceRefs).forEach(([field, el]) => {
+      if (!el) return;
+      const source = laborFieldMeta.fields?.[field]?.source || '';
+      const label = getLaborSourceLabel(source);
+      el.textContent = label;
+      el.className = 'labor-source-badge';
+      if (!label) {
+        el.classList.add('hidden');
+        return;
+      }
+      el.classList.add(`source-${source}`);
+      el.classList.remove('hidden');
+    });
+
+    if (laborConfidence) {
+      const confidence = laborFieldMeta.confidence;
+      if (typeof confidence === 'number') {
+        laborConfidence.textContent = `Уверенность: ${Math.round(confidence * 100)}%`;
+        laborConfidence.classList.remove('hidden');
+      } else {
+        laborConfidence.textContent = '';
+        laborConfidence.classList.add('hidden');
+      }
+    }
+  }
+
+  function markLaborFieldManual(field) {
+    if (!(field in laborFormState)) return;
+    laborFieldMeta.fields[field] = {
+      ...(laborFieldMeta.fields[field] || {}),
+      source: 'manual',
+      manualLocked: true,
+    };
+  }
+
+  function isLaborFieldManualLocked(field) {
+    return !!laborFieldMeta.fields?.[field]?.manualLocked;
+  }
+
+  function detectSalaryPeriodFromText(value) {
+    const text = String(value || '').toLowerCase();
+    if (!text) return '';
+
+    if (
+      /(\bв\s*месяц\b|\bза\s*месяц\b|руб\.?\s*\/\s*мес\b|руб\/мес\b|\bmonthly\b|\bв\s*мес\.?\b)/i.test(text)
+    ) return 'month';
+    if (/(\bв\s*час\b|руб\.?\s*\/\s*ч\b|руб\/ч\b|\bhour\b)/i.test(text)) return 'hour';
+    if (/(\bв\s*день\b|\bза\s*день\b)/i.test(text)) return 'day';
+    if (/(\bв\s*год\b|\bза\s*год\b)/i.test(text)) return 'year';
+
+    return '';
+  }
+
+  function maybeAutoFillSalaryPeriod(options = {}) {
+    if (laborSalaryPeriodTouched) return laborFormState.salary_period;
+    if (laborFormState.salary_period && !options.force) return laborFormState.salary_period;
+
+    const detected = detectSalaryPeriodFromText(laborFormState.salary_raw_text);
+    if (detected) {
+      laborFormState.salary_period = detected;
+      const el = laborFieldRefs.salary_period;
+      if (el) el.value = detected;
+    }
+    return laborFormState.salary_period;
+  }
+
+  function getFriendlyLaborErrorMessage(kind, err) {
+    const rawMessage = String(err?.message || err || '').trim();
+    if (rawMessage) {
+      console.error(`[labor:${kind}]`, err);
+    }
+
+    if (kind === 'profiles') return 'Не удалось загрузить профили работ';
+    if (kind === 'screenshot') return 'Не удалось сделать скриншот страницы';
+    if (kind === 'page-data') return 'Не удалось получить данные страницы';
+    if (kind === 'vacancy-data') return 'Ошибка получения данных вакансии';
+    return 'Не удалось отправить вакансию';
+  }
+
+  function setLaborFieldError(field, message = '') {
+    const group = document.querySelector(`[data-labor-field="${field}"]`);
+    const errorEl = laborErrorRefs[field];
+    group?.classList.toggle('is-invalid', !!message);
+    if (!errorEl) return;
+    errorEl.textContent = message;
+    errorEl.classList.toggle('hidden', !message);
+  }
+
+  function renderLaborValidation() {
+    Object.keys(laborErrorRefs).forEach((field) => {
+      setLaborFieldError(field, laborValidationErrors[field] || '');
+    });
+  }
+
+  function clearLaborValidation(fields = null) {
+    if (!fields) {
+      laborValidationErrors = {};
+      renderLaborValidation();
+      return;
+    }
+    fields.forEach((field) => {
+      delete laborValidationErrors[field];
+      setLaborFieldError(field, '');
+    });
+  }
+
+  function applyLaborCapturedField(field, value, selector, xpath) {
+    if (!field || !value) return;
+    if (!(field in laborFormState)) return;
+
+    laborFormState[field] = value;
+    laborCapturedMeta[field] = { value, selector: selector || null, xpath: xpath || null };
+    laborFieldMeta.fields[field] = {
+      ...(laborFieldMeta.fields[field] || {}),
+      source: 'manual',
+      manualLocked: true,
+    };
+    clearLaborResult();
+
+    if (['employer_name', 'source_title', 'source_date', 'vacancy_description'].includes(field)) {
+      setLaborDetailsExpanded(true);
+    }
+
+    if (field === 'source_url' || field === 'labor_profile_id') {
+      clearLaborValidation([field]);
+    }
+    if (field === 'vacancy_title' || field === 'salary_raw_text') {
+      clearLaborValidation(['vacancy_title', 'salary_raw_text']);
+    }
+    if (field === 'salary_raw_text') {
+      maybeAutoFillSalaryPeriod();
+    }
+    renderLaborFormState();
+  }
+
+  function hasHardRequiredLaborFields() {
+    return !!(String(laborFormState.labor_profile_id || '').trim() && String(laborFormState.source_url || '').trim());
+  }
+
+  function getLaborSubmitHintMessage() {
+    const hasProfile = !!String(laborFormState.labor_profile_id || '').trim();
+    const hasSourceUrl = !!String(laborFormState.source_url || '').trim();
+
+    if (!laborProfilesLoaded) {
+      return 'Ждём загрузку профилей работ.';
+    }
+
+    if (!laborProfiles.length) {
+      return 'Создайте профиль работ в системе, чтобы добавить вакансию.';
+    }
+
+    if (!hasProfile && !hasSourceUrl) {
+      return 'Чтобы активировать кнопку, выберите профиль работ и укажите ссылку на источник.';
+    }
+
+    if (!hasProfile) {
+      return 'Чтобы активировать кнопку, выберите профиль работ.';
+    }
+
+    if (!hasSourceUrl) {
+      return 'Чтобы активировать кнопку, укажите ссылку на источник.';
+    }
+
+    return 'Кнопка активна. Перед отправкой проверьте зарплату и работодателя.';
+  }
+
+  function updateLaborSubmitState() {
+    if (!btnAddLabor) return;
+    const profilesAvailable = laborProfiles.length > 0;
+    const profilesReady = laborProfilesLoaded ? profilesAvailable : !laborFieldRefs.labor_profile_id?.disabled;
+    btnAddLabor.disabled = !hasHardRequiredLaborFields() || !profilesReady;
+    if (laborSubmitHint) {
+      laborSubmitHint.textContent = getLaborSubmitHintMessage();
+    }
+  }
+
+  function mergeJobPostingDataIntoLaborForm(data) {
+    if (currentMode !== 'labor' || !data || typeof data !== 'object') return false;
+
+    let changed = false;
+    const mergeableFields = [
+      'vacancy_title',
+      'vacancy_description',
+      'employer_name',
+      'salary_value',
+      'salary_value_min',
+      'salary_value_max',
+      'salary_period',
+      'source_date',
+      'source_url',
+      'currency',
+      'region_name',
+    ];
+
+    for (const field of mergeableFields) {
+      if (!(field in data)) continue;
+      if (!(field in laborFormState)) continue;
+      const incomingValue = typeof data[field] === 'string' ? data[field].trim() : String(data[field] ?? '').trim();
+      if (!incomingValue) continue;
+
+      if (field === 'salary_period' && laborSalaryPeriodTouched) continue;
+      if (isLaborFieldManualLocked(field)) continue;
+
+      const currentValue = String(laborFormState[field] ?? '').trim();
+      if (currentValue) continue;
+
+      laborFormState[field] = incomingValue;
+      const source = String(data[`${field}_source`] || '').trim();
+      if (source) {
+        laborFieldMeta.fields[field] = {
+          ...(laborFieldMeta.fields[field] || {}),
+          source,
+          manualLocked: false,
+        };
+      }
+      changed = true;
+    }
+
+    if (typeof data.confidence === 'number') {
+      laborFieldMeta.confidence = data.confidence;
+    } else if (!Number.isNaN(Number(data.confidence))) {
+      laborFieldMeta.confidence = Number(data.confidence);
+    }
+
+    if (changed) {
+      clearLaborValidation(['vacancy_title', 'salary_raw_text', 'source_url', 'employer_name']);
+      renderLaborFormState();
+    } else {
+      renderLaborMeta();
+    }
+
+    return changed;
+  }
+
+  async function requestJobPostingExtraction() {
+    if (currentMode !== 'labor' || !currentTab?.id) return;
+
+    try {
+      await ensureContentScript();
+      const response = await sendToContent('EXTRACT_JOB_POSTING', {}, 5000);
+      if (response?.found && response.data) {
+        mergeJobPostingDataIntoLaborForm(response.data);
+      }
+    } catch (err) {
+      console.warn('JobPosting extraction skipped:', err);
+      if (currentMode === 'labor') {
+        showLaborResult(getFriendlyLaborErrorMessage('vacancy-data', err), 'error');
+      }
+    }
   }
 
   // ============================================================
@@ -272,6 +672,284 @@
     autoTemplateBanner.classList.remove('hidden');
   }
 
+  function getModeLabel(mode) {
+    return mode === 'labor' ? 'вакансии' : 'материалы';
+  }
+
+  async function restoreCaptureMode() {
+    const saved = await chrome.storage.local.get(MODE_STORAGE_KEY);
+    return saved?.[MODE_STORAGE_KEY] === 'labor' ? 'labor' : 'material';
+  }
+
+  function persistCaptureMode(mode) {
+    return chrome.storage.local.set({ [MODE_STORAGE_KEY]: mode });
+  }
+
+  function hydrateLaborDefaults() {
+    const currentUrl = pageInfo?.url || currentTab?.url || '';
+    const currentTitle = pageInfo?.title || currentTab?.title || '';
+    let hostname = '';
+    try {
+      hostname = currentUrl ? new URL(currentUrl).hostname.replace(/^www\./, '') : '';
+    } catch {
+      hostname = '';
+    }
+
+    if (!laborFormState.source_url && currentUrl) laborFormState.source_url = currentUrl;
+    if (!laborFormState.source_title && currentTitle) laborFormState.source_title = currentTitle;
+    if (!laborFormState.provider_domain && hostname) laborFormState.provider_domain = hostname;
+    if (!laborFormState.provider_title && hostname) laborFormState.provider_title = hostname;
+  }
+
+  function renderLaborFormState() {
+    hydrateLaborDefaults();
+    for (const field of LABOR_FIELDS) {
+      const el = laborFieldRefs[field];
+      if (!el) continue;
+      el.value = laborFormState[field] ?? '';
+    }
+    setLaborDetailsExpanded(laborDetailsExpanded);
+    renderLaborValidation();
+    renderLaborMeta();
+    updateLaborSubmitState();
+  }
+
+  function loadLaborProfilesShell() {
+    const select = laborFieldRefs.labor_profile_id;
+    if (!select) return;
+    select.disabled = true;
+    select.innerHTML = '<option value="">Загрузка профилей работ...</option>';
+    if (laborProfileHint) {
+      laborProfileHint.textContent = 'Загрузка профилей работ...';
+    }
+    updateLaborSubmitState();
+  }
+
+  function setLaborProfileSelectLoading() {
+    const select = laborFieldRefs.labor_profile_id;
+    if (!select) return;
+    select.disabled = true;
+    select.innerHTML = '<option value="">Загрузка профилей работ...</option>';
+    if (laborProfileHint) {
+      laborProfileHint.textContent = 'Загружаем профили работ...';
+    }
+    updateLaborSubmitState();
+  }
+
+  function normalizeLaborProfilesResponse(response) {
+    if (Array.isArray(response?.data?.data)) return response.data.data;
+    if (Array.isArray(response?.data)) return response.data;
+    if (Array.isArray(response)) return response;
+    return [];
+  }
+
+  function renderLaborProfilesSelect() {
+    const select = laborFieldRefs.labor_profile_id;
+    if (!select) return;
+
+    if (!laborProfiles.length) {
+      select.disabled = true;
+      select.innerHTML = '<option value="">Нет профилей работ</option>';
+      laborFormState.labor_profile_id = '';
+      if (laborProfileHint) {
+        laborProfileHint.textContent = 'Создайте профиль работ в системе';
+      }
+      updateLaborSubmitState();
+      return;
+    }
+
+    select.disabled = false;
+    const currentValue = String(laborFormState.labor_profile_id || '');
+    select.innerHTML = [
+      '<option value="">Выберите профиль работ</option>',
+      ...laborProfiles.map((profile) => {
+        const id = String(profile.id ?? '');
+        const selected = id === currentValue ? ' selected' : '';
+        return `<option value="${escapeHtml(id)}"${selected}>${escapeHtml(profile.title || `Профиль #${id}`)}</option>`;
+      }),
+    ].join('');
+
+    if (laborProfileHint) {
+      laborProfileHint.textContent = 'Профиль работ обязателен для отправки вакансии';
+    }
+    updateLaborSubmitState();
+  }
+
+  async function loadLaborProfiles() {
+    if (laborProfilesLoaded) {
+      renderLaborProfilesSelect();
+      return;
+    }
+
+    setLaborProfileSelectLoading();
+    try {
+      const response = await sendToBackground('GET_LABOR_PROFILES');
+      laborProfiles = normalizeLaborProfilesResponse(response);
+      laborProfilesLoaded = true;
+      renderLaborProfilesSelect();
+    } catch (err) {
+      laborProfiles = [];
+      laborProfilesLoaded = false;
+      console.error('Failed to load labor profiles', err);
+      const select = laborFieldRefs.labor_profile_id;
+      if (select) {
+        select.disabled = true;
+        select.innerHTML = '<option value="">Не удалось загрузить профили работ</option>';
+      }
+      if (laborProfileHint) {
+        laborProfileHint.textContent = 'Создайте профиль работ в системе';
+      }
+      showLaborResult(getFriendlyLaborErrorMessage('profiles', err), 'error');
+      updateLaborSubmitState();
+    }
+  }
+
+  function resetLaborFormAfterSuccess() {
+    const keepProfileId = laborFormState.labor_profile_id;
+    const keepHours = laborFormState.hours_per_month || '160';
+    const keepSourceUrl = laborFormState.source_url;
+    const keepProviderTitle = laborFormState.provider_title;
+    const keepProviderDomain = laborFormState.provider_domain;
+    laborFormState = {
+      ...createInitialLaborFormState(),
+      labor_profile_id: keepProfileId,
+      hours_per_month: keepHours,
+      source_url: keepSourceUrl,
+      provider_title: keepProviderTitle,
+      provider_domain: keepProviderDomain,
+    };
+    laborFieldMeta = createInitialLaborFieldMeta();
+    laborSalaryPeriodTouched = false;
+    laborCapturedMeta = {};
+    clearLaborValidation();
+    renderLaborFormState();
+    renderLaborProfilesSelect();
+  }
+
+  async function captureCurrentTabScreenshot() {
+    try {
+      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
+      return await (await fetch(dataUrl)).blob();
+    } catch (err) {
+      console.warn('Screenshot capture failed:', err);
+      return null;
+    }
+  }
+
+  function collectLaborPayload() {
+    hydrateLaborDefaults();
+    laborFormState.currency = 'RUB';
+    const payload = {};
+    for (const field of LABOR_FIELDS) {
+      const raw = laborFormState[field];
+      payload[field] = typeof raw === 'string' ? raw.trim() : raw;
+    }
+    return payload;
+  }
+
+  function buildLaborSelectorsPayload() {
+    const payload = {};
+
+    Object.entries(laborCapturedMeta || {}).forEach(([field, meta]) => {
+      if (!meta || (!meta.selector && !meta.xpath && !meta.value)) return;
+      payload[field] = {
+        value: meta.value || null,
+        selector: meta.selector || null,
+        xpath: meta.xpath || null,
+      };
+    });
+
+    return Object.keys(payload).length ? payload : null;
+  }
+
+  function buildLaborFieldSourcesPayload() {
+    const payload = {};
+
+    Object.entries(laborFieldMeta.fields || {}).forEach(([field, meta]) => {
+      if (!meta?.source) return;
+      payload[field] = {
+        source: meta.source,
+        manual_locked: !!meta.manualLocked,
+      };
+    });
+
+    return Object.keys(payload).length ? payload : null;
+  }
+
+  function validateLaborPayload(payload) {
+    const fieldErrors = {};
+    if (!payload.labor_profile_id) {
+      fieldErrors.labor_profile_id = 'Выберите профиль работ';
+    }
+    if (!payload.source_url) {
+      fieldErrors.source_url = 'Укажите ссылку на источник';
+    }
+    if (!payload.vacancy_title && !payload.salary_raw_text) {
+      fieldErrors.vacancy_title = 'Укажите название вакансии или текст зарплаты';
+      fieldErrors.salary_raw_text = 'Укажите текст зарплаты или название вакансии';
+    }
+    if (!payload.employer_name) {
+      fieldErrors.employer_name = 'Укажите работодателя';
+    }
+    if (!payload.salary_value && !payload.salary_value_min && !payload.salary_value_max && !payload.salary_raw_text) {
+      fieldErrors.salary_raw_text = 'Не удалось определить зарплату';
+    }
+
+    return {
+      fieldErrors,
+      globalMessage: Object.keys(fieldErrors).length > 0 ? 'Заполните обязательные поля вакансии' : '',
+      hasHardErrors: !!(fieldErrors.labor_profile_id || fieldErrors.source_url),
+    };
+  }
+
+  function updateModeSpecificStatus() {
+    if (currentMode === 'labor') {
+      setAutoTemplateBanner('');
+      setSimpleStatus(
+        'Вакансии: укажите профиль и ссылку, затем проверьте зарплату и работодателя.',
+        'warning'
+      );
+      return;
+    }
+
+    evaluateSimpleFlowStatus();
+  }
+
+  function renderModeUI() {
+    const isLaborMode = currentMode === 'labor';
+    materialModePanel?.classList.toggle('hidden', isLaborMode);
+    laborModePanel?.classList.toggle('hidden', !isLaborMode);
+    btnModeMaterial?.classList.toggle('is-active', !isLaborMode);
+    btnModeLabor?.classList.toggle('is-active', isLaborMode);
+    if (modeBadge) {
+      modeBadge.textContent = `Режим: ${getModeLabel(currentMode)}`;
+    }
+    if (isLaborMode) {
+      renderLaborFormState();
+      if (laborProfilesLoaded || laborProfiles.length > 0) {
+        renderLaborProfilesSelect();
+      } else {
+        loadLaborProfilesShell();
+        if (userInfo) {
+          loadLaborProfiles().catch(() => {});
+        }
+      }
+      requestJobPostingExtraction().catch(() => {});
+    } else {
+      clearLaborResult();
+    }
+    updateModeSpecificStatus();
+  }
+
+  function setCaptureMode(mode, options = {}) {
+    const nextMode = mode === 'labor' ? 'labor' : 'material';
+    currentMode = nextMode;
+    renderModeUI();
+    if (options.persist !== false) {
+      persistCaptureMode(nextMode).catch(() => {});
+    }
+  }
+
   function setAdvancedMode(enabled) {
     isAdvancedMode = !!enabled;
     sectionMain.classList.toggle('advanced-mode', isAdvancedMode);
@@ -354,6 +1032,8 @@
       chrome.action.setBadgeText({ text: '' });
     });
     setAdvancedMode(false);
+    currentMode = await restoreCaptureMode();
+    renderModeUI();
 
     // Get current tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -410,11 +1090,16 @@
     statusText.textContent = me.user?.name || 'Подключено';
     setSimpleStatus('Откройте карточку товара. Мы попробуем заполнить поля автоматически.');
     maybeShowOnboarding().catch(() => {});
+    renderModeUI();
 
     // Settings
     settingsUserName.textContent = me.user?.name || '—';
     settingsUserEmail.textContent = me.user?.email || '—';
     settingsRegion.textContent = me.region_id ? `ID: ${me.region_id}` : 'Не задан';
+
+    if (currentMode === 'labor') {
+      loadLaborProfiles().catch(() => {});
+    }
   }
 
   function applyDetectedFields(fields, options = {}) {
@@ -434,6 +1119,11 @@
   }
 
   function evaluateSimpleFlowStatus() {
+    if (currentMode === 'labor') {
+      updateModeSpecificStatus();
+      return;
+    }
+
     if (hasCoreFields()) {
       if (autoFillWarnings.length > 0) {
         setSimpleStatus('Поля найдены, но есть неоднозначности. Проверьте перед добавлением.', 'warning');
@@ -574,12 +1264,21 @@
         schemaBanner.classList.add('hidden');
       }
 
+      if (currentMode === 'labor') {
+        requestJobPostingExtraction().catch(() => {});
+      }
+
       await loadTemplatesList();
-    } catch {
+      renderModeUI();
+    } catch (err) {
+      console.error('Failed to read page data', err);
       pageDomain.textContent = 'Не удалось получить данные';
       pageUrl.textContent = currentTab?.url || '—';
       if (pageLoadingStatus) pageLoadingStatus.classList.add('hidden');
       setSimpleStatus('Не удалось прочитать страницу. Попробуйте обновить ее и открыть расширение снова.', 'error');
+      if (currentMode === 'labor') {
+        showLaborResult(getFriendlyLaborErrorMessage('page-data', err), 'error');
+      }
     }
   }
 
@@ -665,6 +1364,8 @@
   function setupEventListeners() {
     // Auth
     btnConnect.addEventListener('click', handleConnect);
+    btnModeMaterial?.addEventListener('click', () => setCaptureMode('material'));
+    btnModeLabor?.addEventListener('click', () => setCaptureMode('labor'));
 
     // Tabs
     $$('.tab').forEach(tab => {
@@ -706,6 +1407,10 @@
     // Actions
     btnValidate.addEventListener('click', handleValidate);
     btnAddMaterial.addEventListener('click', handleAddMaterial);
+    btnAddLabor?.addEventListener('click', handleAddLabor);
+    btnLaborDetailsToggle?.addEventListener('click', () => {
+      setLaborDetailsExpanded(!laborDetailsExpanded);
+    });
     btnClear.addEventListener('click', handleClear);
     btnSaveTemplate.addEventListener('click', handleSaveTemplate);
     btnApplyTemplate.addEventListener('click', () => handleApplyTemplate());
@@ -714,6 +1419,53 @@
       e.preventDefault();
       chrome.tabs.create({ url: 'https://prismcore.ru' });
     });
+
+    for (const field of LABOR_FIELDS) {
+      const el = laborFieldRefs[field];
+      if (!el) continue;
+      el.addEventListener('input', () => {
+        laborFormState[field] = el.value;
+        markLaborFieldManual(field);
+        clearLaborResult();
+        if (field === 'source_url' || field === 'labor_profile_id') {
+          clearLaborValidation([field]);
+        }
+        if (field === 'vacancy_title' || field === 'salary_raw_text') {
+          clearLaborValidation(['vacancy_title', 'salary_raw_text']);
+        }
+        if (field === 'employer_name') {
+          clearLaborValidation(['employer_name']);
+        }
+        renderLaborMeta();
+        updateLaborSubmitState();
+      });
+      el.addEventListener('change', () => {
+        laborFormState[field] = el.value;
+        markLaborFieldManual(field);
+        if (field === 'salary_period') {
+          laborSalaryPeriodTouched = true;
+          clearLaborValidation(['salary_period']);
+        }
+        if (field === 'source_url') {
+          try {
+            const hostname = el.value ? new URL(el.value).hostname.replace(/^www\./, '') : '';
+            if (hostname) {
+              if (!laborFormState.provider_domain) laborFormState.provider_domain = hostname;
+              if (!laborFormState.provider_title) laborFormState.provider_title = hostname;
+            }
+          } catch { /* ignore invalid URL while typing */ }
+          renderLaborFormState();
+        }
+        renderLaborMeta();
+        updateLaborSubmitState();
+      });
+      if (field === 'salary_raw_text') {
+        el.addEventListener('blur', () => {
+          maybeAutoFillSalaryPeriod();
+          renderLaborFormState();
+        });
+      }
+    }
 
     // Schema.org — initial binding (will be re-bound after schema detection)
     schemaRefs.toggle?.addEventListener('click', toggleSchemaDetails);
@@ -766,8 +1518,22 @@
 
     // Listen for field captures from content script
     chrome.runtime.onMessage.addListener((message) => {
+      if (message.action === 'JOB_POSTING_EXTRACTED' || message.type === 'JOB_POSTING_EXTRACTED') {
+        if (currentMode === 'labor' && message.data) {
+          mergeJobPostingDataIntoLaborForm(message.data);
+        }
+        return;
+      }
+
       if (message.action === 'FIELD_CAPTURED') {
         const { field, value, selector, xpath } = message.data;
+        if (!value) return;
+
+        if (currentMode === 'labor') {
+          applyLaborCapturedField(field, value, selector, xpath);
+          return;
+        }
+
         capturedFields[field] = { value, selector, xpath };
         lastSchemaMapping = null; // Manual capture overrides schema mapping
         updateFieldUI(field, value);
@@ -1133,6 +1899,10 @@
   }
 
   function updateActionButtons() {
+    if (currentMode === 'labor') {
+      return;
+    }
+
     const hasTitle = !!capturedFields.title?.value;
     const hasPrice = !!capturedFields.price?.value;
     const hasAny = hasAnyCapturedValue();
@@ -1171,6 +1941,108 @@
     updateDimensionFieldsVisibility('hardware');
     updateActionButtons();
     evaluateSimpleFlowStatus();
+  }
+
+  async function handleAddLabor() {
+    clearLaborResult();
+    maybeAutoFillSalaryPeriod({ force: true });
+    const payload = collectLaborPayload();
+    const validation = validateLaborPayload(payload);
+    laborValidationErrors = validation.fieldErrors;
+    renderLaborValidation();
+    updateLaborSubmitState();
+    if (Object.keys(validation.fieldErrors).length > 0) {
+      showLaborResult(validation.globalMessage, 'error');
+      setSimpleStatus('Заполните обязательные поля вакансии перед отправкой.', 'error');
+      return;
+    }
+
+    btnAddLabor.disabled = true;
+    btnAddLabor.innerHTML = '<span class="spinner"></span> Снимок...';
+    setSimpleStatus('Делаем снимок страницы для вакансии...', 'warning');
+
+    const screenshotBlob = await captureCurrentTabScreenshot();
+    if (!screenshotBlob) {
+      btnAddLabor.disabled = false;
+      btnAddLabor.textContent = 'Добавить вакансию';
+      showLaborResult(getFriendlyLaborErrorMessage('screenshot'), 'error');
+      setSimpleStatus('Не удалось сделать снимок страницы для вакансии.', 'error');
+      updateLaborSubmitState();
+      return;
+    }
+
+    btnAddLabor.innerHTML = '<span class="spinner"></span> Отправка...';
+    setSimpleStatus('Отправляем вакансию в систему...', 'warning');
+
+    try {
+      const formData = new FormData();
+      formData.append('source_url', payload.source_url);
+      formData.append('labor_profile_id', payload.labor_profile_id);
+      formData.append('capture_mode', 'labor');
+      formData.append('screenshot_file', screenshotBlob, 'labor-screenshot.jpg');
+
+      const optionalFields = [
+        'provider_domain',
+        'provider_title',
+        'source_title',
+        'source_date',
+        'employer_name',
+        'vacancy_title',
+        'vacancy_description',
+        'salary_raw_text',
+        'salary_value',
+        'salary_value_min',
+        'salary_value_max',
+        'salary_period',
+        'hours_per_month',
+        'derived_hourly_rate',
+        'currency',
+        'note',
+      ];
+
+      for (const field of optionalFields) {
+        if (payload[field] !== '' && payload[field] != null) {
+          formData.append(field, payload[field]);
+        }
+      }
+      formData.set('currency', 'RUB');
+
+      if (typeof laborFieldMeta.confidence === 'number' && Number.isFinite(laborFieldMeta.confidence)) {
+        formData.append('confidence', String(laborFieldMeta.confidence));
+      }
+
+      const browserContext = {
+        page_title: pageInfo?.title || currentTab?.title || '',
+        page_domain: pageInfo?.domain || payload.provider_domain || '',
+        captured_mode: 'labor',
+      };
+      formData.append('browser_context_json', JSON.stringify(browserContext));
+
+      const selectorsPayload = buildLaborSelectorsPayload();
+      if (selectorsPayload) {
+        formData.append('selectors_json', JSON.stringify(selectorsPayload));
+      }
+
+      const fieldSourcesPayload = buildLaborFieldSourcesPayload();
+      if (fieldSourcesPayload) {
+        formData.append('field_sources_json', JSON.stringify(fieldSourcesPayload));
+      }
+
+      const response = await prizmApi.captureLabor(formData);
+      const sourceId = response?.labor_evidence_source?.id;
+      const parts = ['Вакансия добавлена'];
+      if (sourceId) parts.push(`источник #${sourceId}`);
+
+      showLaborResult(parts.join(' · '), 'success');
+      setSimpleStatus('Вакансия сохранена. Можно переходить к следующей карточке.', 'success');
+      resetLaborFormAfterSuccess();
+    } catch (err) {
+      showLaborResult(getFriendlyLaborErrorMessage('submit', err), 'error');
+      setSimpleStatus('Ошибка отправки вакансии. Проверьте данные и повторите.', 'error');
+    } finally {
+      btnAddLabor.textContent = 'Добавить вакансию';
+      updateLaborSubmitState();
+    }
   }
 
   // ============================================================
@@ -1301,12 +2173,7 @@
     let screenshotBlob = null;
     setSimpleStatus('Делаем снимок страницы для доказательной базы...');
     btnAddMaterial.innerHTML = '<span class="spinner"></span> Снимок...';
-    try {
-      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
-      screenshotBlob = await (await fetch(dataUrl)).blob();
-    } catch (screenshotErr) {
-      console.warn('Screenshot capture failed — proceeding without it:', screenshotErr);
-    }
+    screenshotBlob = await captureCurrentTabScreenshot();
 
     // Phase 2: build FormData and send
     btnAddMaterial.innerHTML = '<span class="spinner"></span> Сохранение...';

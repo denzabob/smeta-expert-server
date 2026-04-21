@@ -65,6 +65,9 @@ async function handleMessage(message, sender) {
     case 'GET_GENERIC_ITEMS':
       return await prizmApi.getGenericItems();
 
+    case 'GET_LABOR_PROFILES':
+      return await prizmApi.getLaborProfiles();
+
     case 'CHECK_AUTH':
       return { authenticated: await prizmApi.isAuthenticated() };
 

@@ -228,6 +228,14 @@ class PrizmAPI {
   }
 
   /**
+   * GET /api/pricing/labor/profiles
+   * Load user labor profiles for manual labor capture.
+   */
+  async getLaborProfiles() {
+    return this.request('GET', '/pricing/labor/profiles?is_active=1&per_page=100');
+  }
+
+  /**
    * POST /api/chrome/capture-observation
    * Create a standalone evidence record (not tied to a run item).
    * Must be called directly from popup (FormData cannot be serialized).
@@ -326,6 +334,47 @@ class PrizmAPI {
       err.status = response.status;
       throw err;
     }
+    return data;
+  }
+
+  /**
+   * POST /api/chrome/labor-captures
+   * Submit labor vacancy evidence with screenshot.
+   * Must be called directly from popup because FormData cannot be serialized
+   * through chrome.runtime.sendMessage.
+   */
+  async captureLabor(formData) {
+    await this.ready();
+    if (!this.token) {
+      throw new Error('Не авторизован. Подключите API-токен в настройках расширения.');
+    }
+
+    const url = `${this.baseUrl}/chrome/labor-captures`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${this.token}`,
+      },
+      body: formData,
+    });
+
+    if (response.status === 401) {
+      await chrome.storage.local.remove('authToken');
+      this.token = null;
+      throw new Error('Сессия истекла. Войдите заново.');
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      const message = data.error || data.message || (typeof data.errors === 'object'
+        ? Object.values(data.errors).flat().join('; ')
+        : `Ошибка сервера (${response.status})`);
+      const err = new Error(message);
+      err.status = response.status;
+      throw err;
+    }
+
     return data;
   }
 }

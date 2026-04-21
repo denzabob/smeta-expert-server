@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\LaborProfile;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 use Illuminate\Validation\Rule;
 
 class StoreChromeLaborCaptureRequest extends FormRequest
@@ -46,13 +47,34 @@ class StoreChromeLaborCaptureRequest extends FormRequest
             'capture_mode' => ['nullable', Rule::in(['labor'])],
             'browser_context_json' => 'nullable|json',
             'selectors_json' => 'nullable|json',
+            'field_sources_json' => 'nullable|json',
+            'confidence' => 'nullable|numeric|min:0|max:1',
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $hasSalary = $this->filled('salary_raw_text')
+                || $this->filled('salary_value')
+                || $this->filled('salary_value_min')
+                || $this->filled('salary_value_max')
+                || $this->filled('derived_hourly_rate');
+
+            if ($hasSalary) {
+                return;
+            }
+
+            $validator->errors()->add('salary_raw_text', 'Укажите зарплату вакансии.');
+        });
     }
 
     public function messages(): array
     {
         return [
-            'labor_profile_id.required' => 'Labor profile must be selected for evidence source.',
+            'source_url.required' => 'Укажите ссылку на источник.',
+            'screenshot_file.required' => 'Не удалось сделать скриншот страницы.',
+            'labor_profile_id.required' => 'Выберите профиль работ.',
         ];
     }
 }

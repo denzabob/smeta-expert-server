@@ -9,10 +9,12 @@ use App\Evidence\VerificationStatus as EvidenceVerificationStatus;
 use App\Models\EvidenceRecord;
 use App\Models\LaborEvidenceSource;
 use App\Models\LaborProvider;
+use App\Models\Project;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -21,6 +23,7 @@ class ChromeLaborCaptureService
     public function __construct(
         private readonly UrlNormalizer $urlNormalizer,
         private readonly LaborEvidenceAssetService $assetService,
+        private readonly ProjectLaborWorkRateApplierService $rateApplier,
     ) {}
 
     public function capture(User $user, array $payload, UploadedFile $screenshot): array
@@ -44,6 +47,7 @@ class ChromeLaborCaptureService
                 'observed_at' => $this->resolveObservedAt($payload['source_date'] ?? null),
                 'extracted_name' => $payload['vacancy_title'] ?? $payload['source_title'] ?? null,
                 'metadata_json' => $this->buildMetadata($payload),
+                'confidence_score' => $this->resolveConfidenceScore($payload['confidence'] ?? null),
                 'created_by' => $user->id,
             ]);
 
@@ -87,6 +91,8 @@ class ChromeLaborCaptureService
                 'laborProfile',
                 'evidenceRecord.assets',
             ]);
+
+            $this->attachEvidenceToRelevantProjects($user, $source, $laborProfileId);
 
             return [
                 'labor_evidence_source' => $source,
@@ -205,12 +211,83 @@ class ChromeLaborCaptureService
     private function buildMetadata(array $payload): ?array
     {
         $meta = [];
-        foreach (['capture_mode', 'browser_context_json', 'selectors_json'] as $key) {
-            if (!empty($payload[$key])) {
-                $meta[$key] = $payload[$key];
+
+        foreach (['capture_mode', 'browser_context_json', 'selectors_json', 'field_sources_json'] as $key) {
+            $value = $this->decodeJsonValue($payload[$key] ?? null);
+            if ($value !== null && $value !== '' && $value !== []) {
+                $meta[$key] = $value;
             }
         }
 
+        $rawData = array_filter([
+            'salary_raw_text' => $payload['salary_raw_text'] ?? null,
+            'sources' => $this->decodeJsonValue($payload['field_sources_json'] ?? null),
+            'selectors' => $this->decodeJsonValue($payload['selectors_json'] ?? null),
+        ], static fn ($value) => $value !== null && $value !== '' && $value !== []);
+
+        if ($rawData !== []) {
+            $meta['raw_data'] = $rawData;
+        }
+
+        if (isset($payload['confidence']) && $payload['confidence'] !== '') {
+            $meta['confidence'] = (float) $payload['confidence'];
+        }
+
         return $meta !== [] ? $meta : null;
+    }
+
+    private function decodeJsonValue(mixed $value): mixed
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return $value;
+        }
+
+        $decoded = json_decode($value, true);
+
+        return json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
+    }
+
+    private function resolveConfidenceScore(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $normalized = (float) $value;
+        $normalized = max(0, min(1, $normalized));
+
+        return (int) round($normalized * 100);
+    }
+
+    private function attachEvidenceToRelevantProjects(User $user, LaborEvidenceSource $source, ?int $laborProfileId): void
+    {
+        if (!$laborProfileId || !$source->exists) {
+            return;
+        }
+
+        Log::info('labor_cost_recalculated', [
+            'labor_profile_id' => $laborProfileId,
+            'user_id' => $user->id,
+            'labor_evidence_source_id' => $source->id,
+        ]);
+
+        $projects = Project::query()
+            ->where('user_id', $user->id)
+            ->whereHas('laborWorks', function ($query) use ($laborProfileId) {
+                $query->where('labor_profile_id', $laborProfileId);
+            })
+            ->get();
+
+        foreach ($projects as $project) {
+            $project->laborEvidenceSources()->syncWithoutDetaching([$source->id]);
+            $this->rateApplier->apply($project);
+
+            Log::info('project_rates_updated', [
+                'project_id' => $project->id,
+                'labor_profile_id' => $laborProfileId,
+                'labor_evidence_source_id' => $source->id,
+                'user_id' => $user->id,
+            ]);
+        }
     }
 }

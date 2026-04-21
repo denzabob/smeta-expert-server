@@ -240,6 +240,12 @@
     thickness: 'Толщина (мм)',
     length: 'Длина (мм)',
     width: 'Ширина (мм)',
+    vacancy_title: 'Название вакансии',
+    employer_name: 'Работодатель',
+    salary_raw_text: 'Текст зарплаты',
+    vacancy_description: 'Описание вакансии',
+    source_title: 'Заголовок источника',
+    source_date: 'Дата публикации',
   };
 
   const FIELD_COLORS = {
@@ -249,6 +255,12 @@
     thickness: '#7C3AED',
     length: '#0891B2',
     width: '#D946EF',
+    vacancy_title: '#4F46E5',
+    employer_name: '#D97706',
+    salary_raw_text: '#059669',
+    vacancy_description: '#7C3AED',
+    source_title: '#0891B2',
+    source_date: '#D946EF',
   };
 
   // Material type detection and dimension parsing are handled by the backend
@@ -1038,6 +1050,760 @@
     return result;
   }
 
+  function hasSchemaType(node, expectedType) {
+    if (!node || typeof node !== 'object') return false;
+    const schemaType = node['@type'];
+    if (Array.isArray(schemaType)) {
+      return schemaType.some((item) => String(item || '').toLowerCase() === String(expectedType).toLowerCase());
+    }
+    return String(schemaType || '').toLowerCase() === String(expectedType).toLowerCase();
+  }
+
+  function collectJsonLdNodes(root, bucket, visited = new Set()) {
+    if (!root || typeof root !== 'object') return;
+
+    if (Array.isArray(root)) {
+      root.forEach((item) => collectJsonLdNodes(item, bucket, visited));
+      return;
+    }
+
+    if (visited.has(root)) return;
+    visited.add(root);
+    bucket.push(root);
+
+    if (root['@graph']) {
+      collectJsonLdNodes(root['@graph'], bucket, visited);
+    }
+
+    Object.values(root).forEach((value) => {
+      if (value && typeof value === 'object') {
+        collectJsonLdNodes(value, bucket, visited);
+      }
+    });
+  }
+
+  function getJsonLdNodes() {
+    const nodes = [];
+    document.querySelectorAll('script[type="application/ld+json"]').forEach((script) => {
+      try {
+        const parsed = JSON.parse(script.textContent);
+        collectJsonLdNodes(parsed, nodes);
+      } catch {
+        // Ignore invalid JSON-LD blocks.
+      }
+    });
+    return nodes;
+  }
+
+  function firstNonEmptyValue(...values) {
+    for (const value of values) {
+      if (Array.isArray(value)) {
+        const nested = firstNonEmptyValue(...value);
+        if (nested) return nested;
+        continue;
+      }
+      if (value == null) continue;
+      const stringValue = String(value).trim();
+      if (stringValue) return stringValue;
+    }
+    return '';
+  }
+
+  function getNestedValue(source, path) {
+    if (!source || !path) return undefined;
+    const parts = Array.isArray(path) ? path : String(path).split('.');
+    let current = source;
+    for (const part of parts) {
+      if (current == null) return undefined;
+      if (Array.isArray(current)) {
+        current = current.find((item) => item != null);
+      }
+      current = current?.[part];
+    }
+    return current;
+  }
+
+  function getNestedString(source, path) {
+    const value = getNestedValue(source, path);
+    return firstNonEmptyValue(value);
+  }
+
+  function normalizeSchemaNumber(value) {
+    if (value == null || value === '') return '';
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+    const stringValue = String(value).trim();
+    if (!stringValue) return '';
+    const normalized = stringValue.replace(/\s+/g, '').replace(',', '.');
+    const asNumber = Number(normalized);
+    if (!Number.isNaN(asNumber) && Number.isFinite(asNumber)) {
+      return String(asNumber);
+    }
+    return stringValue;
+  }
+
+  function mapSalaryUnitText(unitText) {
+    const value = String(unitText || '').trim().toLowerCase();
+    if (!value) return '';
+    if (['month', 'monthly', 'mon', 'months', 'мес', 'месяц', 'месяц.', 'monthtext'].includes(value) || /month|мес|месяц/.test(value)) {
+      return 'month';
+    }
+    if (['hour', 'hourly', 'hr', 'ч', 'час', 'час.'].includes(value) || /hour|час|\/ч/.test(value)) {
+      return 'hour';
+    }
+    if (['year', 'yearly', 'annual', 'yr', 'год', 'года', 'год.'].includes(value) || /year|annual|год/.test(value)) {
+      return 'year';
+    }
+    return '';
+  }
+
+  function detectSalaryPeriodFromText(text) {
+    const value = String(text || '').trim().toLowerCase();
+    if (!value) return '';
+    if (/\/\s*мес\b|мес(?:яц)?\.?|месяц|в\s*месяц|за\s*месяц/.test(value)) return 'month';
+    if (/\/\s*ч\b|\/ч\b|час|в\s*час|за\s*час|\bч\b/.test(value)) return 'hour';
+    if (/день|в\s*день|за\s*день/.test(value)) return 'day';
+    if (/год|в\s*год|за\s*год/.test(value)) return 'year';
+    return '';
+  }
+
+  function normalizeWhitespace(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function getCurrentHostname() {
+    return (window.location.hostname || '').replace(/^www\./, '').toLowerCase();
+  }
+
+  function isVisibleElement(el) {
+    try {
+      if (!el || !(el instanceof Element)) return false;
+      const style = window.getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+        return false;
+      }
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  function isNoiseText(text) {
+    return /похожие вакансии|рекоменд|поделиться|footer|реклама|продвиг|legal|условия использования|политика конфиденциальности|другие объявления/i.test(String(text || ''));
+  }
+
+  function isNoiseContainer(el) {
+    try {
+      if (!el || !(el instanceof Element)) return false;
+      const noiseSelector = [
+        'aside',
+        'footer',
+        '[class*="sidebar"]',
+        '[class*="recommend"]',
+        '[class*="similar"]',
+        '[class*="promo"]',
+        '[class*="banner"]',
+        '[class*="advert"]',
+        '[data-qa*="similar"]',
+        '[data-qa*="recommend"]',
+      ].join(', ');
+      return !!el.closest(noiseSelector);
+    } catch {
+      return false;
+    }
+  }
+
+  function getTitleAnchorElement() {
+    try {
+      return document.querySelector('[data-qa="vacancy-title"], h1');
+    } catch {
+      return null;
+    }
+  }
+
+  function isInsidePrimaryContent(el) {
+    try {
+      return !!el?.closest('main, article, [role="main"], [class*="content"], [class*="vacancy"], [class*="job"]');
+    } catch {
+      return false;
+    }
+  }
+
+  function distanceToTitle(el) {
+    try {
+      const titleEl = getTitleAnchorElement();
+      if (!titleEl || !el) return Number.POSITIVE_INFINITY;
+      if (titleEl === el || titleEl.contains(el) || el.contains(titleEl)) return 0;
+      const titleRect = titleEl.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      return Math.abs(elRect.top - titleRect.bottom);
+    } catch {
+      return Number.POSITIVE_INFINITY;
+    }
+  }
+
+  function scoreVacancyCandidate(el, text, options = {}) {
+    const value = normalizeWhitespace(text);
+    if (!value) return Number.NEGATIVE_INFINITY;
+
+    let score = 0;
+    if (isVisibleElement(el)) score += 4;
+    if (isInsidePrimaryContent(el)) score += 5;
+    if (isNoiseContainer(el)) score -= 8;
+    if (isNoiseText(value)) score -= 10;
+
+    const titleDistance = distanceToTitle(el);
+    if (Number.isFinite(titleDistance)) {
+      if (titleDistance <= 120) score += 6;
+      else if (titleDistance <= 300) score += 3;
+      else if (titleDistance > 900) score -= 2;
+    }
+
+    const length = value.length;
+    if (options.kind === 'title') {
+      if (length >= 8 && length <= 160) score += 6;
+      else score -= 4;
+      if (el?.tagName === 'H1') score += 8;
+    }
+    if (options.kind === 'employer') {
+      if (length >= 2 && length <= 120) score += 4;
+      if (/(ооо|ип|llc|inc|corp|company|компания)/i.test(value)) score += 2;
+      if (/(вакансия|работодатель|зарплата|обязанности|откликнуться|похожие вакансии)/i.test(value)) score -= 10;
+    }
+    if (options.kind === 'salary') {
+      if (/(₽|руб|\$|€|usd|eur)/i.test(value)) score += 7;
+      if (/\d/.test(value)) score += 4;
+      if (length <= 160) score += 2;
+      if (/похожие|рекоменд|цена доставки|скидка/i.test(value)) score -= 12;
+    }
+    if (options.kind === 'description') {
+      if (length >= 180 && length <= 5000) score += 5;
+      if (el?.matches?.('[data-qa="vacancy-description"], article, main article')) score += 6;
+      if (/похожие вакансии|рекоменд|откликнуться|поделиться|компания также предлагает/i.test(value)) score -= 12;
+    }
+
+    return score;
+  }
+
+  function chooseBestTextCandidate(candidates, options = {}) {
+    const minScore = options.minScore ?? 1;
+    const normalized = candidates
+      .map((candidate) => ({
+        ...candidate,
+        text: normalizeWhitespace(candidate.text),
+      }))
+      .filter((candidate) => candidate.text)
+      .map((candidate) => ({
+        ...candidate,
+        score: scoreVacancyCandidate(candidate.el, candidate.text, options),
+      }))
+      .sort((a, b) => b.score - a.score);
+
+    if (!normalized.length) return '';
+    if (normalized[0].score < minScore) return '';
+    return normalized[0].text;
+  }
+
+  function collectCandidatesFromSelectors(selectors, options = {}) {
+    const candidates = [];
+    selectors.forEach((selector) => {
+      try {
+        document.querySelectorAll(selector).forEach((el) => {
+          const text = normalizeWhitespace(extractText(el));
+          if (!text) return;
+          if (options.minLength && text.length < options.minLength) return;
+          if (options.maxLength && text.length > options.maxLength) return;
+          candidates.push({ el, text });
+        });
+      } catch {
+        // Ignore invalid selectors in heuristic mode.
+      }
+    });
+    return candidates;
+  }
+
+  function parseSalaryNumber(raw) {
+    const normalized = normalizeWhitespace(raw).replace(/[^\d,.\s]/g, '').trim();
+    if (!normalized) return '';
+    const compact = normalized.replace(/\s+/g, '').replace(',', '.');
+    const parsed = Number(compact);
+    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+      return String(parsed);
+    }
+    return '';
+  }
+
+  function parseSalaryFromText(text) {
+    const salaryRaw = normalizeWhitespace(text);
+    if (!salaryRaw) return {};
+
+    const result = {
+      salary_raw_text: salaryRaw,
+      salary_period: detectSalaryPeriodFromText(salaryRaw),
+    };
+
+    const rangeDashMatch = salaryRaw.match(/(\d[\d\s]{1,20})\s*[–-]\s*(\d[\d\s]{1,20})/u);
+    if (rangeDashMatch) {
+      const minValue = parseSalaryNumber(rangeDashMatch[1]);
+      const maxValue = parseSalaryNumber(rangeDashMatch[2]);
+      if (minValue) result.salary_value_min = minValue;
+      if (maxValue) result.salary_value_max = maxValue;
+      return result;
+    }
+
+    const rangeWordsMatch = salaryRaw.match(/от\s+(\d[\d\s]{1,20})\s+до\s+(\d[\d\s]{1,20})/iu);
+    if (rangeWordsMatch) {
+      const minValue = parseSalaryNumber(rangeWordsMatch[1]);
+      const maxValue = parseSalaryNumber(rangeWordsMatch[2]);
+      if (minValue) result.salary_value_min = minValue;
+      if (maxValue) result.salary_value_max = maxValue;
+      return result;
+    }
+
+    const upperBoundMatch = salaryRaw.match(/до\s+(\d[\d\s]{1,20})/iu);
+    if (upperBoundMatch) {
+      const maxValue = parseSalaryNumber(upperBoundMatch[1]);
+      if (maxValue) result.salary_value_max = maxValue;
+      return result;
+    }
+
+    const singleValueMatch = salaryRaw.match(/(\d[\d\s]{1,20})(?:\s*(?:₽|руб|руб\.|\$|usd|eur|€))?/iu);
+    if (singleValueMatch) {
+      const singleValue = parseSalaryNumber(singleValueMatch[1]);
+      if (singleValue) {
+        result.salary_value = singleValue;
+      }
+    }
+
+    return result;
+  }
+
+  function pickFirstReasonableText(selectors, options = {}) {
+    const minLength = options.minLength || 2;
+    const maxLength = options.maxLength || 240;
+    const rejectPattern = options.rejectPattern || null;
+
+    for (const selector of selectors) {
+      try {
+        const el = document.querySelector(selector);
+        if (!el) continue;
+        const text = normalizeWhitespace(extractText(el));
+        if (!text || text.length < minLength || text.length > maxLength) continue;
+        if (rejectPattern && rejectPattern.test(text)) continue;
+        return text;
+      } catch {
+        // Ignore invalid selectors in fallback mode.
+      }
+    }
+
+    return '';
+  }
+
+  function findVacancyTitleFromDom() {
+    const candidates = collectCandidatesFromSelectors([
+      'h1',
+      '[data-qa="vacancy-title"]',
+      '[class*="vacancy-title"]',
+      '[class*="job-title"]',
+      '[class*="title"]',
+    ], { minLength: 3, maxLength: 180 });
+    const selectorTitle = chooseBestTextCandidate(candidates, { kind: 'title', minScore: 3 });
+    if (selectorTitle) return cleanupTitle(selectorTitle);
+
+    const ogTitle = cleanupTitle(getMetaContent('meta[property="og:title"]'));
+    if (ogTitle) return ogTitle;
+
+    return cleanupTitle(document.title || '');
+  }
+
+  function findEmployerFromDom() {
+    const directEmployer = chooseBestTextCandidate(collectCandidatesFromSelectors([
+      '[data-qa="vacancy-company-name"]',
+      '.vacancy-company-name',
+      '.company-name',
+      '[class*="company-name"]',
+      '[class*="company"] [class*="name"]',
+      '[class*="employer"]',
+      '[class*="company"]',
+    ], {
+      minLength: 2,
+      maxLength: 120,
+    }), { kind: 'employer', minScore: 2 });
+    if (directEmployer) return directEmployer;
+
+    try {
+      const titleEl = document.querySelector('[data-qa="vacancy-title"], h1');
+      if (titleEl?.parentElement) {
+        const nearbyCandidates = Array.from(titleEl.parentElement.querySelectorAll('*'))
+          .map((el) => ({ el, text: normalizeWhitespace(extractText(el)) }))
+          .filter((candidate) => candidate.text && candidate.text.length >= 2 && candidate.text.length <= 120);
+        const nearbyText = chooseBestTextCandidate(nearbyCandidates, { kind: 'employer', minScore: 2 });
+        if (nearbyText) return nearbyText;
+      }
+    } catch {
+      // Ignore DOM traversal issues.
+    }
+
+    return '';
+  }
+
+  function findSalaryTextFromDom() {
+    const directSalary = chooseBestTextCandidate(collectCandidatesFromSelectors([
+      '[data-qa="vacancy-salary"]',
+      '.vacancy-salary',
+      '[class*="salary"]',
+      '[class*="compensation"]',
+      '[class*="income"]',
+      '[class*="pay"]',
+    ], {
+      minLength: 3,
+      maxLength: 160,
+    }), { kind: 'salary', minScore: 4 });
+    if (directSalary && /₽|руб|\$|€|eur|usd|\d/.test(directSalary)) {
+      return directSalary;
+    }
+
+    try {
+      const titleEl = getTitleAnchorElement();
+      const scopeRoot = titleEl?.closest('main, article, [role="main"], [class*="content"], [class*="vacancy"], [class*="job"]') || document.body;
+      const candidates = Array.from(scopeRoot.querySelectorAll('*'))
+        .slice(0, 500)
+        .map((el) => ({ el, text: normalizeWhitespace(extractText(el)) }))
+        .filter((candidate) => candidate.text && candidate.text.length >= 3 && candidate.text.length <= 160)
+        .filter((candidate) => /₽|руб|\$|€|eur|usd/.test(candidate.text));
+      return chooseBestTextCandidate(candidates, { kind: 'salary', minScore: 4 }) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function findVacancyDescriptionFromDom() {
+    const directDescription = chooseBestTextCandidate(collectCandidatesFromSelectors([
+      '[data-qa="vacancy-description"]',
+      'article',
+      'main article',
+      'main section',
+      '[class*="description"]',
+      '[class*="vacancy-description"]',
+    ], {
+      minLength: 120,
+      maxLength: 4000,
+    }), { kind: 'description', minScore: 5 });
+    if (directDescription) return directDescription;
+
+    try {
+      const candidates = Array.from(document.querySelectorAll('main, article, section'))
+        .map((el) => ({ el, text: normalizeWhitespace(extractText(el)) }))
+        .filter((candidate) => candidate.text && candidate.text.length >= 120 && candidate.text.length <= 4000);
+      return chooseBestTextCandidate(candidates, { kind: 'description', minScore: 6 }) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function extractSiteAwareFallbackData(existingPayload = {}) {
+    const hostname = getCurrentHostname();
+    const result = {};
+
+    function fillIfMissing(field, value) {
+      const normalized = normalizeWhitespace(value);
+      if (!normalized) return;
+      if (existingPayload[field] || result[field]) return;
+      result[field] = normalized;
+    }
+
+    try {
+      if (hostname.endsWith('hh.ru')) {
+        fillIfMissing('vacancy_title', pickFirstReasonableText(['[data-qa="vacancy-title"]'], { minLength: 3, maxLength: 180 }));
+        fillIfMissing('employer_name', pickFirstReasonableText(['[data-qa="vacancy-company-name"]'], { minLength: 2, maxLength: 120 }));
+        const hhSalary = pickFirstReasonableText(['[data-qa="vacancy-salary"]'], { minLength: 3, maxLength: 160 });
+        if (!existingPayload.salary_raw_text && hhSalary) {
+          Object.assign(result, parseSalaryFromText(hhSalary));
+        }
+        fillIfMissing('vacancy_description', pickFirstReasonableText(['[data-qa="vacancy-description"]'], { minLength: 120, maxLength: 4000 }));
+      }
+
+      if (hostname.endsWith('avito.ru')) {
+        fillIfMissing('vacancy_title', pickFirstReasonableText(['[itemprop="name"]', '[data-marker*="item-title"]', 'h1'], { minLength: 3, maxLength: 180 }));
+        const avitoSalary = pickFirstReasonableText(['[itemprop="price"]', '[data-marker*="item-price"]', '[class*="price"]'], { minLength: 3, maxLength: 160 });
+        if (!existingPayload.salary_raw_text && avitoSalary) {
+          Object.assign(result, parseSalaryFromText(avitoSalary));
+        }
+      }
+    } catch {
+      // Site-aware fallbacks are best-effort only.
+    }
+
+    return result;
+  }
+
+  function extractOfferData(offerNode) {
+    const offer = Array.isArray(offerNode)
+      ? (offerNode.find((item) => item && typeof item === 'object') || offerNode[0])
+      : offerNode;
+
+    if (!offer || typeof offer !== 'object') return {};
+
+    const result = {};
+    const priceValue = normalizeSchemaNumber(offer.price);
+    if (priceValue) {
+      result.salary_value = priceValue;
+      result.salary_value_source = 'offer';
+    }
+    const currency = firstNonEmptyValue(offer.priceCurrency);
+    if (currency) {
+      result.currency = currency;
+      result.currency_source = 'offer';
+    }
+    return result;
+  }
+
+  function extractDomFallbackData() {
+    const result = {};
+    const title = findVacancyTitleFromDom();
+    if (title) {
+      result.vacancy_title = title;
+      result.vacancy_title_source = 'dom';
+    }
+
+    const employer = findEmployerFromDom();
+    if (employer) {
+      result.employer_name = employer;
+      result.employer_name_source = 'dom';
+    }
+
+    const salaryRawText = findSalaryTextFromDom();
+    if (salaryRawText) {
+      result.salary_raw_text = salaryRawText;
+      result.salary_raw_text_source = 'dom';
+      const parsed = parseSalaryFromText(salaryRawText);
+      Object.assign(result, parsed);
+      if (parsed.salary_value) result.salary_value_source = 'dom';
+      if (parsed.salary_value_min) result.salary_value_min_source = 'dom';
+      if (parsed.salary_value_max) result.salary_value_max_source = 'dom';
+      if (parsed.salary_period) result.salary_period_source = 'parsed';
+    }
+
+    const description = findVacancyDescriptionFromDom();
+    if (description) {
+      result.vacancy_description = description;
+      result.vacancy_description_source = 'dom';
+    }
+
+    return result;
+  }
+
+  function setFieldWithSource(target, field, value, source) {
+    const normalizedValue = typeof value === 'string' ? value.trim() : value;
+    if (normalizedValue == null || String(normalizedValue).trim() === '') return;
+    if (target[field] == null || String(target[field]).trim() === '') {
+      target[field] = normalizedValue;
+      target[`${field}_source`] = source;
+    }
+  }
+
+  function mergeByPriority(target, source) {
+    if (!source || typeof source !== 'object') return target;
+    Object.entries(source).forEach(([key, value]) => {
+      if (key.endsWith('_source') || key === 'confidence') return;
+      const normalizedValue = typeof value === 'string' ? value.trim() : value;
+      if (normalizedValue == null || String(normalizedValue).trim() === '') return;
+      if (target[key] == null || String(target[key]).trim() === '') {
+        target[key] = normalizedValue;
+        const sourceKey = `${key}_source`;
+        const sourceValue = source[sourceKey];
+        if (sourceValue && !target[sourceKey]) {
+          target[sourceKey] = sourceValue;
+        }
+      }
+    });
+    return target;
+  }
+
+  function detectConflicts(...sources) {
+    const conflicts = new Set();
+    const trackedFields = ['vacancy_title', 'employer_name', 'salary_value', 'salary_value_min', 'salary_value_max', 'salary_raw_text'];
+    trackedFields.forEach((field) => {
+      const values = sources
+        .map((source) => normalizeWhitespace(source?.[field]))
+        .filter((value) => value);
+      if (values.length <= 1) return;
+      const unique = Array.from(new Set(values));
+      if (unique.length > 1) {
+        conflicts.add(field);
+      }
+    });
+    return conflicts;
+  }
+
+  function calculateExtractionConfidence({ schemaData, offerData, domData, siteAwareData, conflicts }) {
+    let confidence = 0;
+    if (Object.keys(schemaData || {}).some((key) => !key.endsWith('_source'))) confidence += 0.5;
+    if (Object.keys(offerData || {}).some((key) => !key.endsWith('_source'))) confidence += 0.2;
+    if (domData?.vacancy_title || domData?.salary_raw_text || domData?.employer_name) confidence += 0.2;
+    if (
+      Object.keys(siteAwareData || {}).some((key) => !key.endsWith('_source')) &&
+      !Object.keys(domData || {}).some((key) => !key.endsWith('_source'))
+    ) {
+      confidence -= 0.2;
+    }
+    if (conflicts?.size) confidence -= 0.3;
+    if (confidence < 0) confidence = 0;
+    if (confidence > 1) confidence = 1;
+    return Number(confidence.toFixed(2));
+  }
+
+  function pickPrimarySchemaNode(nodes, type) {
+    const candidates = nodes.filter((node) => hasSchemaType(node, type));
+    if (!candidates.length) return null;
+
+    const scored = candidates.map((node) => {
+      let score = 0;
+      if (firstNonEmptyValue(node.title, node.name)) score += 3;
+      if (firstNonEmptyValue(node.description)) score += 2;
+      if (getNestedValue(node, 'baseSalary')) score += 2;
+      if (getNestedValue(node, 'hiringOrganization')) score += 1;
+      if (getNestedValue(node, 'jobLocation')) score += 1;
+      score += Object.keys(node || {}).length * 0.01;
+      return { node, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0].node;
+  }
+
+  function extractSalaryFromJobPosting(jobPosting, offerNode) {
+    const salary = {};
+    let baseSalary = jobPosting?.baseSalary;
+    if (Array.isArray(baseSalary)) {
+      baseSalary = baseSalary.find((item) => item != null) || baseSalary[0];
+    }
+
+    let salaryValueNode = baseSalary;
+    if (baseSalary && typeof baseSalary === 'object' && baseSalary.value != null) {
+      salaryValueNode = baseSalary.value;
+    }
+
+    if (salaryValueNode && typeof salaryValueNode === 'object') {
+      const exactValue = normalizeSchemaNumber(salaryValueNode.value);
+      const minValue = normalizeSchemaNumber(salaryValueNode.minValue);
+      const maxValue = normalizeSchemaNumber(salaryValueNode.maxValue);
+      if (exactValue) salary.salary_value = exactValue;
+      if (minValue) salary.salary_value_min = minValue;
+      if (maxValue) salary.salary_value_max = maxValue;
+      salary.salary_period = mapSalaryUnitText(salaryValueNode.unitText || salaryValueNode.unitCode);
+    } else {
+      const exactValue = normalizeSchemaNumber(salaryValueNode);
+      if (exactValue) salary.salary_value = exactValue;
+    }
+
+    const fallbackOffer = Array.isArray(offerNode)
+      ? (offerNode.find((item) => item && typeof item === 'object') || offerNode[0])
+      : offerNode;
+
+    if (!salary.salary_value && fallbackOffer?.price != null) {
+      const offerPrice = normalizeSchemaNumber(fallbackOffer.price);
+      if (offerPrice) salary.salary_value = offerPrice;
+    }
+
+    if (!salary.currency) {
+      salary.currency = firstNonEmptyValue(
+        baseSalary?.currency,
+        getNestedValue(baseSalary, 'value.currency'),
+        fallbackOffer?.priceCurrency,
+        jobPosting?.salaryCurrency
+      );
+    }
+
+    return salary;
+  }
+
+  function extractJobPostingData() {
+    const jsonLdNodes = getJsonLdNodes();
+    const jobPosting = pickPrimarySchemaNode(jsonLdNodes, 'JobPosting');
+    const offerNode = jobPosting?.offers || pickPrimarySchemaNode(jsonLdNodes, 'Offer');
+
+    const schemaData = jobPosting ? {
+      vacancy_title: firstNonEmptyValue(jobPosting.title, jobPosting.name),
+      vacancy_title_source: firstNonEmptyValue(jobPosting.title, jobPosting.name) ? 'schema' : '',
+      vacancy_description: firstNonEmptyValue(jobPosting.description),
+      vacancy_description_source: firstNonEmptyValue(jobPosting.description) ? 'schema' : '',
+      employer_name: getNestedString(jobPosting, 'hiringOrganization.name'),
+      employer_name_source: getNestedString(jobPosting, 'hiringOrganization.name') ? 'schema' : '',
+      source_date: firstNonEmptyValue(jobPosting.datePosted),
+      source_date_source: firstNonEmptyValue(jobPosting.datePosted) ? 'schema' : '',
+      source_url: firstNonEmptyValue(jobPosting.sameAs, jobPosting.url),
+      source_url_source: firstNonEmptyValue(jobPosting.sameAs, jobPosting.url) ? 'schema' : '',
+      region_name: firstNonEmptyValue(
+        getNestedValue(jobPosting, 'jobLocation.address.addressLocality'),
+        getNestedValue(jobPosting, 'jobLocation.address.addressRegion')
+      ),
+      region_name_source: firstNonEmptyValue(
+        getNestedValue(jobPosting, 'jobLocation.address.addressLocality'),
+        getNestedValue(jobPosting, 'jobLocation.address.addressRegion')
+      ) ? 'schema' : '',
+      ...extractSalaryFromJobPosting(jobPosting, offerNode),
+    } : {};
+    if (schemaData.salary_value) schemaData.salary_value_source = 'schema';
+    if (schemaData.salary_value_min) schemaData.salary_value_min_source = 'schema';
+    if (schemaData.salary_value_max) schemaData.salary_value_max_source = 'schema';
+    if (schemaData.salary_period) schemaData.salary_period_source = 'schema';
+    if (schemaData.currency) schemaData.currency_source = 'schema';
+
+    const offerData = extractOfferData(offerNode);
+    const domData = extractDomFallbackData();
+    const conflicts = detectConflicts(schemaData, offerData, domData);
+
+    const payload = {};
+    mergeByPriority(payload, schemaData);
+    mergeByPriority(payload, offerData);
+    mergeByPriority(payload, domData);
+    const siteAwareRaw = extractSiteAwareFallbackData(payload);
+    const siteAwareData = {};
+    Object.entries(siteAwareRaw).forEach(([key, value]) => {
+      if (key.endsWith('_source')) {
+        siteAwareData[key] = value;
+        return;
+      }
+      siteAwareData[key] = value;
+      if (value && !siteAwareData[`${key}_source`]) {
+        siteAwareData[`${key}_source`] = 'site_fallback';
+      }
+    });
+    mergeByPriority(payload, siteAwareData);
+
+    if (
+      (!payload.salary_value && !payload.salary_value_min && !payload.salary_value_max) &&
+      payload.salary_raw_text
+    ) {
+      const parsedSalary = parseSalaryFromText(payload.salary_raw_text);
+      if (parsedSalary.salary_value) parsedSalary.salary_value_source = 'parsed';
+      if (parsedSalary.salary_value_min) parsedSalary.salary_value_min_source = 'parsed';
+      if (parsedSalary.salary_value_max) parsedSalary.salary_value_max_source = 'parsed';
+      if (parsedSalary.salary_period) parsedSalary.salary_period_source = 'parsed';
+      mergeByPriority(payload, parsedSalary);
+    }
+
+    payload.confidence = calculateExtractionConfidence({
+      schemaData,
+      offerData,
+      domData,
+      siteAwareData,
+      conflicts,
+    });
+
+    const cleaned = Object.fromEntries(
+      Object.entries(payload).filter(([, value]) => value != null && String(value).trim() !== '')
+    );
+
+    return {
+      found: Object.keys(cleaned).length > 0,
+      data: cleaned,
+    };
+  }
+
   // ============================================================
   // Message handler from popup / background
   // ============================================================
@@ -1149,6 +1915,22 @@
           fields: mapped,
           fieldCount: Object.keys(mapped).length,
         });
+        break;
+      }
+
+      case 'EXTRACT_JOB_POSTING': {
+        try {
+          const extracted = extractJobPostingData();
+          if (extracted.found && extracted.data) {
+            chrome.runtime.sendMessage({
+              action: 'JOB_POSTING_EXTRACTED',
+              data: extracted.data,
+            }).catch(() => {});
+          }
+          sendResponse(extracted);
+        } catch (err) {
+          sendResponse({ found: false, data: null, error: err.message });
+        }
         break;
       }
 
