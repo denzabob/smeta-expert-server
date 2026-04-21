@@ -327,12 +327,6 @@
                         <td class="mv">{{ $entry['source_date_display'] }}</td>
                       </tr>
                     @endif
-                    @if(!empty($entry['vacancy_excerpt']))
-                      <tr>
-                        <td class="ml">Краткое описание</td>
-                        <td class="mv">{{ $entry['vacancy_excerpt'] }}</td>
-                      </tr>
-                    @endif
                     @if(!empty($entry['labor_note']))
                       <tr>
                         <td class="ml">Примечание</td>

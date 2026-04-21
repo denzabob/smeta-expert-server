@@ -605,6 +605,9 @@ class ReportService
         $salaryValue = $evidence?->salary_value !== null ? (float) $evidence->salary_value : null;
         $salaryValueMin = $evidence?->salary_value_min !== null ? (float) $evidence->salary_value_min : null;
         $salaryValueMax = $evidence?->salary_value_max !== null ? (float) $evidence->salary_value_max : null;
+        $selectedSalaryAmount = isset($usedSource['selected_salary_amount']) && is_numeric($usedSource['selected_salary_amount'])
+            ? (float) $usedSource['selected_salary_amount']
+            : null;
         $derivedHourlyRate = $evidence?->derived_hourly_rate !== null ? (float) $evidence->derived_hourly_rate : null;
         $confidence = $this->extractLaborEvidenceConfidence($evidence);
 
@@ -619,6 +622,7 @@ class ReportService
             'salary_value_max' => $salaryValueMax,
             'salary_period' => $evidence?->salary_period,
             'salary_display' => $this->formatLaborSalaryEvidence(
+                selectedSalaryAmount: $selectedSalaryAmount,
                 salaryValue: $salaryValue,
                 salaryValueMin: $salaryValueMin,
                 salaryValueMax: $salaryValueMax,
@@ -652,6 +656,7 @@ class ReportService
     }
 
     private function formatLaborSalaryEvidence(
+        ?float $selectedSalaryAmount,
         ?float $salaryValue,
         ?float $salaryValueMin,
         ?float $salaryValueMax,
@@ -659,6 +664,10 @@ class ReportService
         ?string $salaryRawText,
     ): ?string {
         $periodLabel = $this->mapSalaryPeriodToLabel($salaryPeriod);
+
+        if ($selectedSalaryAmount !== null) {
+            return $this->formatMoney($selectedSalaryAmount) . ($periodLabel ? ' / ' . $periodLabel : '');
+        }
 
         if ($salaryValue !== null) {
             return $this->formatMoney($salaryValue) . ($periodLabel ? ' / ' . $periodLabel : '');
@@ -684,11 +693,11 @@ class ReportService
     private function mapSalaryPeriodToLabel(?string $salaryPeriod): ?string
     {
         return match (trim((string) $salaryPeriod)) {
-            'hour' => 'hour',
-            'day' => 'day',
-            'month' => 'month',
-            'year' => 'year',
-            'project' => 'project',
+            'hour' => 'в час',
+            'day' => 'в день',
+            'month' => 'в месяц',
+            'year' => 'в год',
+            'project' => 'за проект',
             default => null,
         };
     }
