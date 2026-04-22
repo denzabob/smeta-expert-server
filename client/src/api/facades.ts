@@ -17,6 +17,108 @@ export interface FacadeFilterOptions {
   thickness_options: number[]
 }
 
+export interface FinishedProductPricingSummaryProfile {
+  method: string | null
+  include_only_active: boolean
+  exclude_stale: boolean
+  minimum_sources_count: number | null
+}
+
+export interface FinishedProductPricingSummary {
+  available: boolean
+  computed_price_per_m2: number | null
+  method: string | null
+  source_count: number
+  min_price: number | null
+  max_price: number | null
+  computed_at: string | null
+  profile: FinishedProductPricingSummaryProfile
+  has_new_pricing_sources: boolean
+  has_computed_price: boolean
+  new_pricing_status: string
+}
+
+export interface FinishedProductPricingBreakdownSource {
+  id: number
+  supplier: {
+    id: number | null
+    name: string | null
+  }
+  source_kind: string | null
+  source_price: number | null
+  source_unit: string | null
+  conversion_factor_to_m2: number | null
+  price_per_m2_normalized: number | null
+  captured_at: string | null
+  effective_date: string | null
+  status: string | null
+  stale_reason: string | null
+  article: string | null
+  category: string | null
+  description: string | null
+  notes: string | null
+  evidence_assets_count: number
+  has_evidence: boolean
+}
+
+export interface FinishedProductPricingBreakdown {
+  summary: {
+    computed_price_per_m2: number | null
+    method: string | null
+    source_count: number
+    min_price: number | null
+    max_price: number | null
+    computed_at: string | null
+    status: string
+  }
+  profile: FinishedProductPricingSummaryProfile
+  sources: FinishedProductPricingBreakdownSource[]
+}
+
+export interface FinishedProductPriceEvidenceAssetDetails {
+  id: number
+  asset_type: string | null
+  file_path: string | null
+  original_name: string | null
+  mime_type: string | null
+  file_size: number | null
+  source_url: string | null
+  content_hash: string | null
+  captured_at: string | null
+  metadata: Record<string, any>
+  can_preview: boolean
+  can_download: boolean
+  preview_url: string | null
+  download_url: string | null
+  open_url: string | null
+  access_kind: string
+}
+
+export interface FinishedProductPriceSourceDetails {
+  source: {
+    id: number
+    supplier: {
+      id: number | null
+      name: string | null
+    }
+    source_kind: string | null
+    source_price: number | null
+    source_unit: string | null
+    conversion_factor_to_m2: number | null
+    price_per_m2_normalized: number | null
+    captured_at: string | null
+    effective_date: string | null
+    status: string | null
+    stale_reason: string | null
+    article: string | null
+    category: string | null
+    description: string | null
+    notes: string | null
+    metadata: Record<string, any>
+  }
+  evidence_assets: FinishedProductPriceEvidenceAssetDetails[]
+}
+
 export interface Facade {
   id: number
   name: string
@@ -38,6 +140,7 @@ export interface Facade {
   quotes_count?: number
   last_quote_date?: string | null
   last_quote_price?: number | null
+  finished_product_pricing_summary?: FinishedProductPricingSummary
   created_at: string
   updated_at: string
 }
@@ -141,9 +244,95 @@ export interface QuoteCreateData {
 export class FacadesApiClient {
   private readonly productType = 'facade'
 
+  private emptyFinishedProductPricingSummary(): FinishedProductPricingSummary {
+    return {
+      available: false,
+      computed_price_per_m2: null,
+      method: null,
+      source_count: 0,
+      min_price: null,
+      max_price: null,
+      computed_at: null,
+      profile: {
+        method: null,
+        include_only_active: true,
+        exclude_stale: true,
+        minimum_sources_count: null,
+      },
+      has_new_pricing_sources: false,
+      has_computed_price: false,
+      new_pricing_status: 'none',
+    }
+  }
+
+  private emptyFinishedProductPricingBreakdown(): FinishedProductPricingBreakdown {
+    return {
+      summary: {
+        computed_price_per_m2: null,
+        method: null,
+        source_count: 0,
+        min_price: null,
+        max_price: null,
+        computed_at: null,
+        status: 'none',
+      },
+      profile: {
+        method: null,
+        include_only_active: true,
+        exclude_stale: true,
+        minimum_sources_count: null,
+      },
+      sources: [],
+    }
+  }
+
+  private emptyFinishedProductPriceSourceDetails(): FinishedProductPriceSourceDetails {
+    return {
+      source: {
+        id: 0,
+        supplier: {
+          id: null,
+          name: null,
+        },
+        source_kind: null,
+        source_price: null,
+        source_unit: null,
+        conversion_factor_to_m2: null,
+        price_per_m2_normalized: null,
+        captured_at: null,
+        effective_date: null,
+        status: null,
+        stale_reason: null,
+        article: null,
+        category: null,
+        description: null,
+        notes: null,
+        metadata: {},
+      },
+      evidence_assets: [],
+    }
+  }
+
+  private normalizeFacadePayload(payload: any): Facade {
+    const summary = payload?.finished_product_pricing_summary ?? {}
+    const emptySummary = this.emptyFinishedProductPricingSummary()
+
+    return {
+      ...payload,
+      finished_product_pricing_summary: {
+        ...emptySummary,
+        ...summary,
+        profile: {
+          ...emptySummary.profile,
+          ...(summary?.profile ?? {}),
+        },
+      },
+    } as Facade
+  }
+
   private normalizeSinglePayload(payload: any): { facade: Facade; quotes: FacadeQuote[] } {
     return {
-      facade: payload?.facade ?? payload?.product ?? payload,
+      facade: this.normalizeFacadePayload(payload?.facade ?? payload?.product ?? payload),
       quotes: payload?.quotes ?? [],
     }
   }
@@ -163,10 +352,20 @@ export class FacadesApiClient {
   // ---- Facade CRUD ----
 
   async list(params: FacadeListParams = {}): Promise<AxiosResponse> {
-    return this.requestWithFallback(
+    const response = await this.requestWithFallback(
       () => api.get('/api/finished-products', { params: { ...params, product_type: this.productType } }),
       () => api.get('/api/facades', { params }),
     )
+
+    return {
+      ...response,
+      data: {
+        ...response.data,
+        data: Array.isArray(response.data?.data)
+          ? response.data.data.map((item: any) => this.normalizeFacadePayload(item))
+          : [],
+      },
+    } as AxiosResponse
   }
 
   async get(id: number): Promise<AxiosResponse<{ facade: Facade; quotes: FacadeQuote[] }>> {
@@ -181,17 +380,27 @@ export class FacadesApiClient {
   }
 
   async create(data: FacadeCreateData): Promise<AxiosResponse<Facade>> {
-    return this.requestWithFallback(
+    const response = await this.requestWithFallback(
       () => api.post('/api/finished-products', { ...data, product_type: this.productType }),
       () => api.post('/api/facades', data),
     )
+
+    return {
+      ...response,
+      data: this.normalizeFacadePayload(response.data),
+    } as AxiosResponse<Facade>
   }
 
   async update(id: number, data: Partial<FacadeCreateData>): Promise<AxiosResponse<Facade>> {
-    return this.requestWithFallback(
+    const response = await this.requestWithFallback(
       () => api.put(`/api/finished-products/${id}`, { ...data, product_type: this.productType }),
       () => api.put(`/api/facades/${id}`, data),
     )
+
+    return {
+      ...response,
+      data: this.normalizeFacadePayload(response.data),
+    } as AxiosResponse<Facade>
   }
 
   async delete(id: number): Promise<AxiosResponse<{ action: string; reason?: string }>> {
@@ -216,6 +425,68 @@ export class FacadesApiClient {
         count: response.data?.count ?? (response.data?.quotes?.length ?? 0),
       },
     } as AxiosResponse<{ material_id: number; quotes: FacadeQuote[]; count: number }>
+  }
+
+  async getPricingBreakdown(id: number): Promise<AxiosResponse<FinishedProductPricingBreakdown>> {
+    const response = await api.get(`/api/finished-products/${id}/pricing/breakdown`)
+    const empty = this.emptyFinishedProductPricingBreakdown()
+    const data = response.data ?? {}
+
+    return {
+      ...response,
+      data: {
+        summary: {
+          ...empty.summary,
+          ...(data.summary ?? {}),
+        },
+        profile: {
+          ...empty.profile,
+          ...(data.profile ?? {}),
+        },
+        sources: Array.isArray(data.sources) ? data.sources : [],
+      },
+    } as AxiosResponse<FinishedProductPricingBreakdown>
+  }
+
+  async getPricingSourceDetails(sourceId: number): Promise<AxiosResponse<FinishedProductPriceSourceDetails>> {
+    const response = await api.get(`/api/finished-product-price-sources/${sourceId}/details`)
+    const empty = this.emptyFinishedProductPriceSourceDetails()
+    const data = response.data ?? {}
+
+    return {
+      ...response,
+      data: {
+        source: {
+          ...empty.source,
+          ...(data.source ?? {}),
+          supplier: {
+            ...empty.source.supplier,
+            ...(data.source?.supplier ?? {}),
+          },
+          metadata: data.source?.metadata ?? {},
+        },
+        evidence_assets: Array.isArray(data.evidence_assets)
+          ? data.evidence_assets.map((item: any) => ({
+              id: item?.id ?? 0,
+              asset_type: item?.asset_type ?? null,
+              file_path: item?.file_path ?? null,
+              original_name: item?.original_name ?? null,
+              mime_type: item?.mime_type ?? null,
+              file_size: item?.file_size ?? null,
+              source_url: item?.source_url ?? null,
+              content_hash: item?.content_hash ?? null,
+              captured_at: item?.captured_at ?? null,
+              metadata: item?.metadata ?? {},
+              can_preview: !!item?.can_preview,
+              can_download: !!item?.can_download,
+              preview_url: item?.preview_url ?? null,
+              download_url: item?.download_url ?? null,
+              open_url: item?.open_url ?? null,
+              access_kind: item?.access_kind ?? 'none',
+            }))
+          : [],
+      },
+    } as AxiosResponse<FinishedProductPriceSourceDetails>
   }
 
   async createQuote(data: QuoteCreateData): Promise<AxiosResponse> {

@@ -259,18 +259,18 @@
               </template>
               <template v-else-if="bulkAction === 'replace_facade_material'">
                 <v-autocomplete
-                  v-model="bulkFacadeMaterialId"
-                  :items="facadeMaterials"
+                  v-model="bulkFacadeSpecificationId"
+                  :items="facadeSpecifications"
                   item-title="name"
                   item-value="id"
-                  label="Фасад"
+                  label="Спецификация фасада"
                   density="compact"
                   variant="outlined"
                   hide-details
                   :loading="loadingFacades"
                   @update:search="onFacadeSearch"
                   no-filter
-                >
+                  >
                   <template #item="{ props: itemProps, item }">
                     <v-list-item v-bind="itemProps">
                       <v-list-item-subtitle>
@@ -280,17 +280,6 @@
                     </v-list-item>
                   </template>
                 </v-autocomplete>
-                <v-select
-                  v-model="bulkPriceMethod"
-                  :items="priceMethodOptions"
-                  item-title="title"
-                  item-value="value"
-                  label="Тип расчёта"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  style="max-width: 200px;"
-                />
               </template>
               <v-chip
                 v-if="bulkAction"
@@ -382,9 +371,9 @@
                   <div
                     class="cell-ellipsis"
                     :class="{ 'text-error': hasMissingMainMaterialPrice(item) || hasMissingMainMaterialSheetSize(item) }"
-                    :title="item.kind === 'facade' ? (item.facade_material?.name || item.decor_label || '—') : getMaterialName(item.material_id)"
+                    :title="item.kind === 'facade' ? getFacadePositionName(item) : getMaterialName(item.material_id)"
                   >
-                    {{ item.kind === 'facade' ? (item.facade_material?.name || item.decor_label || '—') : (getMaterialName(item.material_id) || '—') }}
+                    {{ item.kind === 'facade' ? getFacadePositionName(item) : (getMaterialName(item.material_id) || '—') }}
                   </div>
                 </td>
                 <td v-if="currentPositionHeaders.some(h => h.key === 'edge_material_short')">
@@ -492,15 +481,15 @@
             <!-- Facade-specific fields -->
             <template v-if="selectedPosition.kind === 'facade'">
               <v-autocomplete
-                v-model="selectedPosition.facade_material_id"
-                :items="facadeMaterials"
+                v-model="selectedPosition.finished_product_specification_id"
+                :items="facadeSpecifications"
                 item-title="name"
                 item-value="id"
-                label="Модель фасада"
+                label="Спецификация фасада"
                 density="comfortable"
                 :loading="loadingFacades"
                 @update:search="onFacadeSearch"
-                @update:model-value="(v) => updatePositionField(selectedPosition!, 'facade_material_id', v)"
+                @update:model-value="(v) => updatePositionField(selectedPosition!, 'finished_product_specification_id', v)"
                 no-filter
                 class="mb-2"
               >
@@ -515,7 +504,7 @@
               </v-autocomplete>
 
               <!-- Read-only facade info -->
-              <div v-if="selectedPosition.facade_material_id" class="position-support-card mb-2">
+              <div v-if="selectedPosition.finished_product_specification_id" class="position-support-card mb-2">
               <v-row dense class="mb-0">
                 <v-col cols="6">
                   <v-text-field
@@ -537,7 +526,7 @@
                 </v-col>
               </v-row>
               <v-text-field
-                v-if="selectedPosition.facade_material_id"
+                v-if="selectedPosition.finished_product_specification_id"
                 :model-value="selectedPosition.price_per_m2 ? `${formatNumber(selectedPosition.price_per_m2, 2)} ₽/м²` : '—'"
                 label="Цена за м²"
                 readonly
@@ -545,43 +534,20 @@
                 variant="outlined"
                 class="mb-2"
               />
-              <v-select
-                v-if="selectedPosition.facade_material_id"
-                :model-value="selectedPosition.price_method || 'single'"
-                :items="priceMethodOptions"
-                item-title="title"
-                item-value="value"
-                label="Тип расчёта цены"
-                density="compact"
-                variant="outlined"
-                class="mb-2"
-                @update:model-value="(v) => handleDrawerPriceMethodChange(selectedPosition!, v)"
-              />
+              <div class="text-caption text-medium-emphasis">
+                Снимок цены:
+                {{ formatFacadePriceMethodLabel(selectedPosition.finished_product_pricing_snapshot?.pricing?.aggregation_method || selectedPosition.price_method) }}
+                <span v-if="(selectedPosition.finished_product_pricing_snapshot?.pricing?.source_count ?? selectedPosition.price_sources_count) != null">
+                  · источников: {{ selectedPosition.finished_product_pricing_snapshot?.pricing?.source_count ?? selectedPosition.price_sources_count }}
+                </span>
               </div>
-
-              <!-- Quotes participating in calculation -->
-              <template v-if="selectedPosition.facade_material_id && selectedPosition.price_quotes && selectedPosition.price_quotes.length > 0">
-                <div class="position-support-card position-support-card--quotes mb-2">
-                <div class="text-caption text-grey-darken-1 mb-1">Источники цены ({{ selectedPosition.price_quotes.length }})</div>
-                <v-table density="compact" class="mb-2 drawer-quotes-table">
-                  <thead>
-                    <tr>
-                      <th class="text-left text-caption pa-1">Поставщик</th>
-                      <th class="text-right text-caption pa-1">Цена, ₽/м²</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="q in selectedPosition.price_quotes" :key="q.id">
-                      <td class="text-caption pa-1">{{ q.supplier?.name || '—' }}</td>
-                      <td class="text-right text-caption pa-1">{{ formatNumber(q.price_per_m2_snapshot, 2) }}</td>
-                    </tr>
-                  </tbody>
-                </v-table>
-                <div v-if="selectedPosition.price_min != null && selectedPosition.price_max != null" class="text-caption text-grey mb-2">
-                  Диапазон: {{ formatNumber(selectedPosition.price_min, 2) }} — {{ formatNumber(selectedPosition.price_max, 2) }} ₽/м²
-                </div>
-                </div>
-              </template>
+              <div v-if="selectedPosition.finished_product_pricing_snapshot?.captured_at" class="text-caption text-grey mt-1">
+                Зафиксировано: {{ new Date(selectedPosition.finished_product_pricing_snapshot.captured_at).toLocaleString('ru-RU') }}
+              </div>
+              <div v-if="selectedPosition.price_min != null && selectedPosition.price_max != null" class="text-caption text-grey mt-1">
+                Диапазон: {{ formatNumber(selectedPosition.price_min, 2) }} — {{ formatNumber(selectedPosition.price_max, 2) }} ₽/м²
+              </div>
+              </div>
             </template>
             </section>
 
@@ -2253,22 +2219,21 @@
               <section class="position-form-section">
                 <div class="position-form-section__header">
                   <div class="position-form-section__title">Материал фасада</div>
-                  <div class="position-form-section__text">Выбор модели фасада и связанных ценовых данных.</div>
+                  <div class="position-form-section__text">Выбор спецификации фасада и фиксация текущей расчетной цены.</div>
                 </div>
-              <!-- Facade material selector (search by name/decor) -->
+              <!-- Facade specification selector -->
               <v-autocomplete
-                v-model="positionFormModel.facade_material_id"
-                :items="facadeMaterials"
+                v-model="positionFormModel.finished_product_specification_id"
+                :items="facadeSpecifications"
                 item-title="name"
                 item-value="id"
-                label="Фасад"
+                label="Спецификация фасада"
                 :rules="[v => !!v || 'Выберите фасад']"
                 density="comfortable"
                 class="mb-3"
                 :loading="loadingFacades"
                 @update:search="onFacadeSearch"
-                @update:model-value="onFacadeMaterialChange"
-                return-object
+                @update:model-value="onFacadeSpecificationChange"
                 no-filter
               >
                 <template #item="{ props, item }">
@@ -2283,7 +2248,7 @@
               </v-autocomplete>
 
               <!-- Auto-filled facade info (read-only) -->
-              <div v-if="positionFormModel.facade_material_id" class="position-support-card mb-3">
+              <div v-if="positionFormModel.finished_product_specification_id" class="position-support-card mb-3">
               <v-row class="mb-0">
                 <v-col cols="4">
                   <v-text-field
@@ -2314,7 +2279,7 @@
                 </v-col>
               </v-row>
               <v-text-field
-                v-if="positionFormModel.facade_material_id"
+                v-if="positionFormModel.finished_product_specification_id"
                 :model-value="positionFormModel.decor_label || '—'"
                 label="Декор"
                 readonly
@@ -2322,107 +2287,17 @@
                 variant="outlined"
                 class="mb-3"
               />
+              <div class="text-caption text-medium-emphasis">
+                Текущая расчетная цена:
+                {{ formatFacadePriceMethodLabel(positionFormModel.price_method) }}
+                <span v-if="positionFormModel.price_sources_count != null">
+                  · источников: {{ positionFormModel.price_sources_count }}
+                </span>
+                <span v-if="positionFormModel.price_min != null && positionFormModel.price_max != null">
+                  · диапазон: {{ formatNumber(positionFormModel.price_min, 2) }} — {{ formatNumber(positionFormModel.price_max, 2) }} ₽/м²
+                </span>
               </div>
-
-              <!-- === Котировки фасада === -->
-              <template v-if="positionFormModel.facade_material_id">
-                <!-- Loading indicator -->
-                <div v-if="loadingQuotes" class="text-center py-2">
-                  <v-progress-circular indeterminate size="24" />
-                </div>
-                <!-- Quotes table (always visible when quotes exist) -->
-                <div v-else-if="facadeQuotes.length > 0" class="mb-3 position-support-card position-support-card--quotes">
-                  <div class="text-subtitle-2 mb-1">Котировки ({{ facadeQuotes.length }})</div>
-                  <v-table density="compact" class="border rounded">
-                    <thead>
-                      <tr>
-                        <th style="width: 40px;">
-                          <v-checkbox-btn
-                            :model-value="selectedQuoteIds.length === facadeQuotes.length"
-                            :indeterminate="selectedQuoteIds.length > 0 && selectedQuoteIds.length < facadeQuotes.length"
-                            @update:model-value="(v: boolean) => { selectedQuoteIds = v ? facadeQuotes.map((q: any) => q.material_price_id) : [] }"
-                            density="compact"
-                          />
-                        </th>
-                        <th>Прайс-лист</th>
-                        <th>Поставщик</th>
-                        <th class="text-right">Цена/м²</th>
-                        <th>Источник</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="q in facadeQuotes" :key="q.material_price_id">
-                        <td>
-                          <v-checkbox-btn
-                            :model-value="selectedQuoteIds.includes(q.material_price_id)"
-                            @update:model-value="(v: boolean) => {
-                              if (v) selectedQuoteIds.push(q.material_price_id)
-                              else selectedQuoteIds = selectedQuoteIds.filter((id: number) => id !== q.material_price_id)
-                            }"
-                            density="compact"
-                          />
-                        </td>
-                        <td>{{ q.price_list_name || '—' }} <span v-if="q.version_number" class="text-grey">(v{{ q.version_number }})</span></td>
-                        <td>{{ q.supplier_name || '—' }}</td>
-                        <td class="text-right font-weight-medium">{{ formatNumber(q.price_per_m2, 2) }} ₽</td>
-                        <td>
-                          <v-chip size="x-small" :color="q.source_type === 'file' ? 'blue' : q.source_type === 'url' ? 'green' : 'grey'" variant="tonal">
-                            {{ q.source_type === 'file' ? 'Файл' : q.source_type === 'url' ? 'URL' : 'Ручной' }}
-                          </v-chip>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </v-table>
-
-                  <!-- Price method selector (when 2+ quotes available) -->
-                  <v-select
-                    v-if="facadeQuotes.length >= 2"
-                    v-model="facadePriceMethod"
-                    :items="priceMethodOptions"
-                    item-title="title"
-                    item-value="value"
-                    label="Метод цены"
-                    density="comfortable"
-                    class="mt-3 mb-3"
-                  />
-
-                  <!-- Live preview -->
-                  <v-card v-if="aggPreview && selectedQuoteIds.length >= 2 && facadePriceMethod !== 'single'" variant="outlined" class="mb-3 pa-3">
-                    <div class="text-subtitle-2 mb-2">
-                      {{ facadePriceMethod === 'mean' ? 'Средняя' : facadePriceMethod === 'median' ? 'Медиана' : 'Усечённая средняя' }}
-                      (n={{ aggPreview.n }}) — {{ formatNumber(aggPreview.aggregated, 2) }} ₽/м²
-                      (min {{ formatNumber(aggPreview.min, 2) }} — max {{ formatNumber(aggPreview.max, 2) }})
-                    </div>
-                    <v-row dense>
-                      <v-col cols="6">
-                        <div class="text-caption text-grey">Площадь</div>
-                        <div class="text-body-2">{{ formatNumber(aggPreview.area, 4) }} м²</div>
-                      </v-col>
-                      <v-col cols="6">
-                        <div class="text-caption text-grey">Итого по позиции</div>
-                        <div class="text-body-1 font-weight-bold">{{ formatNumber(aggPreview.total, 2) }} ₽</div>
-                      </v-col>
-                    </v-row>
-                  </v-card>
-                  <v-alert
-                    v-else-if="facadePriceMethod !== 'single' && selectedQuoteIds.length < 2"
-                    type="warning"
-                    density="compact"
-                    class="mb-3"
-                  >
-                    Для агрегации необходимо выбрать минимум 2 котировки.
-                  </v-alert>
-                </div>
-                <!-- No quotes info -->
-                <v-alert
-                  v-else-if="!loadingQuotes"
-                  type="info"
-                  density="compact"
-                  class="mb-3"
-                >
-                  Для этого фасада нет котировок. Цена рассчитывается по базовой цене фасада.
-                </v-alert>
-              </template>
+              </div>
               </section>
             </template>
 
@@ -2621,7 +2496,12 @@
         <v-card-actions class="position-sheet-actions">
           <v-spacer />
           <v-btn @click="positionDialog = false" :disabled="positionSaving">Отмена</v-btn>
-          <v-btn color="primary" @click="savePosition" :loading="positionSaving" :disabled="positionSaving || (positionFormModel.kind === 'facade' && facadePriceMethod !== 'single' && selectedQuoteIds.length < 2)">Сохранить</v-btn>
+          <v-btn
+            color="primary"
+            @click="savePosition"
+            :loading="positionSaving"
+            :disabled="positionSaving || (positionFormModel.kind === 'facade' && (!positionFormModel.finished_product_specification_id || !(Number(positionFormModel.price_per_m2) > 0)))"
+          >Сохранить</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -3477,7 +3357,7 @@ import { ref, onMounted, onBeforeUnmount, computed, watch, reactive, nextTick } 
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api/axios'
-import { finishedProductsApi } from '@/api/finishedProducts'
+import { finishedProductSpecificationsApi, type FinishedProductSpecification } from '@/api/finishedProductSpecifications'
 import laborWorksApi, { type LaborWork } from '@/api/laborWorks'
 import { revisionRunApi, evidenceAssetFileUrl, type RevisionRun, type RevisionRunItem, type EvidenceArtifactDetail } from '@/api/revisionRun'
 import { consumePrefetchedProject, setProjectsFlashMessage } from '@/router/projectAccess'
@@ -3571,6 +3451,7 @@ interface Position {
   detail_type_id: number | null
   material_id: number | null
   facade_material_id: number | null
+  finished_product_specification_id: number | null
   material_price_id: number | null
   edge_material_id: number | null
   edge_scheme: string
@@ -3595,8 +3476,35 @@ interface Position {
   price_sources_count?: number | null
   price_min?: number | null
   price_max?: number | null
+  finished_product_pricing_snapshot?: {
+    contract_version?: number
+    captured_at?: string | null
+    product_type?: string | null
+    specification?: {
+      id?: number | null
+      name?: string | null
+      article?: string | null
+      facade_class?: string | null
+      base_type?: string | null
+      thickness_mm?: number | null
+      covering?: string | null
+      cover_type?: string | null
+      collection?: string | null
+      decor_label?: string | null
+      price_group_label?: string | null
+    } | null
+    pricing?: {
+      computed_price_per_m2?: number | null
+      aggregation_method?: string | null
+      source_count?: number | null
+      min_price?: number | null
+      max_price?: number | null
+      computed_at?: string | null
+    } | null
+  } | null
   // Relations
   facade_material?: any | null
+  finished_product_specification?: FinishedProductSpecification | null
   price_quotes?: any[] | null
   material_price?: any | null
   material?: any | null
@@ -4079,8 +3987,7 @@ const bulkMaterialId = ref<number | null>(null)
 const bulkEdgeMaterialId = ref<number | null>(null)
 const bulkEdgeScheme = ref<string | null>(null)
 const bulkClearField = ref<string | null>(null)
-const bulkFacadeMaterialId = ref<number | null>(null)
-const bulkPriceMethod = ref<string>('single')
+const bulkFacadeSpecificationId = ref<number | null>(null)
 const confirmBulkDialog = ref(false)
 
 const autoSaveTimer = ref<number | null>(null)
@@ -4356,174 +4263,132 @@ const materialsPlate = computed(() => materials.value.filter(m => m.type === 'pl
 const materialsEdge = computed(() => materials.value.filter(m => m.type === 'edge'))
 
 // === Фасады ===
-const facadeMaterials = ref<any[]>([])
 const loadingFacades = ref(false)
 let facadeSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
-// === Facade price aggregation ===
-const priceMethodOptions = [
-  { title: 'Один источник', value: 'single' },
-  { title: 'Средняя (mean)', value: 'mean' },
-  { title: 'Медиана', value: 'median' },
-  { title: 'Усечённая средняя', value: 'trimmed_mean' },
-]
-const facadePriceMethod = ref<string>('single')
-const facadeQuotes = ref<any[]>([])
-const selectedQuoteIds = ref<number[]>([])
-const loadingQuotes = ref(false)
-const aggPreview = computed(() => {
-  const selected = facadeQuotes.value.filter(q => selectedQuoteIds.value.includes(q.material_price_id))
-  if (selected.length === 0) return null
-  const prices = selected.map(q => q.price_per_m2).sort((a: number, b: number) => a - b)
-  const n = prices.length
-  const min = prices[0]
-  const max = prices[n - 1]
-  let aggregated = 0
-  const method = facadePriceMethod.value
-  if (method === 'mean') {
-    aggregated = prices.reduce((s: number, v: number) => s + v, 0) / n
-  } else if (method === 'median') {
-    aggregated = n % 2 === 0
-      ? (prices[n / 2 - 1] + prices[n / 2]) / 2
-      : prices[Math.floor(n / 2)]
-  } else if (method === 'trimmed_mean') {
-    if (n < 3) {
-      aggregated = n % 2 === 0
-        ? (prices[n / 2 - 1] + prices[n / 2]) / 2
-        : prices[Math.floor(n / 2)]
-    } else {
-      const trim = Math.max(1, Math.floor(n * 0.1))
-      const used = prices.slice(trim, n - trim)
-      aggregated = used.reduce((s: number, v: number) => s + v, 0) / used.length
-    }
-  } else {
-    aggregated = prices[0]
-  }
-  const w = positionFormModel.value.width || 0
-  const l = positionFormModel.value.length || 0
-  const qty = positionFormModel.value.quantity || 1
-  const area = (w / 1000) * (l / 1000) * qty
+type FacadeSpecificationOption = FinishedProductSpecification & {
+  base_material_label: string | null
+  finish_name: string | null
+  price_per_m2: number | null
+}
+
+const facadeSpecifications = ref<FacadeSpecificationOption[]>([])
+
+function formatFacadePriceMethodLabel(method?: string | null): string {
+  if (method === 'mean') return 'Средняя'
+  if (method === 'median') return 'Медиана'
+  if (method === 'trimmed_mean') return 'Усечённая средняя'
+  if (method === 'single') return 'Один источник'
+  return '—'
+}
+
+function buildFacadeSpecificationLabel(specification: Partial<FinishedProductSpecification>): string {
+  const parts = [
+    specification.base_type ? specification.base_type.toUpperCase() : null,
+    specification.thickness_mm ? `${specification.thickness_mm}мм` : null,
+    specification.covering || null,
+    specification.facade_class || null,
+    specification.decor_label || null,
+    specification.collection || null,
+  ].filter(Boolean)
+
+  return parts.length > 0
+    ? parts.join(' / ')
+    : (specification.name || specification.article || 'Фасад')
+}
+
+function toFacadeSpecificationOption(specification: FinishedProductSpecification): FacadeSpecificationOption {
   return {
-    aggregated: Math.round(aggregated * 100) / 100,
-    min, max, n,
-    area: Math.round(area * 1000000) / 1000000,
-    total: Math.round(area * aggregated * 100) / 100,
-  }
-})
-
-async function fetchFacadeQuotes() {
-  const materialId = positionFormModel.value.facade_material_id
-  if (!materialId) {
-    facadeQuotes.value = []
-    selectedQuoteIds.value = []
-    return
-  }
-  loadingQuotes.value = true
-  try {
-    const mid = typeof materialId === 'object' ? (materialId as any).id : materialId
-    const resp = await finishedProductsApi.getQuotes(mid)
-    facadeQuotes.value = resp.data.quotes || []
-    // Auto-select all quotes
-    selectedQuoteIds.value = facadeQuotes.value.map((q: any) => q.material_price_id)
-    // Auto-determine price method based on quote count
-    if (facadeQuotes.value.length === 0) {
-      facadePriceMethod.value = 'single'
-    } else if (facadeQuotes.value.length === 1) {
-      facadePriceMethod.value = 'single'
-    } else if (facadePriceMethod.value === 'single') {
-      // If there are multiple quotes and method is still 'single', suggest mean
-      facadePriceMethod.value = 'mean'
-    }
-  } catch (e) {
-    console.error('Failed to fetch facade quotes', e)
-    facadeQuotes.value = []
-    selectedQuoteIds.value = []
-  } finally {
-    loadingQuotes.value = false
+    ...specification,
+    name: specification.name || buildFacadeSpecificationLabel(specification),
+    base_material_label: specification.base_type ? specification.base_type.toUpperCase() : null,
+    finish_name: specification.cover_type || specification.covering || null,
+    price_per_m2: specification.computed_price_summary?.computed_price_per_m2 ?? null,
   }
 }
 
-function resetAggregationState() {
-  facadePriceMethod.value = 'single'
-  facadeQuotes.value = []
-  selectedQuoteIds.value = []
-}
-
-async function loadFacadeMaterials(search = '') {
+async function loadFacadeSpecifications(search = '') {
   loadingFacades.value = true
   try {
-    const params: any = {
-      per_page: 30,
-    }
-    if (search) params.search = search
-    const resp = await api.get('/api/facade-materials', { params })
-    // API returns canonical spec fields: finish_type, finish_name, finish_variant, decor, collection, price_group, film_article
-    facadeMaterials.value = (resp.data.data || resp.data || []).map((m: any) => ({
-      ...m,
-      name: m.name || buildFacadeLabel(m),
-      price_per_m2: m.active_price?.price ?? m.price_per_m2 ?? null,
-      thickness_mm: m.thickness_mm,
-      finish_type: m.finish_type ?? m.spec?.finish_type ?? null,
-      finish_name: m.finish_name ?? m.spec?.finish_name ?? null,
-      finish_variant: m.finish_variant ?? m.spec?.finish_variant ?? null,
-      base_material_label: m.base_material ?? m.spec?.base_material ?? null,
-      decor_label: m.decor ?? m.spec?.decor ?? null,
-      collection: m.collection ?? m.spec?.collection ?? null,
-      price_group: m.price_group ?? m.spec?.price_group ?? null,
-    }))
-  } catch (e) {
-    console.error('Failed to load facade materials', e)
+    const response = await finishedProductSpecificationsApi.list({
+      product_type: 'facade',
+      search: search || undefined,
+      per_page: 100,
+    })
+
+    facadeSpecifications.value = response.data.data.map(toFacadeSpecificationOption)
+  } catch (error) {
+    console.error('Failed to load facade specifications', error)
+    facadeSpecifications.value = []
   } finally {
     loadingFacades.value = false
   }
 }
 
-function buildFacadeLabel(m: any): string {
-  // Identity-first: "Основа / Толщина / Покрытие / Класс [/ Декор] [/ Коллекция]"
-  const spec = m.spec || {}
-  const parts: string[] = []
-  const base = m.facade_base_type || spec.base_material || m.base_material
-  if (base) parts.push(base.toUpperCase())
-  const th = m.facade_thickness_mm || m.thickness_mm || spec.thickness_mm
-  if (th) parts.push(`${th}мм`)
-  const covering = m.facade_covering || spec.finish_name || m.finish_name || spec.finish_type || m.finish_type
-  if (covering) parts.push(covering)
-  const cls = m.facade_class
-  if (cls) parts.push(cls)
-  const decor = m.facade_decor_label || m.decor || spec.decor
-  if (decor) parts.push(decor)
-  const collection = m.facade_collection || m.collection || spec.collection
-  if (collection) parts.push(collection)
-  return parts.length ? parts.join(' / ') : (m.name || m.article || `Фасад #${m.id}`)
+async function ensureFacadeSpecificationLoaded(id: number | null | undefined) {
+  if (!id || facadeSpecifications.value.some(item => item.id === id)) {
+    return
+  }
+
+  try {
+    const response = await finishedProductSpecificationsApi.get(id)
+    facadeSpecifications.value = [
+      toFacadeSpecificationOption(response.data.data),
+      ...facadeSpecifications.value,
+    ]
+  } catch (error) {
+    console.error('Failed to load selected facade specification', error)
+  }
+}
+
+function clearFacadePricingPreview(target: Position) {
+  target.base_material_label = null
+  target.thickness_mm = null
+  target.finish_type = null
+  target.finish_name = null
+  target.decor_label = null
+  target.price_per_m2 = null
+  target.price_method = null
+  target.price_sources_count = null
+  target.price_min = null
+  target.price_max = null
+}
+
+function applyFacadeSpecificationPreview(target: Position, specificationId: number | null) {
+  target.finished_product_specification_id = specificationId
+
+  if (!specificationId) {
+    clearFacadePricingPreview(target)
+    return
+  }
+
+  const specification = facadeSpecifications.value.find(item => item.id === specificationId)
+  if (!specification) {
+    clearFacadePricingPreview(target)
+    return
+  }
+
+  target.base_material_label = specification.base_material_label
+  target.thickness_mm = specification.thickness_mm
+  target.finish_type = specification.covering ?? null
+  target.finish_name = specification.finish_name
+  target.decor_label = specification.decor_label ?? specification.finish_name ?? null
+  target.price_per_m2 = specification.price_per_m2
+  target.price_method = specification.aggregation_method ?? specification.computed_price_summary?.method ?? null
+  target.price_sources_count = specification.source_count ?? 0
+  target.price_min = specification.computed_price_summary?.min_price ?? null
+  target.price_max = specification.computed_price_summary?.max_price ?? null
 }
 
 function onFacadeSearch(val: string) {
   if (facadeSearchTimeout) clearTimeout(facadeSearchTimeout)
   facadeSearchTimeout = setTimeout(() => {
-    loadFacadeMaterials(val || '')
+    loadFacadeSpecifications(val || '')
   }, 300)
 }
 
-function onFacadeMaterialChange(selected: any) {
-  if (!selected || typeof selected !== 'object') {
-    positionFormModel.value.facade_material_id = selected
-    // Clear quotes when facade deselected
-    if (!selected) {
-      facadeQuotes.value = []
-      selectedQuoteIds.value = []
-    }
-    return
-  }
-  positionFormModel.value.facade_material_id = selected.id
-  positionFormModel.value.base_material_label = selected.base_material_label || selected.base_material || null
-  positionFormModel.value.thickness_mm = selected.thickness_mm || null
-  positionFormModel.value.finish_type = selected.finish_type || null
-  positionFormModel.value.finish_name = selected.finish_name || null
-  positionFormModel.value.decor_label = selected.decor_label || selected.finish_name || null
-  positionFormModel.value.price_per_m2 = selected.price_per_m2 || null
-  positionFormModel.value.material_price_id = selected.price_id || null
-  // Auto-load quotes for the selected facade
-  fetchFacadeQuotes()
+function onFacadeSpecificationChange(specificationId: number | null) {
+  applyFacadeSpecificationPreview(positionFormModel.value, specificationId)
 }
 
 // === Заголовки ===
@@ -4747,6 +4612,7 @@ const positionFormModel = ref<Position>({
   detail_type_id: null,
   material_id: null,
   facade_material_id: null,
+  finished_product_specification_id: null,
   material_price_id: null,
   edge_material_id: null,
   edge_scheme: 'none',
@@ -4916,9 +4782,17 @@ const getMaterialName = (id: number | null) => {
   return mat ? mat.name : `Материал #${id}`
 }
 
+const getFacadePositionName = (item: Position) => {
+  return item.finished_product_pricing_snapshot?.specification?.name
+    || item.finished_product_specification?.name
+    || item.facade_material?.name
+    || item.decor_label
+    || '—'
+}
+
 const hasMissingMainMaterialPrice = (item: Position): boolean => {
   if (item.kind === 'facade') {
-    return !!item.facade_material_id && !(Number(item.price_per_m2) > 0)
+    return !!item.finished_product_specification_id && !(Number(item.price_per_m2) > 0)
   }
   if (!item.material_id) return false
   const mat = materials.value.find(m => m.id === item.material_id)
@@ -5536,15 +5410,14 @@ const openPositionDialog = async () => {
     detail_type_id: null, 
     material_id: project.value?.default_plate_material_id || null,
     facade_material_id: null,
+    finished_product_specification_id: null,
     material_price_id: null,
     edge_material_id: project.value?.default_edge_material_id || null,
     edge_scheme: 'none', width: 0, length: 0, quantity: 1, custom_name: null,
     decor_label: null, thickness_mm: null, base_material_label: null,
     finish_type: null, finish_name: null, price_per_m2: null,
   }
-  // Pre-load facade materials for the selector
-  resetAggregationState()
-  loadFacadeMaterials()
+  loadFacadeSpecifications()
   positionDialog.value = true
 }
 
@@ -5557,20 +5430,9 @@ const editPosition = (item: Position) => {
     const dt = detailTypes.value.find(d => d.id === positionFormModel.value.detail_type_id)
     if (dt && dt.edge_processing) positionFormModel.value.edge_scheme = dt.edge_processing
   }
-  // Restore aggregation state
-  resetAggregationState()
-  if (item.price_method && item.price_method !== 'single') {
-    facadePriceMethod.value = item.price_method
-    // Restore selected quote IDs from the position's priceQuotes relation
-    if (item.price_quotes && Array.isArray(item.price_quotes)) {
-      selectedQuoteIds.value = item.price_quotes.map((q: any) => q.material_price_id)
-    }
-  }
-  // Load facade materials if editing a facade position
   if (item.kind === 'facade') {
-    loadFacadeMaterials()
-    // Load quotes for this facade
-    fetchFacadeQuotes()
+    loadFacadeSpecifications()
+    ensureFacadeSpecificationLoaded(item.finished_product_specification_id)
   }
   positionDialog.value = true
 }
@@ -5592,9 +5454,12 @@ const savePosition = async () => {
       positionFormModel.value.edge_material_id = null
       positionFormModel.value.edge_scheme = 'none'
       positionFormModel.value.detail_type_id = null
+      positionFormModel.value.facade_material_id = null
+      positionFormModel.value.material_price_id = null
     } else {
       // Для панелей — очистить поля фасада
       positionFormModel.value.facade_material_id = null
+      positionFormModel.value.finished_product_specification_id = null
       positionFormModel.value.material_price_id = null
       positionFormModel.value.decor_label = null
       positionFormModel.value.thickness_mm = null
@@ -5602,6 +5467,7 @@ const savePosition = async () => {
       positionFormModel.value.finish_type = null
       positionFormModel.value.finish_name = null
       positionFormModel.value.price_per_m2 = null
+      positionFormModel.value.finished_product_pricing_snapshot = null
     }
 
     // Проверка на размер детали больше листа (только для панелей)
@@ -5637,9 +5503,6 @@ const savePosition = async () => {
 
     // Sanitize payload — extract IDs from possible return-object values
     const payload = { ...positionFormModel.value }
-    if (payload.facade_material_id && typeof payload.facade_material_id === 'object') {
-      payload.facade_material_id = (payload.facade_material_id as any).id
-    }
     if (payload.material_id && typeof payload.material_id === 'object') {
       payload.material_id = (payload.material_id as any).id
     }
@@ -5659,27 +5522,15 @@ const savePosition = async () => {
       payload.finish_type = null
     }
 
-    // Attach price aggregation data for facade positions
     const payloadAny = payload as any
     if (payload.kind === 'facade') {
-      payloadAny.price_method = facadePriceMethod.value
-      if (facadePriceMethod.value !== 'single' && selectedQuoteIds.value.length >= 2) {
-        payloadAny.quote_material_price_ids = selectedQuoteIds.value
-        // Build mismatch_flags map keyed by material_price_id
-        const mismatchMap: Record<number, string[]> = {}
-        for (const q of facadeQuotes.value) {
-          if (selectedQuoteIds.value.includes(q.material_price_id) && q.mismatch_flags && q.mismatch_flags.length > 0) {
-            mismatchMap[q.material_price_id] = q.mismatch_flags
-          }
-        }
-        if (Object.keys(mismatchMap).length > 0) {
-          payloadAny.quote_mismatch_flags = mismatchMap
-        }
-      }
+      payloadAny.facade_material_id = null
+      payloadAny.material_price_id = null
     }
     // Strip relation data if it came from editing
     delete payloadAny.price_quotes
     delete payloadAny.facade_material
+    delete payloadAny.finished_product_specification
     delete payloadAny.material_price
     delete payloadAny.material
 
@@ -5731,6 +5582,7 @@ const clonePosition = async (item: Position) => {
       custom_name: item.custom_name,
       // Facade fields
       facade_material_id: item.facade_material_id,
+      finished_product_specification_id: item.finished_product_specification_id,
       material_price_id: item.material_price_id,
       decor_label: item.decor_label,
       thickness_mm: item.thickness_mm,
@@ -5784,7 +5636,10 @@ const updatePositionField = async (item: Position, field: string, value: any) =>
   }
 
   try {
-    await api.put(`/api/project-positions/${item.id}`, payload)
+    const response = await api.put(`/api/project-positions/${item.id}`, payload)
+    if (response?.data && typeof response.data === 'object') {
+      Object.assign(item, response.data)
+    }
     // trigger operations recalculation after position change
     scheduleRecalc()
   } catch (e) {
@@ -5881,9 +5736,9 @@ const getEdgeSchemeSummary = (scheme?: string | null) => {
 const openPositionDrawer = (item: Position) => {
   selectedPosition.value = item
   drawerDimensionCalc.value = { width: emptyDimensionCalcState(), length: emptyDimensionCalcState() }
-  // Load facade materials if opening a facade position drawer
   if (item.kind === 'facade') {
-    loadFacadeMaterials()
+    loadFacadeSpecifications()
+    ensureFacadeSpecificationLoaded(item.finished_product_specification_id)
   }
   positionDrawer.value = true
 }
@@ -5892,34 +5747,6 @@ const handleDrawerEdgeSchemeChange = (item: Position, value: string | null) => {
   updatePositionField(item, 'edge_scheme', value)
   if (!value || value === 'none') {
     updatePositionField(item, 'edge_material_id', null)
-  }
-}
-
-const handleDrawerPriceMethodChange = async (item: Position, value: string) => {
-  item.price_method = value
-  try {
-    const resp = await api.put(`/api/project-positions/${item.id}`, { price_method: value })
-    // Update local data with recalculated price
-    if (resp.data) {
-      item.price_per_m2 = resp.data.price_per_m2
-      item.price_min = resp.data.price_min
-      item.price_max = resp.data.price_max
-      item.price_sources_count = resp.data.price_sources_count
-      item.price_method = resp.data.price_method // may be reverted by backend
-      item.price_quotes = resp.data.price_quotes || []
-      // Update in positions array too
-      const pos = positions.value.find(p => p.id === item.id)
-      if (pos) {
-        pos.price_per_m2 = resp.data.price_per_m2
-        pos.price_method = resp.data.price_method
-        pos.price_quotes = resp.data.price_quotes || []
-      }
-    }
-    scheduleRecalc()
-  } catch (e) {
-    console.error(e)
-    showNotification('Ошибка смены типа расчёта цены', 'error')
-    await fetchData()
   }
 }
 
@@ -5965,7 +5792,7 @@ const bulkClearFieldCatalog = [
   { title: 'Материал кромки', value: 'edge_material_id' },
   { title: 'Обработка торцов', value: 'edge_scheme' },
   { title: 'Название', value: 'custom_name' },
-  { title: 'Фасад', value: 'facade_material_id' },
+  { title: 'Спецификация фасада', value: 'finished_product_specification_id' },
 ]
 
 const selectedBulkPositions = computed(() => {
@@ -6007,7 +5834,7 @@ const getBulkInapplicableReason = (
 
 const getClearFieldInapplicableReason = (position: Position, field: string): string | null => {
   if (field === 'custom_name') return null
-  if (field === 'facade_material_id') return position.kind === 'facade' ? null : 'requires_facade'
+  if (field === 'facade_material_id' || field === 'finished_product_specification_id') return position.kind === 'facade' ? null : 'requires_facade'
   if (field === 'material_id' || field === 'edge_material_id' || field === 'edge_scheme') {
     return position.kind === 'panel' ? null : 'requires_panel'
   }
@@ -6039,7 +5866,7 @@ const bulkActionReady = computed(() => {
   if (!bulkAction.value) return false
   if (bulkAction.value === 'replace_material') return !!bulkMaterialId.value
   if (bulkAction.value === 'replace_edge') return !!bulkEdgeMaterialId.value
-  if (bulkAction.value === 'replace_facade_material') return !!bulkFacadeMaterialId.value
+  if (bulkAction.value === 'replace_facade_material') return !!bulkFacadeSpecificationId.value
   if (bulkAction.value === 'set_edge_scheme') return !!bulkEdgeScheme.value
   if (bulkAction.value === 'clear_field') return !!bulkClearField.value
   return true
@@ -6084,10 +5911,10 @@ const selectPositionsByKind = (kind: 'panel' | 'facade') => {
     .map(p => p.id!)
 }
 
-// Auto-load facade materials when bulk action requires them
+// Auto-load facade specifications when bulk action requires them
 watch(bulkAction, (val) => {
   if (val === 'replace_facade_material') {
-    loadFacadeMaterials()
+    loadFacadeSpecifications()
   }
 })
 
@@ -6160,7 +5987,7 @@ const applyBulkAction = async () => {
     } else if (bulkAction.value === 'replace_edge') {
       payload.updates = { edge_material_id: bulkEdgeMaterialId.value }
     } else if (bulkAction.value === 'replace_facade_material') {
-      payload.updates = { facade_material_id: bulkFacadeMaterialId.value, price_method: bulkPriceMethod.value }
+      payload.updates = { finished_product_specification_id: bulkFacadeSpecificationId.value }
     } else if (bulkAction.value === 'set_edge_scheme') {
       payload.updates = { edge_scheme: bulkEdgeScheme.value }
     } else if (bulkAction.value === 'clear_field') {
@@ -6181,8 +6008,7 @@ const applyBulkAction = async () => {
     bulkEdgeMaterialId.value = null
     bulkEdgeScheme.value = null
     bulkClearField.value = null
-    bulkFacadeMaterialId.value = null
-    bulkPriceMethod.value = 'single'
+    bulkFacadeSpecificationId.value = null
     await fetchData()
     scheduleRecalc()
   } catch (e: any) {
@@ -7929,7 +7755,7 @@ const estimateHardInvalid = computed(() => !operationsTotalIsValid.value)
 // === Workspace computeds ===
 const positionsWithoutMaterial = computed(() => {
   return positions.value.filter(p => {
-    if (p.kind === 'facade') return !p.facade_material_id
+    if (p.kind === 'facade') return !p.finished_product_specification_id
     return !p.material_id
   }).length
 })
@@ -9101,8 +8927,8 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
   border-radius: var(--md-sys-shape-corner-extra-large);
   background:
-    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.02), transparent 100px),
-    rgba(var(--v-theme-surface-container-low), 0.82);
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.028), transparent 110px),
+    rgba(var(--v-theme-surface-container-low), 0.88);
 }
 
 .dense-module-shell {
@@ -9120,8 +8946,8 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.68);
   border-radius: var(--md-sys-shape-corner-large);
   background:
-    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.035), transparent 110px),
-    rgba(var(--v-theme-surface-container-low), 0.94);
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.026), transparent 110px),
+    rgba(var(--v-theme-surface-container-lowest), 0.94);
 }
 
 .dense-module-hero__content,
@@ -9166,7 +8992,7 @@ onBeforeUnmount(() => {
   padding: 14px 16px 16px;
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.7);
   border-radius: var(--md-sys-shape-corner-large);
-  background: rgba(var(--v-theme-surface-container-low), 0.9);
+  background: rgba(var(--v-theme-surface-container-low), 0.94);
 }
 
 .dense-module-section-bar,
@@ -9202,9 +9028,9 @@ onBeforeUnmount(() => {
 .dense-module-table-wrap {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.68);
   border-radius: calc(var(--md-sys-shape-corner-large) + 2px);
-  background: rgba(var(--v-theme-surface), 0.98);
+  background: rgba(var(--v-theme-surface), 0.99);
 }
 
 .dense-module-table :deep(table) {
@@ -9215,8 +9041,8 @@ onBeforeUnmount(() => {
 .dense-module-table :deep(thead th) {
   height: 44px !important;
   padding: 0 14px !important;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.62) !important;
-  background: rgba(var(--v-theme-surface-container), 0.88) !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.72) !important;
+  background: rgba(var(--v-theme-surface-container-high), 0.92) !important;
   color: rgba(var(--v-theme-on-surface-variant), 1) !important;
   font-size: 0.75rem;
   font-weight: 700;
@@ -9226,7 +9052,7 @@ onBeforeUnmount(() => {
 
 .dense-module-table :deep(tbody td) {
   padding: 10px 14px !important;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.4) !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.48) !important;
   vertical-align: middle;
 }
 
@@ -9243,9 +9069,9 @@ onBeforeUnmount(() => {
 .dense-module-support-card {
   min-width: 0;
   padding: 0;
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.66);
   border-radius: calc(var(--md-sys-shape-corner-large) + 2px);
-  background: rgba(var(--v-theme-surface), 0.98);
+  background: rgba(var(--v-theme-surface), 0.99);
   overflow: hidden;
 }
 
@@ -9324,8 +9150,8 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 10px 14px;
   background:
-    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.03), transparent 120px),
-    rgba(var(--v-theme-surface-container-low), 0.96);
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.022), transparent 120px),
+    rgba(var(--v-theme-surface-container-lowest), 0.96);
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
   border-radius: var(--md-sys-shape-corner-extra-large);
   margin-bottom: 10px;
@@ -9366,7 +9192,7 @@ onBeforeUnmount(() => {
 .positions-table-wrap {
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
   border-radius: var(--md-sys-shape-corner-extra-large);
-  background: rgba(var(--v-theme-surface-container-low), 0.92);
+  background: rgba(var(--v-theme-surface-container-low), 0.95);
   padding: 8px;
   overflow: hidden;
 }
@@ -9481,7 +9307,7 @@ onBeforeUnmount(() => {
 
 .positions-table-wrap :deep(.v-table__wrapper) {
   border-radius: calc(var(--md-sys-shape-corner-extra-large) - 8px);
-  background: rgba(var(--v-theme-surface), 0.96);
+  background: rgba(var(--v-theme-surface), 0.99);
   overflow-y: hidden !important;
   max-height: none !important;
   scrollbar-width: none;
@@ -9501,7 +9327,7 @@ onBeforeUnmount(() => {
   height: 44px !important;
   padding: 0 12px !important;
   border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.72) !important;
-  background: rgba(var(--v-theme-surface-container), 0.94) !important;
+  background: rgba(var(--v-theme-surface-container-high), 0.94) !important;
   color: rgba(var(--v-theme-on-surface-variant), 1) !important;
   font-size: 0.75rem;
   font-weight: 700;
@@ -9535,11 +9361,11 @@ onBeforeUnmount(() => {
 
 .position-row.row-hovered td,
 .position-row:hover td {
-  background: rgba(var(--v-theme-primary), 0.04) !important;
+  background: rgba(var(--v-theme-primary), 0.05) !important;
 }
 
 .position-row.row-selected td {
-  background: rgba(var(--v-theme-primary), 0.08) !important;
+  background: rgba(var(--v-theme-primary), 0.09) !important;
 }
 
 .position-row.row-selected td:first-child {

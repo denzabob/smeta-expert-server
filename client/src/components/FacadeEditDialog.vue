@@ -92,6 +92,43 @@
           <template v-if="currentFacadeId">
             <v-divider v-if="!wizardMode" class="my-4" />
 
+            <v-alert
+              v-if="newPricingSummary?.available"
+              density="compact"
+              variant="tonal"
+              type="info"
+              class="mb-3"
+            >
+              Новый pricing summary:
+              <strong v-if="newPricingSummary.has_computed_price">
+                {{ formatPrice(newPricingSummary.computed_price_per_m2) }} ₽/м²
+              </strong>
+              <span v-else>пока без вычисленной цены</span>
+              <span v-if="newPricingSummary.method">
+                · {{ pricingMethodLabel(newPricingSummary.method) }}
+              </span>
+              <span v-if="newPricingSummary.source_count">
+                · {{ newPricingSummary.source_count }} ист.
+              </span>
+              <span
+                v-if="newPricingSummary.min_price !== null && newPricingSummary.max_price !== null"
+              >
+                · диапазон {{ formatPrice(newPricingSummary.min_price) }}–{{ formatPrice(newPricingSummary.max_price) }} ₽
+              </span>
+              <template v-if="canOpenPricingBreakdown">
+                <span class="mx-1">·</span>
+                <v-btn
+                  size="x-small"
+                  variant="text"
+                  class="text-none px-1"
+                  :loading="pricingBreakdownLoading"
+                  @click.stop="openPricingBreakdown"
+                >
+                  Как собрана цена
+                </v-btn>
+              </template>
+            </v-alert>
+
             <!-- Wizard prompt for first quote -->
             <v-alert v-if="wizardMode && quotes.length === 0" type="info" variant="tonal" class="mb-3">
               Фасад создан. Добавьте первую котировку поставщика.
@@ -396,13 +433,300 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="showPricingBreakdown" max-width="900" scrollable>
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <span>Источники новой расчетной цены</span>
+          <v-spacer />
+          <v-btn icon variant="text" @click="showPricingBreakdown = false"><v-icon>mdi-close</v-icon></v-btn>
+        </v-card-title>
+        <v-card-text>
+          <v-alert v-if="pricingBreakdownLoading" type="info" density="compact" variant="tonal">
+            Загружаем breakdown новой цены…
+          </v-alert>
+
+          <v-alert v-else-if="pricingBreakdownError" type="error" density="compact" variant="tonal">
+            {{ pricingBreakdownError }}
+          </v-alert>
+
+          <template v-else-if="pricingBreakdown">
+            <v-alert density="compact" variant="tonal" type="info" class="mb-3">
+              <strong v-if="pricingBreakdown.summary.computed_price_per_m2 !== null">
+                {{ formatPrice(pricingBreakdown.summary.computed_price_per_m2) }} ₽/м²
+              </strong>
+              <span v-else>Расчетная цена пока не сформирована</span>
+              <span v-if="pricingBreakdown.summary.method">
+                · {{ pricingMethodLabel(pricingBreakdown.summary.method) }}
+              </span>
+              <span> · {{ pricingBreakdown.summary.source_count }} ист.</span>
+              <span
+                v-if="pricingBreakdown.summary.min_price !== null && pricingBreakdown.summary.max_price !== null"
+              >
+                · диапазон {{ formatPrice(pricingBreakdown.summary.min_price) }}–{{ formatPrice(pricingBreakdown.summary.max_price) }} ₽
+              </span>
+            </v-alert>
+
+            <div
+              v-if="pricingBreakdown.profile.method || pricingBreakdown.sources.length"
+              class="text-caption text-medium-emphasis mb-3"
+            >
+              Профиль:
+              {{ pricingMethodLabel(pricingBreakdown.profile.method) }},
+              только активные: {{ pricingBreakdown.profile.include_only_active ? 'да' : 'нет' }},
+              исключать stale: {{ pricingBreakdown.profile.exclude_stale ? 'да' : 'нет' }}
+              <span v-if="pricingBreakdown.profile.minimum_sources_count !== null">
+                , минимум источников: {{ pricingBreakdown.profile.minimum_sources_count }}
+              </span>
+            </div>
+
+            <v-alert
+              v-if="pricingBreakdown.sources.length === 0"
+              type="info"
+              density="compact"
+              variant="tonal"
+            >
+              Для нового pricing-домена пока нет доступных source rows.
+            </v-alert>
+
+            <div v-else class="quotes-table-scroll">
+              <v-data-table
+                :headers="pricingBreakdownHeaders"
+                :items="pricingBreakdown.sources"
+                density="compact"
+                class="elevation-0 quotes-table"
+                :items-per-page="10"
+                item-key="id"
+              >
+                <template #item.supplier_name="{ item }">
+                  <span>{{ item.supplier?.name || '—' }}</span>
+                </template>
+                <template #item.price_per_m2_normalized="{ item }">
+                  <span class="font-weight-medium">{{ formatPrice(item.price_per_m2_normalized) }} ₽</span>
+                </template>
+                <template #item.source_kind="{ item }">
+                  <v-chip size="x-small" variant="tonal">
+                    {{ pricingSourceKindLabel(item.source_kind) }}
+                  </v-chip>
+                </template>
+                <template #item.status="{ item }">
+                  <v-chip size="x-small" :color="pricingSourceStatusColor(item.status)" variant="flat">
+                    {{ pricingSourceStatusLabel(item.status) }}
+                  </v-chip>
+                </template>
+                <template #item.effective_date="{ item }">
+                  <span v-if="item.effective_date">{{ formatDate(item.effective_date) }}</span>
+                  <span v-else-if="item.captured_at">{{ formatDate(item.captured_at) }}</span>
+                  <span v-else class="text-grey">—</span>
+                </template>
+                <template #item.description="{ item }">
+                  <div>
+                    <div v-if="item.article" class="font-weight-medium">{{ item.article }}</div>
+                    <div v-if="item.description" class="text-caption">{{ item.description }}</div>
+                    <div v-else-if="item.category" class="text-caption">{{ item.category }}</div>
+                    <div v-if="item.stale_reason" class="text-caption text-warning">{{ item.stale_reason }}</div>
+                  </div>
+                </template>
+                <template #item.evidence_assets_count="{ item }">
+                  <v-chip size="x-small" :color="item.has_evidence ? 'success' : 'grey'" variant="tonal">
+                    {{ item.evidence_assets_count }}
+                  </v-chip>
+                </template>
+                <template #item.actions="{ item }">
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    class="text-none"
+                    @click="openPricingSourceDetails(item.id)"
+                  >
+                    Подробнее
+                  </v-btn>
+                </template>
+              </v-data-table>
+            </div>
+          </template>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn @click="showPricingBreakdown = false">Закрыть</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showPricingSourceDetails" max-width="760" scrollable>
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <span>Детали источника</span>
+          <v-spacer />
+          <v-btn icon variant="text" @click="showPricingSourceDetails = false"><v-icon>mdi-close</v-icon></v-btn>
+        </v-card-title>
+        <v-card-text>
+          <v-alert v-if="pricingSourceDetailsLoading" type="info" density="compact" variant="tonal">
+            Загружаем детали источника…
+          </v-alert>
+
+          <v-alert v-else-if="pricingSourceDetailsError" type="error" density="compact" variant="tonal">
+            {{ pricingSourceDetailsError }}
+          </v-alert>
+
+          <template v-else-if="pricingSourceDetails">
+            <v-row dense class="mb-2">
+              <v-col cols="12" md="6">
+                <div class="text-caption text-medium-emphasis">Поставщик</div>
+                <div class="font-weight-medium">{{ pricingSourceDetails.source.supplier.name || '—' }}</div>
+              </v-col>
+              <v-col cols="12" md="6">
+                <div class="text-caption text-medium-emphasis">Источник</div>
+                <div>{{ pricingSourceKindLabel(pricingSourceDetails.source.source_kind) }}</div>
+              </v-col>
+              <v-col cols="12" md="4">
+                <div class="text-caption text-medium-emphasis">Цена поставщика</div>
+                <div>{{ formatPrice(pricingSourceDetails.source.source_price) }} {{ pricingSourceDetails.source.source_unit || '' }}</div>
+              </v-col>
+              <v-col cols="12" md="4">
+                <div class="text-caption text-medium-emphasis">Нормализовано</div>
+                <div class="font-weight-medium">{{ formatPrice(pricingSourceDetails.source.price_per_m2_normalized) }} ₽/м²</div>
+              </v-col>
+              <v-col cols="12" md="4">
+                <div class="text-caption text-medium-emphasis">Статус</div>
+                <v-chip size="small" :color="pricingSourceStatusColor(pricingSourceDetails.source.status)" variant="flat">
+                  {{ pricingSourceStatusLabel(pricingSourceDetails.source.status) }}
+                </v-chip>
+              </v-col>
+              <v-col cols="12" md="4">
+                <div class="text-caption text-medium-emphasis">Дата актуальности</div>
+                <div>{{ pricingSourceDetails.source.effective_date ? formatDate(pricingSourceDetails.source.effective_date) : '—' }}</div>
+              </v-col>
+              <v-col cols="12" md="4">
+                <div class="text-caption text-medium-emphasis">Дата захвата</div>
+                <div>{{ pricingSourceDetails.source.captured_at ? formatDate(pricingSourceDetails.source.captured_at) : '—' }}</div>
+              </v-col>
+              <v-col cols="12" md="4">
+                <div class="text-caption text-medium-emphasis">Коэффициент к м²</div>
+                <div>{{ pricingSourceDetails.source.conversion_factor_to_m2 ?? '—' }}</div>
+              </v-col>
+            </v-row>
+
+            <v-alert
+              v-if="pricingSourceDetails.source.stale_reason"
+              type="warning"
+              density="compact"
+              variant="tonal"
+              class="mb-3"
+            >
+              {{ pricingSourceDetails.source.stale_reason }}
+            </v-alert>
+
+            <v-row dense class="mb-3">
+              <v-col cols="12" md="6" v-if="pricingSourceDetails.source.article">
+                <div class="text-caption text-medium-emphasis">Артикул</div>
+                <div>{{ pricingSourceDetails.source.article }}</div>
+              </v-col>
+              <v-col cols="12" md="6" v-if="pricingSourceDetails.source.category">
+                <div class="text-caption text-medium-emphasis">Категория</div>
+                <div>{{ pricingSourceDetails.source.category }}</div>
+              </v-col>
+              <v-col cols="12" v-if="pricingSourceDetails.source.description">
+                <div class="text-caption text-medium-emphasis">Описание</div>
+                <div>{{ pricingSourceDetails.source.description }}</div>
+              </v-col>
+              <v-col cols="12" v-if="pricingSourceDetails.source.notes">
+                <div class="text-caption text-medium-emphasis">Примечания</div>
+                <div>{{ pricingSourceDetails.source.notes }}</div>
+              </v-col>
+            </v-row>
+
+            <div class="text-subtitle-2 mb-2">Evidence metadata</div>
+            <v-alert
+              v-if="pricingSourceDetails.evidence_assets.length === 0"
+              type="info"
+              density="compact"
+              variant="tonal"
+            >
+              У этого source нет привязанных evidence assets.
+            </v-alert>
+
+            <v-list v-else density="compact" class="border rounded">
+              <v-list-item
+                v-for="asset in pricingSourceDetails.evidence_assets"
+                :key="asset.id"
+                class="py-2"
+              >
+                <template #prepend>
+                  <v-icon size="small">
+                    {{ pricingEvidenceIcon(asset.asset_type) }}
+                  </v-icon>
+                </template>
+                <v-list-item-title>
+                  {{ pricingEvidenceLabel(asset.asset_type) }}
+                  <span v-if="asset.original_name"> · {{ asset.original_name }}</span>
+                </v-list-item-title>
+                <v-list-item-subtitle>
+                  <span v-if="asset.mime_type">{{ asset.mime_type }}</span>
+                  <span v-if="asset.file_size !== null"> · {{ formatFileSize(asset.file_size) }}</span>
+                  <span v-if="asset.captured_at"> · {{ formatDate(asset.captured_at) }}</span>
+                  <span v-if="asset.content_hash"> · hash: {{ asset.content_hash }}</span>
+                </v-list-item-subtitle>
+                <template #append>
+                  <div class="d-flex align-center ga-1">
+                    <v-btn
+                      v-if="asset.can_preview && asset.preview_url"
+                      :href="asset.preview_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      size="x-small"
+                      variant="text"
+                      class="text-none"
+                    >
+                      Предпросмотр
+                    </v-btn>
+                    <v-btn
+                      v-if="asset.can_download && asset.download_url"
+                      :href="asset.download_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      size="x-small"
+                      variant="text"
+                      class="text-none"
+                    >
+                      Скачать
+                    </v-btn>
+                    <v-btn
+                      v-else-if="asset.open_url && asset.access_kind === 'external'"
+                      :href="asset.open_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      size="x-small"
+                      variant="text"
+                      class="text-none"
+                    >
+                      Открыть
+                    </v-btn>
+                  </div>
+                </template>
+              </v-list-item>
+            </v-list>
+          </template>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn @click="showPricingSourceDetails = false">Закрыть</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useFinishedProductsStore } from '@/stores/finishedProducts'
-import { finishedProductsApi, type FinishedProduct as Facade, type FinishedProductQuote as FacadeQuote } from '@/api/finishedProducts'
+import {
+  finishedProductsApi,
+  type FinishedProduct as Facade,
+  type FinishedProductQuote as FacadeQuote,
+  type FinishedProductPricingBreakdown,
+  type FinishedProductPriceSourceDetails,
+} from '@/api/finishedProducts'
 import { priceListsApi } from '@/api/priceLists'
 import api from '@/api/axios'
 
@@ -458,6 +782,18 @@ const createdFacadeId = ref<number | null>(null)
 const isNew = computed(() => !props.facade)
 const wizardMode = computed(() => isNew.value || !!createdFacadeId.value)
 const currentFacadeId = computed(() => props.facade?.id ?? createdFacadeId.value)
+const newPricingSummary = computed(() => props.facade?.finished_product_pricing_summary ?? null)
+const canOpenPricingBreakdown = computed(() =>
+  !!currentFacadeId.value && !!newPricingSummary.value?.available && !!newPricingSummary.value?.has_new_pricing_sources
+)
+const showPricingBreakdown = ref(false)
+const pricingBreakdownLoading = ref(false)
+const pricingBreakdownError = ref('')
+const pricingBreakdown = ref<FinishedProductPricingBreakdown | null>(null)
+const showPricingSourceDetails = ref(false)
+const pricingSourceDetailsLoading = ref(false)
+const pricingSourceDetailsError = ref('')
+const pricingSourceDetails = ref<FinishedProductPriceSourceDetails | null>(null)
 
 const dialogTitle = computed(() => {
   if (wizardMode.value && activeStep.value === 1) return 'Шаг 2 из 2: Котировки'
@@ -603,6 +939,17 @@ const quoteHeaders = [
   { title: '', key: 'actions', width: '70px', sortable: false },
 ]
 
+const pricingBreakdownHeaders = [
+  { title: 'Поставщик', key: 'supplier_name', width: '140px', sortable: false },
+  { title: 'Цена м²', key: 'price_per_m2_normalized', width: '95px', sortable: false },
+  { title: 'Источник', key: 'source_kind', width: '110px', sortable: false },
+  { title: 'Дата', key: 'effective_date', width: '95px', sortable: false },
+  { title: 'Статус', key: 'status', width: '90px', sortable: false },
+  { title: 'Описание', key: 'description', sortable: false },
+  { title: 'Evidence', key: 'evidence_assets_count', width: '85px', sortable: false },
+  { title: '', key: 'actions', width: '90px', sortable: false },
+]
+
 // Watch for dialog open/close
 watch(() => props.modelValue, async (val) => {
   if (val) {
@@ -631,6 +978,15 @@ watch(() => props.modelValue, async (val) => {
       quotes.value = []
     }
     loadSuppliers()
+  } else {
+    showPricingBreakdown.value = false
+    pricingBreakdown.value = null
+    pricingBreakdownError.value = ''
+    pricingBreakdownLoading.value = false
+    showPricingSourceDetails.value = false
+    pricingSourceDetails.value = null
+    pricingSourceDetailsError.value = ''
+    pricingSourceDetailsLoading.value = false
   }
 })
 
@@ -788,6 +1144,93 @@ function sourceTypeLabel(t: string) {
 function formatPrice(val: number | null) {
   if (!val) return '—'
   return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val)
+}
+
+function pricingMethodLabel(method: string | null | undefined) {
+  if (method === 'median') return 'медиана'
+  if (method === 'mean') return 'среднее'
+  return 'агрегация'
+}
+
+function pricingSourceKindLabel(kind: string | null | undefined) {
+  if (kind === 'price_list_row') return 'Прайс-строка'
+  if (kind === 'price_document') return 'Документ'
+  if (kind === 'url_capture') return 'URL'
+  if (kind === 'manual_entry') return 'Вручную'
+  return kind || '—'
+}
+
+function pricingSourceStatusLabel(status: string | null | undefined) {
+  if (status === 'active') return 'Активен'
+  if (status === 'inactive') return 'Неактивен'
+  if (status === 'stale') return 'Stale'
+  if (status === 'invalid') return 'Невалиден'
+  if (status === 'superseded') return 'Заменен'
+  return status || '—'
+}
+
+function pricingSourceStatusColor(status: string | null | undefined) {
+  if (status === 'active') return 'success'
+  if (status === 'stale') return 'warning'
+  if (status === 'invalid') return 'error'
+  if (status === 'superseded') return 'secondary'
+  return 'grey'
+}
+
+function pricingEvidenceLabel(type: string | null | undefined) {
+  if (type === 'screenshot') return 'Скриншот'
+  if (type === 'file') return 'Файл'
+  if (type === 'image') return 'Изображение'
+  if (type === 'link') return 'Ссылка'
+  return type || 'Evidence'
+}
+
+function pricingEvidenceIcon(type: string | null | undefined) {
+  if (type === 'screenshot' || type === 'image') return 'mdi-image'
+  if (type === 'file') return 'mdi-file-document-outline'
+  if (type === 'link') return 'mdi-link-variant'
+  return 'mdi-file-question-outline'
+}
+
+function formatFileSize(size: number | null | undefined) {
+  if (size === null || size === undefined) return '—'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+async function openPricingBreakdown() {
+  if (!currentFacadeId.value || !canOpenPricingBreakdown.value) return
+
+  showPricingBreakdown.value = true
+  pricingBreakdownLoading.value = true
+  pricingBreakdownError.value = ''
+
+  try {
+    const { data } = await finishedProductsApi.getPricingBreakdown(currentFacadeId.value)
+    pricingBreakdown.value = data
+  } catch (e: any) {
+    pricingBreakdownError.value = e.response?.data?.message ?? e.message ?? 'Не удалось загрузить breakdown новой цены'
+    pricingBreakdown.value = null
+  } finally {
+    pricingBreakdownLoading.value = false
+  }
+}
+
+async function openPricingSourceDetails(sourceId: number) {
+  showPricingSourceDetails.value = true
+  pricingSourceDetailsLoading.value = true
+  pricingSourceDetailsError.value = ''
+
+  try {
+    const { data } = await finishedProductsApi.getPricingSourceDetails(sourceId)
+    pricingSourceDetails.value = data
+  } catch (e: any) {
+    pricingSourceDetailsError.value = e.response?.data?.message ?? e.message ?? 'Не удалось загрузить детали source'
+    pricingSourceDetails.value = null
+  } finally {
+    pricingSourceDetailsLoading.value = false
+  }
 }
 
 function close() {

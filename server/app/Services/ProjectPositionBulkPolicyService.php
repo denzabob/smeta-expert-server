@@ -23,7 +23,7 @@ class ProjectPositionBulkPolicyService
             return 'clear_' . $clearField;
         }
 
-        if (array_key_exists('facade_material_id', $updates)) {
+        if (array_key_exists('finished_product_specification_id', $updates) || array_key_exists('facade_material_id', $updates)) {
             return 'replace_facade_material';
         }
 
@@ -106,6 +106,7 @@ class ProjectPositionBulkPolicyService
         if (in_array($operation, [
             'replace_facade_material',
             'clear_facade_material_id',
+            'clear_finished_product_specification_id',
         ], true)) {
             if ($position->kind !== ProjectPosition::KIND_FACADE) {
                 return 'requires_facade';
@@ -116,4 +117,3 @@ class ProjectPositionBulkPolicyService
         return null;
     }
 }
-

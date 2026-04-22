@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Material;
+use App\Services\FinishedProductComputedPriceReadBridge;
 use App\Services\FacadeQuoteService;
 use App\Services\FacadeService;
 use Illuminate\Http\JsonResponse;
@@ -24,6 +25,7 @@ class FinishedProductController extends Controller
     public function __construct(
         private FacadeService $facadeService,
         private FacadeQuoteService $quoteService,
+        private FinishedProductComputedPriceReadBridge $computedPriceReadBridge,
     ) {}
 
     public function filterOptions(): JsonResponse
@@ -97,6 +99,7 @@ class FinishedProductController extends Controller
         $product = Material::where('type', Material::TYPE_FACADE)
             ->withCount('prices as quotes_count')
             ->findOrFail($id);
+        $this->computedPriceReadBridge->attachToMaterial($product);
 
         $quotes = $this->quoteService->getQuotes($id);
 
@@ -173,4 +176,3 @@ class FinishedProductController extends Controller
         }
     }
 }
-

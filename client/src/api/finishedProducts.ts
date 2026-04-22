@@ -3,6 +3,8 @@ import {
   type Facade as FinishedProduct,
   type FacadeQuote as FinishedProductQuote,
   type SimilarQuote as SimilarFinishedProductQuote,
+  type FinishedProductPricingBreakdown,
+  type FinishedProductPriceSourceDetails,
   type FacadeListParams as FinishedProductListParams,
   type FacadeCreateData as FinishedProductCreateData,
   type QuoteCreateData as FinishedProductQuoteCreateData,
@@ -13,6 +15,8 @@ export type {
   FinishedProduct,
   FinishedProductQuote,
   SimilarFinishedProductQuote,
+  FinishedProductPricingBreakdown,
+  FinishedProductPriceSourceDetails,
   FinishedProductListParams,
   FinishedProductCreateData,
   FinishedProductQuoteCreateData,
@@ -26,4 +30,3 @@ export type {
 export const finishedProductsApi = facadesApi
 
 export default finishedProductsApi
-

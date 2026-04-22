@@ -1117,24 +1117,24 @@ function normalizeSourceUrl(value: string | null | undefined): string {
 <style scoped>
 .labor-tabs {
   border-radius: var(--ds-radius-14);
-  background: rgba(var(--v-theme-surface-container-low), 0.86);
+  background: rgba(var(--v-theme-surface-container-low), 0.9);
   padding: var(--ds-space-6);
 }
 
 .labor-card {
-  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 96%, transparent);
 }
 
 .labor-table :deep(.v-table__wrapper) {
   border-radius: var(--ds-radius-12);
-  border: 1px solid var(--ds-border-color);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.8);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  background: rgba(var(--v-theme-surface), 0.96);
 }
 
 .labor-table :deep(thead th) {
   height: 52px !important;
-  border-bottom: 1px solid var(--ds-divider) !important;
-  background: rgba(var(--v-theme-surface-container-lowest), 0.92) !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.68) !important;
+  background: rgba(var(--v-theme-surface-container-high), 0.94) !important;
 }
 
 .labor-table :deep(thead th .v-data-table-header__content) {
@@ -1147,7 +1147,7 @@ function normalizeSourceUrl(value: string | null | undefined): string {
 
 .labor-table :deep(tbody td) {
   vertical-align: top;
-  border-bottom-color: var(--ds-divider) !important;
+  border-bottom-color: rgba(var(--v-theme-outline-variant), 0.46) !important;
   padding-top: 14px !important;
   padding-bottom: 14px !important;
 }
@@ -1157,8 +1157,8 @@ function normalizeSourceUrl(value: string | null | undefined): string {
 }
 
 .labor-table :deep(.v-data-table-footer) {
-  border-top: 1px solid var(--ds-divider);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.7);
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.58);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.82);
 }
 
 .section-head {
@@ -1191,10 +1191,10 @@ function normalizeSourceUrl(value: string | null | undefined): string {
 }
 
 .profile-group-card {
-  border: 1px solid var(--ds-border-color);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
   border-radius: var(--ds-radius-18);
   overflow: hidden;
-  background: rgba(var(--v-theme-surface-container-high), 0.72);
+  background: rgba(var(--v-theme-surface-container-low), 0.84);
 }
 
 .profile-group-card--legacy {
@@ -1204,8 +1204,8 @@ function normalizeSourceUrl(value: string | null | undefined): string {
 
 .profile-group-card__head {
   padding: 16px 18px 10px;
-  border-bottom: 1px solid var(--ds-divider);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.48);
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.58);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.68);
 }
 
 .profile-group-card__title {

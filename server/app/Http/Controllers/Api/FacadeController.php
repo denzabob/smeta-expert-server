@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Material;
 use App\Models\MaterialPrice;
+use App\Services\FinishedProductComputedPriceReadBridge;
 use App\Services\FacadeService;
 use App\Services\FacadeQuoteService;
 use Illuminate\Http\Request;
@@ -33,6 +34,7 @@ class FacadeController extends Controller
     public function __construct(
         private FacadeService $facadeService,
         private FacadeQuoteService $quoteService,
+        private FinishedProductComputedPriceReadBridge $computedPriceReadBridge,
     ) {}
 
     /**
@@ -87,6 +89,7 @@ class FacadeController extends Controller
         $material = Material::where('type', Material::TYPE_FACADE)
             ->withCount('prices as quotes_count')
             ->findOrFail($id);
+        $this->computedPriceReadBridge->attachToMaterial($material);
 
         $quotes = $this->quoteService->getQuotes($id);
 

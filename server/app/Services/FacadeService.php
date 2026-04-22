@@ -14,6 +14,10 @@ use Illuminate\Support\Facades\DB;
  */
 class FacadeService
 {
+    public function __construct(
+        private FinishedProductComputedPriceReadBridge $computedPriceReadBridge,
+    ) {}
+
     /**
      * List facades with filters, sorting, and quote counts.
      *
@@ -79,7 +83,10 @@ class FacadeService
         }
         $query->orderBy($sortBy, $sortDir === 'desc' ? 'desc' : 'asc');
 
-        return $query->paginate($perPage);
+        $paginator = $query->paginate($perPage);
+        $this->computedPriceReadBridge->attachToCollection($paginator->getCollection());
+
+        return $paginator;
     }
 
     /**

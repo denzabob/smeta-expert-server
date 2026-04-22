@@ -137,10 +137,20 @@
           </v-chip>
         </template>
         <template #item.last_quote_price="{ item }">
-          <span v-if="item.last_quote_price" class="font-weight-medium">
-            {{ formatPrice(item.last_quote_price) }} ₽/м²
-          </span>
-          <span v-else class="text-grey">—</span>
+          <div>
+            <span v-if="item.last_quote_price" class="font-weight-medium">
+              {{ formatPrice(item.last_quote_price) }} ₽/м²
+            </span>
+            <span v-else class="text-grey">—</span>
+            <div
+              v-if="item.finished_product_pricing_summary?.has_computed_price"
+              class="text-caption text-primary mt-1"
+            >
+              Новая: {{ formatPrice(item.finished_product_pricing_summary.computed_price_per_m2) }} ₽/м²
+              · {{ pricingMethodLabel(item.finished_product_pricing_summary.method) }}
+              · {{ item.finished_product_pricing_summary.source_count }} ист.
+            </div>
+          </div>
         </template>
         <template #item.last_quote_date="{ item }">
           <span v-if="item.last_quote_date">{{ formatDate(item.last_quote_date) }}</span>
@@ -344,6 +354,12 @@ function formatDate(val: string | null) {
   if (!val) return '—'
   const d = new Date(val)
   return d.toLocaleDateString('ru-RU')
+}
+
+function pricingMethodLabel(method: string | null | undefined) {
+  if (method === 'median') return 'медиана'
+  if (method === 'mean') return 'среднее'
+  return 'агрегация'
 }
 
 // Actions

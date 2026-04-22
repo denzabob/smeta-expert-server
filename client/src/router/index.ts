@@ -66,6 +66,12 @@ const router = createRouter({
           meta: { title: 'Готовые изделия' }
         },
         {
+          path: 'products/:id/pricing',
+          name: 'finished-product-pricing',
+          component: () => import('@/views/FinishedProductPricingView.vue'),
+          meta: { title: 'Управление pricing фасада' }
+        },
+        {
           path: 'facades',
           name: 'facades',
           redirect: { name: 'products', query: { type: 'facade' } },

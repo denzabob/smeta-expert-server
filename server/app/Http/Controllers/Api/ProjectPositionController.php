@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\FinishedProductSpecification;
 use App\Models\Material;
 use App\Models\MaterialPrice;
 use App\Models\ProjectPosition;
@@ -10,6 +11,7 @@ use App\Models\ProjectPositionPriceQuote;
 use App\Models\Project;
 use App\Models\PriceListVersion;
 use App\Models\ProjectPriceListVersion;
+use App\Services\FinishedProductPositionPricingSnapshotService;
 use App\Services\ProjectPositionBulkPolicyService;
 use App\Services\PriceAggregationService;
 use Illuminate\Http\Request as HttpRequest;
@@ -22,7 +24,7 @@ class ProjectPositionController extends Controller
     {
         $this->authorize('view', $project);
         return $project->positions()
-            ->with(['material', 'facadeMaterial', 'materialPrice', 'priceQuotes.supplier'])
+            ->with(['material', 'facadeMaterial', 'materialPrice', 'priceQuotes.supplier', 'finishedProductSpecification'])
             ->get();
     }
 
@@ -38,6 +40,7 @@ class ProjectPositionController extends Controller
             'detail_type_id' => 'nullable|exists:detail_types,id',
             'material_id' => 'nullable|exists:materials,id',
             'facade_material_id' => 'nullable|exists:materials,id',
+            'finished_product_specification_id' => 'nullable|exists:finished_product_specifications,id',
             'material_price_id' => 'nullable|exists:material_prices,id',
             'edge_material_id' => 'nullable|exists:materials,id',
             'edge_scheme' => ['nullable', Rule::in(['none', '=', '||', 'П', 'L', 'O'])],
@@ -78,7 +81,7 @@ class ProjectPositionController extends Controller
         unset($validated['quote_material_price_ids'], $validated['quote_mismatch_flags']);
 
         // Aggregation mode validation
-        if ($priceMethod !== ProjectPosition::PRICE_METHOD_SINGLE) {
+        if (empty($validated['finished_product_specification_id']) && $priceMethod !== ProjectPosition::PRICE_METHOD_SINGLE) {
             if (count($quoteIds) < 2) {
                 return response()->json(['message' => 'Aggregation requires at least 2 quotes.'], 422);
             }
@@ -87,23 +90,35 @@ class ProjectPositionController extends Controller
 
         // If facade with facade_material_id + single mode, auto-fill from material + price
         if (($validated['kind'] ?? '') === ProjectPosition::KIND_FACADE && !empty($validated['facade_material_id'])) {
-            if ($priceMethod === ProjectPosition::PRICE_METHOD_SINGLE) {
+            if (!empty($validated['finished_product_specification_id'])) {
+                $validated = $this->enrichFinishedProductFacadeData($project, $validated);
+            } elseif ($priceMethod === ProjectPosition::PRICE_METHOD_SINGLE) {
                 $validated = $this->enrichFacadeData($validated);
             } else {
                 // Aggregation: enrich material metadata but compute price from quotes
                 $validated = $this->enrichFacadeData($validated);
                 // Price will be overridden by aggregation below
             }
+        } elseif (($validated['kind'] ?? '') === ProjectPosition::KIND_FACADE && !empty($validated['finished_product_specification_id'])) {
+            $validated = $this->enrichFinishedProductFacadeData($project, $validated);
+        } elseif (($validated['kind'] ?? '') === ProjectPosition::KIND_FACADE) {
+            return response()->json(['message' => 'finished_product_specification_id is required for facade positions.'], 422);
         }
 
-        $validated['price_method'] = $priceMethod;
+        if (empty($validated['finished_product_specification_id'])) {
+            $validated['price_method'] = $priceMethod;
+        } else {
+            unset($validated['price_method']);
+        }
         $position = ProjectPosition::create($validated);
 
-        if ($priceMethod !== ProjectPosition::PRICE_METHOD_SINGLE && !empty($quoteIds)) {
+        if (!empty($position->finished_product_specification_id)) {
+            $position->priceQuotes()->delete();
+        } elseif ($priceMethod !== ProjectPosition::PRICE_METHOD_SINGLE && !empty($quoteIds)) {
             $this->persistAggregatedPrice($position, $quoteIds, $priceMethod, $quoteMismatchFlags);
         }
 
-        $position->load(['material', 'facadeMaterial', 'materialPrice', 'priceQuotes']);
+        $position->load(['material', 'facadeMaterial', 'materialPrice', 'priceQuotes', 'finishedProductSpecification']);
 
         // Auto-link price_list_version to project
         $this->autoLinkPriceVersion($project, $position);
@@ -114,7 +129,8 @@ class ProjectPositionController extends Controller
 
     public function show(ProjectPosition $projectPosition)
     {
-        $projectPosition->load(['material', 'facadeMaterial', 'materialPrice', 'priceQuotes.priceListVersion.priceList']);
+        $this->authorize('view', $projectPosition->project);
+        $projectPosition->load(['material', 'facadeMaterial', 'materialPrice', 'priceQuotes.priceListVersion.priceList', 'finishedProductSpecification']);
         return $projectPosition;
     }
 
@@ -130,8 +146,13 @@ class ProjectPositionController extends Controller
         $quoteMismatchFlags = $validated['quote_mismatch_flags'] ?? [];
         unset($validated['quote_material_price_ids'], $validated['quote_mismatch_flags']);
 
+        $newKind = $validated['kind'] ?? $projectPosition->kind;
+
         // Aggregation mode validation
-        if ($priceMethod !== ProjectPosition::PRICE_METHOD_SINGLE && !empty($quoteIds)) {
+        $resolvedFinishedProductSpecificationId = $validated['finished_product_specification_id']
+            ?? ($newKind === ProjectPosition::KIND_FACADE ? $projectPosition->finished_product_specification_id : null);
+
+        if (empty($resolvedFinishedProductSpecificationId) && $priceMethod !== ProjectPosition::PRICE_METHOD_SINGLE && !empty($quoteIds)) {
             if (count($quoteIds) < 2) {
                 return response()->json(['message' => 'Aggregation requires at least 2 quotes.'], 422);
             }
@@ -139,16 +160,29 @@ class ProjectPositionController extends Controller
             $this->validateQuotesBelongToMaterial($quoteIds, $facadeMaterialId);
         }
 
-        // If switching to facade or updating facade_material_id, re-fill
-        $newKind = $validated['kind'] ?? $projectPosition->kind;
-        if ($newKind === ProjectPosition::KIND_FACADE && !empty($validated['facade_material_id'])) {
+        $shouldRefreshFinishedProductSnapshot =
+            array_key_exists('finished_product_specification_id', $validated)
+            || ($newKind === ProjectPosition::KIND_FACADE && $projectPosition->kind !== ProjectPosition::KIND_FACADE);
+
+        // If switching to facade or explicitly changing facade specification, re-fill
+        if (
+            $newKind === ProjectPosition::KIND_FACADE
+            && !empty($resolvedFinishedProductSpecificationId)
+            && $shouldRefreshFinishedProductSnapshot
+        ) {
+            $validated['finished_product_specification_id'] = $resolvedFinishedProductSpecificationId;
+            $validated = $this->enrichFinishedProductFacadeData($project, $validated);
+        } elseif ($newKind === ProjectPosition::KIND_FACADE && !empty($validated['facade_material_id'])) {
             $validated = $this->enrichFacadeData($validated);
+        } elseif ($newKind === ProjectPosition::KIND_FACADE && !$projectPosition->facade_material_id && !$resolvedFinishedProductSpecificationId) {
+            return response()->json(['message' => 'finished_product_specification_id is required for facade positions.'], 422);
         }
 
         // If switching from facade to panel, clear facade fields + aggregation
         if ($newKind === ProjectPosition::KIND_PANEL && $projectPosition->kind === ProjectPosition::KIND_FACADE) {
             $validated = array_merge($validated, [
                 'facade_material_id' => null,
+                'finished_product_specification_id' => null,
                 'material_price_id' => null,
                 'decor_label' => null,
                 'thickness_mm' => null,
@@ -160,14 +194,21 @@ class ProjectPositionController extends Controller
                 'price_sources_count' => null,
                 'price_min' => null,
                 'price_max' => null,
+                'finished_product_pricing_snapshot' => null,
             ]);
             $projectPosition->priceQuotes()->delete();
         }
 
-        $validated['price_method'] = $priceMethod;
+        if (empty($resolvedFinishedProductSpecificationId)) {
+            $validated['price_method'] = $priceMethod;
+        } else {
+            unset($validated['price_method']);
+        }
         $projectPosition->update($validated);
 
-        if ($priceMethod !== ProjectPosition::PRICE_METHOD_SINGLE && !empty($quoteIds)) {
+        if (!empty($projectPosition->finished_product_specification_id)) {
+            $projectPosition->priceQuotes()->delete();
+        } elseif ($priceMethod !== ProjectPosition::PRICE_METHOD_SINGLE && !empty($quoteIds)) {
             $this->persistAggregatedPrice($projectPosition, $quoteIds, $priceMethod, $quoteMismatchFlags);
         } elseif ($priceMethod !== ProjectPosition::PRICE_METHOD_SINGLE && empty($quoteIds)) {
             // Price method changed to aggregated but no new quotes sent
@@ -201,7 +242,7 @@ class ProjectPositionController extends Controller
             ]);
         }
 
-        $projectPosition->load(['material', 'facadeMaterial', 'materialPrice', 'priceQuotes.supplier']);
+        $projectPosition->load(['material', 'facadeMaterial', 'materialPrice', 'priceQuotes.supplier', 'finishedProductSpecification']);
 
         // Auto-link price_list_version to project
         $this->autoLinkPriceVersion($projectPosition->project, $projectPosition);
@@ -234,8 +275,9 @@ class ProjectPositionController extends Controller
             'updates.edge_scheme' => ['nullable', Rule::in(['none', '=', '||', 'П', 'L', 'O'])],
             'updates.custom_name' => 'nullable|string|max:255',
             'updates.facade_material_id' => 'nullable|exists:materials,id',
+            'updates.finished_product_specification_id' => 'nullable|exists:finished_product_specifications,id',
             'updates.price_method' => ['nullable', Rule::in(ProjectPosition::PRICE_METHODS)],
-            'clear_field' => ['nullable', Rule::in(['material_id', 'edge_material_id', 'edge_scheme', 'custom_name', 'facade_material_id'])],
+            'clear_field' => ['nullable', Rule::in(['material_id', 'edge_material_id', 'edge_scheme', 'custom_name', 'facade_material_id', 'finished_product_specification_id'])],
         ]);
 
         $query = $project->positions();
@@ -301,6 +343,34 @@ class ProjectPositionController extends Controller
         }
 
         // Facade material requires per-position enrichment (metadata, price, labels)
+        if (isset($updates['finished_product_specification_id']) && $updates['finished_product_specification_id']) {
+            $snapshot = $this->captureFinishedProductSnapshot($project, (int) $updates['finished_product_specification_id']);
+            $enriched = app(FinishedProductPositionPricingSnapshotService::class)->applySnapshot(
+                [],
+                $snapshot['specification'],
+                $snapshot['snapshot']
+            );
+            unset($enriched['finished_product_specification_id']);
+
+            $updated = 0;
+            foreach ($applicable as $position) {
+                $position->finished_product_specification_id = $updates['finished_product_specification_id'];
+                $position->fill($enriched);
+                $position->priceQuotes()->delete();
+                $position->save();
+                $updated++;
+            }
+
+            return response()->json([
+                'success' => true,
+                'mode' => $mode,
+                'operation' => $operation,
+                'updated' => $updated,
+                'skipped' => count($skipped),
+                'skipped_details' => collect($skipped)->take(5)->values(),
+            ]);
+        }
+
         if (isset($updates['facade_material_id']) && $updates['facade_material_id']) {
             $enriched = $this->enrichFacadeData([
                 'facade_material_id' => $updates['facade_material_id'],
@@ -359,6 +429,7 @@ class ProjectPositionController extends Controller
 
         // Clearing facade_material_id — also clear related facade fields
         if ($clearField === 'facade_material_id') {
+            $updates['finished_product_specification_id'] = null;
             $updates['material_price_id'] = null;
             $updates['base_material_label'] = null;
             $updates['thickness_mm'] = null;
@@ -366,6 +437,23 @@ class ProjectPositionController extends Controller
             $updates['finish_name'] = null;
             $updates['decor_label'] = null;
             $updates['price_per_m2'] = null;
+            $updates['finished_product_pricing_snapshot'] = null;
+        }
+
+        if ($clearField === 'finished_product_specification_id') {
+            $updates['facade_material_id'] = null;
+            $updates['material_price_id'] = null;
+            $updates['base_material_label'] = null;
+            $updates['thickness_mm'] = null;
+            $updates['finish_type'] = null;
+            $updates['finish_name'] = null;
+            $updates['decor_label'] = null;
+            $updates['price_per_m2'] = null;
+            $updates['price_method'] = null;
+            $updates['price_sources_count'] = null;
+            $updates['price_min'] = null;
+            $updates['price_max'] = null;
+            $updates['finished_product_pricing_snapshot'] = null;
         }
 
         $updated = 0;
@@ -396,13 +484,29 @@ class ProjectPositionController extends Controller
 
         $positions = $project->positions()
             ->where('kind', ProjectPosition::KIND_FACADE)
-            ->whereNotNull('facade_material_id')
+            ->where(function ($query) {
+                $query->whereNotNull('facade_material_id')
+                    ->orWhereNotNull('finished_product_specification_id');
+            })
             ->get();
 
         $updated = 0;
         $errors = [];
 
         foreach ($positions as $position) {
+            if ($position->finished_product_specification_id) {
+                $snapshot = $this->captureFinishedProductSnapshot($project, (int) $position->finished_product_specification_id);
+                $attributes = app(FinishedProductPositionPricingSnapshotService::class)->applySnapshot(
+                    [],
+                    $snapshot['specification'],
+                    $snapshot['snapshot']
+                );
+                $position->fill($attributes);
+                $position->save();
+                $updated++;
+                continue;
+            }
+
             $price = MaterialPrice::where('material_id', $position->facade_material_id)
                 ->whereHas('priceListVersion', function ($q) {
                     $q->where('status', PriceListVersion::STATUS_ACTIVE);
@@ -497,6 +601,31 @@ class ProjectPositionController extends Controller
         }
 
         return $validated;
+    }
+
+    private function enrichFinishedProductFacadeData(Project $project, array $validated): array
+    {
+        $snapshot = $this->captureFinishedProductSnapshot(
+            $project,
+            (int) $validated['finished_product_specification_id']
+        );
+
+        return app(FinishedProductPositionPricingSnapshotService::class)->applySnapshot(
+            $validated,
+            $snapshot['specification'],
+            $snapshot['snapshot']
+        );
+    }
+
+    /**
+     * @return array{specification: FinishedProductSpecification, snapshot: array<string,mixed>}
+     */
+    private function captureFinishedProductSnapshot(Project $project, int $specificationId): array
+    {
+        return app(FinishedProductPositionPricingSnapshotService::class)->captureForUser(
+            (int) $project->user_id,
+            $specificationId
+        );
     }
 
     /**

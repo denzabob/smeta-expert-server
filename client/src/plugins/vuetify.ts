@@ -10,7 +10,7 @@ export default createVuetify({
     messages: { ru },
   },
   theme: {
-    defaultTheme: 'saasDark',
+    defaultTheme: 'saasDarkWarm',
     themes: saasDesignSystem.themes,
   },
   defaults: saasDesignSystem.defaults,

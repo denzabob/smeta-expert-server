@@ -35,6 +35,7 @@ class ProjectPosition extends Model
         'detail_type_id',
         'material_id',
         'facade_material_id',
+        'finished_product_specification_id',
         'material_price_id',
         'edge_material_id',
         'edge_scheme',
@@ -56,6 +57,7 @@ class ProjectPosition extends Model
         'price_sources_count',
         'price_min',
         'price_max',
+        'finished_product_pricing_snapshot',
         'requires_price_justification',
     ];
 
@@ -69,6 +71,7 @@ class ProjectPosition extends Model
         'price_sources_count' => 'integer',
         'price_min' => 'decimal:2',
         'price_max' => 'decimal:2',
+        'finished_product_pricing_snapshot' => 'array',
         'requires_price_justification' => 'boolean',
     ];
 
@@ -194,6 +197,11 @@ class ProjectPosition extends Model
     public function materialPrice()
     {
         return $this->belongsTo(MaterialPrice::class, 'material_price_id');
+    }
+
+    public function finishedProductSpecification()
+    {
+        return $this->belongsTo(FinishedProductSpecification::class, 'finished_product_specification_id');
     }
 
     public function priceQuotes()

@@ -349,6 +349,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('finished-products/{id}', [\App\Http\Controllers\Api\FinishedProductController::class, 'update']);
     Route::delete('finished-products/{id}', [\App\Http\Controllers\Api\FinishedProductController::class, 'destroy']);
     Route::get('finished-products/{id}/quotes', [\App\Http\Controllers\Api\FinishedProductController::class, 'quotes']);
+    Route::get('finished-product-specifications', [\App\Http\Controllers\Api\FinishedProductSpecificationController::class, 'index']);
+    Route::post('finished-product-specifications', [\App\Http\Controllers\Api\FinishedProductSpecificationController::class, 'store']);
+    Route::get('finished-product-specifications/{id}', [\App\Http\Controllers\Api\FinishedProductSpecificationController::class, 'show']);
+    Route::match(['put', 'patch'], 'finished-product-specifications/{id}', [\App\Http\Controllers\Api\FinishedProductSpecificationController::class, 'update']);
+    Route::delete('finished-product-specifications/{id}', [\App\Http\Controllers\Api\FinishedProductSpecificationController::class, 'destroy']);
+    Route::get('finished-product-specifications/{specification}/pricing/sources', [\App\Http\Controllers\Api\FinishedProductPriceSourceController::class, 'index']);
+    Route::post('finished-product-specifications/{specification}/pricing/sources', [\App\Http\Controllers\Api\FinishedProductPriceSourceController::class, 'store']);
+    Route::get('finished-product-price-sources/{source}/details', [\App\Http\Controllers\Api\FinishedProductPriceSourceController::class, 'details']);
+    Route::put('finished-product-price-sources/{source}', [\App\Http\Controllers\Api\FinishedProductPriceSourceController::class, 'update']);
+    Route::post('finished-product-price-sources/{source}/activate', [\App\Http\Controllers\Api\FinishedProductPriceSourceController::class, 'activate']);
+    Route::post('finished-product-price-sources/{source}/deactivate', [\App\Http\Controllers\Api\FinishedProductPriceSourceController::class, 'deactivate']);
+    Route::get('finished-product-price-sources/{source}/evidence-assets', [\App\Http\Controllers\Api\FinishedProductPriceEvidenceAssetController::class, 'index']);
+    Route::post('finished-product-price-sources/{source}/evidence-assets', [\App\Http\Controllers\Api\FinishedProductPriceEvidenceAssetController::class, 'store']);
+    Route::get('finished-product-price-evidence-assets/{asset}/open', [\App\Http\Controllers\Api\FinishedProductPriceEvidenceAssetController::class, 'open']);
+    Route::delete('finished-product-price-evidence-assets/{asset}', [\App\Http\Controllers\Api\FinishedProductPriceEvidenceAssetController::class, 'destroy']);
+    Route::get('finished-product-specifications/{specification}/pricing/summary', [\App\Http\Controllers\Api\FinishedProductComputedPriceController::class, 'show']);
+    Route::get('finished-product-specifications/{specification}/pricing/breakdown', [\App\Http\Controllers\Api\FinishedProductComputedPriceController::class, 'breakdown']);
+    Route::put('finished-product-specifications/{specification}/pricing/aggregation-profile', [\App\Http\Controllers\Api\FinishedProductAggregationProfileController::class, 'update']);
 
     Route::get('materials/{id}/history', [MaterialController::class, 'history']);
 

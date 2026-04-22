@@ -41,6 +41,47 @@ const md3LightColors = {
   'inverse-primary': '#cfbcff',
 }
 
+const md3LightWarmColors = {
+  background: '#f6f2ea',
+  surface: '#fbf7f0',
+  'surface-bright': '#fffaf4',
+  'surface-dim': '#ddd7ce',
+  'surface-variant': '#e7dfd4',
+  'surface-container-lowest': '#fffdf9',
+  'surface-container-low': '#f5efe6',
+  'surface-container': '#efe8de',
+  'surface-container-high': '#e8e1d7',
+  'surface-container-highest': '#e1d9cf',
+  'on-background': '#201c17',
+  'on-surface': '#201c17',
+  'on-surface-variant': '#5a534b',
+  primary: '#6b725d',
+  'primary-darken-1': '#515744',
+  'on-primary': '#ffffff',
+  'primary-container': '#dfe7c9',
+  'on-primary-container': '#1d210f',
+  secondary: '#756f62',
+  'on-secondary': '#ffffff',
+  'secondary-container': '#e8e1d3',
+  'on-secondary-container': '#211b11',
+  tertiary: '#8a655b',
+  'on-tertiary': '#ffffff',
+  'tertiary-container': '#ffdacc',
+  'on-tertiary-container': '#34130d',
+  error: '#ba1a1a',
+  'on-error': '#ffffff',
+  'error-container': '#ffdad6',
+  'on-error-container': '#410002',
+  success: '#47683f',
+  warning: '#8a5d14',
+  info: '#46627a',
+  outline: '#8c8378',
+  'outline-variant': '#d0c5b9',
+  'inverse-surface': '#35302a',
+  'inverse-on-surface': '#faefe7',
+  'inverse-primary': '#c3cbaf',
+}
+
 const md3DarkColors = {
   background: '#141218',
   surface: '#141218',
@@ -82,6 +123,47 @@ const md3DarkColors = {
   'inverse-primary': '#6750a4',
 }
 
+const md3DarkWarmColors = {
+  background: '#171410',
+  surface: '#171410',
+  'surface-bright': '#403a34',
+  'surface-dim': '#171410',
+  'surface-variant': '#4d463f',
+  'surface-container-lowest': '#120f0c',
+  'surface-container-low': '#1f1b17',
+  'surface-container': '#24201c',
+  'surface-container-high': '#2f2a25',
+  'surface-container-highest': '#3a342e',
+  'on-background': '#ece4dc',
+  'on-surface': '#ece4dc',
+  'on-surface-variant': '#d1c5b9',
+  primary: '#c3cbaf',
+  'primary-darken-1': '#aab296',
+  'on-primary': '#2c331f',
+  'primary-container': '#434a34',
+  'on-primary-container': '#dfe7c9',
+  secondary: '#d0c6b7',
+  'on-secondary': '#383126',
+  'secondary-container': '#4d463a',
+  'on-secondary-container': '#ece2d2',
+  tertiary: '#f1b8a8',
+  'on-tertiary': '#522117',
+  'tertiary-container': '#6c3b31',
+  'on-tertiary-container': '#ffdacc',
+  error: '#ffb4ab',
+  'on-error': '#690005',
+  'error-container': '#93000a',
+  'on-error-container': '#ffdad6',
+  success: '#a8d49a',
+  warning: '#f0bf74',
+  info: '#adcbe4',
+  outline: '#9c9186',
+  'outline-variant': '#4d463f',
+  'inverse-surface': '#ece4dc',
+  'inverse-on-surface': '#35302a',
+  'inverse-primary': '#6b725d',
+}
+
 const saasDarkTheme: ThemeDefinition = {
   dark: true,
   colors: {
@@ -106,6 +188,30 @@ const saasDarkTheme: ThemeDefinition = {
   },
 }
 
+const saasDarkWarmTheme: ThemeDefinition = {
+  dark: true,
+  colors: {
+    ...md3DarkWarmColors,
+  },
+  variables: {
+    'border-color': '#ffffff',
+    'border-opacity': 0.08,
+    'high-emphasis-opacity': 0.95,
+    'medium-emphasis-opacity': 0.72,
+    'disabled-opacity': 0.45,
+    'hover-opacity': 0.08,
+    'focus-opacity': 0.12,
+    'selected-opacity': 0.1,
+    'activated-opacity': 0.1,
+    'pressed-opacity': 0.12,
+    'dragged-opacity': 0.08,
+    'theme-kbd': '#2d261f',
+    'theme-on-kbd': '#ece4dc',
+    'theme-code': '#241f1a',
+    'theme-on-code': '#ece4dc',
+  },
+}
+
 const saasLightTheme: ThemeDefinition = {
   dark: false,
   colors: {
@@ -113,10 +219,19 @@ const saasLightTheme: ThemeDefinition = {
   },
 }
 
+const saasLightWarmTheme: ThemeDefinition = {
+  dark: false,
+  colors: {
+    ...md3LightWarmColors,
+  },
+}
+
 export const saasDesignSystem = {
   themes: {
     saasDark: saasDarkTheme,
     saasLight: saasLightTheme,
+    saasDarkWarm: saasDarkWarmTheme,
+    saasLightWarm: saasLightWarmTheme,
     // Aliases for legacy toggles used in older layouts.
     myTheme: saasLightTheme,
     myThemeDark: saasDarkTheme,

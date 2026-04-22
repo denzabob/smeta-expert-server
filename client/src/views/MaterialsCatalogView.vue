@@ -883,7 +883,7 @@ watch(
 
 <style scoped>
 .catalog-card {
-  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 96%, transparent);
 }
 
 .catalog-card :deep(.v-card-text) {
@@ -899,9 +899,9 @@ watch(
 
 .catalog-mode-surface,
 .catalog-filter-surface {
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.78);
   border-radius: var(--ds-radius-12);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.84);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.9);
 }
 
 .catalog-mode-surface {
@@ -941,7 +941,7 @@ watch(
   width: 100%;
   min-height: 40px;
   border-radius: var(--ds-radius-10) !important;
-  background: rgba(var(--v-theme-surface-container-high), 0.76);
+  background: rgba(var(--v-theme-surface-container-high), 0.86);
   color: var(--ds-text-secondary);
   justify-content: center;
   padding-inline: 16px;
@@ -949,7 +949,7 @@ watch(
 }
 
 .catalog-mode-tabs__button:hover {
-  background: rgba(var(--v-theme-surface-container-highest), 0.88);
+  background: rgba(var(--v-theme-surface-container-highest), 0.96);
 }
 
 .catalog-filter-surface {
@@ -998,7 +998,7 @@ watch(
   gap: 4px;
   padding: 2px 6px;
   border-radius: var(--ds-radius-10);
-  background: rgba(var(--v-theme-surface-container-low), 0.74);
+  background: rgba(var(--v-theme-surface-container-low), 0.86);
 }
 
 .catalog-row-actions :deep(.v-btn) {
@@ -1011,15 +1011,24 @@ watch(
 
 .catalog-table :deep(.v-table__wrapper) {
   border-radius: var(--ds-radius-12);
-  border: 1px solid var(--ds-border-color);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.72);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.78);
+  background: rgba(var(--v-theme-surface), 0.96);
+}
+
+.catalog-table :deep(thead th) {
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.68) !important;
+  background: rgba(var(--v-theme-surface-container-high), 0.92) !important;
+}
+
+.catalog-table :deep(tbody td) {
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.44) !important;
 }
 
 .catalog-empty-state {
   margin: var(--ds-space-12);
-  border: 1px dashed rgba(var(--v-theme-outline-variant), 0.72);
+  border: 1px dashed rgba(var(--v-theme-outline-variant), 0.78);
   border-radius: var(--ds-radius-12);
-  background: rgba(var(--v-theme-surface-container-high), 0.52);
+  background: rgba(var(--v-theme-surface-container-high), 0.62);
 }
 
 .catalog-empty-state__badges {

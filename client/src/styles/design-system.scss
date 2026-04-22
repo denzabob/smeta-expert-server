@@ -123,14 +123,14 @@
      SURFACES
      ------------------------------------------------------------------------ */
   --ds-surface-page: var(--md-sys-color-surface);
-  --ds-surface-page-muted: color-mix(in srgb, var(--md-sys-color-surface-container-low) 84%, transparent);
-  --ds-surface-card: var(--md-sys-color-surface-container-low);
-  --ds-surface-card-muted: color-mix(in srgb, var(--md-sys-color-surface-container) 88%, transparent);
-  --ds-surface-card-subtle: color-mix(in srgb, var(--md-sys-color-surface-container-high) 80%, transparent);
-  --ds-surface-toolbar: color-mix(in srgb, var(--md-sys-color-surface-container) 90%, transparent);
-  --ds-surface-hover: rgba(var(--v-theme-on-surface), 0.06);
-  --ds-surface-active: rgba(var(--v-theme-primary), 0.10);
-  --ds-surface-selected: color-mix(in srgb, var(--md-sys-color-secondary-container) 72%, transparent);
+  --ds-surface-page-muted: color-mix(in srgb, var(--md-sys-color-surface-container-low) 92%, transparent);
+  --ds-surface-card: color-mix(in srgb, var(--md-sys-color-surface-container-low) 96%, var(--md-sys-color-surface) 4%);
+  --ds-surface-card-muted: color-mix(in srgb, var(--md-sys-color-surface-container) 92%, transparent);
+  --ds-surface-card-subtle: color-mix(in srgb, var(--md-sys-color-surface-container-high) 86%, transparent);
+  --ds-surface-toolbar: color-mix(in srgb, var(--md-sys-color-surface-container) 94%, transparent);
+  --ds-surface-hover: rgba(var(--v-theme-on-surface), 0.045);
+  --ds-surface-active: rgba(var(--v-theme-primary), 0.08);
+  --ds-surface-selected: color-mix(in srgb, var(--md-sys-color-secondary-container) 58%, transparent);
 
   /* ------------------------------------------------------------------------
      TEXT
@@ -184,13 +184,13 @@ a {
   background:
     linear-gradient(
       180deg,
-      rgba(var(--v-theme-primary), 0.055) 0%,
-      transparent 180px
+      rgba(var(--v-theme-primary), 0.028) 0%,
+      transparent 220px
     ),
     linear-gradient(
       135deg,
-      rgba(var(--v-theme-secondary), 0.06) 0%,
-      transparent 40%
+      rgba(var(--v-theme-secondary), 0.026) 0%,
+      transparent 46%
     ),
     rgb(var(--v-theme-background));
   color: rgb(var(--v-theme-on-surface));
