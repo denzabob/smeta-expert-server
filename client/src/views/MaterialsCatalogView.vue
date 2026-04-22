@@ -16,103 +16,133 @@
       </template>
     </PageHeader>
 
-    <SectionCard
-      class="catalog-card"
-      subtitle="Каталог материалов и ценовых наблюдений в едином MD3-паттерне для фильтров, таблиц и состояний."
-    >
-      <!-- Mode switcher -->
-      <v-btn-toggle v-model="currentMode" mandatory density="comfortable" color="primary" class="mb-4 catalog-mode-tabs">
-        <v-btn value="own" prepend-icon="mdi-account">Мои</v-btn>
-        <v-btn value="library" prepend-icon="mdi-bookmark">Библиотека</v-btn>
-        <v-btn value="public" prepend-icon="mdi-earth">Общий каталог</v-btn>
-        <v-btn value="curated" prepend-icon="mdi-star">Кураторский</v-btn>
-      </v-btn-toggle>
+    <SectionCard class="catalog-card">
+      <div class="catalog-controls">
+        <div class="catalog-mode-surface">
+          <div class="catalog-mode-header">
+            <div>
+              <div class="catalog-mode-title">Режим каталога</div>
+              <div class="catalog-mode-caption">{{ modeSubtitle }}</div>
+            </div>
+            <v-chip
+              size="small"
+              variant="tonal"
+              color="primary"
+            >
+              {{ store.totalItems }} поз.
+            </v-chip>
+          </div>
 
-      <!-- Filters row -->
-      <v-row class="mb-3" align="center" dense>
-        <v-col cols="12" md="4">
-          <v-text-field
-            v-model="searchInput"
-            label="Поиск по названию или артикулу"
-            prepend-inner-icon="mdi-magnify"
-            variant="outlined"
-            density="compact"
-            hide-details
-            clearable
-            @click:clear="searchInput = ''"
-            @keyup.enter="applySearch"
-          />
-        </v-col>
-        <v-col cols="12" md="3">
-          <v-select
-            v-model="typeFilter"
-            :items="typeOptions"
-            item-title="label"
-            item-value="value"
-            label="Тип"
-            variant="outlined"
-            density="compact"
-            clearable
-            hide-details
-          />
-        </v-col>
-        <v-col cols="12" md="3">
-          <v-select
-            v-model="regionFilter"
-            :items="regionOptions"
-            item-title="label"
-            item-value="value"
-            label="Регион"
-            variant="outlined"
-            density="compact"
-            clearable
-            hide-details
-          />
-        </v-col>
-        <v-col cols="12" md="2" class="d-flex justify-end ga-1">
-          <v-btn
-            variant="text"
-            prepend-icon="mdi-tune-variant"
-            size="small"
-            class="text-none"
-            @click="showAdvancedFilters = !showAdvancedFilters"
-          >
-            Расширенные
-          </v-btn>
-          <v-btn icon="mdi-filter-off" variant="text" size="small" @click="resetFilters" title="Сбросить фильтры" />
-        </v-col>
-      </v-row>
+          <div class="catalog-mode-tabs" role="tablist" aria-label="Режим каталога">
+            <v-btn
+              v-for="option in modeOptions"
+              :key="option.value"
+              :prepend-icon="option.icon"
+              :variant="currentMode === option.value ? 'flat' : 'text'"
+              :color="currentMode === option.value ? 'primary' : undefined"
+              class="catalog-mode-tabs__button"
+              @click="currentMode = option.value"
+            >
+              {{ option.label }}
+            </v-btn>
+          </div>
+        </div>
 
-      <v-expand-transition>
-        <v-row v-if="showAdvancedFilters" class="mb-3" align="center" dense>
-          <v-col cols="12" md="3">
+        <div class="catalog-filter-surface">
+          <div class="catalog-filter-grid">
+            <v-text-field
+              v-model="searchInput"
+              label="Поиск по названию или артикулу"
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              density="compact"
+              hide-details
+              clearable
+              class="catalog-filter-grid__search"
+              @click:clear="searchInput = ''"
+              @keyup.enter="applySearch"
+            />
             <v-select
-              v-model="trustFilter"
-              :items="trustOptions"
+              v-model="typeFilter"
+              :items="typeOptions"
               item-title="label"
               item-value="value"
-              label="Надежность"
+              label="Тип"
               variant="outlined"
               density="compact"
               clearable
               hide-details
             />
-          </v-col>
-          <v-col cols="12" md="3">
             <v-select
-              v-model="recentDaysFilter"
-              :items="recentOptions"
+              v-model="regionFilter"
+              :items="regionOptions"
               item-title="label"
               item-value="value"
-              label="Актуальность цены"
+              label="Регион"
               variant="outlined"
               density="compact"
               clearable
               hide-details
             />
-          </v-col>
-        </v-row>
-      </v-expand-transition>
+
+            <div class="catalog-filter-actions">
+              <v-btn
+                variant="tonal"
+                prepend-icon="mdi-tune-variant"
+                class="text-none"
+                @click="showAdvancedFilters = !showAdvancedFilters"
+              >
+                {{ showAdvancedFilters ? 'Скрыть фильтры' : 'Расширенные' }}
+              </v-btn>
+              <v-btn
+                icon="mdi-filter-off"
+                variant="text"
+                class="catalog-filter-reset"
+                title="Сбросить фильтры"
+                @click="resetFilters"
+              />
+            </div>
+          </div>
+
+          <v-expand-transition>
+            <div v-if="showAdvancedFilters" class="catalog-advanced-filters">
+              <v-select
+                v-model="trustFilter"
+                :items="trustOptions"
+                item-title="label"
+                item-value="value"
+                label="Надежность"
+                variant="outlined"
+                density="compact"
+                clearable
+                hide-details
+              />
+              <v-select
+                v-model="recentDaysFilter"
+                :items="recentOptions"
+                item-title="label"
+                item-value="value"
+                label="Актуальность цены"
+                variant="outlined"
+                density="compact"
+                clearable
+                hide-details
+              />
+            </div>
+          </v-expand-transition>
+
+          <div v-if="activeFilterBadges.length" class="catalog-active-filters">
+            <v-chip
+              v-for="badge in activeFilterBadges"
+              :key="badge"
+              size="small"
+              variant="tonal"
+            >
+              {{ badge }}
+            </v-chip>
+          </div>
+        </div>
+      </div>
 
       <!-- Data table -->
       <v-data-table
@@ -218,7 +248,7 @@
 
         <!-- Actions -->
         <template #item.actions="{ item }">
-          <div class="d-flex ga-1">
+          <div class="catalog-row-actions">
             <!-- Detail -->
             <v-tooltip text="Подробнее" location="top">
               <template #activator="{ props: tp }">
@@ -280,24 +310,29 @@
         </template>
 
         <template #no-data>
-          <div class="catalog-empty-state text-center pa-6">
-            <v-icon size="64" color="grey-lighten-1" class="mb-3">mdi-package-variant</v-icon>
-            <div class="text-h6">{{ noDataText }}</div>
-            <div v-if="activeFilterBadges.length" class="mt-3 d-flex justify-center flex-wrap ga-2">
-              <v-chip
-                v-for="badge in activeFilterBadges"
-                :key="badge"
-                size="small"
-                variant="tonal"
-              >
-                {{ badge }}
-              </v-chip>
-            </div>
-            <div class="mt-3 d-flex justify-center ga-2">
-              <v-btn variant="text" @click="resetFilters">Сбросить фильтры</v-btn>
-              <v-btn color="primary" @click="openAddManual">Добавить материал</v-btn>
-            </div>
-          </div>
+          <EmptyState
+            icon="mdi-package-variant-closed"
+            :title="noDataText"
+            description="Попробуйте сменить режим каталога, скорректировать фильтры или добавить материал вручную."
+            class="catalog-empty-state"
+          >
+            <template #actions>
+              <div v-if="activeFilterBadges.length" class="catalog-empty-state__badges">
+                <v-chip
+                  v-for="badge in activeFilterBadges"
+                  :key="badge"
+                  size="small"
+                  variant="tonal"
+                >
+                  {{ badge }}
+                </v-chip>
+              </div>
+              <div class="catalog-empty-state__actions">
+                <v-btn variant="text" @click="resetFilters">Сбросить фильтры</v-btn>
+                <v-btn color="primary" @click="openAddManual">Добавить материал</v-btn>
+              </div>
+            </template>
+          </EmptyState>
         </template>
 
         <!-- Footer pagination -->
@@ -367,6 +402,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useMaterialCatalogStore } from '@/stores/materialCatalog'
 import api from '@/api/axios'
 import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import EmptyState from '@/components/layout/EmptyState.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
@@ -491,6 +527,13 @@ const regionOptions = computed(() => {
   if (!Array.isArray(regions.value)) return []
   return regions.value.map(r => ({ label: r.region_name, value: r.id }))
 })
+
+const modeOptions: Array<{ value: CatalogMode; label: string; icon: string }> = [
+  { value: 'own', label: 'Мои', icon: 'mdi-account' },
+  { value: 'library', label: 'Библиотека', icon: 'mdi-bookmark' },
+  { value: 'public', label: 'Общий каталог', icon: 'mdi-earth' },
+  { value: 'curated', label: 'Кураторский', icon: 'mdi-star' },
+]
 
 // ===== Table config =====
 const tableHeaders = [
@@ -846,21 +889,124 @@ watch(
 .catalog-card :deep(.v-card-text) {
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-8);
+  gap: var(--ds-space-12);
 }
 
-.catalog-mode-tabs :deep(.v-slide-group__content) {
+.catalog-controls {
+  display: grid;
+  gap: var(--ds-space-12);
+}
+
+.catalog-mode-surface,
+.catalog-filter-surface {
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.84);
+}
+
+.catalog-mode-surface {
+  padding: var(--ds-space-12);
+}
+
+.catalog-mode-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ds-space-12);
+  margin-bottom: var(--ds-space-10);
+}
+
+.catalog-mode-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ds-text-secondary);
+}
+
+.catalog-mode-caption {
+  margin-top: 4px;
+  font-size: 0.95rem;
+  color: var(--ds-text-secondary);
+}
+
+.catalog-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.catalog-mode-tabs__button {
+  width: 100%;
+  min-height: 40px;
+  border-radius: var(--ds-radius-10) !important;
+  background: rgba(var(--v-theme-surface-container-high), 0.76);
+  color: var(--ds-text-secondary);
+  justify-content: center;
+  padding-inline: 16px;
+  font-weight: 600;
+}
+
+.catalog-mode-tabs__button:hover {
+  background: rgba(var(--v-theme-surface-container-highest), 0.88);
+}
+
+.catalog-filter-surface {
+  padding: var(--ds-space-12);
+}
+
+.catalog-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) repeat(2, minmax(180px, 1fr)) auto;
+  gap: var(--ds-space-10);
+  align-items: center;
+}
+
+.catalog-filter-grid__search {
+  min-width: 0;
+}
+
+.catalog-filter-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ds-space-4);
+}
+
+.catalog-filter-reset {
+  color: var(--ds-text-secondary);
+}
+
+.catalog-advanced-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(200px, 1fr));
+  gap: var(--ds-space-10);
+  padding-top: var(--ds-space-10);
+}
+
+.catalog-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-6);
+  padding-top: var(--ds-space-10);
+}
+
+.catalog-row-actions {
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--ds-radius-10);
+  background: rgba(var(--v-theme-surface-container-low), 0.74);
 }
 
-.catalog-mode-tabs :deep(.v-btn) {
-  border-bottom-left-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
-  margin-bottom: 2px;
+.catalog-row-actions :deep(.v-btn) {
+  color: var(--ds-text-secondary);
 }
 
-.catalog-mode-tabs :deep(.v-btn--active) {
-  background: rgba(var(--v-theme-secondary-container), 0.78) !important;
+.catalog-row-actions :deep(.v-btn:hover) {
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 
 .catalog-table :deep(.v-table__wrapper) {
@@ -870,12 +1016,58 @@ watch(
 }
 
 .catalog-empty-state {
-  border: 1px dashed var(--ds-border-color);
-  border-radius: var(--ds-radius-16);
-  background: rgba(var(--v-theme-surface-container-high), 0.48);
+  margin: var(--ds-space-12);
+  border: 1px dashed rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface-container-high), 0.52);
 }
 
-.catalog-empty-state .text-h6 {
-  color: var(--ds-text-primary);
+.catalog-empty-state__badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--ds-space-6);
+}
+
+.catalog-empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--ds-space-8);
+}
+
+@media (max-width: 1260px) {
+  .catalog-mode-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .catalog-filter-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+
+  .catalog-filter-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .catalog-mode-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .catalog-mode-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .catalog-filter-grid,
+  .catalog-advanced-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .catalog-empty-state__actions {
+    width: 100%;
+  }
 }
 </style>

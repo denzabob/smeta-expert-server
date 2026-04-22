@@ -1,15 +1,14 @@
 <template>
   <SectionCard class="labor-evidence-panel">
-    <template #title>Источники обоснования труда</template>
-
     <div class="panel-head">
       <div class="panel-copy">
-        <div class="panel-copy__title">Источники обоснования труда для проекта</div>
+        <div class="panel-copy__eyebrow">Труд и доказательства</div>
+        <div class="panel-copy__title">Источники обоснования труда</div>
         <div class="panel-copy__text">
           В отчёт попадут только источники, явно привязанные к этому проекту.
         </div>
       </div>
-      <v-btn color="primary" variant="flat" prepend-icon="mdi-link-plus" @click="openAttachDialog">
+      <v-btn color="primary" variant="tonal" prepend-icon="mdi-link-plus" @click="openAttachDialog">
         Добавить источники
       </v-btn>
     </div>
@@ -32,7 +31,7 @@
         description="Привяжите вакансии или другие источники, чтобы labor evidence попал в Evidence Run и PDF."
       >
         <template #actions>
-          <v-btn color="primary" variant="flat" prepend-icon="mdi-link-plus" @click="openAttachDialog">
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-link-plus" @click="openAttachDialog">
             Выбрать источники
           </v-btn>
         </template>
@@ -119,16 +118,16 @@
       </template>
     </v-data-table>
 
-    <v-dialog v-model="attachDialog" max-width="1040" scrollable>
-      <v-card>
-        <v-card-title class="d-flex align-center justify-space-between">
+    <v-dialog v-model="attachDialog" max-width="1040" scrollable class="labor-attach-dialog">
+      <v-card class="labor-attach-dialog-card">
+        <v-card-title class="labor-attach-dialog-card__title d-flex align-center justify-space-between">
           <span>Добавить источники труда</span>
           <v-btn icon variant="text" @click="attachDialog = false">
             <v-icon>mdi-close</v-icon>
           </v-btn>
         </v-card-title>
         <v-divider />
-        <v-card-text class="pa-5">
+        <v-card-text class="labor-attach-dialog-card__content">
           <v-text-field
             v-model="attachSearch"
             prepend-inner-icon="mdi-magnify"
@@ -144,6 +143,7 @@
             :items="filteredAvailableSources"
             item-value="id"
             density="compact"
+            class="sources-table"
           >
             <template #[`item.select`]="{ item }">
               <v-checkbox-btn
@@ -197,12 +197,12 @@
             </template>
           </v-data-table>
         </v-card-text>
-        <v-card-actions class="px-5 pb-5">
+        <v-card-actions class="labor-attach-dialog-card__actions">
           <v-spacer />
           <v-btn variant="text" @click="attachDialog = false">Отмена</v-btn>
           <v-btn
             color="primary"
-            variant="flat"
+            variant="tonal"
             :disabled="selectedSourceIds.length === 0"
             :loading="submitting"
             @click="attachSelected"
@@ -348,63 +348,92 @@ function openDetails(source: LaborEvidenceSource) {
 </script>
 
 <style scoped>
+.labor-evidence-panel :deep(.md3-section-card__content) {
+  padding: 0 !important;
+}
+
 .panel-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 16px;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.5);
+}
+
+.panel-copy {
+  min-width: 0;
+}
+
+.panel-copy__eyebrow {
+  font-size: 0.7rem;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface-variant), 0.78);
 }
 
 .panel-copy__title {
-  font-size: 15px;
-  font-weight: 600;
+  margin-top: 4px;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 1);
 }
 
 .panel-copy__text {
   margin-top: 4px;
-  color: rgba(0, 0, 0, 0.6);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
 }
 
 .empty-wrap {
-  padding: 8px 0 4px;
+  padding: 12px 18px 16px;
 }
 
 .sources-table :deep(.v-table__wrapper) {
-  border-radius: var(--ds-radius-12);
-  border: 1px solid var(--ds-border-color);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.82);
+  border-radius: calc(var(--md-sys-shape-corner-large) + 2px);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.52);
+  background: rgba(var(--v-theme-surface), 0.98);
 }
 
 .sources-table :deep(thead th) {
-  height: 52px !important;
-  border-bottom: 1px solid var(--ds-divider) !important;
-  background: rgba(var(--v-theme-surface-container-lowest), 0.92) !important;
+  height: 44px !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.62) !important;
+  background: rgba(var(--v-theme-surface-container), 0.88) !important;
 }
 
 .sources-table :deep(thead th .v-data-table-header__content) {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--ds-text-secondary);
+  color: rgba(var(--v-theme-on-surface-variant), 1);
 }
 
 .sources-table :deep(tbody td) {
   vertical-align: top;
-  border-bottom-color: var(--ds-divider) !important;
-  padding-top: 14px !important;
-  padding-bottom: 14px !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.38) !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+  background: transparent !important;
 }
 
 .sources-table :deep(.v-data-table-footer) {
-  border-top: 1px solid var(--ds-divider);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.7);
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.42);
+  background: rgba(var(--v-theme-surface-container-low), 0.74);
+}
+
+.sources-table :deep(.v-table) {
+  margin: 14px 18px 18px;
 }
 
 .source-title-cell__title {
   font-weight: 600;
   line-height: 1.35;
+  color: rgba(var(--v-theme-on-surface), 1);
 }
 
 .source-title-head {
@@ -416,14 +445,14 @@ function openDetails(source: LaborEvidenceSource) {
 
 .source-title-cell__meta {
   margin-top: 2px;
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.56);
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface-variant), 0.9);
 }
 
 .source-title-cell__domain {
   margin-top: 2px;
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.48);
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface-variant), 0.78);
 }
 
 .provider-cell {
@@ -433,11 +462,12 @@ function openDetails(source: LaborEvidenceSource) {
 
 .provider-cell__title {
   font-weight: 500;
+  color: rgba(var(--v-theme-on-surface), 1);
 }
 
 .provider-cell__meta {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.56);
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface-variant), 0.9);
 }
 
 .rate-cell {
@@ -450,6 +480,7 @@ function openDetails(source: LaborEvidenceSource) {
 .rate-cell__value {
   font-weight: 600;
   text-align: right;
+  color: rgba(var(--v-theme-on-surface), 1);
 }
 
 .panel-actions {
@@ -461,9 +492,51 @@ function openDetails(source: LaborEvidenceSource) {
   margin: 0 auto;
 }
 
+.labor-attach-dialog-card {
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-extra-large) !important;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.03), transparent 140px),
+    rgba(var(--v-theme-surface-container-low), 0.98);
+  overflow: hidden;
+}
+
+.labor-attach-dialog-card__title {
+  padding: 16px 18px 12px !important;
+  font-size: 1rem;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 1);
+}
+
+.labor-attach-dialog-card__content {
+  padding: 18px !important;
+}
+
+.labor-attach-dialog-card__actions {
+  padding: 0 18px 18px !important;
+}
+
 @media (max-width: 900px) {
   .panel-head {
     flex-direction: column;
+    padding: 14px;
+  }
+
+  .empty-wrap {
+    padding: 10px 14px 14px;
+  }
+
+  .sources-table :deep(.v-table) {
+    margin: 12px 14px 14px;
+  }
+
+  .labor-attach-dialog-card__title {
+    padding-inline: 14px !important;
+  }
+
+  .labor-attach-dialog-card__content,
+  .labor-attach-dialog-card__actions {
+    padding-inline: 14px !important;
   }
 }
 </style>
