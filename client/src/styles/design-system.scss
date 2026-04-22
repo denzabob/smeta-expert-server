@@ -42,11 +42,11 @@
   --md-sys-color-inverse-on-surface: rgb(var(--v-theme-inverse-on-surface));
   --md-sys-color-inverse-primary: rgb(var(--v-theme-inverse-primary));
 
-  --md-sys-shape-corner-extra-small: 4px;
-  --md-sys-shape-corner-small: 8px;
-  --md-sys-shape-corner-medium: 12px;
-  --md-sys-shape-corner-large: 16px;
-  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-extra-small: 2px;
+  --md-sys-shape-corner-small: 4px;
+  --md-sys-shape-corner-medium: 6px;
+  --md-sys-shape-corner-large: 8px;
+  --md-sys-shape-corner-extra-large: 14px;
   --md-sys-shape-corner-full: 9999px;
 
   --md-sys-state-hover-opacity: 0.08;
@@ -81,13 +81,13 @@
   /* ------------------------------------------------------------------------
      RADII
      ------------------------------------------------------------------------ */
-  --ds-radius-6: 6px;
-  --ds-radius-8: 8px;
-  --ds-radius-10: 10px;
-  --ds-radius-12: 12px;
-  --ds-radius-14: 14px;
-  --ds-radius-16: 16px;
-  --ds-radius-18: 18px;
+  --ds-radius-6: 3px;
+  --ds-radius-8: 4px;
+  --ds-radius-10: 5px;
+  --ds-radius-12: 6px;
+  --ds-radius-14: 7px;
+  --ds-radius-16: 8px;
+  --ds-radius-18: 9px;
   --ds-radius-full: 9999px;
 
   /* ------------------------------------------------------------------------

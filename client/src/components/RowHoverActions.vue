@@ -1,29 +1,37 @@
 <template>
   <div 
     class="row-hover-actions"
-    :class="{ 'visible': visible }"
+    :class="{ 'visible': visible, 'row-hover-actions--dense': dense }"
   >
-    <!-- Быстрые действия как ссылки -->
-    <a
+    <v-tooltip
       v-for="action in quickActions"
       :key="action.key"
-      class="action-link"
-      :class="{ 'disabled': action.disabled, [`color-${action.color}`]: action.color }"
-      href="#"
-      @click.prevent.stop="handleAction(action)"
-      :title="action.tooltip || action.label"
+      location="top"
+      :text="action.tooltip || action.label"
     >
-      <v-progress-circular
-        v-if="loadingKey === action.key"
-        size="14"
-        width="2"
-        indeterminate
-        color="primary"
-        class="action-icon"
-      />
-      <v-icon v-else size="14" class="action-icon">{{ action.icon }}</v-icon>
-      <span class="action-label">{{ action.label }}</span>
-    </a>
+      <template #activator="{ props: tooltipProps }">
+        <v-btn
+          v-bind="tooltipProps"
+          class="action-icon-btn"
+          :class="[{ 'action-icon-btn--destructive': action.color === 'error' }, action.color ? `color-${action.color}` : '']"
+          :disabled="action.disabled"
+          :aria-label="action.tooltip || action.label"
+          icon
+          size="x-small"
+          variant="text"
+          @click.stop="handleAction(action)"
+        >
+          <v-progress-circular
+            v-if="loadingKey === action.key"
+            size="14"
+            width="2"
+            indeterminate
+            color="primary"
+          />
+          <v-icon v-else size="16">{{ action.icon }}</v-icon>
+        </v-btn>
+      </template>
+    </v-tooltip>
     
     <!-- Кнопка меню "..." -->
     <v-menu
@@ -32,15 +40,17 @@
       :close-on-content-click="true"
     >
       <template v-slot:activator="{ props }">
-        <a
-          class="action-link menu-link"
-          href="#"
+        <v-btn
+          class="action-icon-btn action-icon-btn--menu"
           v-bind="props"
-          @click.prevent.stop
-          title="Дополнительно"
+          aria-label="Дополнительно"
+          icon
+          size="x-small"
+          variant="text"
+          @click.stop
         >
-          <v-icon size="14">mdi-dots-horizontal</v-icon>
-        </a>
+          <v-icon size="16">mdi-dots-horizontal</v-icon>
+        </v-btn>
       </template>
       <v-list density="compact" class="actions-menu">
         <v-list-item
@@ -87,6 +97,7 @@ const props = defineProps<{
   visible: boolean
   loading?: boolean
   loadingKey?: string | null
+  dense?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -107,67 +118,93 @@ const handleAction = (action: RowAction) => {
 .row-hover-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 4px;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.15s ease, visibility 0.15s ease;
+  transition: opacity 0.18s ease, visibility 0.18s ease, transform 0.18s ease;
+  transform: translateY(2px);
   margin-top: 2px;
-  height: 20px;
+  min-height: 24px;
   position: relative;
   z-index: 1;
+  width: fit-content;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+}
+
+.row-hover-actions--dense {
+  gap: 2px;
+  margin-top: 0;
+  min-height: 20px;
 }
 
 .row-hover-actions.visible {
   opacity: 1;
   visibility: visible;
-}
-
-.action-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: #65676B;
-  font-size: 12px;
-  font-weight: 400;
-  text-decoration: none;
-  cursor: pointer;
-  transition: color 0.15s;
-  white-space: nowrap;
-}
-
-.action-link:hover:not(.disabled) {
-  color: #1877F2;
-  text-decoration: underline;
-}
-
-.action-link.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.action-link.color-error {
-  color: #FA383E;
-}
-
-.action-link.color-error:hover:not(.disabled) {
-  color: #d32f2f;
-}
-
-.action-icon {
-  opacity: 0.7;
-}
-
-.action-link:hover .action-icon {
-  opacity: 1;
-}
-
-.menu-link .action-label {
-  display: none;
+  transform: translateY(0);
 }
 
 .loading-indicator {
   margin-left: 4px;
+}
+
+.action-icon-btn {
+  color: rgba(var(--v-theme-on-surface-variant), 1);
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.row-hover-actions--dense :deep(.v-btn) {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+.row-hover-actions--dense .action-icon-btn {
+  min-width: 22px;
+}
+
+.row-hover-actions--dense .action-icon-btn :deep(.v-btn__content) {
+  gap: 0;
+}
+
+.row-hover-actions--dense .action-icon-btn :deep(.v-icon) {
+  font-size: 15px !important;
+}
+
+.action-icon-btn:hover {
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgba(var(--v-theme-primary), 1);
+}
+
+.action-icon-btn:focus-visible {
+  background: rgba(var(--v-theme-primary), 0.16);
+  color: rgba(var(--v-theme-primary), 1);
+  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.16);
+}
+
+.action-icon-btn:active {
+  transform: scale(0.96);
+}
+
+.action-icon-btn--destructive {
+  color: rgba(var(--v-theme-error), 0.92);
+}
+
+.action-icon-btn--destructive:hover,
+.action-icon-btn--destructive:focus-visible {
+  background: rgba(var(--v-theme-error), 0.12);
+  color: rgba(var(--v-theme-error), 1);
+}
+
+.action-icon-btn--menu:hover,
+.action-icon-btn--menu:focus-visible {
+  background: rgba(var(--v-theme-secondary), 0.12);
+  color: rgba(var(--v-theme-secondary), 1);
 }
 
 .actions-menu {

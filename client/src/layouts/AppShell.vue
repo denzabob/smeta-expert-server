@@ -17,9 +17,18 @@
     />
 
     <!-- Main content area -->
-    <v-main class="app-main md3-app-shell" :class="{ 'app-main--mobile-header': compactNav }">
+    <v-main
+      class="app-main md3-app-shell"
+      :class="{
+        'app-main--mobile-header': compactNav,
+        'app-main--project-editor': isProjectEditorRoute,
+      }"
+    >
       <!-- Page content -->
-      <div class="page-content md3-app-shell__content">
+      <div
+        class="page-content md3-app-shell__content"
+        :class="{ 'page-content--project-editor': isProjectEditorRoute }"
+      >
         <router-view />
       </div>
     </v-main>
@@ -54,6 +63,7 @@ const authStore = useAuthStore()
 const { smAndDown } = useDisplay()
 const theme = useTheme()
 const compactNav = computed(() => smAndDown.value)
+const isProjectEditorRoute = computed(() => route.name === 'ProjectEditorView')
 
 // Drawer state
 const drawerOpen = ref(true)
@@ -209,6 +219,19 @@ watch(
   margin: 0 auto;
 }
 
+.app-main--project-editor {
+  overflow: hidden;
+}
+
+.page-content--project-editor {
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
 /* Mobile header */
 .mobile-header {
   position: fixed;
@@ -254,6 +277,10 @@ watch(
 @media (max-width: 600px) {
   .page-content {
     padding: 16px;
+  }
+
+  .page-content--project-editor {
+    height: calc(100dvh - 56px);
   }
 }
 </style>

@@ -1,15 +1,14 @@
 <template>
   <SectionCard class="labor-calculation-panel">
-    <template #title>Расчёт нормо-часа</template>
-
     <div class="panel-head">
       <div class="panel-copy">
-        <div class="panel-copy__title">Расчёт по профилям работ</div>
+        <div class="panel-copy__eyebrow">Труд и ставки</div>
+        <div class="panel-copy__title">Профили и модель расчёта</div>
         <div class="panel-copy__text">
           Ставка считается только по привязанным к проекту источникам и показывается отдельно по каждому профилю.
         </div>
       </div>
-      <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loading" @click="loadCalculation">
+      <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" :loading="loading" @click="loadCalculation">
         Обновить
       </v-btn>
     </div>
@@ -49,7 +48,7 @@
         variant="outlined"
         class="profile-card"
       >
-        <v-card-text class="pa-4">
+        <v-card-text class="profile-card__content">
           <div class="profile-card__head">
             <div>
               <div class="profile-card__title">{{ profile.labor_profile_name || 'Профиль без названия' }}</div>
@@ -245,32 +244,64 @@ defineExpose({
 </script>
 
 <style scoped>
+.labor-calculation-panel :deep(.md3-section-card__content) {
+  padding: 0 !important;
+}
+
 .panel-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 16px;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.5);
+}
+
+.panel-copy {
+  min-width: 0;
+}
+
+.panel-copy__eyebrow {
+  font-size: 0.7rem;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface-variant), 0.78);
 }
 
 .panel-copy__title {
-  font-size: 15px;
-  font-weight: 600;
+  margin-top: 4px;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 1);
 }
 
 .panel-copy__text {
   margin-top: 4px;
-  color: rgba(0, 0, 0, 0.6);
-  max-width: 760px;
+  max-width: 720px;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
 }
 
 .calculation-grid {
   display: grid;
-  gap: 16px;
+  gap: 12px;
+  padding: 14px 18px 18px;
 }
 
 .profile-card {
-  border-radius: 18px;
+  border-radius: var(--md-sys-shape-corner-large);
+  border-color: rgba(var(--v-theme-outline-variant), 0.56) !important;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.02), transparent 120px),
+    rgba(var(--v-theme-surface), 0.98);
+}
+
+.profile-card__content {
+  padding: 16px !important;
 }
 
 .profile-card__head {
@@ -281,83 +312,91 @@ defineExpose({
 }
 
 .profile-card__title {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 700;
   line-height: 1.3;
+  color: rgba(var(--v-theme-on-surface), 1);
 }
 
 .profile-card__meta {
   margin-top: 4px;
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.58);
+  font-size: 0.8125rem;
+  color: rgba(var(--v-theme-on-surface-variant), 0.9);
 }
 
 .profile-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .metric-card {
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: #f6f7f8;
+  padding: 14px 15px;
+  border-radius: var(--md-sys-shape-corner-large);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.42);
+  background: rgba(var(--v-theme-surface-container-low), 0.9);
 }
 
 .metric-card--accent {
-  background: linear-gradient(135deg, #f5f8ef 0%, #ebf5e3 100%);
+  background:
+    linear-gradient(135deg, rgba(var(--v-theme-success), 0.08) 0%, rgba(var(--v-theme-success), 0.03) 100%),
+    rgba(var(--v-theme-surface-container-low), 0.96);
 }
 
 .metric-card__label {
-  font-size: 12px;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(0, 0, 0, 0.54);
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface-variant), 0.84);
 }
 
 .metric-card__value {
   margin-top: 8px;
-  font-size: 22px;
+  font-size: 1.65rem;
   font-weight: 700;
   line-height: 1.1;
+  color: rgba(var(--v-theme-on-surface), 1);
 }
 
 .metric-card__hint {
   margin-top: 6px;
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.6);
+  font-size: 0.8125rem;
+  color: rgba(var(--v-theme-on-surface-variant), 0.9);
 }
 
 .breakdown-grid {
   display: grid;
-  gap: 10px;
-  margin-top: 16px;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .breakdown-formula {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: #f8faf5;
-  border: 1px solid rgba(110, 140, 70, 0.14);
+  margin-top: 14px;
+  padding: 14px 15px;
+  border-radius: var(--md-sys-shape-corner-large);
+  background: rgba(var(--v-theme-surface-container-low), 0.76);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.46);
 }
 
 .breakdown-formula__title {
-  font-size: 13px;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(0, 0, 0, 0.55);
-  margin-bottom: 10px;
+  color: rgba(var(--v-theme-on-surface-variant), 0.84);
+  margin-bottom: 8px;
 }
 
 .breakdown-formula__line {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 0;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 9px 0;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.34);
+  font-size: 0.875rem;
+  line-height: 1.4;
 }
 
 .breakdown-formula__line:first-of-type {
@@ -366,8 +405,8 @@ defineExpose({
 
 .breakdown-formula__meta {
   margin-top: 8px;
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.58);
+  font-size: 0.8125rem;
+  color: rgba(var(--v-theme-on-surface-variant), 0.9);
 }
 
 .breakdown-row {
@@ -375,21 +414,28 @@ defineExpose({
   justify-content: space-between;
   gap: 12px;
   padding-top: 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.38);
+  font-size: 0.875rem;
 }
 
 .breakdown-label {
-  color: rgba(0, 0, 0, 0.62);
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
 }
 
 .breakdown-value {
   font-weight: 600;
   text-align: right;
+  color: rgba(var(--v-theme-on-surface), 1);
 }
 
 @media (max-width: 760px) {
   .panel-head {
     flex-direction: column;
+    padding: 14px;
+  }
+
+  .calculation-grid {
+    padding: 12px 14px 14px;
   }
 
   .profile-metrics {

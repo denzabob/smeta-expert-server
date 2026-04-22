@@ -335,7 +335,6 @@
             :model-value="selectedPositionsRaw"
             @update:model-value="onPositionSelectionChange"
             :density="tableDensity"
-            fixed-header
             class="positions-table positions-table-hover"
             :loading="loadingStates.positions"
 
@@ -366,6 +365,7 @@
                       :menu-actions="getMenuActions(item)"
                       :visible="isActionsVisible(item.id)"
                       :loading="processingPositionId === item.id"
+                      dense
                       @action="handleRowAction"
                     />
                   </div>
@@ -439,16 +439,23 @@
           v-model="positionDrawer"
           max-width="720"
           scrollable
+          class="position-drawer-dialog"
         >
-          <v-card>
-          <v-toolbar flat>
+          <v-card class="position-sheet position-sheet--drawer">
+          <v-toolbar flat class="position-sheet-toolbar">
             <v-toolbar-title>Детали позиции</v-toolbar-title>
             <v-spacer />
             <v-btn icon="mdi-close" variant="text" @click="positionDrawer = false" />
           </v-toolbar>
           <v-divider />
-          <v-card-text style="max-height: 80vh; overflow-y: auto;">
+          <v-card-text class="position-sheet-content" style="max-height: 80vh; overflow-y: auto;">
           <v-container v-if="selectedPosition" class="pa-4 position-drawer">
+            <div class="position-form-stack">
+            <section class="position-form-section">
+              <div class="position-form-section__header">
+                <div class="position-form-section__title">Основные данные</div>
+                <div class="position-form-section__text">Название и базовые атрибуты позиции.</div>
+              </div>
             <v-text-field
               v-model="selectedPosition.custom_name"
               label="Название"
@@ -508,7 +515,8 @@
               </v-autocomplete>
 
               <!-- Read-only facade info -->
-              <v-row v-if="selectedPosition.facade_material_id" dense class="mb-2">
+              <div v-if="selectedPosition.facade_material_id" class="position-support-card mb-2">
+              <v-row dense class="mb-0">
                 <v-col cols="6">
                   <v-text-field
                     :model-value="selectedPosition.base_material_label || '—'"
@@ -549,9 +557,11 @@
                 class="mb-2"
                 @update:model-value="(v) => handleDrawerPriceMethodChange(selectedPosition!, v)"
               />
+              </div>
 
               <!-- Quotes participating in calculation -->
               <template v-if="selectedPosition.facade_material_id && selectedPosition.price_quotes && selectedPosition.price_quotes.length > 0">
+                <div class="position-support-card position-support-card--quotes mb-2">
                 <div class="text-caption text-grey-darken-1 mb-1">Источники цены ({{ selectedPosition.price_quotes.length }})</div>
                 <v-table density="compact" class="mb-2 drawer-quotes-table">
                   <thead>
@@ -570,11 +580,19 @@
                 <div v-if="selectedPosition.price_min != null && selectedPosition.price_max != null" class="text-caption text-grey mb-2">
                   Диапазон: {{ formatNumber(selectedPosition.price_min, 2) }} — {{ formatNumber(selectedPosition.price_max, 2) }} ₽/м²
                 </div>
+                </div>
               </template>
             </template>
+            </section>
 
-            <v-row class="align-center">
-              <v-col cols="12" sm="5">
+            <section class="position-form-section">
+              <div class="position-form-section__header">
+                <div class="position-form-section__title">Размеры и количество</div>
+                <div class="position-form-section__text">Рабочие размеры с поддержкой выражений.</div>
+              </div>
+            <v-row class="position-dimensions-row">
+              <v-col cols="12" sm="5" class="position-dimensions-field">
+                <div class="dimension-field-stack">
                 <v-text-field
                   :model-value="Math.round(selectedPosition.width || 0)"
                   :label="selectedPosition.kind === 'facade' ? 'Ширина, мм' : 'Ширина, мм'"
@@ -583,17 +601,20 @@
                   @keyup.enter="(e: any) => handleDimensionInput(selectedPosition!, 'width', (e.target as HTMLInputElement).value)"
                   @blur="(e: any) => handleDimensionInput(selectedPosition!, 'width', (e.target as HTMLInputElement).value)"
                 />
-                <div class="dimension-help text-caption text-medium-emphasis">
-                  Допустимо: 600, 600-32, 2400/2
+                <div class="dimension-feedback-slot">
+                  <div class="dimension-help text-caption text-medium-emphasis">
+                    Допустимо: 600, 600-32, 2400/2
+                  </div>
+                  <div v-if="drawerDimensionCalc.width.expr" class="dimension-calc-line text-caption">
+                    <span class="text-medium-emphasis">Введено:</span>
+                    <span class="font-weight-medium">{{ drawerDimensionCalc.width.expr }}</span>
+                    <span v-if="drawerDimensionCalc.width.error" class="text-error">→ {{ drawerDimensionCalc.width.error }}</span>
+                    <span v-else class="text-primary">→ {{ drawerDimensionCalc.width.result }} мм</span>
+                  </div>
                 </div>
-                <div v-if="drawerDimensionCalc.width.expr" class="dimension-calc-line text-caption">
-                  <span class="text-medium-emphasis">Введено:</span>
-                  <span class="font-weight-medium"> {{ drawerDimensionCalc.width.expr }} </span>
-                  <span v-if="drawerDimensionCalc.width.error" class="text-error">→ {{ drawerDimensionCalc.width.error }}</span>
-                  <span v-else class="text-primary">→ {{ drawerDimensionCalc.width.result }} мм</span>
                 </div>
               </v-col>
-              <v-col cols="12" sm="2" class="dimension-swap-col">
+              <v-col cols="12" sm="2" class="dimension-swap-col dimension-swap-col--details">
                 <v-btn
                   icon="mdi-swap-horizontal"
                   size="small"
@@ -604,7 +625,8 @@
                   @click="toggleSelectedPositionDimensions"
                 />
               </v-col>
-              <v-col cols="12" sm="5">
+              <v-col cols="12" sm="5" class="position-dimensions-field">
+                <div class="dimension-field-stack">
                 <v-text-field
                   :model-value="Math.round(selectedPosition.length || 0)"
                   :label="selectedPosition.kind === 'facade' ? 'Высота, мм' : 'Длина, мм'"
@@ -613,14 +635,17 @@
                   @keyup.enter="(e: any) => handleDimensionInput(selectedPosition!, 'length', (e.target as HTMLInputElement).value)"
                   @blur="(e: any) => handleDimensionInput(selectedPosition!, 'length', (e.target as HTMLInputElement).value)"
                 />
-                <div class="dimension-help text-caption text-medium-emphasis">
-                  Допустимо: 600, 600-32, 2400/2
+                <div class="dimension-feedback-slot">
+                  <div class="dimension-help text-caption text-medium-emphasis">
+                    Допустимо: 600, 600-32, 2400/2
+                  </div>
+                  <div v-if="drawerDimensionCalc.length.expr" class="dimension-calc-line text-caption">
+                    <span class="text-medium-emphasis">Введено:</span>
+                    <span class="font-weight-medium">{{ drawerDimensionCalc.length.expr }}</span>
+                    <span v-if="drawerDimensionCalc.length.error" class="text-error">→ {{ drawerDimensionCalc.length.error }}</span>
+                    <span v-else class="text-primary">→ {{ drawerDimensionCalc.length.result }} мм</span>
+                  </div>
                 </div>
-                <div v-if="drawerDimensionCalc.length.expr" class="dimension-calc-line text-caption">
-                  <span class="text-medium-emphasis">Введено:</span>
-                  <span class="font-weight-medium"> {{ drawerDimensionCalc.length.expr }} </span>
-                  <span v-if="drawerDimensionCalc.length.error" class="text-error">→ {{ drawerDimensionCalc.length.error }}</span>
-                  <span v-else class="text-primary">→ {{ drawerDimensionCalc.length.result }} мм</span>
                 </div>
               </v-col>
             </v-row>
@@ -632,9 +657,15 @@
               density="comfortable"
               @blur="() => updatePositionField(selectedPosition!, 'quantity', selectedPosition!.quantity)"
             />
+            </section>
 
             <!-- Edge processing — only for panels -->
             <template v-if="selectedPosition.kind !== 'facade'">
+              <section class="position-form-section">
+                <div class="position-form-section__header">
+                  <div class="position-form-section__title">Кромка и обработка</div>
+                  <div class="position-form-section__text">Схема торцов и материал кромки для панели.</div>
+                </div>
               <v-select
                 v-model="selectedPosition.edge_scheme"
                 :items="edgeSchemeOptions"
@@ -676,13 +707,21 @@
                 density="comfortable"
                 @update:model-value="(v) => updatePositionField(selectedPosition!, 'edge_material_id', v)"
               />
+              </section>
             </template>
 
+            <section class="position-form-section position-form-section--muted">
+              <div class="position-form-section__header">
+                <div class="position-form-section__title">История</div>
+                <div class="position-form-section__text">Технический блок для будущего журнала изменений.</div>
+              </div>
             <v-divider class="my-4" />
             <div class="text-subtitle-2 mb-2">История изменений</div>
             <v-alert type="info" variant="tonal" density="compact">
               История изменений пока недоступна.
             </v-alert>
+            </section>
+            </div>
           </v-container>
           <v-container v-else class="pa-4">
             <v-alert type="info" variant="tonal">Выберите позицию в таблице.</v-alert>
@@ -714,35 +753,41 @@
         <v-chip size="small" variant="tonal">Кромка: {{ edgeData.length }}</v-chip>
         <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-currency-rub">Итого: {{ materialsTotalCost.toFixed(2) }} ₽</v-chip>
       </div>
-        <!-- Материалы -->
-        <v-card-title>
-          Материалы
-          <v-spacer />
-          <div>Итого: {{ materialsTotalCost.toFixed(2) }} ₽</div>
-        </v-card-title>
+      <section class="dense-module-shell">
+        <div class="dense-module-hero">
+          <div class="dense-module-hero__content">
+            <div class="dense-module-hero__eyebrow">Материалы проекта</div>
+            <div class="dense-module-hero__title-row">
+              <div class="dense-module-hero__title">Материалы</div>
+            </div>
+          </div>
+        </div>
 
-        <!-- Плитные материалы -->
-        <v-card-subtitle v-if="plateData.length > 0" class="mt-2">
-          <div class="d-flex align-center justify-space-between">
-            <div>
-              <span>Плитные материалы</span>
-              <v-chip 
-                v-if="!project.apply_waste_to_plate" 
-                size="small" 
-                variant="flat" 
-                color="warning" 
-                class="ml-2"
+        <section class="dense-module-surface">
+          <div class="dense-module-section-bar">
+            <div class="dense-module-section-bar__content">
+              <div class="dense-module-section-bar__title">Плитные материалы</div>
+            </div>
+            <div class="dense-module-section-bar__meta">
+              <v-chip size="small" variant="tonal" color="primary">
+                {{ plateData.length }} поз.
+              </v-chip>
+              <v-chip
+                v-if="!project.apply_waste_to_plate"
+                size="small"
+                variant="tonal"
+                color="warning"
               >
                 Коэффициент отключен
               </v-chip>
+              <v-chip size="small" variant="outlined" color="info">
+                {{ project.use_area_calc_mode ? 'Расчёт по площади' : 'Расчёт по листам' }}
+              </v-chip>
             </div>
-            <v-chip size="small" variant="outlined" color="info">
-              {{ project.use_area_calc_mode ? 'Расчёт по площади' : 'Расчёт по листам' }}
-            </v-chip>
           </div>
-        </v-card-subtitle>
-        <v-skeleton-loader v-if="loadingStates.materials && plateData.length === 0" type="table" />
-        <v-data-table v-else-if="plateData.length > 0" :items="plateData" :headers="plateHeaders" density="comfortable" class="mb-4" show-expand>
+          <v-skeleton-loader v-if="loadingStates.materials && plateData.length === 0" type="table" />
+          <div v-else-if="plateData.length > 0" class="dense-module-table-wrap">
+            <v-data-table :items="plateData" :headers="plateHeaders" density="comfortable" class="dense-module-table" show-expand>
           <template v-slot:item.name="{ item }">
             <span :class="{ 'text-error': hasPlateMaterialIssue(item) }">
               {{ item.name }}
@@ -863,24 +908,32 @@
               </td>
             </tr>
           </template>
-        </v-data-table>
-
-        <!-- Кромка -->
-        <v-card-subtitle v-if="edgeData.length > 0" class="mt-2">
-          <div class="d-flex align-center gap-2">
-            <span>Кромка</span>
-            <v-chip 
-              v-if="!project.apply_waste_to_edge" 
-              size="small" 
-              variant="flat" 
-              color="warning"
-            >
-              Коэффициент отключен
-            </v-chip>
+            </v-data-table>
           </div>
-        </v-card-subtitle>
-        <v-skeleton-loader v-if="loadingStates.materials && edgeData.length === 0" type="table" />
-        <v-data-table v-else-if="edgeData.length > 0" :items="edgeData" :headers="edgeHeaders" density="comfortable" show-expand>
+        </section>
+
+        <section class="dense-module-surface">
+          <div class="dense-module-section-bar">
+            <div class="dense-module-section-bar__content">
+              <div class="dense-module-section-bar__title">Кромка</div>
+            </div>
+            <div class="dense-module-section-bar__meta">
+              <v-chip size="small" variant="tonal">
+                {{ edgeData.length }} поз.
+              </v-chip>
+              <v-chip
+                v-if="!project.apply_waste_to_edge"
+                size="small"
+                variant="tonal"
+                color="warning"
+              >
+                Коэффициент отключен
+              </v-chip>
+            </div>
+          </div>
+          <v-skeleton-loader v-if="loadingStates.materials && edgeData.length === 0" type="table" />
+          <div v-else-if="edgeData.length > 0" class="dense-module-table-wrap">
+            <v-data-table :items="edgeData" :headers="edgeHeaders" density="comfortable" class="dense-module-table" show-expand>
           <template v-slot:item.length_linear="{ item }">
             {{ item.length_linear.toFixed(2) }}
           </template>
@@ -954,7 +1007,10 @@
               </td>
             </tr>
           </template>
-        </v-data-table>
+            </v-data-table>
+          </div>
+        </section>
+      </section>
     </div><!-- /MODULE: MATERIALS -->
 
     <!-- ======================== MODULE: OPERATIONS ======================== -->
@@ -965,29 +1021,40 @@
         <v-chip size="small" variant="tonal" color="primary">Ручных: {{ manualOperationsCount }}</v-chip>
         <v-chip size="small" variant="tonal" color="info" prepend-icon="mdi-currency-rub">Всего: {{ operationsTotal.toFixed(2) }} ₽</v-chip>
       </div>
+      <section class="dense-module-shell">
+        <div class="dense-module-hero">
+          <div class="dense-module-hero__content">
+            <div class="dense-module-hero__eyebrow">Операционный контур</div>
+            <div class="dense-module-hero__title-row">
+              <div class="dense-module-hero__title">Операции</div>
+            </div>
+          </div>
+        </div>
+
         <v-alert
           v-if="!operationsTotalIsValid"
           type="warning"
           variant="tonal"
           density="compact"
-          class="mb-3"
+          class="dense-module-inline-alert"
         >
           В смете есть некорректные операции
         </v-alert>
-        <!-- Операции -->
-        <v-card-title>
-          Операции
-          <v-spacer />
-          <div>Итого: {{ operationsTotal.toFixed(2) }} ₽</div>
-        </v-card-title>
-        <v-btn prepend-icon="mdi-plus" @click="openOperationDialog" class="mb-2">Добавить операцию</v-btn>
-        <v-skeleton-loader v-if="loadingStates.operations" type="table" />
-        <v-data-table 
-          v-else
+
+        <section class="dense-module-surface">
+          <div class="dense-module-actions-bar">
+            <div class="dense-module-actions-bar__actions">
+              <v-btn prepend-icon="mdi-plus" @click="openOperationDialog">Добавить операцию</v-btn>
+            </div>
+          </div>
+          <v-skeleton-loader v-if="loadingStates.operations" type="table" />
+          <div v-else class="dense-module-table-wrap">
+            <v-data-table 
           :expanded="expandedOperation != null ? [String(expandedOperation)] : []"
           :items="operations" 
           :headers="(operationHeaders as any)" 
           density="comfortable" 
+          class="dense-module-table"
           show-expand
           item-value="id"
           @click:row="(_: any, { item, expand }: any) => {
@@ -1204,7 +1271,10 @@
               </td>
             </tr>
           </template>
-        </v-data-table>
+            </v-data-table>
+          </div>
+        </section>
+      </section>
     </div><!-- /MODULE: OPERATIONS -->
 
     <!-- ======================== MODULE: FITTINGS ======================== -->
@@ -1216,16 +1286,49 @@
           Итого: {{ fittings.reduce((sum, f) => sum + (f.quantity * f.unit_price), 0).toFixed(2) }} ₽
         </v-chip>
       </div>
-        <!-- Фурнитура -->
-        <v-card-title>Фурнитура</v-card-title>
-        <v-btn prepend-icon="mdi-plus" @click="openFittingDialog">Добавить фурнитуру</v-btn>
-        <v-skeleton-loader v-if="loadingStates.fittings" type="table" class="mt-3" />
-        <v-data-table v-else :items="fittings" :headers="fittingHeaders">
-          <template v-slot:item.actions="{ item }">
-            <v-icon @click.stop="editFitting(item)" class="me-2">mdi-pencil</v-icon>
-            <v-icon @click.stop="deleteFitting(item)">mdi-delete</v-icon>
-          </template>
-        </v-data-table>
+      <section class="dense-module-shell">
+        <div class="dense-module-hero">
+          <div class="dense-module-hero__content">
+            <div class="dense-module-hero__eyebrow">Комплектующие и метизы</div>
+            <div class="dense-module-hero__title-row">
+              <div class="dense-module-hero__title">Фурнитура</div>
+            </div>
+          </div>
+        </div>
+
+        <section class="dense-module-surface">
+          <div class="dense-module-actions-bar">
+            <div class="dense-module-actions-bar__actions">
+              <v-btn prepend-icon="mdi-plus" @click="openFittingDialog">Добавить фурнитуру</v-btn>
+            </div>
+          </div>
+
+          <v-skeleton-loader v-if="loadingStates.fittings" type="table" />
+          <div v-else class="dense-module-table-wrap">
+            <v-data-table :items="fittings" :headers="fittingHeaders" class="dense-module-table">
+              <template v-slot:item.actions="{ item }">
+                <div class="module-row-actions">
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    icon="mdi-pencil"
+                    title="Изменить"
+                    @click.stop="editFitting(item)"
+                  />
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    color="error"
+                    icon="mdi-delete"
+                    title="Удалить"
+                    @click.stop="deleteFitting(item)"
+                  />
+                </div>
+              </template>
+            </v-data-table>
+          </div>
+        </section>
+      </section>
     </div><!-- /MODULE: FITTINGS -->
 
     <!-- ======================== MODULE: LABOR ======================== -->
@@ -1235,30 +1338,43 @@
         <v-chip size="small" variant="tonal" color="primary">Работ: {{ laborWorks.length }}</v-chip>
         <v-chip size="small" variant="tonal" color="success" prepend-icon="mdi-currency-rub">Итого: {{ (typeof laborWorksTotal === 'number' ? laborWorksTotal : 0).toFixed(2) }} ₽</v-chip>
       </div>
-        <!-- Монтажно-сборочные работы (нормо-час) -->
-        <v-card-title>
-          Нормируемые работы
-          <v-spacer />
-          <div>Итого: {{ (typeof laborWorksTotal === 'number' ? laborWorksTotal : 0).toFixed(2) }} ₽</div>
-        </v-card-title>
+      <section class="dense-module-shell">
+        <div class="dense-module-hero">
+          <div class="dense-module-hero__content">
+            <div class="dense-module-hero__eyebrow">Труд и нормо-часы</div>
+            <div class="dense-module-hero__title-row">
+              <div class="dense-module-hero__title">Нормируемые работы</div>
+            </div>
+          </div>
+        </div>
 
-        <v-btn prepend-icon="mdi-plus" @click="openLaborWorkDialog" class="mb-3">Добавить работу</v-btn>
+        <section class="dense-module-surface">
+          <div class="dense-module-actions-bar">
+            <div class="dense-module-actions-bar__actions">
+              <v-btn
+                variant="tonal"
+                color="primary"
+                prepend-icon="mdi-calculator-variant-outline"
+                @click="openLaborCalculationDialog"
+              >
+                Расчёт нормо-часа
+              </v-btn>
+              <v-btn prepend-icon="mdi-plus" @click="openLaborWorkDialog">Добавить работу</v-btn>
+            </div>
+          </div>
 
-        <ProjectLaborEvidencePanel
-          :project-id="projectId"
-          class="mb-4"
-          @sources-changed="handleLaborEvidenceSourcesChanged"
-        />
+          <div class="dense-module-support-grid">
+            <div class="dense-module-support-card">
+              <ProjectLaborEvidencePanel
+                :project-id="projectId"
+                @sources-changed="handleLaborEvidenceSourcesChanged"
+              />
+            </div>
+          </div>
 
-        <ProjectLaborCalculationPanel
-          ref="laborCalculationPanelRef"
-          :project-id="project.id"
-          class="mb-4"
-        />
-
-        <v-skeleton-loader v-if="loadingStates.laborWorks" type="table" />
-        <div v-else class="labor-works-table">
-          <table class="lw-table">
+          <v-skeleton-loader v-if="loadingStates.laborWorks" type="table" />
+          <div v-else class="labor-works-table dense-module-table-wrap">
+            <table class="lw-table">
             <thead>
               <tr>
                 <th class="lw-th lw-th-drag" style="width: 40px"></th>
@@ -1305,6 +1421,7 @@
                         :menu-actions="getLaborMenuActions(item)"
                         :visible="isLaborActionsVisible(item.id!)"
                         :loading-key="laborStepsLoadingId === item.id ? 'details' : null"
+                        dense
                         @action="handleLaborRowAction"
                       />
                     </div>
@@ -1324,7 +1441,9 @@
               </tr>
             </tbody>
           </table>
-        </div>
+          </div>
+        </section>
+      </section>
 
     </div><!-- /MODULE: LABOR -->
 
@@ -1337,23 +1456,52 @@
           Итого: {{ (Array.isArray(expenses) ? expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0) : 0).toFixed(2) }} ₽
         </v-chip>
       </div>
-        <!-- Накладные расходы -->
-        <v-card-title>Накладные расходы
-        <div>Итого: {{ (Array.isArray(expenses) ? expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0) : 0).toFixed(2) }} ₽</div>
-        </v-card-title>
-        <div class="d-flex justify-space-between align-center mb-4">
-          <v-btn prepend-icon="mdi-plus" @click="openExpenseDialog">Добавить расход</v-btn>
+      <section class="dense-module-shell">
+        <div class="dense-module-hero">
+          <div class="dense-module-hero__content">
+            <div class="dense-module-hero__eyebrow">Сопутствующие затраты</div>
+            <div class="dense-module-hero__title-row">
+              <div class="dense-module-hero__title">Накладные расходы</div>
+            </div>
+          </div>
         </div>
-        <v-skeleton-loader v-if="loadingStates.expenses" type="table" />
-        <v-data-table v-else :items="expenses" :headers="expenseHeaders">
-          <template v-slot:item.amount="{ item }">
-            {{ Number(item.amount || 0).toFixed(2) }} ₽
-          </template>
-          <template v-slot:item.actions="{ item }">
-            <v-icon @click.stop="editExpense(item)" class="me-2">mdi-pencil</v-icon>
-            <v-icon @click.stop="deleteExpense(item)">mdi-delete</v-icon>
-          </template>
-        </v-data-table>
+
+        <section class="dense-module-surface">
+          <div class="dense-module-actions-bar">
+            <div class="dense-module-actions-bar__actions">
+              <v-btn prepend-icon="mdi-plus" @click="openExpenseDialog">Добавить расход</v-btn>
+            </div>
+          </div>
+
+          <v-skeleton-loader v-if="loadingStates.expenses" type="table" />
+          <div v-else class="dense-module-table-wrap">
+            <v-data-table :items="expenses" :headers="expenseHeaders" class="dense-module-table">
+              <template v-slot:item.amount="{ item }">
+                {{ Number(item.amount || 0).toFixed(2) }} ₽
+              </template>
+              <template v-slot:item.actions="{ item }">
+                <div class="module-row-actions">
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    icon="mdi-pencil"
+                    title="Изменить"
+                    @click.stop="editExpense(item)"
+                  />
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    color="error"
+                    icon="mdi-delete"
+                    title="Удалить"
+                    @click.stop="deleteExpense(item)"
+                  />
+                </div>
+              </template>
+            </v-data-table>
+          </div>
+        </section>
+      </section>
     </div><!-- /MODULE: EXPENSES -->
 
     <!-- ======================== MODULE: REVISIONS ======================== -->
@@ -1368,20 +1516,39 @@
           Сессия #{{ activeRevisionRun.id }}: {{ formatRunStatus(activeRevisionRun.status) }}
         </v-chip>
       </div>
-        <!-- Ревизии -->
-        <v-card-title>Ревизии</v-card-title>
-        <v-card-subtitle class="mb-2">
-          Последняя ревизия:
-          <span v-if="latestRevision">#{{ latestRevision.number }}, {{ formatRevisionStatus(latestRevision.status) }}</span>
-          <span v-else>нет</span>
-        </v-card-subtitle>
+      <section class="dense-module-shell">
+        <div class="dense-module-hero">
+          <div class="dense-module-hero__content">
+            <div class="dense-module-hero__eyebrow">Контроль версий и публикация</div>
+            <div class="dense-module-hero__title-row">
+              <div class="dense-module-hero__title">Ревизии</div>
+              <v-chip
+                v-if="latestRevision"
+                size="small"
+                variant="tonal"
+                :color="getRevisionStatusColor(latestRevision.status)"
+                prepend-icon="mdi-check-circle"
+              >
+                #{{ latestRevision.number }} — {{ formatRevisionStatus(latestRevision.status) }}
+              </v-chip>
+              <v-chip v-else size="small" variant="tonal" color="grey">Нет ревизий</v-chip>
+            </div>
+          </div>
+        </div>
 
-        <v-card
-          v-if="activeRevisionRun"
-          variant="flat"
-          class="mb-4 border"
-        >
-          <v-card-title class="d-flex align-center flex-wrap ga-2">
+        <section v-if="activeRevisionRun" class="dense-module-surface">
+          <div class="dense-module-section-bar">
+            <div class="dense-module-section-bar__content">
+              <div class="dense-module-section-bar__title">Активная сессия ревизии</div>
+            </div>
+          </div>
+
+          <div class="dense-module-support-card revision-surface-card">
+            <v-card
+              variant="flat"
+              class="revision-run-card"
+            >
+              <v-card-title class="d-flex align-center flex-wrap ga-2">
             <span>Сессия ревизии #{{ activeRevisionRun.id }}</span>
             <v-chip size="small" :color="getRunStatusColor(activeRevisionRun.status)" variant="tonal">
               <v-progress-circular
@@ -1608,100 +1775,126 @@
                 PDF обоснований
               </v-btn>
             </div>
-          </v-card-text>
-        </v-card>
+              </v-card-text>
+            </v-card>
+          </div>
+        </section>
 
-        <v-skeleton-loader v-if="revisionsLoading" type="table" />
-        <v-data-table
-          v-else
-          :items="revisions"
-          :headers="revisionHeaders"
-          item-key="id"
-        >
-          <template v-slot:item.status="{ item }">
-            <v-chip size="small" :color="getRevisionStatusColor(item.status)" variant="outlined">
-              {{ formatRevisionStatus(item.status) }}
-            </v-chip>
-          </template>
-          <template v-slot:item.created_at="{ item }">
-            {{ formatRevisionDate(item.created_at) }}
-          </template>
-          <template v-slot:item.created_by="{ item }">
-            <span v-if="item.created_by?.name">{{ item.created_by.name }}</span>
-            <span v-else-if="item.createdBy?.name">{{ item.createdBy.name }}</span>
-            <span v-else>—</span>
-          </template>
-          <template v-slot:item.actions="{ item }">
-            <div class="d-flex gap-2 align-center">
-              <v-btn
-                size="x-small"
-                variant="text"
-                icon="mdi-eye"
-                title="Просмотр"
-                @click="openRevisionView(item)"
-              />
-              <v-btn
-                size="x-small"
-                variant="text"
-                icon="mdi-file-pdf-box"
-                title="PDF сметы"
-                :loading="revisionPdfLoading.has(item.number)"
-                :disabled="estimateHardInvalid || item.status === 'stale' || revisionPdfLoading.has(item.number)"
-                @click="downloadRevisionPdf(item)"
-              />
-              <v-btn
-                size="x-small"
-                variant="text"
-                icon="mdi-file-document-outline"
-                title="PDF обоснований цен"
-                :loading="revisionJustPdfLoading.has(item.number)"
-                :disabled="estimateHardInvalid || item.status === 'stale' || revisionJustPdfLoading.has(item.number)"
-                @click="downloadPriceJustificationPdf(item)"
-              />
-              <v-btn
-                size="x-small"
-                variant="text"
-                icon="mdi-cloud-upload"
-                title="Опубликовать"
-                :disabled="!canPublishRevision(item)"
-                @click="publishRevision(item)"
-              />
-              <v-btn
-                size="x-small"
-                variant="text"
-                icon="mdi-cloud-off-outline"
-                title="Снять публикацию"
-                :disabled="!canUnpublishRevision(item)"
-                @click="unpublishRevision(item)"
-              />
+        <section class="dense-module-surface">
+          <div class="dense-module-actions-bar">
+            <div class="dense-module-actions-bar__actions">
+              <v-btn color="secondary" @click="generatePdf" :loading="pdfLoading" :disabled="pdfLoading || estimateHardInvalid">
+                Генерировать PDF
+              </v-btn>
             </div>
-          </template>
-          <template v-slot:no-data>
-            <div class="text-center py-6 text-grey">
-              Ревизии не найдены
-            </div>
-          </template>
-        </v-data-table>
+          </div>
 
-        <div class="d-flex justify-end mt-2" v-if="revisionsPagination.lastPage > 1">
-          <v-pagination
-            v-model="revisionsPagination.page"
-            :length="revisionsPagination.lastPage"
-            @update:model-value="fetchRevisions"
-          />
-        </div>
+          <v-skeleton-loader v-if="revisionsLoading" type="table" />
+          <div v-else class="dense-module-table-wrap">
+            <v-data-table
+              :items="revisions"
+              :headers="revisionHeaders"
+              item-key="id"
+              class="dense-module-table"
+            >
+              <template v-slot:item.status="{ item }">
+                <v-chip size="small" :color="getRevisionStatusColor(item.status)" variant="outlined">
+                  {{ formatRevisionStatus(item.status) }}
+                </v-chip>
+              </template>
+              <template v-slot:item.created_at="{ item }">
+                {{ formatRevisionDate(item.created_at) }}
+              </template>
+              <template v-slot:item.created_by="{ item }">
+                <span v-if="item.created_by?.name">{{ item.created_by.name }}</span>
+                <span v-else-if="item.createdBy?.name">{{ item.createdBy.name }}</span>
+                <span v-else>—</span>
+              </template>
+              <template v-slot:item.actions="{ item }">
+                <div class="module-row-actions module-row-actions--wide">
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    icon="mdi-eye"
+                    title="Просмотр"
+                    @click="openRevisionView(item)"
+                  />
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    icon="mdi-file-pdf-box"
+                    title="PDF сметы"
+                    :loading="revisionPdfLoading.has(item.number)"
+                    :disabled="estimateHardInvalid || item.status === 'stale' || revisionPdfLoading.has(item.number)"
+                    @click="downloadRevisionPdf(item)"
+                  />
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    icon="mdi-file-document-outline"
+                    title="PDF обоснований цен"
+                    :loading="revisionJustPdfLoading.has(item.number)"
+                    :disabled="estimateHardInvalid || item.status === 'stale' || revisionJustPdfLoading.has(item.number)"
+                    @click="downloadPriceJustificationPdf(item)"
+                  />
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    icon="mdi-cloud-upload"
+                    title="Опубликовать"
+                    :disabled="!canPublishRevision(item)"
+                    @click="publishRevision(item)"
+                  />
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    icon="mdi-cloud-off-outline"
+                    title="Снять публикацию"
+                    :disabled="!canUnpublishRevision(item)"
+                    @click="unpublishRevision(item)"
+                  />
+                </div>
+              </template>
+              <template v-slot:no-data>
+                <div class="text-center py-6 text-grey">
+                  Ревизии не найдены
+                </div>
+              </template>
+            </v-data-table>
+          </div>
 
-        <!-- PDF -->
-        <v-divider class="my-4" />
-        <v-btn color="secondary" @click="generatePdf" :loading="pdfLoading" :disabled="pdfLoading || estimateHardInvalid">Генерировать PDF</v-btn>
+          <div class="d-flex justify-end mt-2" v-if="revisionsPagination.lastPage > 1">
+            <v-pagination
+              v-model="revisionsPagination.page"
+              :length="revisionsPagination.lastPage"
+              @update:model-value="fetchRevisions"
+            />
+          </div>
+        </section>
+      </section>
     </div><!-- /MODULE: REVISIONS -->
 
     <!-- ======================== MODULE: EVIDENCE ======================== -->
     <div v-show="activeModule === 'evidence'" class="module-content">
       <div class="module-summary">
-        <v-chip size="small" variant="tonal" color="primary" prepend-icon="mdi-shield-search">Доказательства (generic)</v-chip>
+        <v-chip size="small" variant="tonal" color="primary" prepend-icon="mdi-shield-search">Контур доказательств</v-chip>
       </div>
-      <EvidenceRunPanel :project-id="project.id" />
+      <section class="dense-module-shell">
+        <div class="dense-module-hero">
+          <div class="dense-module-hero__content">
+            <div class="dense-module-hero__eyebrow">Подтверждения и трассировка</div>
+            <div class="dense-module-hero__title-row">
+              <div class="dense-module-hero__title">Доказательства</div>
+            </div>
+          </div>
+        </div>
+
+        <section class="dense-module-surface">
+          <div class="dense-module-support-card">
+            <EvidenceRunPanel :project-id="project.id" />
+          </div>
+        </section>
+      </section>
     </div><!-- /MODULE: EVIDENCE -->
 
     <!-- ======================== MODULE: SETTINGS ======================== -->
@@ -1964,12 +2157,17 @@
     </v-dialog>
 
     <!-- Диалог позиции -->
-    <v-dialog v-model="positionDialog" max-width="700">
-      <v-card>
-        <v-card-title>{{ editingPosition ? 'Редактировать позицию' : 'Новая позиция' }}</v-card-title>
-        <v-card-text>
-          <v-form ref="positionForm">
+    <v-dialog v-model="positionDialog" max-width="700" class="position-editor-dialog">
+      <v-card class="position-sheet position-sheet--editor">
+        <v-card-title class="position-sheet-title">{{ editingPosition ? 'Редактировать позицию' : 'Новая позиция' }}</v-card-title>
+        <v-card-text class="position-sheet-content">
+          <v-form ref="positionForm" class="position-form-stack">
             <!-- Переключатель типа позиции -->
+            <section class="position-form-section position-form-section--hero">
+              <div class="position-form-section__header">
+                <div class="position-form-section__title">Тип позиции</div>
+                <div class="position-form-section__text">Выберите контур редактирования: панель или фасад.</div>
+              </div>
             <v-btn-toggle
               v-model="positionFormModel.kind"
               mandatory
@@ -1986,9 +2184,15 @@
                 Фасад
               </v-btn>
             </v-btn-toggle>
+            </section>
 
             <!-- === PANEL MODE === -->
             <template v-if="positionFormModel.kind === 'panel'">
+              <section class="position-form-section">
+                <div class="position-form-section__header">
+                  <div class="position-form-section__title">Материал панели</div>
+                  <div class="position-form-section__text">Тип детали и основной плитный материал.</div>
+                </div>
               <!-- Тип детали -->
               <v-autocomplete
                 v-model="positionFormModel.detail_type_id"
@@ -2041,10 +2245,16 @@
                   </v-list-item>
                 </template>
               </v-autocomplete>
+              </section>
             </template>
 
             <!-- === FACADE MODE === -->
             <template v-if="positionFormModel.kind === 'facade'">
+              <section class="position-form-section">
+                <div class="position-form-section__header">
+                  <div class="position-form-section__title">Материал фасада</div>
+                  <div class="position-form-section__text">Выбор модели фасада и связанных ценовых данных.</div>
+                </div>
               <!-- Facade material selector (search by name/decor) -->
               <v-autocomplete
                 v-model="positionFormModel.facade_material_id"
@@ -2073,7 +2283,8 @@
               </v-autocomplete>
 
               <!-- Auto-filled facade info (read-only) -->
-              <v-row v-if="positionFormModel.facade_material_id" class="mb-3">
+              <div v-if="positionFormModel.facade_material_id" class="position-support-card mb-3">
+              <v-row class="mb-0">
                 <v-col cols="4">
                   <v-text-field
                     :model-value="positionFormModel.base_material_label || '—'"
@@ -2111,6 +2322,7 @@
                 variant="outlined"
                 class="mb-3"
               />
+              </div>
 
               <!-- === Котировки фасада === -->
               <template v-if="positionFormModel.facade_material_id">
@@ -2119,7 +2331,7 @@
                   <v-progress-circular indeterminate size="24" />
                 </div>
                 <!-- Quotes table (always visible when quotes exist) -->
-                <div v-else-if="facadeQuotes.length > 0" class="mb-3">
+                <div v-else-if="facadeQuotes.length > 0" class="mb-3 position-support-card position-support-card--quotes">
                   <div class="text-subtitle-2 mb-1">Котировки ({{ facadeQuotes.length }})</div>
                   <v-table density="compact" class="border rounded">
                     <thead>
@@ -2211,11 +2423,18 @@
                   Для этого фасада нет котировок. Цена рассчитывается по базовой цене фасада.
                 </v-alert>
               </template>
+              </section>
             </template>
 
             <!-- Размеры (common for both types) -->
-            <v-row>
-              <v-col cols="6">
+            <section class="position-form-section">
+              <div class="position-form-section__header">
+                <div class="position-form-section__title">Размеры и количество</div>
+                <div class="position-form-section__text">Геометрия детали, быстрый выбор количества и контроль площади.</div>
+              </div>
+            <v-row class="position-dimensions-row">
+              <v-col cols="12" sm="6" class="position-dimensions-field">
+                <div class="dimension-field-stack">
                 <v-text-field
                   :model-value="Math.round(positionFormModel.width || 0)"
                   :label="positionFormModel.kind === 'facade' ? 'Ширина, мм' : 'Ширина, мм'"
@@ -2228,17 +2447,21 @@
                   @keyup.enter="handleDialogDimensionInput('width', ($event.target as HTMLInputElement).value)"
                   @blur="handleDialogDimensionInput('width', ($event.target as HTMLInputElement).value)"
                 />
-                <div class="dimension-help text-caption text-medium-emphasis">
-                  Допустимо: 600, 600-32, 2400/2
+                <div class="dimension-feedback-slot">
+                  <div class="dimension-help text-caption text-medium-emphasis">
+                    Допустимо: 600, 600-32, 2400/2
+                  </div>
+                  <div v-if="dialogDimensionCalc.width.expr" class="dimension-calc-line text-caption">
+                    <span class="text-medium-emphasis">Введено:</span>
+                    <span class="font-weight-medium">{{ dialogDimensionCalc.width.expr }}</span>
+                    <span v-if="dialogDimensionCalc.width.error" class="text-error">→ {{ dialogDimensionCalc.width.error }}</span>
+                    <span v-else class="text-primary">→ {{ dialogDimensionCalc.width.result }} мм</span>
+                  </div>
                 </div>
-                <div v-if="dialogDimensionCalc.width.expr" class="dimension-calc-line text-caption">
-                  <span class="text-medium-emphasis">Введено:</span>
-                  <span class="font-weight-medium"> {{ dialogDimensionCalc.width.expr }} </span>
-                  <span v-if="dialogDimensionCalc.width.error" class="text-error">→ {{ dialogDimensionCalc.width.error }}</span>
-                  <span v-else class="text-primary">→ {{ dialogDimensionCalc.width.result }} мм</span>
                 </div>
               </v-col>
-              <v-col cols="6">
+              <v-col cols="12" sm="6" class="position-dimensions-field">
+                <div class="dimension-field-stack">
                 <v-text-field
                   :model-value="Math.round(positionFormModel.length || 0)"
                   :label="positionFormModel.kind === 'facade' ? 'Высота, мм' : 'Длина, мм'"
@@ -2251,14 +2474,17 @@
                   @keyup.enter="handleDialogDimensionInput('length', ($event.target as HTMLInputElement).value)"
                   @blur="handleDialogDimensionInput('length', ($event.target as HTMLInputElement).value)"
                 />
-                <div class="dimension-help text-caption text-medium-emphasis">
-                  Допустимо: 600, 600-32, 2400/2
+                <div class="dimension-feedback-slot">
+                  <div class="dimension-help text-caption text-medium-emphasis">
+                    Допустимо: 600, 600-32, 2400/2
+                  </div>
+                  <div v-if="dialogDimensionCalc.length.expr" class="dimension-calc-line text-caption">
+                    <span class="text-medium-emphasis">Введено:</span>
+                    <span class="font-weight-medium">{{ dialogDimensionCalc.length.expr }}</span>
+                    <span v-if="dialogDimensionCalc.length.error" class="text-error">→ {{ dialogDimensionCalc.length.error }}</span>
+                    <span v-else class="text-primary">→ {{ dialogDimensionCalc.length.result }} мм</span>
+                  </div>
                 </div>
-                <div v-if="dialogDimensionCalc.length.expr" class="dimension-calc-line text-caption">
-                  <span class="text-medium-emphasis">Введено:</span>
-                  <span class="font-weight-medium"> {{ dialogDimensionCalc.length.expr }} </span>
-                  <span v-if="dialogDimensionCalc.length.error" class="text-error">→ {{ dialogDimensionCalc.length.error }}</span>
-                  <span v-else class="text-primary">→ {{ dialogDimensionCalc.length.result }} мм</span>
                 </div>
               </v-col>
             </v-row>
@@ -2304,9 +2530,15 @@
                 | Сумма: {{ formatNumber(((positionFormModel.width || 0) / 1000) * ((positionFormModel.length || 0) / 1000) * (positionFormModel.quantity || 0) * (positionFormModel.price_per_m2 || 0), 2) }} ₽
               </template>
             </v-alert>
+            </section>
 
             <!-- Edge processing: only for panels -->
             <template v-if="positionFormModel.kind === 'panel'">
+              <section class="position-form-section">
+                <div class="position-form-section__header">
+                  <div class="position-form-section__title">Кромка и схема торцов</div>
+                  <div class="position-form-section__text">Назначение обработки торцов и материала кромки.</div>
+                </div>
               <!-- Обработка торцов: отключена, если выбран тип -->
               <v-autocomplete
                 v-model="positionFormModel.edge_scheme"
@@ -2367,9 +2599,15 @@
                 class="mb-3"
                 @update:model-value="onPositionEdgeMaterialChange"
               />
+              </section>
             </template>
 
             <!-- Название (опционально) -->
+            <section class="position-form-section position-form-section--muted">
+              <div class="position-form-section__header">
+                <div class="position-form-section__title">Идентификация</div>
+                <div class="position-form-section__text">Необязательное имя для удобства в таблице и деталях.</div>
+              </div>
             <v-text-field
               v-model="positionFormModel.custom_name"
               label="Название детали (опционально)"
@@ -2377,9 +2615,10 @@
               persistent-hint
               density="comfortable"
             />
+            </section>
           </v-form>
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions class="position-sheet-actions">
           <v-spacer />
           <v-btn @click="positionDialog = false" :disabled="positionSaving">Отмена</v-btn>
           <v-btn color="primary" @click="savePosition" :loading="positionSaving" :disabled="positionSaving || (positionFormModel.kind === 'facade' && facadePriceMethod !== 'single' && selectedQuoteIds.length < 2)">Сохранить</v-btn>
@@ -2548,6 +2787,23 @@
           <v-btn @click="closeNormohourSourceDialog" :disabled="normohourSourceSaving">Отмена</v-btn>
           <v-btn color="primary" @click="saveNormohourSource" :loading="normohourSourceSaving" :disabled="normohourSourceSaving">Сохранить</v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="laborCalculationDialog" max-width="1120" scrollable class="labor-calculation-dialog">
+      <v-card class="labor-calculation-dialog-card">
+        <v-toolbar flat class="labor-calculation-dialog-toolbar">
+          <v-toolbar-title>Расчёт нормо-часа</v-toolbar-title>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" @click="laborCalculationDialog = false" />
+        </v-toolbar>
+        <v-divider />
+        <v-card-text class="labor-calculation-dialog-content">
+          <ProjectLaborCalculationPanel
+            ref="laborCalculationPanelRef"
+            :project-id="project.id"
+          />
+        </v-card-text>
       </v-card>
     </v-dialog>
   </div><!-- /workspace-root -->
@@ -3382,6 +3638,13 @@ const laborCalculationPanelRef = ref<{ reload?: () => Promise<void> | void } | n
 
 function handleLaborEvidenceSourcesChanged() {
   void laborCalculationPanelRef.value?.reload?.()
+}
+
+const openLaborCalculationDialog = () => {
+  laborCalculationDialog.value = true
+  nextTick(() => {
+    void laborCalculationPanelRef.value?.reload?.()
+  })
 }
 
 const isMissingProjectError = (error: any): boolean => error?.response?.status === 404
@@ -4400,6 +4663,7 @@ const edgeSchemeOptions = [
 const positionDialog = ref(false)
 const fittingDialog = ref(false)
 const expenseDialog = ref(false) // ← добавлено!
+const laborCalculationDialog = ref(false)
 const positionSaving = ref(false)
 const fittingSaving = ref(false)
 const expenseSaving = ref(false)
@@ -8612,7 +8876,9 @@ onBeforeUnmount(() => {
 .workspace-root {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  gap: 12px;
+  height: calc(100dvh - 48px);
+  min-height: 0;
   overflow: hidden;
   background:
     radial-gradient(circle at top left, rgba(var(--v-theme-primary), 0.05), transparent 32%),
@@ -8622,6 +8888,7 @@ onBeforeUnmount(() => {
 .workspace-body {
   display: flex;
   flex: 1;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -8803,8 +9070,9 @@ onBeforeUnmount(() => {
 .workspace-module-area {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   padding: 16px 20px 20px;
   position: relative;
 }
@@ -8816,7 +9084,9 @@ onBeforeUnmount(() => {
 }
 
 .module-content {
-  max-width: 1360px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -8833,6 +9103,208 @@ onBeforeUnmount(() => {
   background:
     linear-gradient(180deg, rgba(var(--v-theme-primary), 0.02), transparent 100px),
     rgba(var(--v-theme-surface-container-low), 0.82);
+}
+
+.dense-module-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dense-module-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.68);
+  border-radius: var(--md-sys-shape-corner-large);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.035), transparent 110px),
+    rgba(var(--v-theme-surface-container-low), 0.94);
+}
+
+.dense-module-hero__content,
+.dense-module-actions-bar__info,
+.dense-module-section-bar__content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dense-module-hero__eyebrow {
+  font-size: 0.7rem;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface-variant), 0.82);
+}
+
+.dense-module-hero__title-row,
+.dense-module-section-bar,
+.dense-module-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dense-module-hero__title {
+  font-size: 1.05rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 1);
+}
+
+.dense-module-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.7);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: rgba(var(--v-theme-surface-container-low), 0.9);
+}
+
+.dense-module-section-bar,
+.dense-module-actions-bar {
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.52);
+}
+
+.dense-module-section-bar--compact {
+  padding-top: 2px;
+}
+
+.dense-module-section-bar__title,
+.dense-module-actions-bar__title {
+  font-size: 0.95rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 1);
+}
+
+.dense-module-section-bar__meta,
+.dense-module-actions-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dense-module-inline-alert {
+  margin: 0;
+}
+
+.dense-module-table-wrap {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+  border-radius: calc(var(--md-sys-shape-corner-large) + 2px);
+  background: rgba(var(--v-theme-surface), 0.98);
+}
+
+.dense-module-table :deep(table) {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.dense-module-table :deep(thead th) {
+  height: 44px !important;
+  padding: 0 14px !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.62) !important;
+  background: rgba(var(--v-theme-surface-container), 0.88) !important;
+  color: rgba(var(--v-theme-on-surface-variant), 1) !important;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.dense-module-table :deep(tbody td) {
+  padding: 10px 14px !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.4) !important;
+  vertical-align: middle;
+}
+
+.dense-module-table :deep(tbody tr:last-child td) {
+  border-bottom: none !important;
+}
+
+.dense-module-support-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dense-module-support-card {
+  min-width: 0;
+  padding: 0;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+  border-radius: calc(var(--md-sys-shape-corner-large) + 2px);
+  background: rgba(var(--v-theme-surface), 0.98);
+  overflow: hidden;
+}
+
+.dense-module-support-card > :deep(*) {
+  margin: 0 !important;
+}
+
+.dense-module-support-card > :deep(.v-card),
+.dense-module-support-card > :deep(.v-sheet) {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.module-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.module-row-actions--wide {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.revision-surface-card {
+  overflow: hidden;
+}
+
+.revision-run-card :deep(.v-card-title) {
+  padding: 14px 16px 10px;
+}
+
+.revision-run-card :deep(.v-card-text) {
+  padding: 0 16px 16px;
+}
+
+.revision-run-card :deep(.v-table) {
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.42);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: rgba(var(--v-theme-surface), 0.98);
+}
+
+.revision-run-card :deep(.v-table th) {
+  height: 40px;
+  padding: 0 12px;
+  background: rgba(var(--v-theme-surface-container), 0.82);
+  color: rgba(var(--v-theme-on-surface-variant), 0.96);
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.revision-run-card :deep(.v-table td) {
+  padding: 9px 12px;
+  vertical-align: middle;
 }
 
 .toolbar-sentinel {
@@ -8899,6 +9371,239 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+.position-sheet {
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-extra-large) !important;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.03), transparent 140px),
+    rgba(var(--v-theme-surface-container-low), 0.98);
+  overflow: hidden;
+}
+
+.position-sheet-toolbar,
+.position-sheet-title {
+  padding-inline: 20px;
+  padding-top: 18px;
+  padding-bottom: 14px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 1);
+}
+
+.position-sheet-content {
+  padding: 20px !important;
+}
+
+.position-sheet-actions {
+  padding: 14px 20px 18px !important;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+  background: rgba(var(--v-theme-surface-container-low), 0.9);
+}
+
+.labor-calculation-dialog-card {
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  border-radius: var(--md-sys-shape-corner-extra-large) !important;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.03), transparent 140px),
+    rgba(var(--v-theme-surface-container-low), 0.98);
+  overflow: hidden;
+}
+
+.labor-calculation-dialog-toolbar {
+  padding-inline: 20px;
+  padding-top: 14px;
+  padding-bottom: 12px;
+}
+
+.labor-calculation-dialog-toolbar :deep(.v-toolbar-title) {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 1);
+}
+
+.labor-calculation-dialog-content {
+  padding: 18px !important;
+  background: transparent;
+}
+
+.position-form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.position-form-section {
+  padding: 16px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.66);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: rgba(var(--v-theme-surface), 0.94);
+}
+
+.position-form-section--hero {
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.06), transparent 100px),
+    rgba(var(--v-theme-surface), 0.98);
+}
+
+.position-form-section--muted {
+  background: rgba(var(--v-theme-surface-container-low), 0.88);
+}
+
+.position-form-section__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.position-form-section__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 1);
+}
+
+.position-form-section__text {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(var(--v-theme-on-surface-variant), 1);
+}
+
+.position-support-card {
+  padding: 12px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.58);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: rgba(var(--v-theme-surface-container-low), 0.78);
+}
+
+.position-support-card--quotes {
+  padding-bottom: 10px;
+}
+
+.positions-table-wrap :deep(.v-table__wrapper) {
+  border-radius: calc(var(--md-sys-shape-corner-extra-large) - 8px);
+  background: rgba(var(--v-theme-surface), 0.96);
+  overflow-y: hidden !important;
+  max-height: none !important;
+  scrollbar-width: none;
+}
+
+.positions-table-wrap :deep(.v-table__wrapper::-webkit-scrollbar) {
+  width: 0;
+  height: 0;
+}
+
+.positions-table :deep(table) {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.positions-table :deep(thead th) {
+  height: 44px !important;
+  padding: 0 12px !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.72) !important;
+  background: rgba(var(--v-theme-surface-container), 0.94) !important;
+  color: rgba(var(--v-theme-on-surface-variant), 1) !important;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.positions-table :deep(tbody td) {
+  padding: 8px 12px !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.48) !important;
+  background: transparent !important;
+  vertical-align: middle;
+}
+
+.positions-table :deep(tbody tr:last-child td) {
+  border-bottom: none !important;
+}
+
+.position-row {
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.position-row td:first-child {
+  width: 44px;
+  padding-inline-start: 8px !important;
+  padding-inline-end: 8px !important;
+}
+
+.position-row.row-hovered td,
+.position-row:hover td {
+  background: rgba(var(--v-theme-primary), 0.04) !important;
+}
+
+.position-row.row-selected td {
+  background: rgba(var(--v-theme-primary), 0.08) !important;
+}
+
+.position-row.row-selected td:first-child {
+  box-shadow: inset 3px 0 0 rgba(var(--v-theme-primary), 1);
+}
+
+.position-row.row-highlighted td {
+  background:
+    linear-gradient(0deg, rgba(var(--v-theme-tertiary), 0.08), rgba(var(--v-theme-tertiary), 0.08)),
+    rgba(var(--v-theme-surface), 1) !important;
+}
+
+.cell-with-actions {
+  min-width: 0;
+}
+
+.position-row .cell-with-actions {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.cell-name-column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 36px;
+}
+
+.cell-name {
+  font-weight: 600;
+  line-height: 1.25;
+  color: rgba(var(--v-theme-on-surface), 1);
+}
+
+.cell-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.positions-table :deep(tbody td .v-chip) {
+  vertical-align: middle;
+}
+
+.positions-table :deep(tbody td .v-selection-control) {
+  align-items: center;
+}
+
+.positions-table :deep(tbody td .v-checkbox-btn) {
+  justify-content: center;
+}
+
+.positions-table :deep(.row-hover-actions--dense) {
+  align-self: flex-start;
+}
+
+.positions-table :deep(.row-hover-actions--dense .action-icon-btn) {
+  margin-top: 1px;
+}
+
 
 
 @media (max-width: 960px) {
@@ -8916,6 +9621,11 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 760px) {
+  .workspace-root {
+    gap: 10px;
+    height: calc(100dvh - 32px);
+  }
+
   .positions-unified-toolbar {
     padding: 10px 12px;
   }
@@ -8927,6 +9637,42 @@ onBeforeUnmount(() => {
   .positions-table-wrap {
     padding: 4px;
     border-radius: var(--md-sys-shape-corner-large);
+  }
+
+  .positions-table :deep(thead th),
+  .positions-table :deep(tbody td) {
+    padding-inline: 10px !important;
+  }
+
+  .position-sheet-content {
+    padding: 14px !important;
+  }
+
+  .position-sheet-toolbar,
+  .position-sheet-title,
+  .position-sheet-actions {
+    padding-inline: 14px !important;
+  }
+
+  .labor-calculation-dialog-toolbar {
+    padding-inline: 14px;
+  }
+
+  .labor-calculation-dialog-content {
+    padding: 14px !important;
+  }
+
+  .position-form-section {
+    padding: 12px;
+  }
+
+  .dimension-swap-col--details {
+    align-items: center;
+    padding-top: 0;
+  }
+
+  .dimension-feedback-slot {
+    min-height: 0;
   }
 }
 
@@ -9074,7 +9820,7 @@ onBeforeUnmount(() => {
 
 /* Drag-and-drop таблица нормируемых работ */
 .labor-works-table {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .lw-table {
@@ -9086,21 +9832,23 @@ onBeforeUnmount(() => {
   width: 100%;
   border-collapse: collapse;
   background: rgb(var(--v-theme-surface));
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 8px;
+  border: none;
+  border-radius: 0;
   overflow: hidden;
 }
 
 .lw-th {
   text-align: left;
   padding: 0 var(--ds-space-16);
-  height: var(--ds-table-row-height);
-  min-height: var(--ds-table-row-height);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.7);
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  background: rgb(var(--v-theme-surface));
+  height: 44px;
+  min-height: 44px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface-variant), 1);
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.62);
+  background: rgba(var(--v-theme-surface-container), 0.88);
   vertical-align: middle;
 }
 
@@ -9116,7 +9864,7 @@ onBeforeUnmount(() => {
 .lw-row {
   transition: background 0.15s;
   cursor: grab;
-  height: var(--ds-table-row-height);
+  height: 52px;
 }
 
 .lw-row:hover {
@@ -9133,11 +9881,11 @@ onBeforeUnmount(() => {
 }
 
 .lw-td {
-  padding: 0 var(--ds-space-16);
+  padding: 10px var(--ds-space-16);
   font-size: 0.8125rem;
-  height: var(--ds-table-row-height);
-  min-height: var(--ds-table-row-height);
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  line-height: 1.35;
+  min-height: 52px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.4);
   vertical-align: middle;
 }
 
@@ -9435,8 +10183,31 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
+.position-dimensions-row {
+  align-items: start;
+}
+
+.position-dimensions-field {
+  display: flex;
+}
+
+.dimension-field-stack {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.dimension-feedback-slot {
+  min-height: 74px;
+}
+
+.dimension-swap-col--details {
+  align-items: flex-start;
+  padding-top: 18px;
+}
+
 .dimension-swap-btn {
-  transform: translateY(-4px);
+  transform: none;
 }
 
 .edge-hint :deep(.v-field) {
@@ -9476,7 +10247,7 @@ onBeforeUnmount(() => {
 
 .project-editor-page {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: visible;
 }
 
 .drawer-quotes-table {
@@ -9484,7 +10255,7 @@ onBeforeUnmount(() => {
 }
 .drawer-quotes-table :deep(th),
 .drawer-quotes-table :deep(td) {
-  padding: 2px 6px !important;
+  padding: 6px 8px !important;
   height: auto !important;
 }
 
@@ -9540,36 +10311,44 @@ onBeforeUnmount(() => {
 .position-kind-toggle :deep(.v-btn) {
   margin-right: 8px;
   margin-bottom: 8px;
-  border-radius: 8px !important;
+  border-radius: var(--md-sys-shape-corner-large) !important;
   border-inline-start-width: 1px !important;
   border-inline-end-width: 1px !important;
 }
 
 .dimension-help {
-  margin-top: -6px;
-  margin-bottom: 4px;
+  margin-top: -2px;
+  margin-bottom: 6px;
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
 }
 
 .dimension-calc-line {
-  margin-top: 2px;
-  margin-bottom: 4px;
+  margin-top: 4px;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: rgba(var(--v-theme-primary), 0.06);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
 }
 
 .edge-preview-block {
-  padding: 8px 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.14);
-  border-radius: 8px;
-  background: rgba(var(--v-theme-surface-variant), 0.24);
+  padding: 12px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.62);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: rgba(var(--v-theme-surface-container-low), 0.82);
 }
 
 .edge-preview-box {
   position: relative;
   width: 92px;
   height: 64px;
-  border-radius: 6px;
+  border-radius: var(--md-sys-shape-corner-small);
   margin: 0 auto;
   background: rgba(var(--v-theme-surface), 1);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.16);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.68);
 }
 
 .edge-side {
