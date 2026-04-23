@@ -11,6 +11,7 @@ class FinishedProductPositionPricingSnapshotService
 {
     public function __construct(
         private FinishedProductSpecificationAccessService $accessService,
+        private FinishedProductSourceLevelSnapshotService $sourceLevelSnapshotService,
     ) {}
 
     /**
@@ -62,6 +63,14 @@ class FinishedProductPositionPricingSnapshotService
                 'minimum_sources_count' => $resolved->aggregationProfile?->minimum_sources_count,
             ],
         ];
+
+        $snapshot['source_level_snapshot'] = $this->sourceLevelSnapshotService->captureForSpecification($resolved, [
+            'method' => $snapshot['pricing']['aggregation_method'] ?? null,
+            'computed_price_per_m2' => $snapshot['pricing']['computed_price_per_m2'] ?? null,
+            'source_count' => $snapshot['pricing']['source_count'] ?? 0,
+            'min_price' => $snapshot['pricing']['min_price'] ?? null,
+            'max_price' => $snapshot['pricing']['max_price'] ?? null,
+        ]);
 
         return [
             'specification' => $resolved,

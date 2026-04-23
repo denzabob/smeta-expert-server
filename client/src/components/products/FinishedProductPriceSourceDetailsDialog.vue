@@ -1,11 +1,11 @@
 <template>
   <v-dialog :model-value="modelValue" max-width="860" scrollable @update:model-value="$emit('update:modelValue', $event)">
-    <v-card>
-      <v-card-title class="d-flex align-center">
+    <v-card class="fp-details-dialog-card">
+      <v-card-title class="fp-details-dialog-card__header">
         <div>
-          <div class="text-h6">Детали источника цены</div>
-          <div class="text-body-2 text-medium-emphasis">
-            Read-only разбор выбранного source и связанных evidence assets.
+          <div class="fp-details-dialog-card__title">Детали источника цены</div>
+          <div class="fp-details-dialog-card__subtitle">
+            Цена, поставщик и подтверждающие материалы по выбранному источнику.
           </div>
         </div>
         <v-spacer />
@@ -14,7 +14,7 @@
         </v-btn>
       </v-card-title>
 
-      <v-card-text>
+      <v-card-text class="fp-details-dialog-card__content">
         <v-alert v-if="loading" type="info" variant="tonal" density="compact" class="mb-4">
           Загружаем детали источника…
         </v-alert>
@@ -24,7 +24,7 @@
         </v-alert>
 
         <template v-else-if="details">
-          <v-row dense class="mb-3">
+          <v-row dense class="fp-details-grid">
             <v-col cols="12" md="6">
               <div class="text-caption text-medium-emphasis">Поставщик</div>
               <div class="font-weight-medium">{{ details.source.supplier.name || '—' }}</div>
@@ -38,7 +38,7 @@
               <div>{{ formatPrice(details.source.source_price) }} {{ details.source.source_unit || '' }}</div>
             </v-col>
             <v-col cols="12" md="4">
-              <div class="text-caption text-medium-emphasis">Нормализовано</div>
+              <div class="text-caption text-medium-emphasis">Цена за м²</div>
               <div class="font-weight-medium">{{ formatPrice(details.source.price_per_m2_normalized) }} ₽/м²</div>
             </v-col>
             <v-col cols="12" md="4">
@@ -71,7 +71,7 @@
             {{ details.source.stale_reason }}
           </v-alert>
 
-          <v-row dense class="mb-4">
+          <v-row dense class="fp-details-grid fp-details-grid--secondary">
             <v-col cols="12" md="6" v-if="details.source.article">
               <div class="text-caption text-medium-emphasis">Артикул</div>
               <div>{{ details.source.article }}</div>
@@ -90,24 +90,20 @@
             </v-col>
           </v-row>
 
-          <div class="d-flex align-center mb-2">
-            <div class="text-subtitle-2">Evidence assets</div>
-            <v-spacer />
-            <v-btn size="small" variant="text" class="text-none" disabled>
-              Добавление evidence позже
-            </v-btn>
+          <div class="fp-details-section-title">
+            <div class="text-subtitle-2">Доказательства</div>
           </div>
 
           <v-alert
             v-if="details.evidence_assets.length === 0"
-            type="info"
+            type="warning"
             density="compact"
             variant="tonal"
           >
-            Для этого источника пока нет evidence assets. Просмотр и доступ остаются read-only.
+            Доказательства не добавлены. Перед формированием итогового отчёта рекомендуется прикрепить файл, скриншот или ссылку.
           </v-alert>
 
-          <v-list v-else density="compact" class="border rounded">
+          <v-list v-else density="compact" class="fp-details-list">
             <v-list-item
               v-for="asset in details.evidence_assets"
               :key="asset.id"
@@ -121,10 +117,8 @@
                 <span v-if="asset.original_name"> · {{ asset.original_name }}</span>
               </v-list-item-title>
               <v-list-item-subtitle>
-                <span v-if="asset.mime_type">{{ asset.mime_type }}</span>
-                <span v-if="asset.file_size !== null"> · {{ formatFileSize(asset.file_size) }}</span>
+                <span v-if="asset.file_size !== null">{{ formatFileSize(asset.file_size) }}</span>
                 <span v-if="asset.captured_at"> · {{ formatDateTime(asset.captured_at) }}</span>
-                <span v-if="asset.content_hash"> · hash: {{ asset.content_hash }}</span>
               </v-list-item-subtitle>
               <template #append>
                 <div class="d-flex align-center ga-1">
@@ -168,7 +162,7 @@
         </template>
       </v-card-text>
 
-      <v-card-actions>
+      <v-card-actions class="fp-details-dialog-card__actions">
         <v-spacer />
         <v-btn @click="$emit('update:modelValue', false)">Закрыть</v-btn>
       </v-card-actions>
@@ -201,3 +195,65 @@ defineEmits<{
   (e: 'update:modelValue', value: boolean): void
 }>()
 </script>
+
+<style scoped>
+.fp-details-dialog-card {
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.76);
+  border-radius: var(--md-sys-shape-corner-extra-large) !important;
+  background: rgba(var(--v-theme-surface-container-low), 0.98);
+}
+
+.fp-details-dialog-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-12);
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.6);
+}
+
+.fp-details-dialog-card__title {
+  font-size: 1.125rem;
+  line-height: 1.3;
+  font-weight: 700;
+  color: var(--ds-text-primary);
+}
+
+.fp-details-dialog-card__subtitle {
+  margin-top: 4px;
+  color: var(--ds-text-secondary);
+}
+
+.fp-details-dialog-card__content {
+  display: grid;
+  gap: var(--ds-space-14);
+  padding: 20px !important;
+}
+
+.fp-details-grid {
+  margin: 0 !important;
+  padding: var(--ds-space-12);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.68);
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface), 0.96);
+}
+
+.fp-details-grid--secondary {
+  background: rgba(var(--v-theme-surface-container-lowest), 0.72);
+}
+
+.fp-details-section-title {
+  display: flex;
+  align-items: center;
+}
+
+.fp-details-list {
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.68);
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface), 0.96);
+}
+
+.fp-details-dialog-card__actions {
+  padding: 12px 20px 18px !important;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+}
+</style>

@@ -16,13 +16,12 @@
       </template>
     </PageHeader>
 
-    <div class="idea-create-hero">
-      <div class="idea-create-hero__title">Что делает идею полезной</div>
-      <div class="idea-create-hero__text">
-        Сформулируйте проблему, ожидаемый результат и при необходимости приложите скриншоты. Это упростит обсуждение и
-        ускорит переход от предложения к планированию.
-      </div>
-    </div>
+    <AppStateBlock
+      class="idea-create-hero"
+      icon="mdi-lightbulb-on-outline"
+      title="Что делает идею полезной"
+      description="Сформулируйте проблему, ожидаемый результат и при необходимости приложите скриншоты. Это упростит обсуждение и ускорит переход от предложения к планированию."
+    />
 
     <div class="idea-create-layout">
       <section class="idea-create-main">
@@ -71,34 +70,30 @@
               required
             />
 
-            <div class="idea-create-section">
-              <div class="idea-create-section__header">
-                <div class="idea-create-section__title">Теги</div>
-                <div class="idea-create-section__subtitle">Ключевые темы для фильтрации и дальнейшего поиска по идеям.</div>
-              </div>
+            <AppFormSection
+              title="Теги"
+              description="Ключевые темы для фильтрации и дальнейшего поиска по идеям."
+            >
               <TagSelect v-model="tags" :disabled="loading" />
-            </div>
+            </AppFormSection>
 
-            <div class="idea-create-section">
-              <div class="idea-create-section__header">
-                <div class="idea-create-section__title">Скриншоты и вложения</div>
-                <div class="idea-create-section__subtitle">
-                  Добавьте визуальный контекст, если проблема видна на экране или в текущем сценарии.
-                </div>
-              </div>
+            <AppFormSection
+              title="Скриншоты и вложения"
+              description="Добавьте визуальный контекст, если проблема видна на экране или в текущем сценарии."
+            >
               <AttachmentUploader v-model="attachments" :disabled="loading" @error="onUploadError" />
-            </div>
+            </AppFormSection>
           </v-form>
 
           <template #actions>
-            <div class="idea-create-actions">
+            <AppActionFooter>
               <v-btn type="submit" color="primary" variant="flat" :loading="loading" @click="submit">
                 Создать идею
               </v-btn>
               <v-btn variant="tonal" color="primary" :disabled="loading" @click="router.push({ name: 'ideas' })">
                 Отмена
               </v-btn>
-            </div>
+            </AppActionFooter>
           </template>
         </SectionCard>
       </section>
@@ -140,6 +135,9 @@ import { ideasApi } from '@/api/ideas'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import AppFormSection from '@/components/layout/AppFormSection.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
 import TagSelect from '@/components/ideas/TagSelect.vue'
 import AttachmentUploader from '@/components/ideas/AttachmentUploader.vue'
 
@@ -184,25 +182,17 @@ async function submit() {
 
 <style scoped>
 .idea-create-hero {
+  align-items: flex-start;
   padding: 18px 20px;
   border: 1px solid var(--ds-border-color);
   border-radius: var(--ds-radius-18);
   background:
     linear-gradient(180deg, rgba(var(--v-theme-primary-container), 0.32), rgba(var(--v-theme-surface-container-low), 0.92));
+  text-align: left;
 }
 
-.idea-create-hero__title {
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.2;
-  color: var(--ds-text-primary);
-}
-
-.idea-create-hero__text {
-  margin-top: 8px;
+.idea-create-hero :deep(.app-state-block__body) {
   max-width: 820px;
-  color: var(--ds-text-secondary);
-  line-height: 1.55;
 }
 
 .idea-create-layout {
@@ -238,36 +228,8 @@ async function submit() {
   gap: 16px;
 }
 
-.idea-create-section {
-  padding: 18px;
-  border: 1px solid var(--ds-border-color);
-  border-radius: var(--ds-radius-18);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.84);
-}
-
-.idea-create-section__header {
-  margin-bottom: 12px;
-}
-
-.idea-create-section__title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--ds-text-primary);
-}
-
-.idea-create-section__subtitle {
-  margin-top: 4px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ds-text-secondary);
-}
-
-.idea-create-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  width: 100%;
-  justify-content: flex-end;
+.idea-create-card :deep(.md3-section-card__actions) {
+  padding: 0;
 }
 
 .idea-checklist {
@@ -300,16 +262,5 @@ async function submit() {
     padding: 16px;
   }
 
-  .idea-create-section {
-    padding: 16px;
-  }
-
-  .idea-create-actions {
-    justify-content: stretch;
-  }
-
-  .idea-create-actions > * {
-    flex: 1 1 100%;
-  }
 }
 </style>

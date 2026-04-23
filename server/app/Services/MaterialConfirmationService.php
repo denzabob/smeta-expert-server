@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\EvidenceRecord;
 use App\Models\GenericEvidenceAsset;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Evaluates whether a material's price confirmation is fresh
@@ -161,7 +162,12 @@ class MaterialConfirmationService
         EvidenceRecord $record,
         string $itemCostComponent,
         ?string $itemSourceUrl,
+        ?int $userId = null,
     ): bool {
+        if ($userId !== null && (int) $record->created_by !== $userId) {
+            return false;
+        }
+
         // 1. Exact component match
         if ($record->cost_component !== $itemCostComponent) {
             return false;
@@ -209,12 +215,27 @@ class MaterialConfirmationService
         ?string $searchQuery = null,
         int $perPage = 20,
         int $page = 1,
+        ?int $userId = null,
+        ?int $finishedProductSpecificationId = null,
     ) {
         $query = EvidenceRecord::where('cost_component', $costComponent)
             ->where('verification_status', '!=', 'rejected')
-            ->whereHas('assets', function ($q) {
-                $q->whereIn('asset_type', ['screenshot', 'document']);
+            ->where(function (Builder $proof) {
+                $proof->whereHas('assets', function ($q) {
+                    $q->whereIn('asset_type', ['screenshot', 'document']);
+                })->orWhere(function (Builder $linkProof) {
+                    $linkProof->whereNotNull('source_url')
+                        ->where('metadata_json->origin', 'finished_product_price_evidence_asset');
+                });
             });
+
+        if ($userId !== null) {
+            $query->where('created_by', $userId);
+        }
+
+        if ($finishedProductSpecificationId !== null) {
+            $query->where('metadata_json->finished_product_specification_id', $finishedProductSpecificationId);
+        }
 
         // Strict URL filter when item has a source_url
         if (!empty($sourceUrl)) {

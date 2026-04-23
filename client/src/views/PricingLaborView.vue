@@ -11,11 +11,11 @@
       </template>
     </PageHeader>
 
-    <v-tabs v-model="activeTab" color="primary" class="mb-4 labor-tabs">
-      <v-tab value="sources">Источники</v-tab>
-      <v-tab value="profiles">Профили</v-tab>
-      <v-tab value="providers">Источники сайтов</v-tab>
-    </v-tabs>
+    <AppTabs
+      v-model="activeTab"
+      :items="laborTabItems"
+      class="mb-4 labor-tabs"
+    />
 
     <v-window v-model="activeTab">
       <v-window-item value="sources">
@@ -38,7 +38,7 @@
           </div>
 
           <div v-if="sources.length === 0 && !loading.sources" class="empty-wrap">
-            <EmptyState
+            <AppStateBlock
               icon="mdi-account-search-outline"
               title="Источники труда ещё не добавлены"
               description="Добавьте вакансию вручную или через Chrome, чтобы затем привязать источник к проекту."
@@ -48,7 +48,7 @@
                   Добавить источник
                 </v-btn>
               </template>
-            </EmptyState>
+            </AppStateBlock>
           </div>
 
           <div v-else class="profile-groups">
@@ -100,9 +100,9 @@
                 </template>
 
                 <template #[`item.assets`]="{ item }">
-                  <v-chip :color="evidenceStatus(item).color" variant="tonal" size="small">
+                  <StatusChip :color="evidenceStatus(item).color" variant="tonal" size="small">
                     {{ evidenceStatus(item).label }}
-                  </v-chip>
+                  </StatusChip>
                 </template>
 
                 <template #[`item.created_at`]="{ item }">
@@ -110,7 +110,7 @@
                 </template>
 
                 <template #[`item.actions`]="{ item }">
-                  <div class="source-actions">
+                  <AppRowActions class="source-actions">
                     <v-btn
                       icon="mdi-pencil"
                       size="small"
@@ -127,7 +127,7 @@
                       class="source-actions__icon"
                       @click="removeSource(item)"
                     />
-                  </div>
+                  </AppRowActions>
                 </template>
               </v-data-table>
             </div>
@@ -175,9 +175,9 @@
                 </template>
 
                 <template #[`item.assets`]="{ item }">
-                  <v-chip :color="evidenceStatus(item).color" variant="tonal" size="small">
+                  <StatusChip :color="evidenceStatus(item).color" variant="tonal" size="small">
                     {{ evidenceStatus(item).label }}
-                  </v-chip>
+                  </StatusChip>
                 </template>
 
                 <template #[`item.created_at`]="{ item }">
@@ -185,7 +185,7 @@
                 </template>
 
                 <template #[`item.actions`]="{ item }">
-                  <div class="source-actions">
+                  <AppRowActions class="source-actions">
                     <v-btn
                       icon="mdi-pencil"
                       size="small"
@@ -202,7 +202,7 @@
                       class="source-actions__icon"
                       @click="removeSource(item)"
                     />
-                  </div>
+                  </AppRowActions>
                 </template>
               </v-data-table>
             </div>
@@ -250,7 +250,7 @@
             </template>
 
             <template #[`item.actions`]="{ item }">
-              <div class="source-actions">
+              <AppRowActions class="source-actions">
                 <v-btn
                   icon="mdi-pencil"
                   size="small"
@@ -267,7 +267,7 @@
                   class="source-actions__icon"
                   @click="removeProfile(item)"
                 />
-              </div>
+              </AppRowActions>
             </template>
           </v-data-table>
         </SectionCard>
@@ -327,7 +327,7 @@
             </template>
 
             <template #[`item.actions`]="{ item }">
-              <div class="source-actions">
+              <AppRowActions class="source-actions">
                 <v-btn
                   icon="mdi-pencil"
                   size="small"
@@ -344,7 +344,7 @@
                   class="source-actions__icon"
                   @click="removeProvider(item)"
                 />
-              </div>
+              </AppRowActions>
             </template>
           </v-data-table>
         </SectionCard>
@@ -492,13 +492,12 @@
             </section>
           </v-form>
         </v-card-text>
-        <v-card-actions class="labor-source-dialog__actions px-5 pb-5">
-          <v-spacer />
+        <AppActionFooter class="labor-source-dialog__actions">
           <v-btn variant="text" @click="sourceDialog = false">Отмена</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving.source" :disabled="!canSubmitSource" @click="saveSource">
             Сохранить
           </v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
 
@@ -523,11 +522,10 @@
             <v-text-field v-model="providerForm.base_url" label="Базовая ссылка" variant="outlined" density="compact" />
           </section>
         </v-card-text>
-        <v-card-actions class="labor-simple-dialog__actions px-5 pb-5">
-          <v-spacer />
+        <AppActionFooter class="labor-simple-dialog__actions">
           <v-btn variant="text" @click="providerDialog = false">Отмена</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving.provider" @click="saveProvider">Сохранить</v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
 
@@ -551,11 +549,10 @@
             <v-textarea v-model="profileForm.description" label="Описание" variant="outlined" density="compact" rows="3" />
           </section>
         </v-card-text>
-        <v-card-actions class="labor-simple-dialog__actions px-5 pb-5">
-          <v-spacer />
+        <AppActionFooter class="labor-simple-dialog__actions">
           <v-btn variant="text" @click="profileDialog = false">Отмена</v-btn>
           <v-btn color="primary" variant="flat" :loading="saving.profile" @click="saveProfile">Сохранить</v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
 
@@ -565,10 +562,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import EmptyState from '@/components/layout/EmptyState.vue'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import AppRowActions from '@/components/layout/AppRowActions.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
+import AppTabs from '@/components/layout/AppTabs.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 import LaborEvidenceDetailsDialog from '@/components/pricing/LaborEvidenceDetailsDialog.vue'
 import {
   laborEvidenceApi,
@@ -583,6 +584,11 @@ import {
 import api from '@/api/axios'
 
 const activeTab = ref<'sources' | 'profiles' | 'providers'>('sources')
+const laborTabItems = [
+  { value: 'sources', label: 'Источники' },
+  { value: 'profiles', label: 'Профили' },
+  { value: 'providers', label: 'Источники сайтов' },
+]
 const loading = reactive({ sources: false, providers: false, profiles: false })
 const saving = reactive({ source: false, provider: false, profile: false })
 

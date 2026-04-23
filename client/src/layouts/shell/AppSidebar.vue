@@ -155,7 +155,6 @@ const userGroups: MenuGroup[] = [
     items: [
       { title: 'Материалы', short: 'Мт', to: '/materials' },
       { title: 'Готовые изделия', short: 'ГИ', to: '/products' },
-      { title: 'Поставщики', short: 'Пс', to: '/suppliers' },
       { title: 'Объекты', short: 'Об', to: '/detail-types' },
       { title: 'Труд', short: 'Тр', to: '/pricing/labor' },
     ]

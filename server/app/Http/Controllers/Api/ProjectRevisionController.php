@@ -7,6 +7,8 @@ use App\Models\Project;
 use App\Models\ProjectRevision;
 use App\Models\RevisionPublication;
 use App\Service\ReportService;
+use App\Services\FinishedProductFacadeRevisionRowAssembler;
+use App\Services\FinishedProductFacadeSnapshotPresenter;
 use App\Services\SnapshotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,7 +21,9 @@ class ProjectRevisionController extends Controller
 {
     public function __construct(
         private SnapshotService $snapshotService,
-        private ReportService $reportService
+        private ReportService $reportService,
+        private FinishedProductFacadeRevisionRowAssembler $finishedProductFacadeRevisionRowAssembler,
+        private FinishedProductFacadeSnapshotPresenter $finishedProductFacadeSnapshotPresenter,
     ) {}
 
     /**
@@ -447,26 +451,42 @@ class ProjectRevisionController extends Controller
             : [];
 
         $rows = collect($justifications)->map(function (array $j) {
-            $materialId = $j['material_id'] ?? null;
+            $normalized = ($j['reference_type'] ?? null) === 'snapshot_summary'
+                ? $this->finishedProductFacadeRevisionRowAssembler->normalizeStoredRevisionReportRow($j)
+                : [
+                    'project_position_id' => $j['project_position_id'] ?? null,
+                    'project_fitting_id' => $j['project_fitting_id'] ?? null,
+                    'material_id' => $j['material_id'] ?? null,
+                    'name' => $j['name'] ?? ('Материал #' . (($j['material_id'] ?? null) ?: '—')),
+                    'article' => $j['article'] ?? null,
+                    'unit' => $j['unit'] ?? null,
+                    'material_type' => $j['material_type'] ?? null,
+                    'price_per_unit' => $j['price_per_unit'] ?? null,
+                    'currency' => $j['currency'] ?? 'RUB',
+                    'source_url' => $j['source_url'] ?? null,
+                    'observed_at' => $j['observed_at'] ?? null,
+                    'screenshot_path' => $j['screenshot_path'] ?? null,
+                    'true_score' => $j['true_score'] ?? null,
+                    'source_type' => $j['source_type'] ?? null,
+                    'capture_source' => $j['capture_source'] ?? null,
+                    'cost_driver_type' => $j['cost_driver_type'] ?? null,
+                    'source_domain' => $j['source_domain'] ?? null,
+                    'reference_type' => $j['reference_type'] ?? null,
+                    'finished_product_specification_id' => $j['finished_product_specification_id'] ?? null,
+                    'specification_name' => $j['specification_name'] ?? null,
+                    'facade_characteristics' => is_array($j['facade_characteristics'] ?? null) ? $j['facade_characteristics'] : [],
+                    'pricing_basis' => is_array($j['pricing_basis'] ?? null) ? $j['pricing_basis'] : [],
+                    'position_summary' => is_array($j['position_summary'] ?? null) ? $j['position_summary'] : [],
+                    'basis_note' => $j['basis_note'] ?? null,
+                    'source_level_snapshot' => is_array($j['source_level_snapshot'] ?? null) ? $j['source_level_snapshot'] : [],
+                ];
+            $facadeSnapshotPresentation = ($normalized['reference_type'] ?? null) === 'snapshot_summary'
+                ? $this->finishedProductFacadeSnapshotPresenter->presentFromJustificationSummary($normalized)
+                : null;
 
             return [
-                'project_position_id' => $j['project_position_id'] ?? null,
-                'project_fitting_id' => $j['project_fitting_id'] ?? null,
-                'material_id' => $materialId,
-                'name' => $j['name'] ?? ('Материал #' . ($materialId ?: '—')),
-                'article' => $j['article'] ?? null,
-                'unit' => $j['unit'] ?? null,
-                'material_type' => $j['material_type'] ?? null,
-                'price_per_unit' => $j['price_per_unit'] ?? null,
-                'currency' => $j['currency'] ?? 'RUB',
-                'source_url' => $j['source_url'] ?? null,
-                'observed_at' => $j['observed_at'] ?? null,
-                'screenshot_path' => $j['screenshot_path'] ?? null,
-                'true_score' => $j['true_score'] ?? null,
-                'source_type' => $j['source_type'] ?? null,
-                'capture_source' => $j['capture_source'] ?? null,
-                'cost_driver_type' => $j['cost_driver_type'] ?? null,
-                'source_domain' => $j['source_domain'] ?? null,
+                ...$normalized,
+                'facade_snapshot_presentation' => $facadeSnapshotPresentation,
             ];
         })->values()->all();
 

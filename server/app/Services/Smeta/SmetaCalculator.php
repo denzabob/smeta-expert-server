@@ -11,6 +11,9 @@ use App\Models\Operation;
 use App\Models\OperationPrice;
 use App\Models\Project;
 use App\Models\ProjectPosition;
+use App\Services\FinishedProductFacadeRevisionRowAssembler;
+use App\Services\FinishedProductFacadeSnapshotPresenter;
+use App\Services\FinishedProductPositionSnapshotReader;
 use App\Services\OperationPricingSummaryService;
 use Illuminate\Support\Collection;
 
@@ -30,14 +33,23 @@ class SmetaCalculator
 {
     protected OperationPricingSummaryService $operationPricingSummaryService;
     protected OperationApplicationResolver $operationApplicationResolver;
+    protected FinishedProductPositionSnapshotReader $finishedProductSnapshotReader;
+    protected FinishedProductFacadeRevisionRowAssembler $finishedProductFacadeRevisionRowAssembler;
+    protected FinishedProductFacadeSnapshotPresenter $finishedProductFacadeSnapshotPresenter;
 
     public function __construct(
         ?OperationPricingSummaryService $operationPricingSummaryService = null,
-        ?OperationApplicationResolver $operationApplicationResolver = null
+        ?OperationApplicationResolver $operationApplicationResolver = null,
+        ?FinishedProductPositionSnapshotReader $finishedProductSnapshotReader = null,
+        ?FinishedProductFacadeRevisionRowAssembler $finishedProductFacadeRevisionRowAssembler = null,
+        ?FinishedProductFacadeSnapshotPresenter $finishedProductFacadeSnapshotPresenter = null
     )
     {
         $this->operationPricingSummaryService = $operationPricingSummaryService ?? app(OperationPricingSummaryService::class);
         $this->operationApplicationResolver = $operationApplicationResolver ?? new OperationApplicationResolver();
+        $this->finishedProductSnapshotReader = $finishedProductSnapshotReader ?? app(FinishedProductPositionSnapshotReader::class);
+        $this->finishedProductFacadeRevisionRowAssembler = $finishedProductFacadeRevisionRowAssembler ?? app(FinishedProductFacadeRevisionRowAssembler::class);
+        $this->finishedProductFacadeSnapshotPresenter = $finishedProductFacadeSnapshotPresenter ?? app(FinishedProductFacadeSnapshotPresenter::class);
     }
     /**
      * Получить коэффициент отходов для плитных материалов
@@ -228,7 +240,13 @@ class SmetaCalculator
         try {
             $positions = $project->positions()
                 ->where('kind', 'facade')
-                ->with(['facadeMaterial', 'priceQuotes.priceListVersion.priceList.supplier', 'priceQuotes.supplier', 'priceQuotes.materialPrice'])
+                ->with([
+                    'facadeMaterial',
+                    'finishedProductSpecification',
+                    'priceQuotes.priceListVersion.priceList.supplier',
+                    'priceQuotes.supplier',
+                    'priceQuotes.materialPrice',
+                ])
                 ->get();
 
             if ($positions->isEmpty()) {
@@ -238,23 +256,36 @@ class SmetaCalculator
             $facadeMap = [];
 
             foreach ($positions as $position) {
-                $materialId = $position->facade_material_id ?? 0;
+                $snapshotFacade = $this->finishedProductSnapshotReader->supports($position)
+                    ? $this->finishedProductSnapshotReader->read($position)
+                    : null;
+                $snapshotPresentation = $snapshotFacade !== null
+                    ? $this->finishedProductFacadeSnapshotPresenter->presentFromJustificationSummary(
+                        $this->finishedProductFacadeRevisionRowAssembler->buildSnapshotSummary($position)
+                    )
+                    : null;
+                $materialId = $snapshotFacade['group_key'] ?? ('material:' . ($position->facade_material_id ?? 0));
                 $material = $position->facadeMaterial;
 
                 $areaM2 = (($position->width ?? 0) / 1000) * (($position->length ?? 0) / 1000) * ($position->quantity ?? 0);
-                $pricePerM2 = (float) ($position->price_per_m2 ?? 0);
+                $pricePerM2 = $snapshotFacade !== null
+                    ? (float) ($snapshotFacade['price_per_m2'] ?? 0)
+                    : (float) ($position->price_per_m2 ?? 0);
                 $totalCost = $areaM2 * $pricePerM2;
 
                 if (!isset($facadeMap[$materialId])) {
                     $facadeMap[$materialId] = [
-                        'id' => $materialId,
-                        'name' => $material?->name ?? ($position->decor_label ?? 'Фасад (без материала)'),
-                        'decor_label' => $position->decor_label,
-                        'base_material_label' => $position->base_material_label,
-                        'thickness_mm' => $position->thickness_mm,
-                        'finish_type' => $position->finish_type,
-                        'finish_type_label' => Material::FINISH_LABELS[$position->finish_type] ?? $position->finish_type,
-                        'finish_name' => $position->finish_name,
+                        'id' => $snapshotFacade['reference_id'] ?? ($position->facade_material_id ?? 0),
+                        'reference_type' => $snapshotFacade['reference_type'] ?? 'material',
+                        'name' => $snapshotFacade['name'] ?? $material?->name ?? ($position->decor_label ?? 'Фасад (без материала)'),
+                        'article' => $snapshotFacade['article'] ?? null,
+                        'decor_label' => $snapshotFacade['decor_label'] ?? $position->decor_label,
+                        'base_material_label' => $snapshotFacade['base_material_label'] ?? $position->base_material_label,
+                        'thickness_mm' => $snapshotFacade['thickness_mm'] ?? $position->thickness_mm,
+                        'finish_type' => $snapshotFacade['finish_type'] ?? $position->finish_type,
+                        'finish_type_label' => $snapshotFacade['finish_type_label']
+                            ?? (Material::FINISH_LABELS[$position->finish_type] ?? $position->finish_type),
+                        'finish_name' => $snapshotFacade['finish_name'] ?? $position->finish_name,
                         'price_per_m2' => $pricePerM2,
                         'area_total' => 0,
                         'total_cost' => 0,
@@ -267,14 +298,13 @@ class SmetaCalculator
                 $facadeMap[$materialId]['total_cost'] += $totalCost;
                 $facadeMap[$materialId]['positions_count']++;
 
-                // Build position detail with aggregation metadata
-                // If price_method is aggregated but no quotes exist, treat as 'single'
-                $effectiveMethod = $position->price_method ?? 'single';
-                if ($effectiveMethod !== 'single' && $position->priceQuotes->isEmpty()) {
+                $effectiveMethod = $snapshotFacade['price_method'] ?? $position->price_method ?? 'single';
+                if ($snapshotFacade === null && $effectiveMethod !== 'single' && $position->priceQuotes->isEmpty()) {
                     $effectiveMethod = 'single';
                 }
 
                 $posDetail = [
+                    'position_id' => $position->id,
                     'id' => $position->id,
                     'detail_type' => $position->custom_name ?? 'Фасад',
                     'quantity' => $position->quantity ?? 1,
@@ -284,13 +314,23 @@ class SmetaCalculator
                     'price_per_m2' => $pricePerM2,
                     'total_cost' => $totalCost,
                     'price_method' => $effectiveMethod,
-                    'price_sources_count' => $effectiveMethod === 'single' ? null : $position->price_sources_count,
-                    'price_min' => $position->price_min ? (float) $position->price_min : null,
-                    'price_max' => $position->price_max ? (float) $position->price_max : null,
+                    'price_sources_count' => $effectiveMethod === 'single'
+                        ? null
+                        : ($snapshotFacade['price_sources_count'] ?? $position->price_sources_count),
+                    'price_min' => $snapshotFacade['price_min'] ?? ($position->price_min ? (float) $position->price_min : null),
+                    'price_max' => $snapshotFacade['price_max'] ?? ($position->price_max ? (float) $position->price_max : null),
+                    'pricing_basis' => $snapshotFacade !== null ? 'finished_product_snapshot' : 'legacy_quote',
+                    'pricing_snapshot_captured_at' => $snapshotFacade['captured_at'] ?? null,
+                    'pricing_computed_at' => $snapshotFacade['computed_at'] ?? null,
+                    'source_level_snapshot' => $snapshotFacade['source_level_snapshot'] ?? null,
+                    'facade_snapshot_presentation' => $snapshotPresentation,
                 ];
 
-                // Include quote evidence for aggregated positions
-                if ($position->isAggregated() && $position->priceQuotes->isNotEmpty()) {
+                if ($snapshotPresentation !== null && !empty($snapshotPresentation['quotes'])) {
+                    $posDetail['quotes'] = $snapshotPresentation['quotes'];
+                }
+
+                if ($snapshotFacade === null && $position->isAggregated() && $position->priceQuotes->isNotEmpty()) {
                     $posDetail['quotes'] = $position->priceQuotes->map(function ($q) {
                         $version = $q->priceListVersion;
                         $priceList = $version?->priceList;
@@ -307,6 +347,7 @@ class SmetaCalculator
                             'sha256' => $version?->sha256,
                             'effective_date' => $version?->effective_date?->format('d.m.Y'),
                             'captured_at' => $q->captured_at?->format('d.m.Y H:i'),
+                            'supplier_id' => $supplier?->id,
                             'supplier_name' => $supplier?->name ?? '—',
                             'supplier_article' => $matPrice?->article ?? null,
                             'supplier_category' => $matPrice?->category ?? null,

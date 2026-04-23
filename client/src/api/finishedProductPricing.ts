@@ -175,6 +175,14 @@ export interface FinishedProductPriceEvidenceAssetCreatePayload {
   metadata?: Record<string, any> | null
 }
 
+function normalizeEvidenceSourceUrl(value?: string | null): string | null {
+  const trimmed = String(value ?? '').trim()
+  if (!trimmed) return null
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+
+  return `https://${trimmed}`
+}
+
 function emptyProfile(): FinishedProductAggregationProfile {
   return {
     method: 'median',
@@ -477,7 +485,7 @@ export class FinishedProductPricingApiClient {
     } else {
       response = await api.post(`/api/finished-product-price-sources/${sourceId}/evidence-assets`, {
         asset_type: payload.asset_type,
-        source_url: payload.source_url,
+        source_url: normalizeEvidenceSourceUrl(payload.source_url),
         captured_at: payload.captured_at,
         metadata: payload.metadata,
       })

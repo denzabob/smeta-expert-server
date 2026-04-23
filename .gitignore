@@ -3,6 +3,9 @@ client/dist/
 chrome-extension/
 vendor/
 docs/
+!client/docs/
+!client/docs/ui-foundation-standard.md
+!client/docs/dev-visual-acceptance.md
 chrome-extension/
 
 .env

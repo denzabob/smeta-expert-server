@@ -29,6 +29,7 @@
       class="price-list-versions-card"
       subtitle="Список версий прайс-листа, их статусов, источников и связанных обоснований в общем MD3-паттерне."
     >
+      <AppDataTableShell>
       <v-data-table
         :headers="headers"
         :items="versions"
@@ -39,13 +40,11 @@
       >
         <!-- Статус -->
         <template #item.status="{ item }">
-          <v-chip
-            size="small"
+          <StatusChip
+            :status="item.status"
             :color="getStatusColor(item.status)"
-            variant="tonal"
-          >
-            {{ getStatusLabel(item.status) }}
-          </v-chip>
+            :label="getStatusLabel(item.status)"
+          />
         </template>
 
         <!-- Дата -->
@@ -94,9 +93,9 @@
 
         <!-- Позиции -->
         <template #item.items_count="{ item }">
-          <v-chip size="small" variant="text">
+          <StatusChip size="small" variant="text" color="grey">
             {{ item.items_count || 0 }}
-          </v-chip>
+          </StatusChip>
         </template>
 
         <!-- Обоснования -->
@@ -109,7 +108,7 @@
 
         <!-- Действия -->
         <template #item.actions="{ item }">
-          <div class="d-flex ga-1">
+          <AppRowActions>
             <v-btn
               v-if="item.status === 'inactive' || item.status === 'archived'"
               color="success"
@@ -157,21 +156,25 @@
                 </v-list-item>
               </v-list>
             </v-menu>
-          </div>
+          </AppRowActions>
         </template>
 
         <template #no-data>
-          <div class="versions-empty-state text-center pa-8">
-            <div class="text-subtitle-1 mb-2">Версии ещё не загружены</div>
-            <div class="text-medium-emphasis mb-4">
-              Здесь появятся импортированные, архивные и активные версии выбранного прайс-листа.
-            </div>
+          <AppStateBlock
+            class="versions-empty-state"
+            icon="mdi-history"
+            title="Версии ещё не загружены"
+            description="Здесь появятся импортированные, архивные и активные версии выбранного прайс-листа."
+          >
+            <template #actions>
             <v-btn variant="text" prepend-icon="mdi-refresh" class="text-none" @click="fetchVersions">
               Обновить список
             </v-btn>
-          </div>
+            </template>
+          </AppStateBlock>
         </template>
       </v-data-table>
+      </AppDataTableShell>
     </SectionCard>
 
     <!-- Evidence drawer -->
@@ -200,9 +203,13 @@ import { priceListsApi, type PriceList, type PriceListVersion } from '@/api/pric
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppRowActions from '@/components/layout/AppRowActions.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 import EvidenceBadge from '@/components/evidence/EvidenceBadge.vue'
 import EvidenceDrawer from '@/components/evidence/EvidenceDrawer.vue'
 

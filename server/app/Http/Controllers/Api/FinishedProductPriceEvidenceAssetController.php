@@ -42,29 +42,48 @@ class FinishedProductPriceEvidenceAssetController extends Controller
     {
         $source = $this->accessService->resolveOwnedSource((int) $request->user()->id, $source);
 
+        $request->merge([
+            'source_url' => $this->normalizeSubmittedUrl($request->input('source_url')),
+        ]);
+
         $validated = $request->validate([
             'asset_type' => 'required|in:screenshot,file,image,link',
             'file' => 'nullable|file|max:20480',
-            'source_url' => 'nullable|url|max:2000',
+            'source_url' => 'nullable|string|max:2000',
             'content_hash' => 'nullable|string|max:128',
             'captured_at' => 'nullable|date',
             'metadata' => 'nullable|array',
+        ], [
+            'asset_type.required' => 'Выберите тип доказательства.',
+            'asset_type.in' => 'Выбран неподдерживаемый тип доказательства.',
+            'file.file' => 'Выберите корректный файл.',
+            'file.max' => 'Размер файла не должен превышать 20 МБ.',
+            'source_url.max' => 'Ссылка слишком длинная.',
         ]);
 
         if ($validated['asset_type'] === FinishedProductPriceEvidenceAsset::TYPE_LINK) {
             if (empty($validated['source_url'])) {
                 return response()->json([
-                    'message' => 'Validation failed.',
+                    'message' => 'Проверьте данные формы.',
                     'errors' => [
-                        'source_url' => ['URL обязателен для link-evidence.'],
+                        'source_url' => ['Ссылка обязательна для доказательства-ссылки.'],
+                    ],
+                ], 422);
+            }
+
+            if (!$this->isValidHttpUrl((string) $validated['source_url'])) {
+                return response()->json([
+                    'message' => 'Проверьте данные формы.',
+                    'errors' => [
+                        'source_url' => ['Введите корректную ссылку.'],
                     ],
                 ], 422);
             }
         } elseif (!$request->hasFile('file')) {
             return response()->json([
-                'message' => 'Validation failed.',
+                'message' => 'Проверьте данные формы.',
                 'errors' => [
-                    'file' => ['Файл обязателен для file/image/screenshot evidence.'],
+                    'file' => ['Выберите файл, изображение или вставьте скриншот.'],
                 ],
             ], 422);
         }
@@ -96,6 +115,33 @@ class FinishedProductPriceEvidenceAssetController extends Controller
         return response()->json($this->formatAsset($asset), 201);
     }
 
+    private function normalizeSubmittedUrl(mixed $value): ?string
+    {
+        $url = trim((string) ($value ?? ''));
+        if ($url === '') {
+            return null;
+        }
+
+        if (!preg_match('#^https?://#i', $url)) {
+            $url = 'https://' . $url;
+        }
+
+        return $url;
+    }
+
+    private function isValidHttpUrl(string $url): bool
+    {
+        if (preg_match('/\s/u', $url)) {
+            return false;
+        }
+
+        $parts = parse_url($url);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = (string) ($parts['host'] ?? '');
+
+        return in_array($scheme, ['http', 'https'], true) && $host !== '';
+    }
+
     public function destroy(Request $request, FinishedProductPriceEvidenceAsset $asset): JsonResponse
     {
         $asset = $this->accessService->resolveOwnedEvidenceAsset((int) $request->user()->id, $asset);
@@ -123,7 +169,7 @@ class FinishedProductPriceEvidenceAssetController extends Controller
 
         $filePath = $asset->file_path ? trim((string) $asset->file_path) : null;
         if (!$filePath) {
-            abort(404, 'У evidence asset нет доступного файла.');
+            abort(404, 'Файл доказательства недоступен.');
         }
 
         $disk = Storage::disk('public');

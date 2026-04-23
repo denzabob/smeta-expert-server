@@ -1570,7 +1570,7 @@
               :disabled="!canRetryRevisionRun"
               @click="retryRevisionRun"
             >
-              Retry
+              Повторить
             </v-btn>
             <v-btn
               size="small"
@@ -1580,7 +1580,7 @@
               :disabled="!canFinalizeRevisionRun"
               @click="finalizeRevisionRun"
             >
-              Finalize
+              Завершить
             </v-btn>
           </v-card-title>
           <v-card-text class="pt-0">
@@ -1620,7 +1620,7 @@
               density="compact"
               class="mb-3"
             >
-              Есть позиции без подтверждения цены. Закройте их вручную или запустите Retry.
+              Есть позиции без подтверждения цены. Закройте их вручную или повторите проверку.
             </v-alert>
 
             <v-table density="compact">
@@ -1702,6 +1702,17 @@
                     <span v-else>—</span>
                   </td>
                   <td class="text-right">
+                    <v-btn
+                      v-if="isFacadeRevisionRunItem(runItem)"
+                      size="x-small"
+                      color="primary"
+                      variant="tonal"
+                      prepend-icon="mdi-folder-image"
+                      class="mr-1"
+                      @click="openFacadePricingFromRunItem(runItem)"
+                    >
+                      Доказательства фасада
+                    </v-btn>
                     <v-btn
                       size="x-small"
                       color="primary"
@@ -1890,7 +1901,7 @@
             </v-chip>
           </div>
 
-          <div class="text-subtitle-2 mb-2">Снимок (read-only)</div>
+          <div class="text-subtitle-2 mb-2">Снимок (только просмотр)</div>
           <v-expansion-panels variant="accordion">
             <v-expansion-panel>
               <v-expansion-panel-title>Показать JSON</v-expansion-panel-title>
@@ -1914,6 +1925,27 @@
           <div class="text-body-2 mb-3">
             Позиция: <strong>{{ manualCloseItem ? getRevisionRunItemName(manualCloseItem) : '—' }}</strong>
           </div>
+          <v-alert
+            v-if="manualCloseItem && isFacadeRevisionRunItem(manualCloseItem)"
+            type="warning"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            Для фасада доказательства добавляются в карточке источников цены фасада. Если подтверждение недоступно,
+            откройте цены фасада и прикрепите файл, скриншот или ссылку к источнику.
+            <div class="mt-2">
+              <v-btn
+                size="small"
+                color="primary"
+                variant="tonal"
+                prepend-icon="mdi-folder-image"
+                @click="openFacadePricingFromRunItem(manualCloseItem)"
+              >
+                Перейти к источникам и доказательствам
+              </v-btn>
+            </div>
+          </v-alert>
           <v-text-field
             v-model.number="manualCloseForm.price_per_unit"
             type="number"
@@ -1941,7 +1973,7 @@
           />
           <v-text-field
             v-model="manualCloseForm.source_url"
-            label="Source URL (опционально)"
+            label="Ссылка на источник (опционально)"
             variant="outlined"
             density="compact"
             class="mb-2"
@@ -6640,6 +6672,35 @@ const getMaterialCatalogLink = (materialId?: number | string | null): string => 
   return resolved.href
 }
 
+const getFacadeSpecificationIdFromRunItem = (item: RevisionRunItem | any): number | null => {
+  const position = item?.position || {}
+  const rawId = position.finished_product_specification_id
+    ?? item?.finished_product_specification_id
+    ?? item?.finishedProductSpecificationId
+    ?? null
+  const id = Number(rawId)
+
+  return Number.isFinite(id) && id > 0 ? id : null
+}
+
+const isFacadeRevisionRunItem = (item: RevisionRunItem | any): boolean => {
+  return item?.cost_driver_type === 'facade' || getFacadeSpecificationIdFromRunItem(item) !== null
+}
+
+const openFacadePricingFromRunItem = (item: RevisionRunItem | any) => {
+  const specificationId = getFacadeSpecificationIdFromRunItem(item)
+  if (!specificationId) {
+    showNotification('Не удалось определить фасад для перехода к доказательствам', 'warning')
+    return
+  }
+
+  const resolved = router.resolve({
+    name: 'finished-product-pricing',
+    params: { id: specificationId },
+  })
+  window.open(resolved.href, '_blank', 'noopener,noreferrer')
+}
+
 const stopRevisionRunPolling = () => {
   if (revisionRunPollTimer.value) {
     clearInterval(revisionRunPollTimer.value)
@@ -6934,7 +6995,7 @@ const retryRevisionRun = async () => {
   revisionRunRetryLoading.value = true
   try {
     await revisionRunApi.retry(projectId, activeRevisionRun.value.id)
-    showNotification('Retry запущен для проблемных позиций', 'success')
+      showNotification('Повторная проверка запущена для проблемных позиций', 'success')
     await refreshRevisionRun()
   } catch (error: any) {
     showNotification(`Ошибка retry: ${error.response?.data?.message || error.message}`, 'error')
@@ -7126,7 +7187,7 @@ const finalizeRevisionRun = async () => {
     await fetchRevisions(1)
   } catch (error: any) {
     if (error.response?.status === 409) {
-      showNotification('Есть незакрытые позиции. Закройте все и повторите Finalize', 'warning')
+      showNotification('Есть незакрытые позиции. Закройте все и повторите завершение', 'warning')
       await refreshRevisionRun()
     } else {
       showNotification(`Ошибка финализации: ${error.response?.data?.message || error.message}`, 'error')

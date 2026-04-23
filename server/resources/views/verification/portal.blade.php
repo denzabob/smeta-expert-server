@@ -340,9 +340,9 @@
     @if(!empty($facadeQuoteEvidence))
       <hr class="divider">
       <div style="margin-bottom: 12px;">
-        <div style="font-size: 13px; font-weight: 600; color: #1d1d1f; margin-bottom: 8px;">Котировки фасадов по группам позиций</div>
+        <div style="font-size: 13px; font-weight: 600; color: #1d1d1f; margin-bottom: 8px;">Основание цены фасадов по группам позиций</div>
         <div style="font-size: 12px; color: #86868b; margin-bottom: 10px;">
-          Детализация ценовых источников для групп позиций с одинаковым набором котировок и методом агрегации.
+          Для новых spec-rooted фасадов используется зафиксированный pricing snapshot; для legacy-позиций сохраняется детализация по котировкам.
         </div>
         @php
           $facadeQuoteGroups = [];
@@ -412,6 +412,15 @@
             @endif
           </div>
 
+          @if(empty($group['quotes']))
+            <div style="font-size: 12px; color: #4b5563; margin-bottom: 6px;">
+              Для этой группы в ревизии сохранён агрегированный snapshot цены без legacy quote-строк.
+              @if(!empty($group['positions'][0]))
+                Источник истины — зафиксированная спецификация фасада на момент сохранения позиции.
+              @endif
+            </div>
+          @endif
+
           @if(!empty($group['positions']))
             <div style="font-size: 12px; color: #4b5563; margin-bottom: 6px;">
               Позиции:
@@ -419,46 +428,48 @@
             </div>
           @endif
 
-          <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-            <thead>
-              <tr style="border-bottom: 1px solid #e5e5e5;">
-                <th style="text-align: left; padding: 3px 0; color: #86868b; font-weight: 500;">Поставщик</th>
-                <th style="text-align: left; padding: 3px 0; color: #86868b; font-weight: 500;">Прайс-лист</th>
-                <th style="text-align: right; padding: 3px 0; color: #86868b; font-weight: 500;">Цена/м²</th>
-                <th style="text-align: left; padding: 3px 0; color: #86868b; font-weight: 500;">Тип</th>
-                <th style="text-align: left; padding: 3px 0; color: #86868b; font-weight: 500;">Дата</th>
-                <th style="text-align: left; padding: 3px 0; color: #86868b; font-weight: 500;">SHA-256</th>
-              </tr>
-            </thead>
-            <tbody>
-              @foreach($group['quotes'] as $q)
-                <tr style="border-bottom: 1px solid #f0f0f0;">
-                  <td style="padding: 3px 0;">{{ $q['supplier_name'] ?? '—' }}</td>
-                  <td style="padding: 3px 0;">{{ $q['price_list_name'] }} (v{{ $q['version_number'] ?? '?' }})</td>
-                  <td style="padding: 3px 0; text-align: right; font-family: ui-monospace, 'Consolas', monospace;">{{ number_format($q['price_per_m2'], 2, ',', ' ') }}</td>
-                  <td style="padding: 3px 0;">
-                    @php
-                      $stLabel = match($q['source_type'] ?? '') {
-                          'file' => 'Файл',
-                          'url' => 'URL',
-                          'manual' => 'Ручной',
-                          default => '—',
-                      };
-                    @endphp
-                    {{ $stLabel }}
-                  </td>
-                  <td style="padding: 3px 0;">{{ $q['effective_date'] ?? '—' }}</td>
-                  <td style="padding: 3px 0; font-family: ui-monospace, 'Consolas', monospace; font-size: 11px; word-break: break-all;">
-                    @if(!empty($q['sha256']))
-                      {{ substr($q['sha256'], 0, 16) }}…
-                    @else
-                      —
-                    @endif
-                  </td>
+          @if(!empty($group['quotes']))
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+              <thead>
+                <tr style="border-bottom: 1px solid #e5e5e5;">
+                  <th style="text-align: left; padding: 3px 0; color: #86868b; font-weight: 500;">Поставщик</th>
+                  <th style="text-align: left; padding: 3px 0; color: #86868b; font-weight: 500;">Прайс-лист</th>
+                  <th style="text-align: right; padding: 3px 0; color: #86868b; font-weight: 500;">Цена/м²</th>
+                  <th style="text-align: left; padding: 3px 0; color: #86868b; font-weight: 500;">Тип</th>
+                  <th style="text-align: left; padding: 3px 0; color: #86868b; font-weight: 500;">Дата</th>
+                  <th style="text-align: left; padding: 3px 0; color: #86868b; font-weight: 500;">SHA-256</th>
                 </tr>
-              @endforeach
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                @foreach($group['quotes'] as $q)
+                  <tr style="border-bottom: 1px solid #f0f0f0;">
+                    <td style="padding: 3px 0;">{{ $q['supplier_name'] ?? '—' }}</td>
+                    <td style="padding: 3px 0;">{{ $q['price_list_name'] }} (v{{ $q['version_number'] ?? '?' }})</td>
+                    <td style="padding: 3px 0; text-align: right; font-family: ui-monospace, 'Consolas', monospace;">{{ number_format($q['price_per_m2'], 2, ',', ' ') }}</td>
+                    <td style="padding: 3px 0;">
+                      @php
+                        $stLabel = match($q['source_type'] ?? '') {
+                            'file' => 'Файл',
+                            'url' => 'URL',
+                            'manual' => 'Ручной',
+                            default => '—',
+                        };
+                      @endphp
+                      {{ $stLabel }}
+                    </td>
+                    <td style="padding: 3px 0;">{{ $q['effective_date'] ?? '—' }}</td>
+                    <td style="padding: 3px 0; font-family: ui-monospace, 'Consolas', monospace; font-size: 11px; word-break: break-all;">
+                      @if(!empty($q['sha256']))
+                        {{ substr($q['sha256'], 0, 16) }}…
+                      @else
+                        —
+                      @endif
+                    </td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          @endif
         @endforeach
       </div>
     @endif

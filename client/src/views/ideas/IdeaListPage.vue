@@ -11,12 +11,12 @@
       </template>
     </PageHeader>
 
-    <div class="ideas-hero">
-      <div class="ideas-hero__title">У вас есть идея?</div>
-      <div class="ideas-hero__text">
-        Предлагайте улучшения, голосуйте за полезные инициативы и отслеживайте, какие из них планируются к внедрению.
-      </div>
-    </div>
+    <AppStateBlock
+      class="ideas-hero"
+      icon="mdi-lightbulb-on-outline"
+      title="У вас есть идея?"
+      description="Предлагайте улучшения, голосуйте за полезные инициативы и отслеживайте, какие из них планируются к внедрению."
+    />
 
     <div class="ideas-layout">
       <aside class="ideas-sidebar">
@@ -40,7 +40,9 @@
                 <v-list-item-title>{{ item.title }}</v-list-item-title>
 
                 <template #append>
-                  <span class="status-menu-item__count">{{ item.count }}</span>
+              <StatusChip size="x-small" variant="tonal" color="grey">
+                {{ item.count }}
+              </StatusChip>
                 </template>
               </v-list-item>
             </v-list>
@@ -49,7 +51,7 @@
           <div class="ideas-filter-section">
             <div class="ideas-filter-section__title">Теги</div>
             <div v-if="availableTags.length" class="ideas-tags">
-              <v-chip
+              <StatusChip
                 v-for="tag in availableTags"
                 :key="tag"
                 :color="tagFilter === tag ? 'primary' : undefined"
@@ -57,7 +59,7 @@
                 @click="toggleTag(tag)"
               >
                 {{ tag }}
-              </v-chip>
+              </StatusChip>
             </div>
             <div v-else class="ideas-filter-empty">
               Теги появятся после загрузки идей.
@@ -70,7 +72,8 @@
         <SectionCard class="ideas-toolbar-card" subtitle="Поиск и сортировка предложений в общем MD3-паттерне.">
           <template #title>Лента идей</template>
 
-          <div class="ideas-toolbar">
+          <TableToolbar>
+            <template #search>
             <v-text-field
               class="ideas-toolbar__search"
               v-model="search"
@@ -82,6 +85,8 @@
               hide-details
               @keydown.enter.prevent="applyFilters"
             />
+            </template>
+            <template #filters>
             <v-select
               class="ideas-toolbar__sort"
               v-model="sort"
@@ -92,10 +97,13 @@
               hide-details
               @update:model-value="applyFilters"
             />
+            </template>
+            <template #actions>
             <v-btn variant="tonal" color="primary" :loading="loading" @click="applyFilters">
               Применить
             </v-btn>
-          </div>
+            </template>
+          </TableToolbar>
         </SectionCard>
 
         <IdeaList
@@ -120,6 +128,9 @@ import { useRouter } from 'vue-router'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
 import IdeaList from '@/components/ideas/IdeaList.vue'
 import { IDEA_STATUS_LABELS, ideasApi, type IdeaItem, type IdeaSort, type IdeaStatus } from '@/api/ideas'
 
@@ -285,25 +296,17 @@ onMounted(() => {
 
 <style scoped>
 .ideas-hero {
+  align-items: flex-start;
   padding: 18px 20px;
   border: 1px solid var(--ds-border-color);
   border-radius: var(--ds-radius-18);
   background:
     linear-gradient(180deg, rgba(var(--v-theme-primary-container), 0.32), rgba(var(--v-theme-surface-container-low), 0.92));
+  text-align: left;
 }
 
-.ideas-hero__title {
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.2;
-  color: var(--ds-text-primary);
-}
-
-.ideas-hero__text {
-  margin-top: 8px;
+.ideas-hero :deep(.app-state-block__body) {
   max-width: 780px;
-  color: var(--ds-text-secondary);
-  line-height: 1.55;
 }
 
 .ideas-layout {
@@ -350,11 +353,6 @@ onMounted(() => {
   min-height: 42px;
 }
 
-.status-menu-item__count {
-  font-size: 12px;
-  color: var(--ds-text-tertiary);
-}
-
 .status-menu-item :deep(.v-list-item__append) {
   margin-inline-start: 8px;
 }
@@ -368,13 +366,6 @@ onMounted(() => {
 .ideas-filter-empty {
   font-size: 13px;
   color: var(--ds-text-tertiary);
-}
-
-.ideas-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px auto;
-  gap: 12px;
-  align-items: center;
 }
 
 .ideas-pagination {
@@ -393,8 +384,5 @@ onMounted(() => {
     padding: 16px;
   }
 
-  .ideas-toolbar {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

@@ -14,8 +14,7 @@
 
     <!-- ── Table card ────────────────────────────────────────────────────── -->
     <SectionCard class="projects-card" subtitle="Рабочий список проектов, статусы ревизий и быстрые действия.">
-      <!-- Search + filter controls inside the card, above the table -->
-      <TableToolbar>
+      <AppDataTableShell>
         <template #search>
           <v-text-field
             v-model="searchQuery"
@@ -38,20 +37,20 @@
             hide-details
             clearable
             placeholder="Все статусы"
-            style="max-width: 200px"
+            class="projects-status-filter"
           />
         </template>
-      </TableToolbar>
 
-      <v-data-table
-        :headers="headers"
-        :items="filteredProjects"
-        :loading="loading"
-        :hover="true"
-        :row-props="rowProps"
-        item-value="id"
-        :items-per-page="25"
-      >
+        <v-data-table
+          :headers="headers"
+          :items="filteredProjects"
+          :loading="loading"
+          :hover="true"
+          :row-props="rowProps"
+          item-value="id"
+          :items-per-page="25"
+          class="projects-table"
+        >
         <!-- Case number: primary anchor + navigation loading state ───────── -->
         <template #item.number="{ item }">
           <span v-if="navigatingId === item.id" class="pj-case-navigating">
@@ -76,17 +75,21 @@
 
         <!-- Revision status badge ───────────────────────────────────────── -->
         <template #item.latest_revision_status="{ item }">
-          <span class="pj-badge" :class="`pj-badge--${item.latest_revision_status || 'none'}`">
-            {{ getRevisionStatusLabel(item.latest_revision_status) }}
-          </span>
+          <StatusChip
+            :status="item.latest_revision_status || 'none'"
+            :label="getRevisionStatusLabel(item.latest_revision_status)"
+            :color="getRevisionStatusColor(item.latest_revision_status)"
+            size="x-small"
+          />
         </template>
 
         <!-- Revision count badge ────────────────────────────────────────── -->
         <template #item.revisions_count="{ item }">
-          <span
-            class="pj-badge pj-badge--count"
-            :class="{ 'pj-badge--count-zero': !(item.revisions_count > 0) }"
-          >{{ item.revisions_count || 0 }}</span>
+          <StatusChip
+            :label="String(item.revisions_count || 0)"
+            :color="item.revisions_count > 0 ? 'primary' : 'grey'"
+            size="x-small"
+          />
         </template>
 
         <!-- Expert ──────────────────────────────────────────────────────── -->
@@ -104,14 +107,10 @@
 
         <!-- Actions: horizontal, standard icons ─────────────────────────── -->
         <template #item.actions="{ item }">
-          <div class="pj-actions">
-            <v-btn variant="text" icon size="small" @click.stop="editProject(item)">
-              <v-icon size="18">mdi-pencil</v-icon>
-            </v-btn>
-            <v-btn variant="text" icon size="small" color="error" @click.stop="deleteProject(item)">
-              <v-icon size="18">mdi-delete</v-icon>
-            </v-btn>
-          </div>
+          <AppRowActions
+            :actions="getProjectRowActions(item)"
+            @action="handleProjectRowAction(item, $event)"
+          />
         </template>
 
         <!-- Empty / no-results state ────────────────────────────────────── -->
@@ -141,7 +140,8 @@
             </EmptyState>
           </template>
         </template>
-      </v-data-table>
+        </v-data-table>
+      </AppDataTableShell>
     </SectionCard>
 
     <!-- Snackbar ─────────────────────────────────────────────────────────── -->
@@ -189,12 +189,14 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/api/axios'
 import { consumeProjectsFlashMessage } from '@/router/projectAccess'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppRowActions, { type AppRowAction } from '@/components/layout/AppRowActions.vue'
 import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
-import TableToolbar from '@/components/layout/TableToolbar.vue'
 import EmptyState from '@/components/layout/EmptyState.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 
 const router = useRouter()
 
@@ -298,6 +300,40 @@ const getRevisionStatusLabel = (status?: string | null) => {
   return status
 }
 
+const getRevisionStatusColor = (status?: string | null) => {
+  if (status === 'published') return 'success'
+  if (status === 'locked') return 'primary'
+  if (status === 'stale') return 'warning'
+  return 'grey'
+}
+
+const getProjectRowActions = (item: any): AppRowAction[] => [
+  {
+    key: 'edit',
+    label: 'Изменить проект',
+    icon: 'mdi-pencil',
+    disabled: Boolean(navigatingId.value && navigatingId.value !== item.id),
+  },
+  {
+    key: 'delete',
+    label: 'Архивировать проект',
+    icon: 'mdi-delete',
+    color: 'error',
+    disabled: Boolean(navigatingId.value),
+  },
+]
+
+const handleProjectRowAction = (item: any, action: string) => {
+  if (action === 'edit') {
+    editProject(item)
+    return
+  }
+
+  if (action === 'delete') {
+    deleteProject(item)
+  }
+}
+
 const rowProps = ({ item }: { item: any }) => ({
   onClick: () => goToEditor(item),
   style: { cursor: navigatingId.value ? 'wait' : 'pointer' },
@@ -395,10 +431,20 @@ onMounted(async () => {
 <style scoped>
 .projects-card :deep(.v-card-text) {
   padding-top: 10px !important;
+  overflow-x: auto;
 }
 
 .projects-card :deep(.ds-table-toolbar) {
   padding-bottom: 16px;
+}
+
+.projects-status-filter {
+  flex: 0 1 200px;
+  max-width: 200px;
+}
+
+.projects-table {
+  min-width: 860px;
 }
 
 /* ── Case number: primary anchor ─────────────────────────────────────────── */
@@ -461,62 +507,6 @@ onMounted(async () => {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Unified badge system ────────────────────────────────────────────────── */
-.pj-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.pj-badge--published {
-  background: rgba(var(--v-theme-success), 0.14);
-  color: rgb(var(--v-theme-success));
-}
-
-.pj-badge--locked {
-  background: rgba(var(--v-theme-primary), 0.14);
-  color: rgb(var(--v-theme-primary));
-}
-
-.pj-badge--stale {
-  background: rgba(var(--v-theme-warning), 0.16);
-  color: rgb(var(--v-theme-warning));
-}
-
-.pj-badge--none {
-  background: rgba(var(--v-theme-on-surface-variant), 0.09);
-  color: rgb(var(--v-theme-on-surface-variant));
-}
-
-.pj-badge--count {
-  min-width: 30px;
-  background: rgba(var(--v-theme-primary), 0.13);
-  color: rgb(var(--v-theme-primary));
-  font-weight: 700;
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.pj-badge--count-zero {
-  background: rgba(var(--v-theme-on-surface-variant), 0.09);
-  color: rgb(var(--v-theme-on-surface-variant));
-}
-
-/* ── Actions cell: horizontal ────────────────────────────────────────────── */
-.pj-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  justify-content: flex-end;
-}
-
 /* ── Delete dialog inline code ───────────────────────────────────────────── */
 .projects-confirm-dialog {
   border-radius: var(--md-sys-shape-corner-extra-large);
@@ -529,5 +519,12 @@ onMounted(async () => {
   border-radius: 999px;
   background: rgba(var(--v-theme-secondary-container), 0.92);
   color: rgb(var(--v-theme-on-surface));
+}
+
+@media (max-width: 600px) {
+  .projects-status-filter {
+    flex-basis: 100%;
+    max-width: none;
+  }
 }
 </style>

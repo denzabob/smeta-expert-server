@@ -944,6 +944,7 @@ onBeforeUnmount(() => {
   height: 70vh;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .usd-section-content {
@@ -1086,6 +1087,42 @@ onBeforeUnmount(() => {
   .usd-body {
     height: auto;
     min-height: 70vh;
+  }
+}
+
+@media (max-width: 700px) {
+  .user-settings-page {
+    max-width: 100%;
+  }
+
+  .usd-section-content {
+    gap: var(--ds-space-14);
+  }
+
+  .section-title {
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .usd-waste-row,
+  .usd-waste-main,
+  .usd-waste-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .usd-waste-main,
+  .usd-waste-controls {
+    width: 100%;
+  }
+
+  .usd-waste-field {
+    max-width: none;
+    flex: 1 1 auto;
+  }
+
+  .settings-shell :deep(.ssf) {
+    padding-right: 88px;
   }
 }
 

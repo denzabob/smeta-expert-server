@@ -257,6 +257,16 @@
       line-height: 1.1;
       white-space: nowrap;
     }
+
+    .snapshot-summary {
+      border: 1px solid #dcdcdc;
+      background: #fafafa;
+      padding: 2mm 2.4mm;
+      font-size: 7.8pt;
+      line-height: 1.18;
+    }
+    .snapshot-summary div { margin: 0 0 0.8mm 0; }
+    .snapshot-summary div:last-child { margin-bottom: 0; }
   </style>
 </head>
 <body>
@@ -432,15 +442,110 @@
                 </td>
               </tr>
             @endif
+
+            @if(($row['reference_type'] ?? null) === 'snapshot_summary' && ($row['cost_driver_type'] ?? null) === 'facade')
+              @php
+                $presentation = $row['facade_snapshot_presentation'] ?? [];
+                $identity = $presentation['facade_identity'] ?? [];
+                $pricing = $presentation['pricing_summary'] ?? [];
+                $position = $presentation['position_summary'] ?? [];
+                $sources = $presentation['sources'] ?? [];
+              @endphp
+              <tr>
+                <td class="meta-label">Контракт</td>
+                <td class="meta-value">Snapshot summary фасадной позиции</td>
+              </tr>
+              @if(!empty($row['finished_product_specification_id']))
+                <tr>
+                  <td class="meta-label">Спецификация</td>
+                  <td class="meta-value">
+                    {{ $identity['display_name'] ?? $row['specification_name'] ?? $row['name'] ?? 'Фасад' }}
+                    <span class="muted">#{{ $row['finished_product_specification_id'] }}</span>
+                  </td>
+                </tr>
+              @endif
+              @if(!empty($identity['characteristics_text']))
+                <tr>
+                  <td class="meta-label">Параметры</td>
+                  <td class="meta-value">{{ $identity['characteristics_text'] }}</td>
+                </tr>
+              @endif
+              <tr>
+                <td class="meta-label">Основание цены</td>
+                <td class="meta-value">
+                  {{ $presentation['compact_summary_text'] ?? '—' }}
+                </td>
+              </tr>
+              @if(!empty($position))
+                <tr>
+                  <td class="meta-label">Позиция</td>
+                  <td class="meta-value">
+                    {{ $position['detail_name'] ?? 'Фасад' }},
+                    {{ $position['quantity'] ?? '—' }} шт.,
+                    {{ $position['width_mm'] ?? '—' }}×{{ $position['height_mm'] ?? '—' }} мм,
+                    {{ $position['area_m2_display'] ?? '—' }} м²,
+                    {{ $position['total_cost_display'] ?? '—' }}
+                  </td>
+                </tr>
+              @endif
+              @if(!empty($sources))
+                <tr>
+                  <td class="meta-label">Источники</td>
+                  <td class="meta-value">
+                    Зафиксировано {{ count($sources) }} источников на момент capture.
+                  </td>
+                </tr>
+              @endif
+            @endif
           </table>
 
-          <div class="shot-wrap">
-            @if(!empty($row['screenshot_path']) && file_exists(storage_path('app/public/' . $row['screenshot_path'])))
-              <img src="{{ storage_path('app/public/' . $row['screenshot_path']) }}" alt="screenshot" />
-            @else
-              <div class="shot-empty">Скриншот отсутствует</div>
-            @endif
-          </div>
+          @if(($row['reference_type'] ?? null) === 'snapshot_summary' && ($row['cost_driver_type'] ?? null) === 'facade')
+            @php
+              $presentation = $row['facade_snapshot_presentation'] ?? [];
+              $pricing = $presentation['pricing_summary'] ?? [];
+              $sources = $presentation['sources'] ?? [];
+            @endphp
+            <div class="snapshot-summary">
+              <div><strong>Snapshot-derived pricing basis</strong></div>
+              <div>Цена за м² принята из immutable pricing snapshot, сохранённого вместе с позицией/ревизией.</div>
+              @if(!empty($pricing['captured_at_display']) || !empty($pricing['computed_at_display']))
+                <div>
+                  Дата фиксации:
+                  {{ $pricing['captured_at_display'] ?? $pricing['computed_at_display'] }}
+                </div>
+              @endif
+              <div>{{ $presentation['basis_note'] ?? $row['basis_note'] ?? 'Источник построен по summary-level snapshot contract без legacy screenshot/price history полей.' }}</div>
+              @if(!empty($sources))
+                <div style="margin-top:1mm;"><strong>Зафиксированные source-level данные:</strong></div>
+                @foreach($sources as $source)
+                  <div>
+                    {{ $source['supplier_name'] ?? '—' }}:
+                    {{ $source['normalized_price_per_m2_display'] ?? '—' }}
+                    @if(!empty($source['source_kind_label'])) · {{ $source['source_kind_label'] }} @endif
+                    @if(!empty($source['effective_date_display'])) · {{ $source['effective_date_display'] }} @endif
+                    @if(!empty($source['evidence_assets_count'])) · вложений: {{ $source['evidence_assets_count'] }} @endif
+                  </div>
+                  @if(!empty($source['evidence_assets']))
+                    @foreach($source['evidence_assets'] as $asset)
+                      <div class="muted" style="margin-left:3mm;">
+                        {{ $asset['asset_type_label'] ?? $asset['asset_type'] ?? 'asset' }}:
+                        {{ $asset['display_label'] ?? '—' }}
+                        @if(!empty($asset['mime_type'])) ({{ $asset['mime_type'] }}) @endif
+                      </div>
+                    @endforeach
+                  @endif
+                @endforeach
+              @endif
+            </div>
+          @else
+            <div class="shot-wrap">
+              @if(!empty($row['screenshot_path']) && file_exists(storage_path('app/public/' . $row['screenshot_path'])))
+                <img src="{{ storage_path('app/public/' . $row['screenshot_path']) }}" alt="screenshot" />
+              @else
+                <div class="shot-empty">Скриншот отсутствует</div>
+              @endif
+            </div>
+          @endif
         </div>
       </div>
     @empty

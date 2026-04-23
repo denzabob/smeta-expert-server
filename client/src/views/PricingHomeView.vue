@@ -3,42 +3,59 @@
     <PageHeader
       title="Цены"
       subtitle="Управление ценообразованием по типам объектов"
-    />
+    >
+      <template #actions>
+        <v-btn
+          color="primary"
+          variant="flat"
+          prepend-icon="mdi-plus"
+          @click="showTypeSelector = true"
+        >
+          Добавить цену
+        </v-btn>
+      </template>
+    </PageHeader>
 
-    <div v-if="selectedOperation" class="selected-operation-card">
-      <div class="selected-operation-card__body">
-        <div class="selected-operation-card__label">Операция</div>
-        <div class="selected-operation-card__name">{{ selectedOperation.name }}</div>
-      </div>
-      <v-btn
-        variant="text"
-        size="small"
-        color="primary"
-        class="selected-operation-card__action"
-        @click="showOperationPicker = true"
-      >
-        Сменить
-      </v-btn>
-    </div>
+    <SectionCard
+      v-if="selectedOperation"
+      class="pricing-selected-card"
+      title="Выбранная операция"
+      subtitle="Источник цены будет добавлен к выбранной технологической операции."
+    >
+      <AppDetailMetaGrid
+        :items="[
+          { label: 'Операция', value: selectedOperation.name },
+          { label: 'Категория', value: selectedOperation.category || '—' },
+          { label: 'Единица', value: selectedOperation.unit || '—' },
+        ]"
+      />
+      <template #actions>
+        <AppActionFooter>
+          <v-btn
+            variant="text"
+            color="primary"
+            @click="showOperationPicker = true"
+          >
+            Сменить
+          </v-btn>
+        </AppActionFooter>
+      </template>
+    </SectionCard>
 
-    <div class="pricing-home-actions">
-      <v-btn
-        color="primary"
-        variant="flat"
-        prepend-icon="mdi-plus"
-        @click="showTypeSelector = true"
-      >
-        + Добавить цену
-      </v-btn>
-    </div>
-
-    <div class="pricing-home-grid">
-      <div
-        v-for="section in sections"
-        :key="section.key"
-        class="pricing-section-card"
-        :class="{ 'pricing-section-card--available': section.available }"
-        @click="section.available ? $router.push(section.to) : undefined"
+    <SectionCard
+      class="pricing-home-card"
+      title="Разделы ценообразования"
+      subtitle="Основные направления работы с ценами и источниками."
+    >
+      <div class="pricing-home-grid">
+        <button
+          v-for="section in sections"
+          :key="section.key"
+          type="button"
+          class="pricing-section-card"
+          :class="{ 'pricing-section-card--available': section.available }"
+          :disabled="!section.available"
+          @click="section.available ? router.push(section.to) : undefined"
       >
         <div class="pricing-section-icon">
           <v-icon size="32" :color="section.available ? 'primary' : 'grey-lighten-1'">
@@ -50,20 +67,21 @@
           <div class="pricing-section-desc">{{ section.description }}</div>
         </div>
         <div class="pricing-section-action">
-          <v-chip
+          <StatusChip
             v-if="section.available"
             size="small"
             color="primary"
             variant="tonal"
           >
             Открыть
-          </v-chip>
-          <v-chip v-else size="small" variant="outlined" color="grey">
+          </StatusChip>
+          <StatusChip v-else size="small" variant="outlined" color="grey">
             Скоро
-          </v-chip>
+          </StatusChip>
         </div>
+        </button>
       </div>
-    </div>
+    </SectionCard>
 
     <v-dialog v-model="showTypeSelector" max-width="520">
       <v-card class="pricing-dialog-card">
@@ -92,6 +110,9 @@
             </button>
           </div>
         </v-card-text>
+        <AppActionFooter>
+          <v-btn variant="text" @click="showTypeSelector = false">Отмена</v-btn>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
 
@@ -127,8 +148,12 @@ import { nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import EvidenceCreateModal from '@/components/evidence/EvidenceCreateModal.vue'
 import PricingOperationPicker from '@/components/pricing/PricingOperationPicker.vue'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import AppDetailMetaGrid from '@/components/layout/AppDetailMetaGrid.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 
 type PricingTargetType = 'operation' | 'material' | 'labor' | 'product'
 
@@ -249,49 +274,13 @@ function handlePriceCreated() {
 </script>
 
 <style scoped>
-.pricing-home-actions {
-  display: flex;
-  align-items: center;
-  margin-top: 12px;
-  margin-bottom: 18px;
+.pricing-selected-card,
+.pricing-home-card {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
 }
 
-.selected-operation-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 12px;
-  padding: 18px 20px;
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
-  border-radius: var(--md-sys-shape-corner-extra-large);
-  background:
-    linear-gradient(180deg, rgba(var(--v-theme-secondary-container), 0.56), rgba(var(--v-theme-surface-container-low), 0.96));
-}
-
-.selected-operation-card__body {
-  min-width: 0;
-}
-
-.selected-operation-card__label {
-  font-size: 0.72rem;
-  line-height: 1.3;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgba(var(--v-theme-on-surface-variant), 0.88);
-}
-
-.selected-operation-card__name {
-  margin-top: 4px;
-  font-size: 1rem;
-  line-height: 1.35;
-  font-weight: 700;
-  color: rgb(var(--v-theme-on-surface));
-  overflow-wrap: anywhere;
-}
-
-.selected-operation-card__action {
-  flex-shrink: 0;
+.pricing-selected-card :deep(.md3-section-card__actions) {
+  padding: 0;
 }
 
 .pricing-home-grid {
@@ -301,15 +290,18 @@ function handlePriceCreated() {
 }
 
 .pricing-section-card {
+  appearance: none;
   display: flex;
   align-items: center;
   gap: 16px;
+  width: 100%;
   padding: 22px 20px;
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
-  border-radius: var(--md-sys-shape-corner-extra-large);
+  border-radius: var(--ds-radius-16);
   background:
     linear-gradient(180deg, rgba(var(--v-theme-primary), 0.04), transparent 120px),
     var(--ds-surface-card);
+  text-align: left;
   transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
@@ -321,6 +313,11 @@ function handlePriceCreated() {
   box-shadow: var(--ds-shadow-dropdown);
   border-color: rgba(var(--v-theme-primary), 0.38);
   transform: translateY(-1px);
+}
+
+.pricing-section-card:disabled {
+  cursor: default;
+  opacity: 0.78;
 }
 
 .pricing-section-icon {
@@ -351,6 +348,7 @@ function handlePriceCreated() {
 
 .pricing-dialog-card {
   border-radius: var(--md-sys-shape-corner-extra-large);
+  overflow: hidden;
 }
 
 .type-selector-subtitle {
@@ -402,10 +400,4 @@ function handlePriceCreated() {
   color: rgba(var(--v-theme-on-surface-variant), 0.9);
 }
 
-@media (max-width: 640px) {
-  .selected-operation-card {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
 </style>

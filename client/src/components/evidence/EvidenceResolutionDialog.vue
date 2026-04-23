@@ -19,7 +19,7 @@
         </v-alert>
 
         <v-tabs v-model="activeTab" density="compact" color="primary">
-          <v-tab value="picker">Выбрать существующее</v-tab>
+          <v-tab value="picker">Выбрать доказательство</v-tab>
           <v-tab value="manual">Загрузить вручную</v-tab>
           <v-tab value="skip">Пропустить</v-tab>
         </v-tabs>
@@ -29,7 +29,7 @@
           <v-window-item value="picker">
             <v-text-field
               v-model="searchQuery"
-              label="Поиск по названию, URL или артикулу"
+              label="Поиск по названию, ссылке или артикулу"
               variant="outlined"
               density="compact"
               prepend-inner-icon="mdi-magnify"
@@ -43,7 +43,7 @@
               <thead>
                 <tr>
                   <th style="width: 36px"></th>
-                  <th>Название / URL</th>
+                  <th>Название / ссылка</th>
                   <th style="width: 110px">Цена</th>
                   <th style="width: 90px">Метод</th>
                   <th style="width: 110px">Дата</th>
@@ -58,7 +58,26 @@
                 </tr>
                 <tr v-else-if="pickerRecords.length === 0">
                   <td colspan="6" class="text-center py-4 text-medium-emphasis">
-                    {{ searchQuery ? 'Ничего не найдено' : 'Нет доступных записей обоснований' }}
+                    <template v-if="isFacadeItem && !searchQuery">
+                      <div class="text-body-2 font-weight-medium mb-1">Доказательства фасада не найдены</div>
+                      <div class="text-caption mb-3">
+                        Для фасадных позиций подтверждения добавляются в ценах фасада.
+                        Откройте карточку фасада и прикрепите файл, скриншот или ссылку к источнику цены.
+                      </div>
+                      <v-btn
+                        size="small"
+                        color="primary"
+                        variant="tonal"
+                        prepend-icon="mdi-folder-image"
+                        :disabled="!facadeSpecificationId"
+                        @click.stop="openFacadePricing"
+                      >
+                        Открыть доказательства фасада
+                      </v-btn>
+                    </template>
+                    <template v-else>
+                      {{ searchQuery ? 'Ничего не найдено' : 'Нет доступных записей обоснований' }}
+                    </template>
                   </td>
                 </tr>
                 <tr
@@ -115,6 +134,15 @@
 
           <!-- ═══ Tab 2: Manual Upload ═══ -->
           <v-window-item value="manual">
+            <v-alert
+              v-if="isFacadeItem"
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mb-3"
+            >
+              Для фасада лучше добавить подтверждение в ценах фасада: так оно будет связано с нужным источником цены и попадёт в итоговые отчёты.
+            </v-alert>
             <div
               class="manual-upload-dropzone mb-3"
               :class="{ 'manual-upload-dropzone--active': dropActive }"
@@ -175,7 +203,7 @@
 
             <v-text-field
               v-model="manualSourceUrl"
-              label="URL источника (необязательно)"
+              label="Ссылка на источник (необязательно)"
               variant="outlined"
               density="compact"
               class="mb-3"
@@ -246,6 +274,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import type { EvidenceItem, EvidenceRecordPickerItem } from '@/api/evidenceRun'
 import { evidenceRunApi } from '@/api/evidenceRun'
 import { COST_COMPONENT_LABELS } from '@/composables/useEvidenceRun'
@@ -267,6 +296,8 @@ const emit = defineEmits<{
   manualResolve: [itemId: number, formData: FormData]
 }>()
 
+const router = useRouter()
+
 // ── Tab state ──
 const activeTab = ref<'picker' | 'manual' | 'skip'>('picker')
 
@@ -276,9 +307,25 @@ const pickerRecords = ref<EvidenceRecordPickerItem[]>([])
 const pickerLoading = ref(false)
 const pickerPage = ref(1)
 const pickerMeta = ref({ current_page: 1, last_page: 1, per_page: 20, total: 0 })
+const pickerFacadeSpecificationId = ref<number | null>(null)
 const selectedRecordId = ref<number | null>(null)
 
 const effectiveRecordId = computed(() => selectedRecordId.value)
+const facadeSpecificationId = computed(() => {
+  const diagnostics = props.item?.diagnostics_json
+  const summary = diagnostics?.facade_snapshot_summary
+  const rawId = diagnostics?.finished_product_specification_id
+    ?? diagnostics?.finishedProductSpecificationId
+    ?? (typeof summary === 'object' && summary !== null
+      ? (summary as Record<string, unknown>).finished_product_specification_id
+      : null)
+  const id = Number(rawId)
+
+  if (Number.isFinite(id) && id > 0) return id
+
+  return pickerFacadeSpecificationId.value
+})
+const isFacadeItem = computed(() => props.item?.cost_component === 'facade')
 
 // ── Manual upload state ──
 const manualFile = ref<File | null>(null)
@@ -321,8 +368,11 @@ async function loadRecords() {
     )
     pickerRecords.value = res.data
     pickerMeta.value = res.meta
+    const responseFacadeId = Number(res.meta?.facade_specification_id ?? 0)
+    pickerFacadeSpecificationId.value = Number.isFinite(responseFacadeId) && responseFacadeId > 0 ? responseFacadeId : null
   } catch {
     pickerRecords.value = []
+    pickerFacadeSpecificationId.value = null
   } finally {
     pickerLoading.value = false
   }
@@ -344,6 +394,7 @@ watch(
       skipReason.value = ''
       dropActive.value = false
       pickerPage.value = 1
+      pickerFacadeSpecificationId.value = null
       loadRecords()
     }
   },
@@ -356,11 +407,11 @@ function componentLabel(comp: string): string {
 
 function captureMethodLabel(m: string | null): string {
   const map: Record<string, string> = {
-    chrome_extension: 'Chrome',
+    chrome_extension: 'Расширение',
     file_upload: 'Файл',
     manual_entry: 'Ручной',
     auto_scrape: 'Авто',
-    api_import: 'API',
+    api_import: 'Импорт',
   }
   return m ? (map[m] ?? m) : '—'
 }
@@ -392,6 +443,17 @@ function close() {
   emit('update:modelValue', false)
 }
 
+function openFacadePricing() {
+  if (!facadeSpecificationId.value) return
+
+  const resolved = router.resolve({
+    name: 'finished-product-pricing',
+    params: { id: facadeSpecificationId.value },
+  })
+
+  window.open(resolved.href, '_blank', 'noopener,noreferrer')
+}
+
 // ── Paste / Drop handlers ──
 
 function onPaste(event: ClipboardEvent) {
@@ -414,8 +476,9 @@ function extractImageFromClipboard(event: ClipboardEvent): File | null {
   const items = event.clipboardData?.items
   if (!items) return null
   for (let i = 0; i < items.length; i++) {
-    if (items[i].type.startsWith('image/')) {
-      const blob = items[i].getAsFile()
+    const item = items[i]
+    if (item?.type.startsWith('image/')) {
+      const blob = item.getAsFile()
       if (blob) return blob
     }
   }

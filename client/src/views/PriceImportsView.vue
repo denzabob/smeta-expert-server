@@ -5,7 +5,7 @@
       subtitle="История загруженных прайсов и текущий статус привязки строк к операциям."
     >
       <template #actions>
-        <v-btn color="primary" variant="flat" class="text-none" @click="openCreateDialog">
+        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="openCreateDialog">
           Создать импорт
         </v-btn>
       </template>
@@ -25,14 +25,25 @@
       class="price-imports-view__card"
       subtitle="Журнал импортов, прогресс обработки и быстрый переход к строкам для ручной привязки."
     >
-      <div v-if="loading" class="price-imports-view__state">
-        <v-progress-circular indeterminate size="20" width="2" color="primary" />
-        <span>Загрузка импортов...</span>
-      </div>
+      <AppStateBlock
+        v-if="loading"
+        title="Загрузка импортов"
+        description="Получаем историю загруженных прайсов."
+        loading
+      />
 
-      <div v-else-if="imports.length === 0" class="price-imports-view__state">
-        История импортов пока пуста
-      </div>
+      <AppStateBlock
+        v-else-if="imports.length === 0"
+        title="История импортов пока пуста"
+        description="Создайте первый импорт, чтобы привязать строки прайса к операциям."
+        icon="mdi-file-import-outline"
+      >
+        <template #actions>
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="openCreateDialog">
+            Создать импорт
+          </v-btn>
+        </template>
+      </AppStateBlock>
 
       <div v-else class="price-imports-view__list">
         <button
@@ -50,47 +61,42 @@
           </div>
 
           <div class="price-imports-view__item-side">
-            <v-chip size="small" variant="tonal" :color="statusColor(item.status)">
-              {{ statusLabel(item.status) }}
-            </v-chip>
+            <StatusChip :status="item.status" :label="statusLabel(item.status)" :color="statusColor(item.status)" />
             <span class="price-imports-view__open-link">Открыть</span>
           </div>
         </button>
       </div>
     </SectionCard>
 
-    <v-navigation-drawer
+    <AppDetailDrawer
       :model-value="drawer.open"
-      location="right"
-      temporary
-      scrim
-      width="760"
-      class="price-imports-view__drawer-shell"
+      :width="760"
+      title="Строки импорта"
       @update:model-value="handleDrawerToggle"
     >
-      <div class="price-imports-view__drawer">
-        <div class="price-imports-view__drawer-header">
-          <div>
-            <div class="price-imports-view__drawer-title">
-              Импорт #{{ drawer.importItem?.id ?? '—' }}
-            </div>
-            <div v-if="drawer.importItem" class="price-imports-view__drawer-meta">
-              {{ drawer.importItem.items_count }} строк | {{ drawer.importItem.linked_count }} привязано |
-              {{ drawer.importItem.pending_count }} осталось
-            </div>
-          </div>
+      <template #title>
+        Импорт #{{ drawer.importItem?.id ?? '—' }}
+      </template>
+      <template #subtitle>
+        <span v-if="drawer.importItem">
+          {{ drawer.importItem.items_count }} строк | {{ drawer.importItem.linked_count }} привязано |
+          {{ drawer.importItem.pending_count }} осталось
+        </span>
+      </template>
 
-          <v-btn icon="mdi-close" variant="text" @click="closeDrawer" />
-        </div>
+      <AppDetailMetaGrid
+        v-if="drawer.importItem"
+        class="mb-4"
+        :items="drawerMetaItems"
+      />
 
-        <ImportItemsTable
-          :items="drawer.items"
-          :loading="drawer.loading"
-          :error="drawer.error"
-          @updated="handleImportUpdated"
-        />
-      </div>
-    </v-navigation-drawer>
+      <ImportItemsTable
+        :items="drawer.items"
+        :loading="drawer.loading"
+        :error="drawer.error"
+        @updated="handleImportUpdated"
+      />
+    </AppDetailDrawer>
 
     <v-dialog v-model="createDialog.open" max-width="860">
       <v-card class="price-imports-view__dialog-card" rounded="xl">
@@ -109,62 +115,66 @@
           </v-alert>
 
           <div class="price-imports-view__rows md3-section-stack">
-            <div
+            <AppFormSection
               v-for="(row, index) in createDialog.rows"
               :key="row.id"
-              class="price-imports-view__row md3-section-block"
+              :title="`Строка ${index + 1}`"
+              compact
             >
-              <v-text-field
-                v-model="row.name"
-                label="Название"
-                variant="outlined"
-                density="comfortable"
-                :error-messages="createDialog.attempted ? rowErrors[index]?.name : []"
-              />
+              <div class="price-imports-view__row">
+                <v-text-field
+                  v-model="row.name"
+                  label="Название"
+                  variant="outlined"
+                  density="comfortable"
+                  :error-messages="createDialog.attempted ? rowErrors[index]?.name : []"
+                />
 
-              <v-text-field
-                :model-value="row.value"
-                label="Цена"
-                variant="outlined"
-                density="comfortable"
-                inputmode="decimal"
-                :error-messages="createDialog.attempted ? rowErrors[index]?.value : []"
-                @update:model-value="updateDraftValue(index, $event)"
-              />
+                <v-text-field
+                  :model-value="row.value"
+                  label="Цена"
+                  variant="outlined"
+                  density="comfortable"
+                  inputmode="decimal"
+                  :error-messages="createDialog.attempted ? rowErrors[index]?.value : []"
+                  @update:model-value="updateDraftValue(index, $event)"
+                />
 
-              <v-text-field
-                v-model="row.unit"
-                label="Ед."
-                variant="outlined"
-                density="comfortable"
-                :error-messages="createDialog.attempted ? rowErrors[index]?.unit : []"
-              />
+                <v-text-field
+                  v-model="row.unit"
+                  label="Ед."
+                  variant="outlined"
+                  density="comfortable"
+                  :error-messages="createDialog.attempted ? rowErrors[index]?.unit : []"
+                />
 
-              <div class="price-imports-view__row-actions">
-                <v-btn
-                  variant="text"
-                  color="error"
-                  size="small"
-                  :disabled="createDialog.rows.length <= 1 || createDialog.submitting"
-                  @click="removeDraftRow(index)"
-                >
-                  Удалить
-                </v-btn>
+                <div class="price-imports-view__row-actions">
+                  <v-btn
+                    variant="text"
+                    color="error"
+                    size="small"
+                    :disabled="createDialog.rows.length <= 1 || createDialog.submitting"
+                    @click="removeDraftRow(index)"
+                  >
+                    Удалить
+                  </v-btn>
+                </div>
               </div>
-            </div>
+            </AppFormSection>
           </div>
 
           <v-btn
             variant="text"
             color="primary"
+            prepend-icon="mdi-plus"
             :disabled="createDialog.submitting"
             @click="addDraftRow"
           >
-            + Добавить строку
+            Добавить строку
           </v-btn>
         </v-card-text>
 
-        <v-card-actions class="price-imports-view__dialog-actions md3-actions-row">
+        <AppActionFooter>
           <v-btn variant="text" :disabled="createDialog.submitting" @click="closeCreateDialog">
             Отмена
           </v-btn>
@@ -176,7 +186,7 @@
           >
             Сохранить
           </v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
   </PageContainer>
@@ -186,9 +196,15 @@
 import { computed, onMounted, ref } from 'vue'
 
 import api from '@/api/axios'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import AppDetailDrawer from '@/components/layout/AppDetailDrawer.vue'
+import AppDetailMetaGrid from '@/components/layout/AppDetailMetaGrid.vue'
+import AppFormSection from '@/components/layout/AppFormSection.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 import ImportItemsTable, { type ImportItemRow } from '@/components/imports/ImportItemsTable.vue'
 
 type ImportStatus = 'pending' | 'processed' | 'failed'
@@ -240,6 +256,17 @@ const createDialog = ref({
 const rowErrors = computed<DraftRowErrors[]>(() =>
   createDialog.value.rows.map((row) => validateDraftRow(row))
 )
+
+const drawerMetaItems = computed(() => {
+  const item = drawer.value.importItem
+  if (!item) return []
+
+  return [
+    { key: 'items', label: 'Строк', value: item.items_count },
+    { key: 'linked', label: 'Привязано', value: item.linked_count },
+    { key: 'pending', label: 'Осталось', value: item.pending_count },
+  ]
+})
 
 onMounted(() => {
   void fetchImports()
@@ -378,7 +405,9 @@ function removeDraftRow(index: number): void {
 }
 
 function updateDraftValue(index: number, rawValue: unknown): void {
-  createDialog.value.rows[index].value = typeof rawValue === 'string' ? rawValue : String(rawValue ?? '')
+  const row = createDialog.value.rows[index]
+  if (!row) return
+  row.value = typeof rawValue === 'string' ? rawValue : String(rawValue ?? '')
 }
 
 async function submitCreateImport(): Promise<void> {
@@ -459,15 +488,6 @@ function statusColor(status: ImportStatus): string {
   background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
 }
 
-.price-imports-view__state {
-  min-height: 220px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ds-space-10);
-  color: var(--ds-text-secondary);
-}
-
 .price-imports-view__list {
   display: grid;
 }
@@ -499,14 +519,17 @@ function statusColor(status: ImportStatus): string {
 }
 
 .price-imports-view__item-title {
-  font-size: 18px;
+  font-size: 1rem;
   font-weight: 700;
+  line-height: 1.35;
   color: var(--ds-text-primary);
 }
 
 .price-imports-view__item-meta {
   margin-top: var(--ds-space-6);
   color: var(--ds-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.45;
 }
 
 .price-imports-view__item-side {
@@ -519,48 +542,6 @@ function statusColor(status: ImportStatus): string {
   font-size: 14px;
   font-weight: 600;
   color: rgb(var(--v-theme-primary));
-}
-
-.price-imports-view__drawer-shell :deep(.v-navigation-drawer__content) {
-  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
-}
-
-.price-imports-view__drawer-shell {
-  position: fixed !important;
-  top: 0 !important;
-  right: 0 !important;
-  left: auto !important;
-  height: 100vh !important;
-  max-height: 100vh !important;
-  border-left: 1px solid var(--ds-border-color) !important;
-  border-right: none !important;
-  z-index: 2400 !important;
-}
-
-.price-imports-view__drawer {
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: var(--ds-space-16);
-  padding: var(--ds-space-20);
-}
-
-.price-imports-view__drawer-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--ds-space-12);
-}
-
-.price-imports-view__drawer-title {
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--ds-text-primary);
-}
-
-.price-imports-view__drawer-meta {
-  margin-top: var(--ds-space-8);
-  color: var(--ds-text-secondary);
 }
 
 .price-imports-view__dialog-card {
@@ -583,17 +564,12 @@ function statusColor(status: ImportStatus): string {
   grid-template-columns: minmax(220px, 1.6fr) minmax(140px, 0.8fr) minmax(120px, 0.6fr) auto;
   gap: var(--ds-space-12);
   align-items: start;
-  background: rgba(var(--v-theme-surface-container-high), 0.62);
 }
 
 .price-imports-view__row-actions {
   display: flex;
   align-items: center;
   min-height: 56px;
-}
-
-.price-imports-view__dialog-actions {
-  padding: 0 var(--ds-space-20) var(--ds-space-20);
 }
 
 @media (max-width: 960px) {

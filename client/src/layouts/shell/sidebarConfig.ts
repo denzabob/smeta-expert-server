@@ -59,12 +59,6 @@ export const sidebarSections: MenuSection[] = [
         showInRail: true,
       },
       {
-        title: 'Поставщики',
-        routeName: 'suppliers',
-        icon: 'mdi-truck-outline',
-        showInRail: true,
-      },
-      {
         title: 'Объекты',
         routeName: 'detail-types',
         icon: 'mdi-shape-outline',

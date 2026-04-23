@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import api, { ensureCsrfCookie } from '@/api/axios'  // твой Axios с withCredentials: true
+import { devVisualUser, isDevVisualAuthEnabled } from '@/dev/visualAcceptance'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<any>(null)
@@ -16,6 +17,15 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Проверка текущего пользователя
   async function checkAuth(force = false) {
+    if (isDevVisualAuthEnabled) {
+      user.value = devVisualUser
+      isRussiaIp.value = true
+      isAuthenticated.value = true
+      authChecked.value = true
+      console.warn('[AUTH] DEV visual auth is enabled. Production auth flow is bypassed locally only.')
+      return
+    }
+
     if (authChecked.value && !force) {
       console.log('[AUTH] Already checked, skipping (use force=true to recheck)');
       return;

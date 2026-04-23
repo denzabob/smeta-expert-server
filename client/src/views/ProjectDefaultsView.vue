@@ -16,30 +16,32 @@
       class="settings-shell project-defaults-card"
       subtitle="Единая MD3-оболочка для настроек новых проектов, материалов, коэффициентов и текстовых блоков."
     >
-      <div class="settings-topbar">
-        <v-text-field
-          v-model="searchQuery"
-          placeholder="Поиск раздела: коэффициенты, материалы, блоки..."
-          prepend-inner-icon="mdi-magnify"
-          clearable
-          hide-details
-          density="compact"
-          class="settings-search"
-        />
-        <div class="d-flex align-center gap-2 flex-wrap">
-          <v-chip
-            v-for="(section, idx) in sections"
-            :key="section.id"
-            :color="activeSection === idx ? 'primary' : undefined"
-            :variant="activeSection === idx ? 'flat' : 'tonal'"
-            size="small"
-            class="cursor-pointer"
-            @click="activeSection = idx"
-          >
-            {{ idx + 1 }}. {{ section.title }}
-          </v-chip>
-        </div>
-      </div>
+      <TableToolbar class="settings-topbar">
+        <template #search>
+          <v-text-field
+            v-model="searchQuery"
+            placeholder="Поиск раздела: коэффициенты, материалы, блоки..."
+            prepend-inner-icon="mdi-magnify"
+            clearable
+            hide-details
+            density="compact"
+            class="settings-search"
+          />
+        </template>
+        <template #filters>
+          <div class="d-flex align-center gap-2 flex-wrap">
+            <StatusChip
+              v-for="(section, idx) in sections"
+              :key="section.id"
+              :label="`${idx + 1}. ${section.title}`"
+              :color="activeSection === idx ? 'primary' : 'grey'"
+              :variant="activeSection === idx ? 'flat' : 'tonal'"
+              class="cursor-pointer"
+              @click="activeSection = idx"
+            />
+          </div>
+        </template>
+      </TableToolbar>
 
       <div class="d-flex settings-body">
         <div class="settings-content">
@@ -72,17 +74,13 @@
             />
           </div>
 
-          <div class="settings-footer">
-            <div class="d-flex align-center justify-space-between">
-              <div class="text-body-2" :class="isDirty ? 'text-warning' : 'text-medium-emphasis'">
-                {{ isDirty ? 'Есть несохранённые изменения' : 'Все изменения сохранены' }}
-              </div>
-              <div class="d-flex gap-2">
-                <v-btn variant="text" @click="onCancel" :disabled="saving || !isDirty">Отменить</v-btn>
-                <v-btn color="primary" variant="flat" @click="onSave" :loading="saving" :disabled="saving || !isDirty">Сохранить</v-btn>
-              </div>
-            </div>
-          </div>
+          <AppActionFooter
+            sticky
+            :status-text="isDirty ? 'Есть несохранённые изменения' : 'Все изменения сохранены'"
+          >
+            <v-btn variant="text" @click="onCancel" :disabled="saving || !isDirty">Отменить</v-btn>
+            <v-btn color="primary" variant="flat" @click="onSave" :loading="saving" :disabled="saving || !isDirty">Сохранить</v-btn>
+          </AppActionFooter>
         </div>
       </div>
     </SectionCard>
@@ -105,9 +103,12 @@ import { onBeforeRouteLeave } from 'vue-router'
 import api from '@/api/axios'
 import ProjectDefaultsForm from '@/components/settings/ProjectDefaultsForm.vue'
 import type { ProjectDefaultsData, Material, Region, CoefficientDescription } from '@/components/settings/ProjectDefaultsForm.vue'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
 
 const sections = [
   { id: 'general', title: 'Общие', icon: 'mdi-cog-outline', keywords: ['эксперт', 'регион', 'номер', 'режим'] },
@@ -335,11 +336,16 @@ onBeforeUnmount(() => {
 .settings-topbar {
   padding: var(--ds-space-14) var(--ds-space-16);
   border-bottom: 1px solid var(--ds-divider);
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-10);
   background:
     linear-gradient(180deg, rgba(var(--v-theme-secondary-container), 0.18), rgba(var(--v-theme-surface-container-low), 0.92));
+}
+
+.settings-topbar :deep(.ds-table-toolbar__search) {
+  flex: 0 1 460px;
+}
+
+.settings-topbar :deep(.ds-table-toolbar__filters) {
+  flex: 1 1 520px;
 }
 
 .settings-search {
@@ -363,18 +369,20 @@ onBeforeUnmount(() => {
   padding: var(--ds-space-16);
 }
 
-.settings-footer {
-  position: sticky;
-  bottom: 0;
-  padding: var(--ds-space-12) var(--ds-space-16);
-  border-top: 1px solid var(--ds-divider);
-  background: rgba(var(--v-theme-surface-container-low), 0.92);
-  backdrop-filter: blur(12px);
-}
-
 .gap-2 { gap: 8px; }
 
 .project-defaults-snackbar :deep(.v-snackbar__wrapper) {
   border-radius: var(--ds-radius-12);
+}
+
+@media (max-width: 760px) {
+  .settings-topbar :deep(.ds-table-toolbar__search),
+  .settings-topbar :deep(.ds-table-toolbar__filters) {
+    flex-basis: 100%;
+  }
+
+  .settings-search {
+    max-width: none;
+  }
 }
 </style>

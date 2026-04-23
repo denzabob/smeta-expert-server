@@ -53,6 +53,7 @@ export interface EvidenceListResponse {
     last_page: number
     per_page: number
     total: number
+    facade_specification_id?: number | null
   }
 }
 
@@ -111,6 +112,7 @@ export interface EvidenceRecordSearchResponse {
     last_page: number
     per_page: number
     total: number
+    facade_specification_id?: number | null
   }
 }
 

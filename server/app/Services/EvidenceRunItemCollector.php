@@ -30,6 +30,8 @@ class EvidenceRunItemCollector
         private ReportService $reportService,
         private UrlNormalizer $urlNormalizer,
         private MaterialConfirmationService $confirmationService,
+        private FinishedProductPositionSnapshotReader $finishedProductSnapshotReader,
+        private FinishedProductFacadeRevisionRowAssembler $finishedProductFacadeRevisionRowAssembler,
     ) {}
 
     /**
@@ -258,22 +260,46 @@ class EvidenceRunItemCollector
         // ── Facades ──
         $facadePositions = $project->positions()
             ->where('kind', ProjectPosition::KIND_FACADE)
-            ->with('facadeMaterial')
+            ->with(['facadeMaterial', 'finishedProductSpecification'])
             ->get();
 
         foreach ($facadePositions as $pos) {
+            $snapshotFacade = $this->finishedProductSnapshotReader->supports($pos)
+                ? $this->finishedProductSnapshotReader->read($pos)
+                : null;
             $material = $pos->facadeMaterial;
-            if (!$material) continue;
-            if (isset($items['facade:' . $material->id])) continue;
 
-            $items['facade:' . $material->id] = [
+            if ($snapshotFacade === null && !$material) {
+                continue;
+            }
+
+            $itemKey = $snapshotFacade !== null
+                ? ('facade:finished_product_specification:' . $snapshotFacade['reference_id'])
+                : ('facade:' . $material->id);
+
+            if (isset($items[$itemKey])) {
+                continue;
+            }
+
+            $items[$itemKey] = [
                 'cost_component' => CostComponent::FACADE,
-                'label'          => $material->name ?? 'Фасад #' . $material->id,
+                'label'          => $snapshotFacade['name']
+                    ?? $material?->name
+                    ?? ('Фасад #' . ($snapshotFacade['reference_id'] ?? $material?->id ?? $pos->id)),
                 'subject_type'   => 'project_position',
                 'subject_id'     => $pos->id,
-                'source_url'     => $material->source_url ?? null,
-                'effective_value' => (float) ($material->price_per_unit ?? 0),
+                'source_url'     => $material?->source_url ?? null,
+                'effective_value' => $snapshotFacade !== null
+                    ? (float) ($snapshotFacade['price_per_m2'] ?? 0)
+                    : (float) ($material?->price_per_unit ?? 0),
                 'currency'       => 'RUB',
+                'diagnostics_json' => $snapshotFacade !== null
+                    ? [
+                        'finished_product_specification_id' => $snapshotFacade['reference_id'] ?? null,
+                        'facade_snapshot_summary' => $this->finishedProductFacadeRevisionRowAssembler->buildSnapshotSummary($pos),
+                        'facade_source_level_snapshot' => $snapshotFacade['source_level_snapshot'] ?? null,
+                    ]
+                    : null,
             ];
         }
 

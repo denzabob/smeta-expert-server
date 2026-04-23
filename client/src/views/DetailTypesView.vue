@@ -2,7 +2,7 @@
   <PageContainer class="soft-page detail-types-view">
     <PageHeader
       title="Типы деталей"
-      subtitle="Шаги: 1) Создайте тип 2) Выберите схему торцов 3) При необходимости привяжите операции"
+      subtitle="Справочник типов деталей, схем торцов и привязанных операций для редактора проектов."
     >
       <template #actions>
         <ButtonGroup>
@@ -36,23 +36,29 @@
       </template>
     </PageHeader>
 
-    <SectionCard class="soft-content-card soft-data-card" variant="outlined">
+    <SectionCard class="soft-content-card soft-data-card detail-types-view__card" variant="outlined">
       <template #title>Типы деталей</template>
+      <template #subtitle>
+        Фильтры, массовые действия и список типов собраны в единой рабочей панели.
+      </template>
 
-      <div class="pb-2">
-        <v-row dense>
-          <v-col cols="12" md="5">
-            <v-text-field
-              v-model="searchQuery"
-              label="Поиск по названию"
-              prepend-inner-icon="mdi-magnify"
-              clearable
-              variant="outlined"
-              density="compact"
-              hide-details
-            />
-          </v-col>
-          <v-col cols="12" md="4">
+      <div class="detail-types-view__content md3-section-stack">
+        <AppDataTableShell>
+        <TableToolbar>
+          <template #search>
+          <v-text-field
+            v-model="searchQuery"
+            label="Поиск по названию"
+            prepend-inner-icon="mdi-magnify"
+            clearable
+            variant="outlined"
+            density="compact"
+            hide-details
+            class="detail-types-view__search ds-table-toolbar__search"
+          />
+          </template>
+
+          <template #filters>
             <v-select
               v-model="edgeFilter"
               :items="edgeFilterOptions"
@@ -62,9 +68,8 @@
               variant="outlined"
               density="compact"
               hide-details
+              class="detail-types-view__filter"
             />
-          </v-col>
-          <v-col cols="12" md="3">
             <v-select
               v-model="usageFilter"
               :items="usageFilterOptions"
@@ -74,20 +79,21 @@
               variant="outlined"
               density="compact"
               hide-details
+              class="detail-types-view__filter"
             />
-          </v-col>
-        </v-row>
+          </template>
+        </TableToolbar>
 
         <v-alert
           v-if="selectedDetailTypeIds.length > 0"
           density="compact"
           variant="tonal"
           type="info"
-          class="mt-3"
+          class="detail-types-view__bulk"
         >
           Выбрано: {{ selectedDetailTypeIds.length }}
           <template #append>
-            <div class="d-flex align-center ga-2 flex-wrap">
+            <div class="detail-types-view__bulk-actions">
               <v-select
                 v-model="bulkAction"
                 :items="bulkActionOptions"
@@ -97,7 +103,7 @@
                 density="compact"
                 variant="outlined"
                 hide-details
-                style="min-width: 170px"
+                class="detail-types-view__bulk-field"
               />
               <v-select
                 v-if="bulkAction === 'set_edge'"
@@ -109,7 +115,7 @@
                 density="compact"
                 variant="outlined"
                 hide-details
-                style="min-width: 220px"
+                class="detail-types-view__bulk-field detail-types-view__bulk-field--wide"
               />
               <v-btn
                 color="primary"
@@ -123,92 +129,115 @@
             </div>
           </template>
         </v-alert>
+
+        <v-data-table
+          :headers="headers"
+          :items="filteredDetailTypes"
+          :loading="loading"
+          density="comfortable"
+          hover
+          class="soft-data-table detail-types-view__table"
+          :no-data-text="loading ? '' : 'Нет типов деталей'"
+          item-value="id"
+          show-select
+          v-model="selectedDetailTypeIds"
+        >
+          <template #item.name="{ item }">
+            <div class="font-weight-medium">{{ item.name }}</div>
+          </template>
+
+          <template #item.edge_processing="{ item }">
+            <StatusChip size="small" color="primary" variant="flat">
+              <v-icon start size="14">{{ getEdgeIcon(item.edge_processing) }}</v-icon>
+              {{ getEdgeLabel(item.edge_processing) }}
+            </StatusChip>
+          </template>
+
+          <template #item.positions_count="{ item }">
+            <StatusChip
+              size="small"
+              :color="Number(item.positions_count || 0) > 0 ? 'primary' : 'grey'"
+              variant="tonal"
+            >
+              {{ item.positions_count || 0 }}
+            </StatusChip>
+          </template>
+
+          <template #item.components="{ item }">
+            <span class="text-caption text-medium-emphasis">
+              {{ item.components?.length || 0 }} операций
+            </span>
+          </template>
+
+          <template #item.origin="{ item }">
+            <StatusChip
+              :status="item.origin === 'system' ? 'disabled' : 'active'"
+              :label="item.origin === 'system' ? 'Системный' : 'Пользовательский'"
+            />
+          </template>
+
+          <template #item.actions="{ item }">
+            <AppRowActions class="detail-types-view__row-actions" dense>
+              <v-tooltip text="Редактировать" location="top">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    icon="mdi-pencil"
+                    size="small"
+                    variant="text"
+                    :disabled="!isEditable(item)"
+                    :aria-label="isEditable(item) ? 'Редактировать тип детали' : 'Системный тип не редактируется'"
+                    @click="edit(item)"
+                  />
+                </template>
+              </v-tooltip>
+              <v-tooltip text="Удалить" location="top">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    icon="mdi-delete"
+                    size="small"
+                    variant="text"
+                    color="error"
+                    :disabled="!isEditable(item)"
+                    :aria-label="isEditable(item) ? 'Удалить тип детали' : 'Системный тип не удаляется'"
+                    @click="remove(item)"
+                  />
+                </template>
+              </v-tooltip>
+            </AppRowActions>
+          </template>
+        </v-data-table>
+        </AppDataTableShell>
       </div>
-
-      <v-data-table
-        :headers="headers"
-        :items="filteredDetailTypes"
-        :loading="loading"
-        density="comfortable"
-        class="soft-data-table"
-        :no-data-text="loading ? '' : 'Нет типов деталей'"
-        item-value="id"
-        show-select
-        v-model="selectedDetailTypeIds"
-      >
-        <template #item.name="{ item }">
-          <div class="font-weight-medium">{{ item.name }}</div>
-        </template>
-
-        <template #item.edge_processing="{ item }">
-          <v-chip size="small" color="primary" variant="flat">
-            <v-icon start size="14">{{ getEdgeIcon(item.edge_processing) }}</v-icon>
-            {{ getEdgeLabel(item.edge_processing) }}
-          </v-chip>
-        </template>
-
-        <template #item.positions_count="{ item }">
-          <v-chip
-            size="small"
-            :color="Number(item.positions_count || 0) > 0 ? 'primary' : 'grey'"
-            variant="tonal"
-          >
-            {{ item.positions_count || 0 }}
-          </v-chip>
-        </template>
-
-        <template #item.components="{ item }">
-          <span class="text-caption text-medium-emphasis">
-            {{ item.components?.length || 0 }} операций
-          </span>
-        </template>
-
-        <template #item.origin="{ item }">
-          <v-chip
-            size="small"
-            :color="item.origin === 'system' ? 'grey' : 'success'"
-            variant="tonal"
-          >
-            {{ item.origin === 'system' ? 'Системный' : 'Пользовательский' }}
-          </v-chip>
-        </template>
-
-        <template #item.actions="{ item }">
-          <div class="d-flex ga-2 justify-end">
-            <v-btn
-              icon="mdi-pencil"
-              size="small"
-              variant="text"
-              :disabled="!isEditable(item)"
-              :title="isEditable(item) ? 'Редактировать' : 'Системный тип не редактируется'"
-              @click="edit(item)"
-            />
-            <v-btn
-              icon="mdi-delete"
-              size="small"
-              variant="text"
-              color="error"
-              :disabled="!isEditable(item)"
-              :title="isEditable(item) ? 'Удалить' : 'Системный тип не удаляется'"
-              @click="remove(item)"
-            />
-          </div>
-        </template>
-      </v-data-table>
     </SectionCard>
 
     <v-dialog v-model="dialog" max-width="760" persistent>
-      <v-card class="soft-content-card soft-dialog-card">
-        <v-card-title class="text-h6 d-flex align-center justify-space-between">
-          <span>{{ editing ? 'Редактировать тип детали' : 'Новый тип детали' }}</span>
-          <v-btn-toggle v-model="formMode" density="comfortable" mandatory color="primary" variant="outlined">
+      <v-card class="soft-content-card soft-dialog-card detail-types-view__dialog-card">
+        <v-card-title class="detail-types-view__dialog-header">
+          <div>
+            <div class="detail-types-view__dialog-title">
+              {{ editing ? 'Редактировать тип детали' : 'Новый тип детали' }}
+            </div>
+            <div class="detail-types-view__dialog-subtitle">
+              Настройте схему торцов и, при необходимости, операции расчёта.
+            </div>
+          </div>
+          <v-btn-toggle
+            v-model="formMode"
+            density="comfortable"
+            mandatory
+            color="primary"
+            variant="outlined"
+            class="detail-types-view__mode-toggle"
+          >
             <v-btn value="quick" size="small">Быстро</v-btn>
             <v-btn value="full" size="small">Расширенно</v-btn>
           </v-btn-toggle>
         </v-card-title>
 
         <v-card-text>
-          <v-form ref="formRef" @submit.prevent="save" @keydown.ctrl.enter.prevent="save">
+          <v-form ref="formRef" class="md3-form-stack" @submit.prevent="save" @keydown.ctrl.enter.prevent="save">
             <v-text-field
               v-model="form.name"
               label="Название детали"
@@ -216,7 +245,6 @@
               variant="outlined"
               density="compact"
               autofocus
-              class="mb-3"
             />
 
             <v-select
@@ -227,7 +255,6 @@
               label="Обработка торцов"
               variant="outlined"
               density="compact"
-              class="mb-3"
             >
               <template #selection="{ item }">
                 <v-chip size="small">
@@ -250,14 +277,17 @@
               </template>
             </v-select>
 
-            <v-alert density="compact" variant="tonal" type="info" class="mb-4">
+            <v-alert density="compact" variant="tonal" type="info">
               {{ getEdgeSummary(form.edge_processing) }}
             </v-alert>
 
             <template v-if="formMode === 'full'">
-              <div>
-                <div class="d-flex align-center justify-space-between mb-4">
-                  <h4 class="text-subtitle-1">Операции</h4>
+              <div class="md3-section-block">
+                <div class="md3-section-block__header detail-types-view__components-header">
+                  <div>
+                    <div class="md3-section-block__title">Операции</div>
+                    <div class="md3-section-block__subtitle">Операции будут применяться к этому типу детали.</div>
+                  </div>
                   <v-btn
                     size="small"
                     variant="outlined"
@@ -268,14 +298,15 @@
                   </v-btn>
                 </div>
 
-                <div v-if="!form.components?.length" class="text-center py-6">
-                  <v-icon size="48" color="grey-lighten-1" class="mb-3">mdi-wrench</v-icon>
-                  <div class="text-body-2 text-medium-emphasis">
-                    Операции не добавлены
-                  </div>
-                </div>
+                <AppStateBlock
+                  v-if="!form.components?.length"
+                  class="detail-types-view__empty"
+                  icon="mdi-wrench"
+                  title="Операции не добавлены"
+                  density="compact"
+                />
 
-                <div v-else class="d-flex flex-wrap gap-2">
+                <div v-else class="detail-types-view__chips">
                   <v-chip
                     v-for="(comp, index) in form.components"
                     :key="`${comp.id}-${index}`"
@@ -308,26 +339,28 @@
           </v-form>
         </v-card-text>
 
-        <v-card-actions>
-          <v-spacer />
+        <AppActionFooter class="detail-types-view__dialog-actions">
           <v-btn variant="text" @click="closeDialog">Отмена</v-btn>
           <v-btn color="primary" variant="flat" type="submit" @click="save">
             Сохранить
           </v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
 
     <v-dialog v-model="addComponentDialog" max-width="800">
-      <v-card class="soft-content-card soft-dialog-card">
-        <v-card-title class="d-flex align-center justify-space-between">
-          <span class="text-h6">Выбор операции</span>
+      <v-card class="soft-content-card soft-dialog-card detail-types-view__dialog-card">
+        <v-card-title class="detail-types-view__dialog-header">
+          <div>
+            <div class="detail-types-view__dialog-title">Выбор операции</div>
+            <div class="detail-types-view__dialog-subtitle">Найдите операцию и выберите строку из таблицы.</div>
+          </div>
           <v-btn icon variant="text" @click="addComponentDialog = false">
             <v-icon>mdi-close</v-icon>
           </v-btn>
         </v-card-title>
 
-        <v-card-text>
+        <v-card-text class="md3-section-stack">
           <v-text-field
             ref="searchField"
             v-model="operationSearch"
@@ -335,6 +368,9 @@
             prepend-inner-icon="mdi-magnify"
             clearable
             autofocus
+            variant="outlined"
+            density="compact"
+            hide-details
             @update:model-value="filterOperations"
           />
 
@@ -344,7 +380,7 @@
             :loading="loadingOperations"
             density="comfortable"
             hover
-            class="mt-4 soft-data-table"
+            class="soft-data-table detail-types-view__table"
             @click:row="(event: any, { item }: any) => selectOperation(item)"
           >
             <template #item.cost_per_unit="{ item }">
@@ -366,23 +402,29 @@
     </v-dialog>
 
     <v-dialog v-model="quantityDialog" max-width="400">
-      <v-card class="soft-content-card soft-dialog-card">
-        <v-card-title>Изменить количество</v-card-title>
-        <v-card-text>
+      <v-card class="soft-content-card soft-dialog-card detail-types-view__dialog-card">
+        <v-card-title class="detail-types-view__dialog-header">
+          <div>
+            <div class="detail-types-view__dialog-title">Изменить количество</div>
+            <div class="detail-types-view__dialog-subtitle">Укажите коэффициент операции для типа детали.</div>
+          </div>
+        </v-card-title>
+        <v-card-text class="md3-form-stack">
           <v-text-field
             v-model.number="tempQuantity"
             type="number"
             label="Количество"
             :min="0.01"
             :step="0.01"
+            variant="outlined"
+            density="compact"
             autofocus
           />
         </v-card-text>
-        <v-card-actions>
-          <v-spacer />
+        <AppActionFooter class="detail-types-view__dialog-actions">
           <v-btn variant="text" @click="quantityDialog = false">Отмена</v-btn>
           <v-btn color="primary" @click="applyQuantity">Применить</v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
   </PageContainer>
@@ -395,6 +437,12 @@ import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
 import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppRowActions from '@/components/layout/AppRowActions.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
 
 const dialog = ref(false)
 const editing = ref(false)
@@ -731,18 +779,174 @@ watch(addComponentDialog, (val) => {
 <style scoped>
 /* soft-cards classes now live globally in design-system.scss */
 
+.detail-types-view__content {
+  gap: var(--ds-space-14);
+}
+
+.detail-types-view__toolbar {
+  align-items: stretch;
+  padding-bottom: 0;
+}
+
+.detail-types-view__search {
+  min-width: 260px;
+}
+
+.detail-types-view__filters {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.detail-types-view__filter {
+  min-width: 190px;
+  max-width: 240px;
+}
+
+.detail-types-view__bulk {
+  border-radius: var(--ds-radius-12);
+  border: 1px solid rgba(var(--v-theme-primary), 0.16);
+}
+
+.detail-types-view__bulk :deep(.v-alert__content) {
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+}
+
+.detail-types-view__bulk-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ds-space-8);
+  flex-wrap: wrap;
+}
+
+.detail-types-view__bulk-field {
+  min-width: 170px;
+}
+
+.detail-types-view__bulk-field--wide {
+  min-width: 220px;
+}
+
+.detail-types-view__table {
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-12);
+  overflow: hidden;
+}
+
+.detail-types-view__table :deep(.v-data-table__td),
+.detail-types-view__table :deep(.v-data-table__th) {
+  vertical-align: middle;
+}
+
+.detail-types-view__table :deep(tbody tr:hover) {
+  background: var(--ds-surface-hover);
+}
+
+.detail-types-view__row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ds-space-4);
+  min-width: 76px;
+}
+
+.detail-types-view__dialog-card {
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.035), transparent 160px),
+    var(--ds-surface-card);
+}
+
+.detail-types-view__dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ds-space-16);
+  padding: var(--ds-space-20) var(--ds-space-20) var(--ds-space-14);
+  border-bottom: 1px solid var(--ds-divider);
+}
+
+.detail-types-view__dialog-title {
+  color: var(--ds-text-primary);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.detail-types-view__dialog-subtitle {
+  margin-top: var(--ds-space-4);
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.detail-types-view__mode-toggle {
+  flex: 0 0 auto;
+}
+
+.detail-types-view__components-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ds-space-12);
+}
+
+.detail-types-view__empty {
+  display: grid;
+  place-items: center;
+  gap: var(--ds-space-8);
+  min-height: 120px;
+  border: 1px dashed var(--ds-border-color);
+  border-radius: var(--ds-radius-12);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 74%, transparent);
+}
+
+.detail-types-view__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-8);
+}
+
+.detail-types-view__dialog-actions {
+  padding: var(--ds-space-14) var(--ds-space-20) var(--ds-space-20);
+  border-top: 1px solid var(--ds-divider);
+}
+
 .operation-chip {
-  background: rgb(var(--v-theme-surface));
-  color: rgb(var(--v-theme-on-surface));
-  border-color: rgba(var(--v-theme-on-surface), 0.12);
+  background: var(--ds-surface-card-subtle);
+  color: var(--ds-text-primary);
+  border-color: var(--ds-border-color);
+  min-height: 36px;
 }
 
 .operation-qty-badge {
-  background: rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-primary), 0.10);
+  color: rgb(var(--v-theme-primary));
   padding: 2px 6px;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-8);
   margin-left: 8px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .detail-types-view__toolbar,
+  .detail-types-view__filters,
+  .detail-types-view__bulk-actions,
+  .detail-types-view__dialog-header,
+  .detail-types-view__components-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .detail-types-view__search,
+  .detail-types-view__filter,
+  .detail-types-view__bulk-field,
+  .detail-types-view__bulk-field--wide {
+    width: 100%;
+    max-width: none;
+  }
 }
 </style>

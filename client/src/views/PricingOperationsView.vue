@@ -5,21 +5,23 @@
       subtitle="Здесь вы задаёте цены операций и их обоснования"
     >
       <template #actions>
-        <v-btn
-          color="primary"
-          variant="flat"
-          prepend-icon="mdi-plus"
-          @click="openCreateOperationDialog"
-        >
-Добавить операцию
-        </v-btn>
-        <v-btn
-          variant="text"
-          prepend-icon="mdi-arrow-left"
-          :to="{ name: 'pricing' }"
-        >
-          К разделам
-        </v-btn>
+        <ButtonGroup>
+          <v-btn
+            color="primary"
+            variant="flat"
+            prepend-icon="mdi-plus"
+            @click="openCreateOperationDialog"
+          >
+            Добавить операцию
+          </v-btn>
+          <v-btn
+            variant="text"
+            prepend-icon="mdi-arrow-left"
+            :to="{ name: 'pricing' }"
+          >
+            К разделам
+          </v-btn>
+        </ButtonGroup>
       </template>
     </PageHeader>
 
@@ -66,19 +68,32 @@
         Часть цен временно недоступна. Источники можно открыть в карточке операции.
       </div>
 
-      <div v-if="!loading && operations.length === 0" class="operations-empty-state">
-        <v-icon size="40" color="grey-lighten-1">mdi-format-list-bulleted-square</v-icon>
-        <div class="operations-empty-state__title">У вас пока нет операций</div>
-        <div class="operations-empty-state__text">
-          Добавьте первую операцию, чтобы начать расчёт.
-        </div>
-        <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="openCreateOperationDialog">
-          Добавить операцию
-        </v-btn>
-      </div>
+      <AppDataTableShell
+        :empty="!loading && operations.length === 0"
+        empty-title="У вас пока нет операций"
+        empty-description="Добавьте первую операцию, чтобы начать расчёт."
+        empty-icon="mdi-format-list-bulleted-square"
+      >
+        <template #search>
+          <v-text-field
+            v-model="search"
+            prepend-inner-icon="mdi-magnify"
+            label="Поиск по названию"
+            density="compact"
+            variant="outlined"
+            hide-details
+            clearable
+            class="pricing-operations-search"
+          />
+        </template>
+
+        <template #emptyActions>
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="openCreateOperationDialog">
+            Добавить операцию
+          </v-btn>
+        </template>
 
       <v-data-table
-        v-else
         :headers="headers"
         :items="operations"
         :loading="loading"
@@ -86,29 +101,14 @@
         :search="search"
         class="pricing-operations-table"
       >
-        <template #top>
-          <div class="table-toolbar">
-            <v-text-field
-              v-model="search"
-              prepend-inner-icon="mdi-magnify"
-              placeholder="Поиск по названию..."
-              density="compact"
-              variant="outlined"
-              hide-details
-              clearable
-              style="max-width: 320px"
-            />
-          </div>
-        </template>
-
         <template v-slot:[`item.origin`]="{ item }">
-          <v-chip
+          <StatusChip
             size="x-small"
             :color="modeColor(item)"
             variant="tonal"
           >
             {{ modeLabel(item) }}
-          </v-chip>
+          </StatusChip>
         </template>
 
         <template v-slot:[`item.name`]="{ item }">
@@ -121,13 +121,13 @@
         </template>
 
         <template v-slot:[`item.operation_kind`]="{ item }">
-          <v-chip
+          <StatusChip
             size="x-small"
             :color="operationKindColor(item.operation_kind)"
             variant="tonal"
           >
             {{ operationKindLabel(item.operation_kind) }}
-          </v-chip>
+          </StatusChip>
         </template>
 
         <template v-slot:[`item.price`]="{ item }">
@@ -154,20 +154,20 @@
             width="2"
             color="primary"
           />
-          <v-chip
+          <StatusChip
             v-else-if="tableSummaryLoaded(item) && tableSourcesCount(item) > 0"
             size="x-small"
             color="success"
             variant="tonal"
           >
             {{ tableSourcesCount(item) }}
-          </v-chip>
+          </StatusChip>
           <span v-else-if="tableSummaryLoaded(item)" class="no-price-hint">—</span>
           <span v-else class="no-price-hint">—</span>
         </template>
 
         <template v-slot:[`item.actions`]="{ item }">
-          <div class="operation-actions">
+          <AppRowActions class="operation-actions">
             <v-btn
               size="small"
               variant="tonal"
@@ -194,9 +194,10 @@
             >
               <v-icon size="18">mdi-delete</v-icon>
             </v-btn>
-          </div>
+          </AppRowActions>
         </template>
       </v-data-table>
+      </AppDataTableShell>
     </SectionCard>
 
     <!-- ───── Operation Pricing Drawer ───── -->
@@ -254,21 +255,21 @@
             <div class="meta-cell">
               <div class="meta-label">Вид</div>
               <div class="meta-value">
-                <v-chip
+                <StatusChip
                   size="x-small"
                   :color="operationKindColor(drawer.operation.operation_kind)"
                   variant="tonal"
                 >
                   {{ operationKindLabel(drawer.operation.operation_kind) }}
-                </v-chip>
+                </StatusChip>
               </div>
             </div>
             <div class="meta-cell">
                 <div class="meta-label">Режим</div>
                 <div class="meta-value">
-                <v-chip size="x-small" :color="modeColor(drawer.operation)" variant="tonal">
+                <StatusChip size="x-small" :color="modeColor(drawer.operation)" variant="tonal">
                   {{ modeLabel(drawer.operation) }}
-                </v-chip>
+                </StatusChip>
               </div>
             </div>
             <div class="meta-cell">
@@ -497,12 +498,11 @@
             </button>
           </div>
         </v-card-text>
-        <v-card-actions>
-          <v-spacer />
+        <AppActionFooter>
           <v-btn variant="text" :disabled="quickCreateDialog.loading" @click="closeQuickCreateDialog">
             Отмена
           </v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
 
@@ -522,15 +522,14 @@
             Операция <strong>{{ deleteDialog.operation?.name }}</strong> будет удалена. Это действие нельзя отменить.
           </div>
         </v-card-text>
-        <v-card-actions>
-          <v-spacer />
+        <AppActionFooter>
           <v-btn variant="text" :disabled="deleteDialog.loading" @click="closeDeleteDialog">
             Отмена
           </v-btn>
           <v-btn color="error" variant="flat" :loading="deleteDialog.loading" @click="confirmDeleteOperation">
             Удалить
           </v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
 
@@ -544,9 +543,14 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import type { AxiosError } from 'axios'
 import api from '@/api/axios'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppRowActions from '@/components/layout/AppRowActions.vue'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 import OperationFormDialog from '@/components/pricing/OperationFormDialog.vue'
 import OperationPriceSources from '@/components/pricing/OperationPriceSources.vue'
 import OperationRuleEditor from '@/components/pricing/OperationRuleEditor.vue'

@@ -186,6 +186,12 @@ const router = createRouter({
           component: () => import('@/views/PriceListVersionShow.vue'),
           meta: { title: 'Аудит версии' }
         },
+        {
+          path: 'dev/ui-foundation',
+          name: 'dev-ui-foundation',
+          component: () => import('@/views/dev/UiFoundationShowcase.vue'),
+          meta: { requiresAdmin: true, title: 'UI Foundation Showcase' }
+        },
         // Legacy admin panel (will be deprecated)
         {
           path: 'admin-legacy',

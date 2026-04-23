@@ -29,8 +29,8 @@
 
     <SectionCard
       class="suppliers-card"
-      subtitle="Единый список поставщиков с MD3-поверхностями для фильтров, таблицы и операций управления."
     >
+      <AppDataTableShell>
       <TableToolbar>
         <template #search>
           <v-text-field
@@ -56,11 +56,18 @@
             clearable
             hide-details
           />
-          <v-btn-toggle v-model="typeFilter" color="primary" density="compact">
-            <v-btn :value="null" size="small">Все</v-btn>
-            <v-btn value="operations" size="small">Операции</v-btn>
-            <v-btn value="materials" size="small">Материалы</v-btn>
-          </v-btn-toggle>
+          <div class="suppliers-type-tabs" role="tablist" aria-label="Тип прайс-листов">
+            <v-btn
+              v-for="option in typeOptions"
+              :key="option.key"
+              :variant="typeFilter === option.value ? 'flat' : 'text'"
+              :color="typeFilter === option.value ? 'primary' : undefined"
+              class="suppliers-type-tabs__button"
+              @click="typeFilter = option.value"
+            >
+              {{ option.label }}
+            </v-btn>
+          </div>
         </template>
       </TableToolbar>
 
@@ -84,13 +91,10 @@
 
         <!-- Статус -->
         <template #item.is_active="{ item }">
-          <v-chip
-            size="small"
-            :color="item.is_active ? 'success' : 'grey'"
-            variant="tonal"
-          >
-            {{ item.is_active ? 'Активен' : 'Неактивен' }}
-          </v-chip>
+          <StatusChip
+            :status="item.is_active ? 'active' : 'inactive'"
+            :label="item.is_active ? 'Активен' : 'Неактивен'"
+          />
         </template>
 
         <!-- Контакты -->
@@ -111,13 +115,12 @@
 
         <!-- Активные версии -->
         <template #item.active_versions_count="{ item }">
-          <v-chip
-            size="small"
+          <StatusChip
+            :status="(item.active_versions_count ?? 0) > 0 ? 'active' : 'none'"
             :color="(item.active_versions_count ?? 0) > 0 ? 'primary' : 'grey'"
-            variant="tonal"
           >
             {{ item.active_versions_count || 0 }}
-          </v-chip>
+          </StatusChip>
         </template>
 
         <!-- Последнее обновление -->
@@ -130,7 +133,8 @@
 
         <!-- Действия -->
         <template #item.actions="{ item }">
-          <v-menu>
+          <AppRowActions dense>
+            <v-menu>
             <template v-slot:activator="{ props }">
               <v-btn
                 icon="mdi-dots-vertical"
@@ -178,22 +182,43 @@
                 Удалить
               </v-list-item>
             </v-list>
-          </v-menu>
+            </v-menu>
+          </AppRowActions>
         </template>
       </v-data-table>
+      </AppDataTableShell>
     </SectionCard>
 
     <!-- Create/Edit Dialog -->
     <v-dialog v-model="showDialog" max-width="600px" persistent>
       <v-card class="supplier-dialog-card">
-        <v-card-title>
-          <span class="text-h5">{{ editMode ? 'Редактировать' : 'Создать' }} поставщика</span>
-        </v-card-title>
-        <v-card-text>
+        <v-card-item class="supplier-dialog-card__header">
+          <template #title>
+            <div class="supplier-dialog-card__title">
+              {{ editMode ? 'Редактирование поставщика' : 'Новый поставщик' }}
+            </div>
+          </template>
+          <template #subtitle>
+            <div class="supplier-dialog-card__subtitle">
+              Заполните основные контактные данные и параметры доступности поставщика.
+            </div>
+          </template>
+          <template #append>
+            <v-btn icon="mdi-close" variant="text" size="small" @click="closeDialog" />
+          </template>
+        </v-card-item>
+
+        <v-card-text class="supplier-dialog-card__content">
           <v-form ref="form">
+            <AppFormSection
+              title="Контактные данные"
+              description="Основная информация поставщика для прайс-листов и связанных операций."
+              compact
+            >
+              <div class="supplier-dialog-grid">
             <v-text-field
               v-model="formData.name"
-              label="Название *"
+              label="Название"
               variant="outlined"
               density="compact"
               :rules="[v => !!v || 'Обязательное поле']"
@@ -201,7 +226,7 @@
             />
             <v-text-field
               v-model="formData.website"
-              label="Веб-сайт"
+              label="Сайт поставщика"
               type="url"
               variant="outlined"
               density="compact"
@@ -214,7 +239,7 @@
             />
             <v-text-field
               v-model="formData.contact_email"
-              label="Email"
+              label="Эл. почта"
               type="email"
               variant="outlined"
               density="compact"
@@ -232,15 +257,27 @@
               density="compact"
               rows="3"
             />
-            <v-switch
-              v-model="formData.is_active"
-              label="Активен"
-              color="primary"
-            />
+              </div>
+
+              <div class="supplier-dialog-status">
+              <div class="supplier-dialog-status__text">
+                <div class="supplier-dialog-status__title">Статус поставщика</div>
+                <div class="supplier-dialog-status__subtitle">
+                  Активные поставщики доступны для прайс-листов и связанных операций.
+                </div>
+              </div>
+              <v-switch
+                v-model="formData.is_active"
+                label="Активен"
+                color="primary"
+                inset
+              />
+              </div>
+            </AppFormSection>
           </v-form>
         </v-card-text>
-        <v-card-actions>
-          <v-spacer />
+
+        <AppActionFooter class="supplier-dialog-card__actions">
           <v-btn variant="text" @click="closeDialog">Отмена</v-btn>
           <v-btn
             color="primary"
@@ -248,9 +285,9 @@
             @click="saveSupplier"
             :loading="saving"
           >
-            Сохранить
+            {{ editMode ? 'Сохранить изменения' : 'Создать поставщика' }}
           </v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
 
@@ -270,9 +307,14 @@ import { suppliersApi, type Supplier, type SupplierCreatePayload } from '@/api/s
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppFormSection from '@/components/layout/AppFormSection.vue'
+import AppRowActions from '@/components/layout/AppRowActions.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 import TableToolbar from '@/components/layout/TableToolbar.vue'
 
 // State
@@ -317,6 +359,12 @@ const headers = [
 const statusOptions = [
   { label: 'Активные', value: true },
   { label: 'Неактивные', value: false }
+]
+
+const typeOptions = [
+  { key: 'all', label: 'Все', value: null },
+  { key: 'operations', label: 'Операции', value: 'operations' },
+  { key: 'materials', label: 'Материалы', value: 'materials' },
 ]
 
 // Computed
@@ -481,18 +529,120 @@ watch(typeFilter, () => {
   margin-bottom: var(--ds-space-4);
 }
 
-.suppliers-card :deep(.v-btn-toggle) {
+.suppliers-type-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  min-width: min(100%, 336px);
+  padding: 6px;
   border-radius: var(--ds-radius-12);
-  background: rgba(var(--v-theme-surface-container-high), 0.7);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.88);
+}
+
+.suppliers-type-tabs__button {
+  min-height: 38px;
+  border-radius: var(--ds-radius-10) !important;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.suppliers-type-tabs__button:not(.bg-primary) {
+  background: rgba(var(--v-theme-surface-container-high), 0.84);
+  color: var(--ds-text-secondary);
 }
 
 .suppliers-card :deep(.soft-data-table .v-table__wrapper) {
   border-radius: var(--ds-radius-12);
-  border: 1px solid var(--ds-border-color);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.78);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.76);
+  background: rgba(var(--v-theme-surface), 0.96);
+}
+
+.suppliers-card :deep(.soft-data-table thead th) {
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.68) !important;
+  background: rgba(var(--v-theme-surface-container-high), 0.92) !important;
+}
+
+.suppliers-card :deep(.soft-data-table tbody td) {
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.44) !important;
 }
 
 .supplier-dialog-card {
-  background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 94%, white 6%);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.76);
+  border-radius: var(--md-sys-shape-corner-extra-large) !important;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.03), transparent 140px),
+    rgba(var(--v-theme-surface-container-low), 0.98);
+}
+
+.supplier-dialog-card__header {
+  align-items: start;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.6);
+}
+
+.supplier-dialog-card__title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ds-text-primary);
+}
+
+.supplier-dialog-card__subtitle {
+  margin-top: 4px;
+  color: var(--ds-text-secondary);
+}
+
+.supplier-dialog-card__content {
+  padding: 20px !important;
+}
+
+.supplier-dialog-grid {
+  display: grid;
+  gap: var(--ds-space-10);
+}
+
+.supplier-dialog-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-12);
+  margin-top: var(--ds-space-12);
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.68);
+  border-radius: var(--ds-radius-12);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.84);
+}
+
+.supplier-dialog-status__text {
+  min-width: 0;
+}
+
+.supplier-dialog-status__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ds-text-primary);
+}
+
+.supplier-dialog-status__subtitle {
+  margin-top: 2px;
+  color: var(--ds-text-secondary);
+}
+
+.supplier-dialog-card__actions {
+  padding: 12px 20px 18px !important;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+}
+
+@media (max-width: 760px) {
+  .suppliers-type-tabs {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .supplier-dialog-status {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

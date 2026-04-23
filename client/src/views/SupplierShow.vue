@@ -11,9 +11,10 @@
       </template>
 
       <template #title-extra>
-        <v-chip size="small" :color="supplier.is_active ? 'success' : 'grey'" variant="tonal">
-          {{ supplier.is_active ? 'Активен' : 'Неактивен' }}
-        </v-chip>
+        <StatusChip
+          :status="supplier.is_active ? 'active' : 'inactive'"
+          :label="supplier.is_active ? 'Активен' : 'Неактивен'"
+        />
       </template>
 
       <template #actions>
@@ -38,45 +39,43 @@
       class="supplier-sources-card"
       subtitle="Источники цен, версии и действия по поставщику в общем MD3-паттерне разделов и состояний."
     >
-      <div class="d-flex flex-wrap align-center ga-3 mb-3">
-        <div>
-          <div class="text-h6">Источники цен поставщика</div>
-          <div class="text-caption text-medium-emphasis">Все прайсы в одном списке: табличные и документные</div>
-        </div>
-      </div>
+      <AppDataTableShell>
+        <template #toolbar>
+          <TableToolbar>
+            <template #search>
+              <v-text-field
+                v-model="search"
+                label="Поиск по названию, файлу, ссылке"
+                prepend-inner-icon="mdi-magnify"
+                density="compact"
+                variant="outlined"
+                clearable
+                hide-details
+              />
+            </template>
 
-      <v-row class="mb-3" dense>
-        <v-col cols="12" md="4">
-          <v-btn-toggle v-model="domainFilter" color="primary" density="comfortable" divided class="w-100">
-            <v-btn v-for="opt in domainOptions" :key="opt.value" :value="opt.value" size="small" class="flex-grow-1 text-none">
-              {{ opt.label }}
-            </v-btn>
-          </v-btn-toggle>
-        </v-col>
-        <v-col cols="12" md="4">
-          <v-btn-toggle v-model="formatFilter" color="primary" density="comfortable" divided class="w-100">
-            <v-btn v-for="opt in formatOptions" :key="opt.value" :value="opt.value" size="small" class="flex-grow-1 text-none">
-              {{ opt.label }}
-            </v-btn>
-          </v-btn-toggle>
-        </v-col>
-        <v-col cols="12" md="3">
-          <v-text-field
-            v-model="search"
-            label="Поиск по названию, файлу, ссылке"
-            prepend-inner-icon="mdi-magnify"
-            density="compact"
-            variant="outlined"
-            clearable
-            hide-details
-          />
-        </v-col>
-        <v-col cols="12" md="1" class="d-flex align-center justify-end">
-          <v-btn variant="text" size="small" class="text-none" @click="resetFilters">Сбросить</v-btn>
-        </v-col>
-      </v-row>
+            <template #filters>
+              <div class="supplier-sources-filters">
+                <v-btn-toggle v-model="domainFilter" color="primary" density="comfortable" divided class="w-100">
+                  <v-btn v-for="opt in domainOptions" :key="opt.value" :value="opt.value" size="small" class="flex-grow-1 text-none">
+                    {{ opt.label }}
+                  </v-btn>
+                </v-btn-toggle>
+                <v-btn-toggle v-model="formatFilter" color="primary" density="comfortable" divided class="w-100">
+                  <v-btn v-for="opt in formatOptions" :key="opt.value" :value="opt.value" size="small" class="flex-grow-1 text-none">
+                    {{ opt.label }}
+                  </v-btn>
+                </v-btn-toggle>
+              </div>
+            </template>
 
-      <v-data-table
+            <template #actions>
+              <v-btn variant="text" size="small" class="text-none" @click="resetFilters">Сбросить</v-btn>
+            </template>
+          </TableToolbar>
+        </template>
+
+        <v-data-table
         :headers="sourceHeaders"
         :items="filteredSources"
         :loading="loadingAll"
@@ -94,15 +93,15 @@
         </template>
 
         <template #item.domain_label="{ item }">
-          <v-chip size="small" variant="tonal" :color="item.domain === 'operations' ? 'blue' : item.domain === 'materials' ? 'green' : 'teal'">
+          <StatusChip size="small" variant="tonal" :color="item.domain === 'operations' ? 'blue' : item.domain === 'materials' ? 'green' : 'teal'">
             {{ item.domain_label }}
-          </v-chip>
+          </StatusChip>
         </template>
 
         <template #item.format_label="{ item }">
-          <v-chip size="small" variant="tonal" :color="item.kind === 'table' ? 'indigo' : 'deep-purple'">
+          <StatusChip size="small" variant="tonal" :color="item.kind === 'table' ? 'indigo' : 'deep-purple'">
             {{ item.format_label }}
-          </v-chip>
+          </StatusChip>
         </template>
 
         <template #item.name="{ item }">
@@ -128,9 +127,7 @@
         </template>
 
         <template #item.status_label="{ item }">
-          <v-chip size="small" :color="statusColor(item.status)" variant="tonal">
-            {{ item.status_label }}
-          </v-chip>
+          <StatusChip :status="item.status" :color="statusColor(item.status)" :label="item.status_label" />
         </template>
 
         <template #item.date_label="{ item }">
@@ -138,7 +135,7 @@
         </template>
 
         <template #item.actions="{ item }">
-          <div class="d-flex align-center ga-1 flex-wrap justify-end">
+          <AppRowActions>
             <v-btn
               v-if="item.kind === 'table'"
               variant="tonal"
@@ -203,25 +200,36 @@
             >
               <v-icon color="error">mdi-delete</v-icon>
             </v-btn>
-          </div>
+          </AppRowActions>
         </template>
 
         <template #no-data>
-          <div class="text-center pa-8">
-            <div class="text-subtitle-1 mb-2">Пока нет источников цен</div>
-            <div class="text-medium-emphasis mb-4">Добавьте Excel-прайс или документ поставщика</div>
+          <AppStateBlock
+            icon="mdi-file-table-outline"
+            title="Пока нет источников цен"
+            description="Добавьте Excel-прайс или документ поставщика."
+          >
+            <template #actions>
             <v-btn color="primary" prepend-icon="mdi-plus" class="text-none" @click="openAddSourceDialog">
               Добавить источник цен
             </v-btn>
+            </template>
+          </AppStateBlock>
+        </template>
+        </v-data-table>
+      </AppDataTableShell>
+
+      <AppActionFooter class="supplier-sources-footer">
+        <template #status>
+          <div class="supplier-sources-footer__status">
+            <StatusChip size="small" variant="tonal" label="Выбрано">
+              Выбрано: {{ selectedRows.length }}
+            </StatusChip>
+            <span v-if="bulkLoading">
+              {{ bulkProgress.done }} из {{ bulkProgress.total }} обработано
+            </span>
           </div>
         </template>
-      </v-data-table>
-
-      <div class="d-flex flex-wrap align-center ga-2 mt-3">
-        <v-chip size="small" variant="tonal">Выбрано: {{ selectedRows.length }}</v-chip>
-        <span v-if="bulkLoading" class="text-caption text-medium-emphasis">
-          {{ bulkProgress.done }} из {{ bulkProgress.total }} обработано
-        </span>
         <v-btn
           size="small"
           color="success"
@@ -244,7 +252,7 @@
         >
           В архив ({{ selectedCanArchiveCount }})
         </v-btn>
-      </div>
+      </AppActionFooter>
     </SectionCard>
 
     <v-dialog v-model="showAddSourceDialog" max-width="700" persistent>
@@ -410,9 +418,15 @@
 import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppRowActions from '@/components/layout/AppRowActions.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
 import { suppliersApi, type Supplier } from '@/api/suppliers'
 import { priceListsApi, type PriceList, type PriceListCreatePayload, type PriceDocument } from '@/api/priceLists'
 import { format } from 'date-fns'
@@ -998,6 +1012,26 @@ onMounted(async () => {
   background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
 }
 
+.supplier-sources-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: var(--ds-space-8);
+  min-width: min(100%, 520px);
+}
+
+.supplier-sources-footer {
+  margin-top: var(--ds-space-12);
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-12);
+}
+
+.supplier-sources-footer__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-8);
+}
+
 .info-strip {
   display: flex;
   flex-wrap: wrap;
@@ -1029,5 +1063,13 @@ onMounted(async () => {
   background-color: rgba(var(--v-theme-secondary-container), 0.72) !important;
   transition: background-color 0.4s ease;
   border-radius: var(--ds-radius-10);
+}
+
+@media (max-width: 760px) {
+  .supplier-sources-filters {
+    grid-template-columns: 1fr;
+    min-width: 0;
+    width: 100%;
+  }
 }
 </style>

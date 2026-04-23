@@ -142,6 +142,9 @@
     /* No attachment / doc asset */
     .no-attach { font-size: 7.5pt; color: #888; font-style: italic; }
     .asset-doc { font-size: 7.8pt; padding: 1mm 2mm; border: 0.75pt solid #e0e0e0; background: #f8f8f8; }
+    .snapshot-box { border: 0.75pt solid #d9d9d9; background: #fafafa; padding: 2mm; font-size: 7.7pt; line-height: 1.2; }
+    .snapshot-box div { margin: 0 0 0.8mm 0; }
+    .snapshot-box div:last-child { margin-bottom: 0; }
 
     /* ── Internal section ───────────────────────────────────────────── */
     .section-note {
@@ -406,6 +409,52 @@
               {{-- Left: meta fields --}}
               <td class="col-meta">
                 <table class="meta-tbl">
+                @if(!empty($entry['is_snapshot_summary']) && !empty($entry['snapshot_summary']))
+                  @php
+                    $presentation = $entry['facade_snapshot_presentation'] ?? [];
+                    $identity = $presentation['facade_identity'] ?? [];
+                    $pricing = $presentation['pricing_summary'] ?? [];
+                    $sourceLevel = $presentation['sources'] ?? [];
+                  @endphp
+                    <tr>
+                      <td class="ml">Спецификация</td>
+                      <td class="mv">{{ $identity['display_name'] ?? $entry['entry_title'] }}</td>
+                    </tr>
+                    @if(!empty($identity['article']))
+                      <tr>
+                        <td class="ml">Артикул</td>
+                        <td class="mv">{{ $identity['article'] }}</td>
+                      </tr>
+                    @endif
+                    @if(!empty($identity['characteristics_text']))
+                      <tr>
+                        <td class="ml">Характеристики</td>
+                        <td class="mv">{{ $identity['characteristics_text'] }}</td>
+                      </tr>
+                    @endif
+                    @if(!empty($pricing['computed_price_per_m2_display']))
+                      <tr>
+                        <td class="ml">Цена в расчёте</td>
+                        <td class="mv"><span class="price-val">{{ $entry['accepted_display'] }}</span></td>
+                      </tr>
+                    @endif
+                    <tr>
+                      <td class="ml">Основание</td>
+                      <td class="mv">{{ $presentation['compact_summary_text'] ?? '—' }}</td>
+                    </tr>
+                    @if(!empty($pricing['captured_at_display']) || !empty($pricing['computed_at_display']))
+                      <tr>
+                        <td class="ml">Дата фиксации</td>
+                        <td class="mv">{{ $pricing['captured_at_display'] ?? $pricing['computed_at_display'] }}</td>
+                      </tr>
+                    @endif
+                    @if(!empty($sourceLevel))
+                      <tr>
+                        <td class="ml">Источники</td>
+                        <td class="mv">Зафиксировано {{ count($sourceLevel) }} source-level записей.</td>
+                      </tr>
+                    @endif
+                  @endif
                   @if(!empty($entry['extracted_article']))
                     <tr>
                       <td class="ml">Артикул</td>
@@ -448,7 +497,32 @@
 
               {{-- Right: screenshot / document / note --}}
               <td class="col-img">
-                @if($entry['attachment_mode'] === 'image' && $entry['image_exists'])
+                @if(!empty($entry['is_snapshot_summary']) && !empty($entry['snapshot_summary']))
+                  @php
+                    $presentation = $entry['facade_snapshot_presentation'] ?? [];
+                    $pricing = $presentation['pricing_summary'] ?? [];
+                    $position = $presentation['position_summary'] ?? [];
+                    $sourceLevel = $presentation['sources'] ?? [];
+                  @endphp
+                  <div class="snapshot-box">
+                    <div><strong>Snapshot-derived pricing basis</strong></div>
+                    <div>Цена за м²: {{ $entry['accepted_display'] ?? '—' }}</div>
+                    <div>{{ $presentation['compact_summary_text'] ?? '—' }}</div>
+                    <div>Позиция: {{ $position['detail_name'] ?? 'Фасад' }}, {{ $position['quantity'] ?? '—' }} шт.</div>
+                    <div>Площадь: {{ $position['area_m2_display'] ?? '—' }} м²; сумма: {{ $position['total_cost_display'] ?? '—' }}</div>
+                    @if(!empty($sourceLevel))
+                      <div>Источник(и):</div>
+                      @foreach($sourceLevel as $source)
+                        <div style="margin-left:2mm;">
+                          {{ $source['supplier_name'] ?? '—' }} —
+                          {{ $source['normalized_price_per_m2_display'] ?? '—' }}
+                          @if(!empty($source['evidence_assets_count'])) (вложений: {{ $source['evidence_assets_count'] }}) @endif
+                        </div>
+                      @endforeach
+                    @endif
+                    <div>{{ $presentation['basis_note'] ?? 'Источник основан на зафиксированном snapshot позиции.' }}</div>
+                  </div>
+                @elseif($entry['attachment_mode'] === 'image' && $entry['image_exists'])
                   <div class="shot-box">
                     <img src="{{ storage_path('app/public/' . $entry['image_path']) }}" alt="Подтверждающий материал" />
                   </div>

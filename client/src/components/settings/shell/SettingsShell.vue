@@ -220,4 +220,42 @@ const appliedPadding = computed(() => mobile.value ? '14px 16px' : props.content
 .ss-shell--mobile .ss-mobile-tabs {
   min-height: 44px;
 }
+
+@media (max-width: 700px) {
+  .ss-shell {
+    flex-direction: column;
+  }
+
+  .ss-nav {
+    width: 100% !important;
+    display: flex;
+    gap: var(--ds-space-8);
+    padding: var(--ds-space-10) var(--ds-space-12);
+    border-right: 0;
+    border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .ss-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ss-nav-btn {
+    width: auto;
+    min-height: 40px;
+    flex: 0 0 auto;
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+
+  .ss-main {
+    min-width: 0;
+  }
+
+  .ss-content {
+    padding: var(--ds-space-14) var(--ds-space-16) !important;
+  }
+}
 </style>

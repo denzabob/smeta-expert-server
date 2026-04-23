@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
-    <PageHeader title="Каталог материалов" :subtitle="modeSubtitle">
+    <PageHeader class="catalog-page-header" title="Каталог материалов" :subtitle="modeSubtitle">
       <template #actions>
-        <ButtonGroup>
+        <ButtonGroup class="catalog-page-actions">
           <v-btn color="primary" prepend-icon="mdi-form-select" class="text-none" @click="openAddManual">
             Добавить вручную
           </v-btn>
@@ -17,20 +17,18 @@
     </PageHeader>
 
     <SectionCard class="catalog-card">
-      <div class="catalog-controls">
+      <AppDataTableShell>
+        <template #toolbar>
+          <div class="catalog-controls">
         <div class="catalog-mode-surface">
           <div class="catalog-mode-header">
             <div>
               <div class="catalog-mode-title">Режим каталога</div>
               <div class="catalog-mode-caption">{{ modeSubtitle }}</div>
             </div>
-            <v-chip
-              size="small"
-              variant="tonal"
-              color="primary"
-            >
+            <StatusChip size="small" variant="tonal" color="primary">
               {{ store.totalItems }} поз.
-            </v-chip>
+            </StatusChip>
           </div>
 
           <div class="catalog-mode-tabs" role="tablist" aria-label="Режим каталога">
@@ -49,7 +47,8 @@
         </div>
 
         <div class="catalog-filter-surface">
-          <div class="catalog-filter-grid">
+          <TableToolbar>
+            <template #search>
             <v-text-field
               v-model="searchInput"
               label="Поиск по названию или артикулу"
@@ -62,6 +61,8 @@
               @click:clear="searchInput = ''"
               @keyup.enter="applySearch"
             />
+            </template>
+            <template #filters>
             <v-select
               v-model="typeFilter"
               :items="typeOptions"
@@ -84,8 +85,9 @@
               clearable
               hide-details
             />
-
-            <div class="catalog-filter-actions">
+            </template>
+            <template #actions>
+              <div class="catalog-filter-actions">
               <v-btn
                 variant="tonal"
                 prepend-icon="mdi-tune-variant"
@@ -102,7 +104,8 @@
                 @click="resetFilters"
               />
             </div>
-          </div>
+            </template>
+          </TableToolbar>
 
           <v-expand-transition>
             <div v-if="showAdvancedFilters" class="catalog-advanced-filters">
@@ -132,17 +135,18 @@
           </v-expand-transition>
 
           <div v-if="activeFilterBadges.length" class="catalog-active-filters">
-            <v-chip
+            <StatusChip
               v-for="badge in activeFilterBadges"
               :key="badge"
               size="small"
               variant="tonal"
             >
               {{ badge }}
-            </v-chip>
+            </StatusChip>
           </div>
         </div>
       </div>
+        </template>
 
       <!-- Data table -->
       <v-data-table
@@ -165,9 +169,9 @@
 
         <!-- Type -->
         <template #item.type="{ item }">
-          <v-chip size="x-small" :color="typeColor(item.type)" variant="tonal">
+          <StatusChip size="x-small" :color="typeColor(item.type)" variant="tonal">
             {{ typeLabel(item.type) }}
-          </v-chip>
+          </StatusChip>
         </template>
 
         <!-- Trust -->
@@ -248,7 +252,7 @@
 
         <!-- Actions -->
         <template #item.actions="{ item }">
-          <div class="catalog-row-actions">
+          <AppRowActions class="catalog-row-actions">
             <!-- Detail -->
             <v-tooltip text="Подробнее" location="top">
               <template #activator="{ props: tp }">
@@ -306,11 +310,11 @@
                 />
               </v-list>
             </v-menu>
-          </div>
+          </AppRowActions>
         </template>
 
         <template #no-data>
-          <EmptyState
+          <AppStateBlock
             icon="mdi-package-variant-closed"
             :title="noDataText"
             description="Попробуйте сменить режим каталога, скорректировать фильтры или добавить материал вручную."
@@ -318,21 +322,21 @@
           >
             <template #actions>
               <div v-if="activeFilterBadges.length" class="catalog-empty-state__badges">
-                <v-chip
+                <StatusChip
                   v-for="badge in activeFilterBadges"
                   :key="badge"
                   size="small"
                   variant="tonal"
                 >
                   {{ badge }}
-                </v-chip>
+                </StatusChip>
               </div>
               <div class="catalog-empty-state__actions">
                 <v-btn variant="text" @click="resetFilters">Сбросить фильтры</v-btn>
                 <v-btn color="primary" @click="openAddManual">Добавить материал</v-btn>
               </div>
             </template>
-          </EmptyState>
+          </AppStateBlock>
         </template>
 
         <!-- Footer pagination -->
@@ -347,6 +351,7 @@
           </div>
         </template>
       </v-data-table>
+      </AppDataTableShell>
     </SectionCard>
 
     <!-- Dialogs -->
@@ -401,11 +406,15 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMaterialCatalogStore } from '@/stores/materialCatalog'
 import api from '@/api/axios'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppRowActions from '@/components/layout/AppRowActions.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
 import ButtonGroup from '@/components/layout/ButtonGroup.vue'
-import EmptyState from '@/components/layout/EmptyState.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
 import TrustBadge from '@/components/catalog/TrustBadge.vue'
 import AddMaterialDialog from '@/components/catalog/AddMaterialDialog.vue'
 import PriceObservationDialog from '@/components/catalog/PriceObservationDialog.vue'
@@ -956,15 +965,16 @@ watch(
   padding: var(--ds-space-12);
 }
 
-.catalog-filter-grid {
-  display: grid;
-  grid-template-columns: minmax(280px, 2fr) repeat(2, minmax(180px, 1fr)) auto;
-  gap: var(--ds-space-10);
-  align-items: center;
-}
-
 .catalog-filter-grid__search {
   min-width: 0;
+}
+
+.catalog-filter-surface :deep(.ds-table-toolbar) {
+  padding-bottom: 0;
+}
+
+.catalog-filter-surface :deep(.ds-table-toolbar__filters) {
+  min-width: min(100%, 420px);
 }
 
 .catalog-filter-actions {
@@ -1050,17 +1060,32 @@ watch(
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .catalog-filter-grid {
-    grid-template-columns: repeat(2, minmax(220px, 1fr));
-  }
-
   .catalog-filter-actions {
-    grid-column: 1 / -1;
     justify-content: flex-start;
   }
 }
 
 @media (max-width: 760px) {
+  .catalog-page-header {
+    align-items: stretch;
+  }
+
+  .catalog-page-header :deep(.saas-page-header__actions) {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .catalog-page-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .catalog-page-actions :deep(.v-btn) {
+    width: 100%;
+    min-width: 0;
+  }
+
   .catalog-mode-tabs {
     grid-template-columns: 1fr;
   }
@@ -1070,9 +1095,12 @@ watch(
     align-items: flex-start;
   }
 
-  .catalog-filter-grid,
   .catalog-advanced-filters {
     grid-template-columns: 1fr;
+  }
+
+  .catalog-filter-actions {
+    width: 100%;
   }
 
   .catalog-empty-state__actions {

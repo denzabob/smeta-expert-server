@@ -1,17 +1,29 @@
 <template>
   <div class="import-items-table">
-    <div v-if="loading" class="import-items-table__state">
-      <v-progress-circular indeterminate size="20" width="2" color="primary" />
-      <span>Загрузка строк...</span>
-    </div>
+    <AppStateBlock
+      v-if="loading"
+      title="Загрузка строк"
+      description="Получаем строки выбранного импорта."
+      loading
+      density="compact"
+    />
 
-    <div v-else-if="error" class="import-items-table__state import-items-table__state--error">
-      {{ error }}
-    </div>
+    <AppStateBlock
+      v-else-if="error"
+      title="Не удалось загрузить строки"
+      :description="error"
+      icon="mdi-alert-circle-outline"
+      tone="error"
+      density="compact"
+    />
 
-    <div v-else-if="items.length === 0" class="import-items-table__state">
-      Строки не найдены
-    </div>
+    <AppStateBlock
+      v-else-if="items.length === 0"
+      title="Строки не найдены"
+      description="В этом импорте нет строк для привязки."
+      icon="mdi-table-off"
+      density="compact"
+    />
 
     <v-table v-else density="compact" class="import-items-table__table">
       <thead>
@@ -29,9 +41,12 @@
           <td class="text-right">{{ formatValue(item.value) }}</td>
           <td>{{ item.unit }}</td>
           <td>
-            <v-chip size="x-small" :color="statusColor(item.status)" variant="tonal">
-              {{ statusLabel(item.status) }}
-            </v-chip>
+            <StatusChip
+              :status="item.status"
+              :label="statusLabel(item.status)"
+              :color="statusColor(item.status)"
+              size="x-small"
+            />
           </td>
           <td class="import-items-table__actions">
             <template v-if="item.status === 'pending'">
@@ -99,6 +114,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 
 import api from '@/api/axios'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 
 type ImportItemStatus = 'pending' | 'linked' | 'ignored'
 
@@ -306,20 +323,8 @@ async function ignoreItem(item: ImportItemRow): Promise<void> {
 <style scoped>
 .import-items-table {
   width: 100%;
-}
-
-.import-items-table__state {
-  min-height: 160px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ds-space-10);
-  color: var(--ds-text-secondary);
-  text-align: center;
-}
-
-.import-items-table__state--error {
-  color: rgb(var(--v-theme-error));
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .import-items-table__table {
@@ -327,6 +332,7 @@ async function ignoreItem(item: ImportItemRow): Promise<void> {
   border-radius: var(--ds-radius-16);
   overflow: hidden;
   background: rgba(var(--v-theme-surface-container-lowest), 0.8);
+  min-width: 720px;
 }
 
 .import-items-table__name {

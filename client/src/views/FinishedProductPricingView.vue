@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="Управление pricing"
-      subtitle="Новый canonical pricing flow для фасадной спецификации на базе finished-product-specifications"
+      title="Цены и доказательства фасада"
+      subtitle="Источники цены, способ расчёта и подтверждающие материалы для выбранного фасада"
     >
       <template #actions>
         <v-btn
@@ -16,7 +16,7 @@
       </template>
     </PageHeader>
 
-    <SectionCard>
+    <SectionCard class="finished-product-pricing-page">
       <FinishedProductPricingModule :specification-id="specificationId" />
     </SectionCard>
   </PageContainer>
@@ -39,3 +39,9 @@ function goBack() {
   router.push({ name: 'products' })
 }
 </script>
+
+<style scoped>
+.finished-product-pricing-page {
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 96%, transparent);
+}
+</style>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\RevisionPublication;
 use App\Models\RevisionPublicationView;
+use App\Services\FinishedProductFacadeSnapshotPresenter;
 use Barryvdh\DomPDF\Facade\Pdf;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
@@ -12,6 +13,10 @@ use Illuminate\Support\Str;
 
 class PublicVerificationController extends Controller
 {
+    public function __construct(
+        private FinishedProductFacadeSnapshotPresenter $finishedProductFacadeSnapshotPresenter,
+    ) {}
+
     public function show(string $publicId, Request $request)
     {
         $publication = RevisionPublication::with(['revision.project'])
@@ -70,48 +75,7 @@ class PublicVerificationController extends Controller
             })
             ->toArray();
 
-        // Collect aggregated facade positions with quote evidence
-        $facadeQuoteEvidence = $project->positions()
-            ->where('kind', 'facade')
-            ->where('price_method', '!=', 'single')
-            ->with(['facadeMaterial', 'priceQuotes.priceListVersion.priceList.supplier', 'priceQuotes.supplier', 'priceQuotes.materialPrice'])
-            ->get()
-            ->map(function ($pos) {
-                return [
-                    'id' => $pos->id,
-                    'name' => $pos->facadeMaterial?->name ?? ($pos->decor_label ?? 'Фасад'),
-                    'detail_type' => $pos->custom_name ?? 'Фасад',
-                    'width' => $pos->width,
-                    'length' => $pos->length,
-                    'quantity' => $pos->quantity,
-                    'price_method' => $pos->price_method,
-                    'price_per_m2' => (float) $pos->price_per_m2,
-                    'price_sources_count' => $pos->price_sources_count,
-                    'price_min' => $pos->price_min ? (float) $pos->price_min : null,
-                    'price_max' => $pos->price_max ? (float) $pos->price_max : null,
-                    'quotes' => $pos->priceQuotes->map(function ($q) {
-                        $v = $q->priceListVersion;
-                        $supplier = $q->supplier ?? $v?->priceList?->supplier;
-                        $matPrice = $q->materialPrice;
-                        return [
-                            'price_per_m2' => (float) $q->price_per_m2_snapshot,
-                            'price_list_name' => $v?->priceList?->name ?? '—',
-                            'version_number' => $v?->version_number,
-                            'price_list_version_id' => $v?->id,
-                            'source_type' => $v?->source_type,
-                            'source_url' => $v?->source_url,
-                            'original_filename' => $v?->original_filename,
-                            'sha256' => $v?->sha256,
-                            'effective_date' => $v?->effective_date?->format('d.m.Y'),
-                            'supplier_name' => $supplier?->name ?? '—',
-                            'supplier_article' => $matPrice?->article ?? null,
-                            'supplier_category' => $matPrice?->category ?? null,
-                            'mismatch_flags' => $q->mismatch_flags,
-                        ];
-                    })->toArray(),
-                ];
-            })
-            ->toArray();
+        $facadeQuoteEvidence = $this->buildFacadePricingEvidenceFromSnapshot($snapshot);
 
         // Build aggregated sources grouped by supplier
         $supplierSources = [];
@@ -228,6 +192,53 @@ class PublicVerificationController extends Controller
             return $snapshot;
         }
         return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $snapshot
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildFacadePricingEvidenceFromSnapshot(array $snapshot): array
+    {
+        $items = [];
+
+        foreach ((array) ($snapshot['facades'] ?? []) as $facade) {
+            foreach ((array) ($facade['position_details'] ?? []) as $detail) {
+                $method = $detail['price_method'] ?? 'single';
+                $presentation = $this->finishedProductFacadeSnapshotPresenter
+                    ->presentFromReportFacadeDetail((array) $facade, (array) $detail);
+                $quotes = array_values((array) ($detail['quotes'] ?? $presentation['quotes'] ?? []));
+                $sourceLevelSnapshot = is_array($detail['source_level_snapshot'] ?? null)
+                    ? $detail['source_level_snapshot']
+                    : null;
+
+                if ($method === 'single' && empty($quotes)) {
+                    continue;
+                }
+
+                $items[] = [
+                    'id' => $detail['position_id'] ?? $detail['id'] ?? null,
+                    'name' => $facade['name'] ?? 'Фасад',
+                    'detail_type' => $detail['detail_type'] ?? 'Фасад',
+                    'width' => $detail['width'] ?? 0,
+                    'length' => $detail['length'] ?? 0,
+                    'quantity' => $detail['quantity'] ?? 1,
+                    'price_method' => $method,
+                    'price_per_m2' => isset($detail['price_per_m2']) ? (float) $detail['price_per_m2'] : 0.0,
+                    'price_sources_count' => $detail['price_sources_count'] ?? count($quotes),
+                    'price_min' => isset($detail['price_min']) ? (float) $detail['price_min'] : null,
+                    'price_max' => isset($detail['price_max']) ? (float) $detail['price_max'] : null,
+                    'pricing_basis' => $detail['pricing_basis'] ?? 'legacy_quote',
+                    'pricing_snapshot_captured_at' => $detail['pricing_snapshot_captured_at'] ?? null,
+                    'pricing_computed_at' => $detail['pricing_computed_at'] ?? null,
+                    'source_level_snapshot' => $sourceLevelSnapshot,
+                    'facade_snapshot_presentation' => $presentation,
+                    'quotes' => $quotes,
+                ];
+            }
+        }
+
+        return $items;
     }
 
     private function logView(RevisionPublication $publication, Request $request): void

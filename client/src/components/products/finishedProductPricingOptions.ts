@@ -7,17 +7,17 @@ import type {
 
 export const finishedProductPriceSourceKindItems: Array<{ value: FinishedProductPriceSourceKind; label: string }> = [
   { value: 'manual_entry', label: 'Ручной ввод' },
-  { value: 'url_capture', label: 'URL / веб-источник' },
-  { value: 'price_document', label: 'Документ прайса' },
-  { value: 'price_list_row', label: 'Строка прайса' },
+  { value: 'url_capture', label: 'Ссылка на источник' },
+  { value: 'price_document', label: 'Документ поставщика' },
+  { value: 'price_list_row', label: 'Строка из файла' },
 ]
 
 export const finishedProductPriceSourceStatusItems: Array<{ value: FinishedProductPriceSourceStatus; label: string }> = [
   { value: 'active', label: 'Активен' },
   { value: 'inactive', label: 'Неактивен' },
   { value: 'stale', label: 'Устарел' },
-  { value: 'invalid', label: 'Невалиден' },
-  { value: 'superseded', label: 'Заменен' },
+  { value: 'invalid', label: 'Некорректен' },
+  { value: 'superseded', label: 'Заменён' },
 ]
 
 export const finishedProductAggregationMethodItems: Array<{
@@ -123,7 +123,7 @@ export function pricingEvidenceLabel(type?: string | null): string {
     case 'link':
       return 'Ссылка'
     default:
-      return type || 'Evidence'
+      return type || 'Доказательство'
   }
 }
 

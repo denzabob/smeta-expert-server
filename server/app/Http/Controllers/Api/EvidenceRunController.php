@@ -18,10 +18,12 @@ use App\Models\EvidenceLink;
 use App\Models\EvidenceRecord;
 use App\Models\GenericEvidenceAsset;
 use App\Models\Project;
+use App\Models\ProjectPosition;
 use App\Services\MaterialConfirmationService;
 use App\Services\EvidenceRunFinalizer;
 use App\Services\EvidenceRunItemCollector;
 use App\Services\EstimateEvidencePdfBuilder;
+use App\Services\FinishedProductEvidenceRecordBridge;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,6 +39,7 @@ class EvidenceRunController extends Controller
         private EvidenceRunFinalizer $finalizer,
         private EstimateEvidencePdfBuilder $pdfBuilder,
         private MaterialConfirmationService $confirmationService,
+        private FinishedProductEvidenceRecordBridge $finishedProductEvidenceRecordBridge,
     ) {}
 
     /**
@@ -190,15 +193,21 @@ class EvidenceRunController extends Controller
 
         $record = EvidenceRecord::findOrFail($request->input('evidence_record_id'));
 
-        // Strict validation: record must be a valid candidate for this item
-        if (!$this->confirmationService->isValidCandidateForItem(
-            $record,
-            $item->cost_component,
-            $item->source_url,
-        )) {
+        $userId = (int) $request->user()->id;
+        $facadeSpecificationId = $this->getFacadeSpecificationIdForItem($item);
+        $isValidCandidate = $facadeSpecificationId !== null
+            ? $this->isValidFacadeCandidate($record, $facadeSpecificationId, $userId)
+            : $this->confirmationService->isValidCandidateForItem(
+                $record,
+                $item->cost_component,
+                $item->source_url,
+                $userId,
+            );
+
+        if (!$isValidCandidate) {
             return response()->json([
                 'success' => false,
-                'message' => 'Selected evidence record does not match this item (component/URL mismatch or no proof asset).',
+                'message' => 'Выбранное доказательство не подходит для этой позиции.',
             ], 422);
         }
 
@@ -675,6 +684,7 @@ class EvidenceRunController extends Controller
                 'last_page'    => $records->lastPage(),
                 'per_page'     => $records->perPage(),
                 'total'        => $records->total(),
+                'facade_specification_id' => $facadeSpecificationId,
             ],
         ]);
     }
@@ -708,12 +718,23 @@ class EvidenceRunController extends Controller
         $perPage = (int) $request->input('per_page', 20);
         $page = (int) $request->input('page', 1);
 
+        $userId = (int) $request->user()->id;
+        $facadeSpecificationId = $this->getFacadeSpecificationIdForItem($item);
+
+        if ($facadeSpecificationId !== null) {
+            $this->finishedProductEvidenceRecordBridge->materializeForSpecification($facadeSpecificationId, $userId);
+        }
+
+        $candidateSourceUrl = $facadeSpecificationId !== null ? null : $item->source_url;
+
         $records = $this->confirmationService->getCandidatesForItem(
             $item->cost_component,
-            $item->source_url,
+            $candidateSourceUrl,
             $request->input('q'),
             $perPage,
             $page,
+            $userId,
+            $facadeSpecificationId,
         );
 
         $items = collect($records->items())->map(function (EvidenceRecord $r) {
@@ -741,8 +762,39 @@ class EvidenceRunController extends Controller
                 'last_page'    => $records->lastPage(),
                 'per_page'     => $records->perPage(),
                 'total'        => $records->total(),
+                'facade_specification_id' => $facadeSpecificationId,
             ],
         ]);
+    }
+
+    private function getFacadeSpecificationIdForItem(EstimateEvidenceItem $item): ?int
+    {
+        if ($item->cost_component !== CostComponent::FACADE || $item->subject_type !== 'project_position') {
+            return null;
+        }
+
+        $snapshotId = (int) data_get($item->diagnostics_json, 'facade_snapshot_summary.finished_product_specification_id', 0);
+        if ($snapshotId > 0) {
+            return $snapshotId;
+        }
+
+        $position = ProjectPosition::find($item->subject_id);
+        $positionId = (int) ($position?->finished_product_specification_id ?? 0);
+
+        return $positionId > 0 ? $positionId : null;
+    }
+
+    private function isValidFacadeCandidate(EvidenceRecord $record, int $specificationId, int $userId): bool
+    {
+        if (!$this->finishedProductEvidenceRecordBridge->recordBelongsToSpecification($record, $specificationId, $userId)) {
+            return false;
+        }
+
+        if ($record->verification_status === VerificationStatus::REJECTED) {
+            return false;
+        }
+
+        return $record->assets()->exists() || !empty($record->source_url);
     }
 
     /**

@@ -1,11 +1,11 @@
 <template>
   <v-dialog :model-value="modelValue" max-width="860" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <v-card>
-      <v-card-title class="d-flex align-center">
+    <v-card class="fp-source-dialog-card">
+      <v-card-title class="fp-source-dialog-card__header">
         <div>
-          <div class="text-h6">{{ isEditMode ? 'Редактирование источника цены' : 'Новый источник цены' }}</div>
-          <div class="text-body-2 text-medium-emphasis">
-            Источник привязывается к выбранной фасадной спецификации и участвует в новой агрегированной цене.
+          <div class="fp-source-dialog-card__title">{{ isEditMode ? 'Редактирование источника цены' : 'Новый источник цены' }}</div>
+          <div class="fp-source-dialog-card__subtitle">
+            Добавьте цену поставщика или другой источник, который будет участвовать в расчёте фасада.
           </div>
         </div>
         <v-spacer />
@@ -14,25 +14,46 @@
         </v-btn>
       </v-card-title>
 
-      <v-card-text>
+      <v-card-text class="fp-source-dialog-card__content">
         <v-alert v-if="error && !hasFieldErrors" type="error" variant="tonal" density="compact" class="mb-4">
           {{ error }}
         </v-alert>
 
-        <v-row dense>
+        <div class="fp-source-form">
+        <v-row dense class="fp-source-form__row">
           <v-col cols="12" md="5">
-            <v-autocomplete
-              v-model="form.supplier_id"
-              :items="supplierItems"
-              item-title="name"
-              item-value="id"
-              label="Поставщик"
-              clearable
-              :loading="loadingSuppliers"
-              :error-messages="fieldErrors.supplier_id"
-              hint="Inline создание поставщика подключим отдельным блоком."
-              persistent-hint
-            />
+            <div class="fp-source-supplier-field">
+              <v-autocomplete
+                v-model="form.supplier_id"
+                :items="supplierItems"
+                item-title="name"
+                item-value="id"
+                label="Поставщик"
+                clearable
+                :loading="loadingSuppliers"
+                :error-messages="fieldErrors.supplier_id"
+                hide-details="auto"
+              />
+              <v-btn
+                size="small"
+                variant="tonal"
+                color="primary"
+                class="text-none"
+                prepend-icon="mdi-plus"
+                @click="openCreateSupplierDialog"
+              >
+                Добавить
+              </v-btn>
+              <v-btn
+                size="small"
+                variant="text"
+                class="text-none"
+                :disabled="!selectedSupplier"
+                @click="openEditSupplierDialog"
+              >
+                Править
+              </v-btn>
+            </div>
           </v-col>
           <v-col cols="12" md="4">
             <v-select
@@ -56,50 +77,21 @@
           </v-col>
         </v-row>
 
-        <v-row dense>
-          <v-col cols="12" md="6">
-            <v-autocomplete
-              v-model="selectedPriceListId"
-              :items="priceListItems"
-              item-title="label"
-              item-value="id"
-              label="Прайс-лист"
-              clearable
-              :disabled="!form.supplier_id"
-              :loading="loadingPriceLists"
-              :error-messages="fieldErrors.price_list_version_id"
-            />
-          </v-col>
-          <v-col cols="12" md="6">
-            <v-autocomplete
-              v-model="form.price_list_version_id"
-              :items="priceListVersionItems"
-              item-title="label"
-              item-value="id"
-              label="Версия прайса"
-              clearable
-              :disabled="!selectedPriceListId"
-              :loading="loadingVersions"
-              :error-messages="fieldErrors.price_list_version_id"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row dense>
+        <v-row dense class="fp-source-form__row">
           <v-col cols="12" md="4">
             <v-text-field
               v-model.number="form.source_price"
               type="number"
               min="0.01"
               step="0.01"
-              label="Цена источника *"
+              label="Цена *"
               :error-messages="fieldErrors.source_price"
             />
           </v-col>
           <v-col cols="12" md="3">
             <v-text-field
               v-model="form.source_unit"
-              label="Ед. изм."
+              label="Единица"
               placeholder="м², шт, лист"
               :error-messages="fieldErrors.source_unit"
             />
@@ -110,7 +102,7 @@
               type="number"
               min="0.000001"
               step="0.000001"
-              label="Коэф. к м²"
+              label="Коэффициент к м²"
               :error-messages="fieldErrors.conversion_factor_to_m2"
             />
           </v-col>
@@ -120,32 +112,24 @@
               type="number"
               min="0.01"
               step="0.01"
-              label="Цена м² (опц.)"
+              label="Цена за м²"
               :error-messages="fieldErrors.price_per_m2_normalized"
             />
           </v-col>
         </v-row>
 
-        <v-row dense>
-          <v-col cols="12" md="6">
-            <v-text-field
-              v-model="form.captured_at"
-              type="datetime-local"
-              label="Дата фиксации"
-              :error-messages="fieldErrors.captured_at"
-            />
-          </v-col>
+        <v-row dense class="fp-source-form__row">
           <v-col cols="12" md="6">
             <v-text-field
               v-model="form.effective_date"
               type="date"
-              label="Дата актуальности"
+              label="Дата цены"
               :error-messages="fieldErrors.effective_date"
             />
           </v-col>
         </v-row>
 
-        <v-row dense>
+        <v-row dense class="fp-source-form__row">
           <v-col cols="12" md="4">
             <v-text-field v-model="form.article" label="Артикул" :error-messages="fieldErrors.article" />
           </v-col>
@@ -175,9 +159,10 @@
           auto-grow
           :error-messages="fieldErrors.notes"
         />
+        </div>
       </v-card-text>
 
-      <v-card-actions>
+      <v-card-actions class="fp-source-dialog-card__actions">
         <v-spacer />
         <v-btn @click="$emit('update:modelValue', false)">Отмена</v-btn>
         <v-btn color="primary" :loading="saving" @click="submit">
@@ -185,21 +170,93 @@
         </v-btn>
       </v-card-actions>
     </v-card>
+
+    <v-dialog v-model="showSupplierDialog" max-width="620" persistent>
+      <v-card class="fp-source-dialog-card">
+        <v-card-title class="fp-source-dialog-card__header">
+          <div>
+            <div class="fp-source-dialog-card__title">
+              {{ editingSupplier ? 'Редактирование поставщика' : 'Новый поставщик' }}
+            </div>
+            <div class="fp-source-dialog-card__subtitle">
+              Поставщик будет доступен для источников цен фасадов.
+            </div>
+          </div>
+        </v-card-title>
+        <v-card-text class="fp-source-dialog-card__content">
+          <v-alert v-if="supplierError && !hasSupplierFieldErrors" type="error" variant="tonal" density="compact" class="mb-3">
+            {{ supplierError }}
+          </v-alert>
+          <div class="fp-source-form">
+          <v-text-field
+            v-model="supplierForm.name"
+            label="Название"
+            :error-messages="supplierFieldErrors.name"
+          />
+          <v-row dense class="fp-source-form__row">
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="supplierForm.website"
+                label="Сайт"
+                placeholder="https://..."
+                :error-messages="supplierFieldErrors.website"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="supplierForm.contact_person"
+                label="Контактное лицо"
+                :error-messages="supplierFieldErrors.contact_person"
+              />
+            </v-col>
+          </v-row>
+          <v-row dense class="fp-source-form__row">
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="supplierForm.contact_email"
+                label="Эл. почта"
+                :error-messages="supplierFieldErrors.contact_email"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="supplierForm.contact_phone"
+                label="Телефон"
+                :error-messages="supplierFieldErrors.contact_phone"
+              />
+            </v-col>
+          </v-row>
+          <v-textarea
+            v-model="supplierForm.notes"
+            label="Комментарий"
+            rows="2"
+            auto-grow
+            :error-messages="supplierFieldErrors.notes"
+          />
+          <v-switch v-model="supplierForm.is_active" color="primary" label="Активен" hide-details />
+          </div>
+        </v-card-text>
+        <v-card-actions class="fp-source-dialog-card__actions">
+          <v-spacer />
+          <v-btn :disabled="supplierSaving" @click="showSupplierDialog = false">Отмена</v-btn>
+          <v-btn color="primary" :loading="supplierSaving" @click="saveSupplier">
+            {{ editingSupplier ? 'Сохранить' : 'Создать' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import type { PriceList, PriceListVersion } from '@/api/priceLists'
-import { priceListsApi } from '@/api/priceLists'
-import type { Supplier } from '@/api/suppliers'
+import type { Supplier, SupplierCreatePayload } from '@/api/suppliers'
 import { suppliersApi } from '@/api/suppliers'
 import type { FinishedProductPriceSource, FinishedProductPriceSourcePayload } from '@/api/finishedProductPricing'
 import { finishedProductPricingApi } from '@/api/finishedProductPricing'
 import {
   finishedProductPriceSourceKindItems,
   finishedProductPriceSourceStatusItems,
-  formatDate,
 } from './finishedProductPricingOptions'
 
 type ValidationErrors = Record<string, string[]>
@@ -216,29 +273,38 @@ const emit = defineEmits<{
 }>()
 
 const loadingSuppliers = ref(false)
-const loadingPriceLists = ref(false)
-const loadingVersions = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
 const fieldErrors = ref<ValidationErrors>({})
+const showSupplierDialog = ref(false)
+const supplierSaving = ref(false)
+const supplierError = ref<string | null>(null)
+const supplierFieldErrors = ref<ValidationErrors>({})
+const editingSupplier = ref<Supplier | null>(null)
 
 const supplierItems = ref<Supplier[]>([])
-const priceLists = ref<PriceList[]>([])
-const priceListVersions = ref<PriceListVersion[]>([])
-const selectedPriceListId = ref<number | null>(null)
 
 const isEditMode = computed(() => !!props.source?.id)
 const hasFieldErrors = computed(() => Object.keys(fieldErrors.value).length > 0)
+const hasSupplierFieldErrors = computed(() => Object.keys(supplierFieldErrors.value).length > 0)
+
+const supplierForm = reactive<SupplierCreatePayload>({
+  name: '',
+  website: '',
+  contact_person: '',
+  contact_email: '',
+  contact_phone: '',
+  notes: '',
+  is_active: true,
+})
 
 const emptyForm = (): FinishedProductPriceSourcePayload => ({
   supplier_id: null,
   source_kind: 'manual_entry',
-  price_list_version_id: null,
   source_price: null,
   source_unit: 'м²',
   conversion_factor_to_m2: null,
   price_per_m2_normalized: null,
-  captured_at: '',
   effective_date: '',
   article: '',
   category: '',
@@ -250,20 +316,7 @@ const emptyForm = (): FinishedProductPriceSourcePayload => ({
 })
 
 const form = reactive<FinishedProductPriceSourcePayload>(emptyForm())
-
-const priceListItems = computed(() =>
-  priceLists.value.map((item) => ({
-    id: item.id,
-    label: item.name,
-  })),
-)
-
-const priceListVersionItems = computed(() =>
-  priceListVersions.value.map((item) => ({
-    id: item.id,
-    label: buildVersionLabel(item),
-  })),
-)
+const selectedSupplier = computed(() => supplierItems.value.find((item) => item.id === form.supplier_id) ?? null)
 
 function resetFieldErrors() {
   fieldErrors.value = {}
@@ -271,16 +324,6 @@ function resetFieldErrors() {
 
 function extractFieldErrors(error: any): ValidationErrors {
   return error?.response?.data?.errors ?? {}
-}
-
-function buildVersionLabel(version: PriceListVersion) {
-  const parts = [
-    version.original_filename || version.manual_label || `Версия #${version.id}`,
-    version.effective_date ? `акт. ${formatDate(version.effective_date)}` : null,
-    version.status ? `(${version.status})` : null,
-  ].filter(Boolean)
-
-  return parts.join(' · ')
 }
 
 function syncForm() {
@@ -292,7 +335,6 @@ function syncForm() {
     source_unit: props.source?.source_unit ?? 'м²',
     conversion_factor_to_m2: props.source?.conversion_factor_to_m2 ?? null,
     price_per_m2_normalized: props.source?.price_per_m2_normalized ?? null,
-    captured_at: normalizeDateTimeInput(props.source?.captured_at ?? null),
     effective_date: normalizeDateInput(props.source?.effective_date ?? null),
     article: props.source?.article ?? '',
     category: props.source?.category ?? '',
@@ -302,23 +344,11 @@ function syncForm() {
     notes: props.source?.notes ?? '',
     metadata: props.source?.metadata ?? null,
   })
-
-  selectedPriceListId.value = props.source?.price_list_version?.price_list_id ?? null
 }
 
 function normalizeDateInput(value: string | null) {
   if (!value) return ''
   return value.slice(0, 10)
-}
-
-function normalizeDateTimeInput(value: string | null) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-
-  const pad = (part: number) => String(part).padStart(2, '0')
-
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 async function loadSuppliers() {
@@ -331,78 +361,80 @@ async function loadSuppliers() {
   }
 }
 
-async function loadPriceLists(supplierId: number | null) {
-  priceLists.value = []
-  priceListVersions.value = []
-  if (!supplierId) {
-    selectedPriceListId.value = null
-    form.price_list_version_id = null
-    return
-  }
-
-  loadingPriceLists.value = true
-  try {
-    const response = await priceListsApi.getAll(supplierId, { type: 'materials', per_page: 200 })
-    priceLists.value = response.data
-  } finally {
-    loadingPriceLists.value = false
-  }
-}
-
-async function loadVersions(priceListId: number | null) {
-  priceListVersions.value = []
-  if (!priceListId) {
-    form.price_list_version_id = null
-    return
-  }
-
-  loadingVersions.value = true
-  try {
-    const response = await priceListsApi.getVersions(priceListId, { per_page: 200 })
-    priceListVersions.value = response.data
-  } finally {
-    loadingVersions.value = false
-  }
-}
-
 watch(
   () => props.modelValue,
   async (opened) => {
-    if (!opened) return
+    if (!opened) {
+      showSupplierDialog.value = false
+      return
+    }
 
     error.value = null
     resetFieldErrors()
     syncForm()
     await loadSuppliers()
-
-    if (form.supplier_id) {
-      await loadPriceLists(form.supplier_id)
-    }
-
-    if (selectedPriceListId.value) {
-      await loadVersions(selectedPriceListId.value)
-    }
   },
 )
 
-watch(
-  () => form.supplier_id,
-  async (next, previous) => {
-    if (!props.modelValue || next === previous) return
-    selectedPriceListId.value = null
-    form.price_list_version_id = null
-    await loadPriceLists(next ?? null)
-  },
-)
+function resetSupplierErrors() {
+  supplierError.value = null
+  supplierFieldErrors.value = {}
+}
 
-watch(
-  () => selectedPriceListId.value,
-  async (next, previous) => {
-    if (!props.modelValue || next === previous) return
-    form.price_list_version_id = null
-    await loadVersions(next ?? null)
-  },
-)
+function resetSupplierForm(supplier?: Supplier | null) {
+  editingSupplier.value = supplier ?? null
+  Object.assign(supplierForm, {
+    name: supplier?.name ?? '',
+    website: supplier?.website ?? '',
+    contact_person: supplier?.contact_person ?? '',
+    contact_email: supplier?.contact_email ?? '',
+    contact_phone: supplier?.contact_phone ?? '',
+    notes: supplier?.notes ?? '',
+    is_active: supplier?.is_active ?? true,
+  })
+  resetSupplierErrors()
+}
+
+function openCreateSupplierDialog() {
+  resetSupplierForm(null)
+  showSupplierDialog.value = true
+}
+
+function openEditSupplierDialog() {
+  if (!selectedSupplier.value) return
+  resetSupplierForm(selectedSupplier.value)
+  showSupplierDialog.value = true
+}
+
+async function saveSupplier() {
+  supplierSaving.value = true
+  resetSupplierErrors()
+
+  const payload: SupplierCreatePayload = {
+    name: supplierForm.name.trim(),
+    website: supplierForm.website?.trim() || null,
+    contact_person: supplierForm.contact_person?.trim() || null,
+    contact_email: supplierForm.contact_email?.trim() || null,
+    contact_phone: supplierForm.contact_phone?.trim() || null,
+    notes: supplierForm.notes?.trim() || null,
+    is_active: supplierForm.is_active,
+  }
+
+  try {
+    const saved = editingSupplier.value
+      ? await suppliersApi.update(editingSupplier.value.id, payload)
+      : await suppliersApi.create(payload)
+
+    await loadSuppliers()
+    form.supplier_id = saved.id
+    showSupplierDialog.value = false
+  } catch (e: any) {
+    supplierFieldErrors.value = extractFieldErrors(e)
+    supplierError.value = e?.response?.data?.message ?? e?.message ?? 'Не удалось сохранить поставщика'
+  } finally {
+    supplierSaving.value = false
+  }
+}
 
 async function submit() {
   saving.value = true
@@ -412,7 +444,6 @@ async function submit() {
   const payload: FinishedProductPriceSourcePayload = {
     supplier_id: form.supplier_id ?? null,
     source_kind: form.source_kind ?? 'manual_entry',
-    price_list_version_id: form.price_list_version_id ?? null,
     source_price: form.source_price !== null && form.source_price !== undefined ? Number(form.source_price) : null,
     source_unit: form.source_unit?.trim() || null,
     conversion_factor_to_m2:
@@ -423,7 +454,6 @@ async function submit() {
       form.price_per_m2_normalized !== null && form.price_per_m2_normalized !== undefined && form.price_per_m2_normalized !== 0
         ? Number(form.price_per_m2_normalized)
         : null,
-    captured_at: form.captured_at || null,
     effective_date: form.effective_date || null,
     article: form.article?.trim() || null,
     category: form.category?.trim() || null,
@@ -449,3 +479,64 @@ async function submit() {
   }
 }
 </script>
+
+<style scoped>
+.fp-source-dialog-card {
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.76);
+  border-radius: var(--md-sys-shape-corner-extra-large) !important;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.028), transparent 140px),
+    rgba(var(--v-theme-surface-container-low), 0.98);
+}
+
+.fp-source-dialog-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-12);
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.6);
+}
+
+.fp-source-dialog-card__title {
+  font-size: 1.125rem;
+  line-height: 1.3;
+  font-weight: 700;
+  color: var(--ds-text-primary);
+}
+
+.fp-source-dialog-card__subtitle {
+  margin-top: 4px;
+  color: var(--ds-text-secondary);
+}
+
+.fp-source-dialog-card__content {
+  padding: 20px !important;
+}
+
+.fp-source-form {
+  display: grid;
+  gap: var(--ds-space-12);
+}
+
+.fp-source-form__row {
+  margin: 0 !important;
+}
+
+.fp-source-supplier-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+  gap: var(--ds-space-8);
+}
+
+.fp-source-dialog-card__actions {
+  padding: 12px 20px 18px !important;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+}
+
+@media (max-width: 760px) {
+  .fp-source-supplier-field {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

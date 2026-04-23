@@ -15,6 +15,8 @@ use App\Models\ProjectPosition;
 use App\Models\RevisionRun;
 use App\Models\RevisionRunItem;
 use App\Service\ReportService;
+use App\Services\FinishedProductFacadeRevisionRowAssembler;
+use App\Services\FinishedProductPositionSnapshotReader;
 use App\Services\SnapshotService;
 use App\Services\UrlNormalizer;
 use Illuminate\Http\JsonResponse;
@@ -27,7 +29,9 @@ class RevisionRunController extends Controller
     public function __construct(
         private SnapshotService $snapshotService,
         private UrlNormalizer $urlNormalizer,
-        private ReportService $reportService
+        private ReportService $reportService,
+        private FinishedProductPositionSnapshotReader $finishedProductSnapshotReader,
+        private FinishedProductFacadeRevisionRowAssembler $finishedProductFacadeRevisionRowAssembler,
     ) {}
 
     public function start(Project $project): JsonResponse
@@ -164,6 +168,12 @@ class RevisionRunController extends Controller
             ?: $item->position?->edgeMaterial
             ?: $item->position?->material;
         if (!$material) {
+            if ($item->position && $this->finishedProductSnapshotReader->supports($item->position)) {
+                return response()->json([
+                    'error' => 'Для фасадов нового spec-rooted пути ручное подтверждение через legacy material flow не поддерживается.',
+                ], 422);
+            }
+
             return response()->json(['error' => 'Материал позиции не найден'], 422);
         }
 
@@ -331,6 +341,15 @@ class RevisionRunController extends Controller
                     'cost_driver_type'    => $item->cost_driver_type,
                     'source_domain'       => null,
                 ], $laborWorkExtra, $expenseDocExtra);
+            }
+
+            if (
+                $item->cost_driver_type === CostDriverType::FACADE
+                && $item->position
+                && $this->finishedProductSnapshotReader->supports($item->position)
+            ) {
+                return $this->finishedProductFacadeRevisionRowAssembler
+                    ->buildRevisionReportRow($item->position);
             }
 
             // Material-based cost drivers (plate, edge, fitting, facade): existing path
@@ -563,30 +582,39 @@ class RevisionRunController extends Controller
         if (EvidenceFeatures::facadeEvidenceEnabled()) {
             $facadePositions = $project->positions()
                 ->where('kind', ProjectPosition::KIND_FACADE)
-                ->with('facadeMaterial')
+                ->with(['facadeMaterial', 'finishedProductSpecification'])
                 ->get();
 
             foreach ($facadePositions as $pos) {
+                $snapshotFacade = $this->finishedProductSnapshotReader->supports($pos)
+                    ? $this->finishedProductSnapshotReader->read($pos)
+                    : null;
                 $material = $pos->facadeMaterial;
-                if (!$material) {
+
+                if ($snapshotFacade === null && !$material) {
                     continue;
                 }
 
-                // One item per unique facade material (matches report aggregation)
-                if (isset($items['facade:' . $material->id])) {
+                $itemKey = $snapshotFacade !== null
+                    ? ('facade:finished_product_specification:' . $snapshotFacade['reference_id'])
+                    : ('facade:' . $material->id);
+
+                if (isset($items[$itemKey])) {
                     continue;
                 }
 
-                $items['facade:' . $material->id] = [
+                $items[$itemKey] = [
                     'project_position_id' => $pos->id,
                     'project_fitting_id' => null,
-                    'material_id' => $material->id,
-                    'source_url' => $material->source_url,
+                    'material_id' => $material?->id,
+                    'source_url' => $material?->source_url,
                     'cost_driver_type' => CostDriverType::FACADE,
                     'evidence_subject_type' => 'project_position',
                     'evidence_subject_id' => $pos->id,
                     'initial_status' => RevisionRunItem::STATUS_NEEDS_MANUAL,
-                    'initial_message' => 'Фасады: только ручное подтверждение',
+                    'initial_message' => $snapshotFacade !== null
+                        ? 'Фасады: зафиксирована snapshot-цена, требуется ручное подтверждение источников'
+                        : 'Фасады: только ручное подтверждение',
                 ];
             }
         }

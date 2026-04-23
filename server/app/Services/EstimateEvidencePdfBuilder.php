@@ -19,6 +19,10 @@ use Carbon\Carbon;
  */
 class EstimateEvidencePdfBuilder
 {
+    public function __construct(
+        private FinishedProductFacadeSnapshotPresenter $finishedProductFacadeSnapshotPresenter,
+    ) {}
+
     /**
      * Section definitions in smeta order.
      * Each section lists the cost_component values it covers.
@@ -199,6 +203,18 @@ class EstimateEvidencePdfBuilder
         $recordId      = $item['evidence_record_id'] ?? null;
         $record        = $recordId ? ($recordsById[$recordId] ?? null) : null;
         $costComponent = $item['cost_component'] ?? '';
+        $facadeSnapshotSummary = is_array($item['diagnostics_json']['facade_snapshot_summary'] ?? null)
+            ? $item['diagnostics_json']['facade_snapshot_summary']
+            : null;
+        $facadeSourceLevelSnapshot = is_array($item['diagnostics_json']['facade_source_level_snapshot'] ?? null)
+            ? $item['diagnostics_json']['facade_source_level_snapshot']
+            : null;
+        $facadeSnapshotPresentation = $facadeSnapshotSummary !== null
+            ? $this->finishedProductFacadeSnapshotPresenter->presentFromJustificationSummary([
+                ...$facadeSnapshotSummary,
+                'source_level_snapshot' => $facadeSourceLevelSnapshot,
+            ])
+            : null;
 
         // Determine whether this is an internally-calculated position.
         $laborEntryKind = $item['diagnostics_json']['labor_entry_kind'] ?? null;
@@ -228,7 +244,10 @@ class EstimateEvidencePdfBuilder
         }
 
         // ── Attachment mode + caption ────────────────────────────────────────
-        if ($isInternal) {
+        if ($facadeSnapshotSummary !== null) {
+            $attachmentMode = 'summary';
+            $attachmentCaption = 'Для этой фасадной позиции зафиксирован summary-level pricing snapshot без source-level графических вложений.';
+        } elseif ($isInternal) {
             $attachmentMode    = 'internal';
             $attachmentCaption = 'Графический материал не прилагается,'
                 . ' поскольку значение принято по внутреннему расчёту';
@@ -244,7 +263,9 @@ class EstimateEvidencePdfBuilder
         }
 
         // ── Confirmation note ────────────────────────────────────────────────
-        if ($isInternal) {
+        if ($facadeSnapshotSummary !== null) {
+            $confirmationNote = 'Стоимость фасада подтверждена зафиксированным pricing snapshot позиции и не реконструируется из legacy evidence fields.';
+        } elseif ($isInternal) {
             $confirmationNote = 'Стоимость принята по внутреннему расчёту';
         } elseif ($attachmentMode === 'image' || $attachmentMode === 'document') {
             $confirmationNote = 'Стоимость подтверждена материалами приложения';
@@ -331,6 +352,10 @@ class EstimateEvidencePdfBuilder
             'labor_note'         => $item['diagnostics_json']['note'] ?? null,
             'source_title'       => $item['diagnostics_json']['source_title'] ?? null,
             'source_date_display' => $this->formatDate($item['diagnostics_json']['source_date'] ?? null),
+            'is_snapshot_summary' => $facadeSnapshotSummary !== null,
+            'snapshot_summary' => $facadeSnapshotSummary,
+            'source_level_snapshot' => $facadeSourceLevelSnapshot,
+            'facade_snapshot_presentation' => $facadeSnapshotPresentation,
         ];
     }
 

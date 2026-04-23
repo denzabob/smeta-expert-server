@@ -10,14 +10,20 @@
       @clear-vote="$emit('clear-vote', $event)"
     />
 
-    <v-alert v-if="ideas.length === 0" type="info" variant="tonal" class="idea-list__empty">
-      Идеи не найдены.
-    </v-alert>
+    <AppStateBlock
+      v-if="ideas.length === 0"
+      class="idea-list__empty"
+      icon="mdi-lightbulb-outline"
+      title="Идеи не найдены"
+      description="Измените фильтры или создайте новую идею."
+      density="compact"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import type { IdeaItem } from '@/api/ideas'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
 import IdeaCard from './IdeaCard.vue'
 
 defineProps<{ ideas: IdeaItem[]; loadingIdeaId?: number | null }>()

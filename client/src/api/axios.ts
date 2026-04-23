@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Router } from 'vue-router'
+import { getDevVisualApiMock, isDevVisualAuthEnabled } from '@/dev/visualAcceptance'
 
 // All repository API calls already use absolute '/api/...' paths.
 // Keep axios rooted at '/' so '/api' is not duplicated when VITE_API_URL='/api'.
@@ -110,6 +111,18 @@ export function setupAxiosInterceptors(options: AxiosAuthInterceptorOptions) {
       const status = error.response?.status
       const config = error.config || {}
       const url = typeof config.url === 'string' ? config.url : ''
+      const devMockData = getDevVisualApiMock(config.method, url)
+
+      if (devMockData !== undefined) {
+        console.warn('[AXIOS] DEV visual API mock response:', config.method?.toUpperCase(), url)
+        return Promise.resolve({
+          data: devMockData,
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config,
+        })
+      }
 
       // Обработка 419 (CSRF expired): один refresh и один retry
       if (status === 419 && !config._csrfRetry) {
@@ -131,7 +144,7 @@ export function setupAxiosInterceptors(options: AxiosAuthInterceptorOptions) {
       }
 
       // 401: чистим auth state и уводим на login (кроме auth-эндпоинтов)
-      if (status === 401) {
+      if (status === 401 && !isDevVisualAuthEnabled) {
         const isAuthEndpoint =
           url.includes('/api/login') ||
           url.includes('/api/logout') ||

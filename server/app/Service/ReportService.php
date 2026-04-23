@@ -49,7 +49,7 @@ class ReportService
         $projectMeta = $this->buildProjectMeta($project);
 
         // 2. Загрузить все позиции с материалом и типом детали
-        $positions = $project->positions()->with(['detailType', 'material', 'facadeMaterial'])->get();
+        $positions = $project->positions()->with(['detailType', 'material', 'facadeMaterial', 'finishedProductSpecification'])->get();
 
         // 3. Подготовить позиции
         $positionDtos = [];
@@ -170,7 +170,8 @@ class ReportService
         // Resolve facade material name
         $facadeMaterialName = null;
         if ($position->kind === 'facade') {
-            $facadeMaterialName = $position->facadeMaterial?->name
+            $facadeMaterialName = $position->finishedProductSpecification?->name
+                ?? $position->facadeMaterial?->name
                 ?? $position->decor_label
                 ?? null;
         }
