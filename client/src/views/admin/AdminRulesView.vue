@@ -5,39 +5,38 @@
       subtitle="Управление правилами парсинга размеров и типов материалов"
     >
       <template #actions>
-        <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreateDialog">
-          Новое правило
-        </v-btn>
+        <ButtonGroup>
+          <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreateDialog">
+            Новое правило
+          </v-btn>
+        </ButtonGroup>
       </template>
     </PageHeader>
 
     <!-- Rule type toggle -->
-    <v-btn-toggle
+    <AppTabs
       v-model="ruleType"
-      mandatory
-      color="primary"
-      class="mb-4"
+      class="admin-rules-tabs"
     >
-      <v-btn value="dimensions" prepend-icon="mdi-ruler">
+      <v-tab value="dimensions" prepend-icon="mdi-ruler">
         Размеры
-        <v-chip v-if="dimensionStats.total" size="x-small" class="ml-2" color="primary" variant="tonal">
+        <StatusChip v-if="dimensionStats.total" size="x-small" class="ml-2" color="primary" variant="tonal">
           {{ dimensionStats.total }}
-        </v-chip>
-      </v-btn>
-      <v-btn value="types" prepend-icon="mdi-shape">
+        </StatusChip>
+      </v-tab>
+      <v-tab value="types" prepend-icon="mdi-shape">
         Тип материала
-        <v-chip v-if="typeStats.total" size="x-small" class="ml-2" color="primary" variant="tonal">
+        <StatusChip v-if="typeStats.total" size="x-small" class="ml-2" color="primary" variant="tonal">
           {{ typeStats.total }}
-        </v-chip>
-      </v-btn>
-    </v-btn-toggle>
+        </StatusChip>
+      </v-tab>
+    </AppTabs>
 
     <!-- Dimension Rules Section -->
     <template v-if="ruleType === 'dimensions'">
-      <v-card variant="outlined" class="mb-4 admin-rules-filter-card">
-        <v-card-text>
-          <v-row align="center" dense>
-            <v-col cols="12" sm="4">
+      <SectionCard variant="outlined" class="mb-4 admin-rules-filter-card">
+        <AppDataTableShell>
+          <template #search>
               <v-text-field
                 v-model="dimSearch"
                 prepend-inner-icon="mdi-magnify"
@@ -48,8 +47,8 @@
                 clearable
                 @update:model-value="debouncedLoadDimensions"
               />
-            </v-col>
-            <v-col cols="6" sm="3">
+          </template>
+          <template #filters>
               <v-select
                 v-model="dimMaterialType"
                 :items="materialTypeOptions"
@@ -60,8 +59,7 @@
                 clearable
                 @update:model-value="loadDimensionRules"
               />
-            </v-col>
-            <v-col cols="6" sm="3">
+
               <v-select
                 v-model="dimStatus"
                 :items="statusOptions"
@@ -72,17 +70,17 @@
                 clearable
                 @update:model-value="loadDimensionRules"
               />
-            </v-col>
-            <v-col cols="12" sm="2" class="text-right">
+          </template>
+          <template #actions>
               <v-btn variant="tonal" prepend-icon="mdi-refresh" @click="loadDimensionRules">
                 Обновить
               </v-btn>
-            </v-col>
-          </v-row>
-        </v-card-text>
-      </v-card>
+          </template>
+        </AppDataTableShell>
+      </SectionCard>
 
-      <v-card variant="outlined" :loading="dimLoading" class="admin-rules-table-card">
+      <SectionCard variant="outlined" :loading="dimLoading" class="admin-rules-table-card">
+        <AppDataTableShell>
         <v-data-table-server
           :headers="dimensionHeaders"
           :items="dimensionRules"
@@ -106,9 +104,9 @@
 
           <template #item.scope="{ item }">
             <div class="rules-cell">
-              <v-chip v-if="item.material_type" size="small" variant="tonal">
+              <StatusChip v-if="item.material_type" size="small" variant="tonal">
                 {{ materialTypeLabel(item.material_type) }}
-              </v-chip>
+              </StatusChip>
               <span v-else class="rules-cell__meta">Любой</span>
               <div class="rules-cell__meta">{{ item.source || 'Любой источник' }}</div>
             </div>
@@ -123,9 +121,9 @@
           </template>
 
           <template #item.is_active="{ item }">
-            <v-chip :color="item.is_active ? 'success' : 'grey'" size="small" variant="tonal">
+            <StatusChip :color="item.is_active ? 'success' : 'grey'" size="small" variant="tonal">
               {{ item.is_active ? 'Активно' : 'Выключено' }}
-            </v-chip>
+            </StatusChip>
           </template>
 
           <template #item.updated_at="{ item }">
@@ -133,29 +131,30 @@
           </template>
 
           <template #item.actions="{ item }">
-            <div class="admin-rules-actions">
+            <AppRowActions class="admin-rules-actions">
               <v-btn size="x-small" variant="text" icon="mdi-pencil" @click="openEditDimension(item)" />
               <v-btn size="x-small" variant="text" icon="mdi-delete" color="error" @click="deleteDimensionRule(item)" />
-            </div>
+            </AppRowActions>
           </template>
 
           <template #no-data>
-            <div class="text-center py-8 text-medium-emphasis">
-              <v-icon icon="mdi-ruler" size="48" color="grey" class="mb-3" />
-              <div class="text-body-1 mb-1">Нет правил размеров</div>
-              <div class="text-body-2">Добавьте первое правило для парсинга размеров</div>
-            </div>
+            <AppStateBlock
+              icon="mdi-ruler"
+              title="Нет правил размеров"
+              description="Добавьте первое правило для парсинга размеров."
+              density="compact"
+            />
           </template>
         </v-data-table-server>
-      </v-card>
+        </AppDataTableShell>
+      </SectionCard>
     </template>
 
     <!-- Type Patterns Section -->
     <template v-if="ruleType === 'types'">
-      <v-card variant="outlined" class="mb-4 admin-rules-filter-card">
-        <v-card-text>
-          <v-row align="center" dense>
-            <v-col cols="12" sm="4">
+      <SectionCard variant="outlined" class="mb-4 admin-rules-filter-card">
+        <AppDataTableShell>
+          <template #search>
               <v-text-field
                 v-model="typeSearch"
                 prepend-inner-icon="mdi-magnify"
@@ -166,8 +165,8 @@
                 clearable
                 @update:model-value="debouncedLoadTypes"
               />
-            </v-col>
-            <v-col cols="6" sm="3">
+          </template>
+          <template #filters>
               <v-select
                 v-model="typeMaterialType"
                 :items="materialTypeOptions"
@@ -178,8 +177,7 @@
                 clearable
                 @update:model-value="loadTypePatterns"
               />
-            </v-col>
-            <v-col cols="6" sm="3">
+
               <v-select
                 v-model="typeStatus"
                 :items="statusOptions"
@@ -190,17 +188,17 @@
                 clearable
                 @update:model-value="loadTypePatterns"
               />
-            </v-col>
-            <v-col cols="12" sm="2" class="text-right">
+          </template>
+          <template #actions>
               <v-btn variant="tonal" prepend-icon="mdi-refresh" @click="loadTypePatterns">
                 Обновить
               </v-btn>
-            </v-col>
-          </v-row>
-        </v-card-text>
-      </v-card>
+          </template>
+        </AppDataTableShell>
+      </SectionCard>
 
-      <v-card variant="outlined" :loading="typeLoading" class="admin-rules-table-card">
+      <SectionCard variant="outlined" :loading="typeLoading" class="admin-rules-table-card">
+        <AppDataTableShell>
         <v-data-table-server
           :headers="typeHeaders"
           :items="typePatterns"
@@ -220,9 +218,9 @@
           </template>
 
           <template #item.material_type="{ item }">
-            <v-chip :color="typeColor(item.material_type)" size="small" variant="tonal">
+            <StatusChip :color="typeColor(item.material_type)" size="small" variant="tonal">
               {{ materialTypeLabel(item.material_type) }}
-            </v-chip>
+            </StatusChip>
           </template>
 
           <template #item.priority="{ item }">
@@ -230,32 +228,34 @@
           </template>
 
           <template #item.is_active="{ item }">
-            <v-chip :color="item.is_active ? 'success' : 'grey'" size="small" variant="tonal">
+            <StatusChip :color="item.is_active ? 'success' : 'grey'" size="small" variant="tonal">
               {{ item.is_active ? 'Активно' : 'Выключено' }}
-            </v-chip>
+            </StatusChip>
           </template>
 
           <template #item.actions="{ item }">
-            <div class="admin-rules-actions">
+            <AppRowActions class="admin-rules-actions">
               <v-btn size="x-small" variant="text" icon="mdi-pencil" @click="openEditType(item)" />
               <v-btn size="x-small" variant="text" icon="mdi-delete" color="error" @click="deleteTypePattern(item)" />
-            </div>
+            </AppRowActions>
           </template>
 
           <template #no-data>
-            <div class="text-center py-8 text-medium-emphasis">
-              <v-icon icon="mdi-shape" size="48" color="grey" class="mb-3" />
-              <div class="text-body-1 mb-1">Нет паттернов типов</div>
-              <div class="text-body-2">Добавьте первый паттерн для определения типа материала</div>
-            </div>
+            <AppStateBlock
+              icon="mdi-shape"
+              title="Нет паттернов типов"
+              description="Добавьте первый паттерн для определения типа материала."
+              density="compact"
+            />
           </template>
         </v-data-table-server>
-      </v-card>
+        </AppDataTableShell>
+      </SectionCard>
     </template>
 
     <!-- Edit Dimension Rule Dialog -->
     <v-dialog v-model="dimDialog" max-width="900" persistent>
-      <v-card>
+      <v-card class="admin-rules-dialog-card">
         <v-card-title class="d-flex align-center">
           {{ editingDimId ? 'Редактировать правило' : 'Новое правило размеров' }}
           <v-spacer />
@@ -276,7 +276,7 @@
 
     <!-- Edit Type Pattern Dialog -->
     <v-dialog v-model="typeDialog" max-width="700" persistent>
-      <v-card>
+      <v-card class="admin-rules-dialog-card">
         <v-card-title class="d-flex align-center">
           {{ editingTypeId ? 'Редактировать паттерн' : 'Новый паттерн типа' }}
           <v-spacer />
@@ -289,79 +289,85 @@
               {{ typeFormError }}
             </v-alert>
             
-            <v-row>
-              <v-col cols="12" md="6">
-                <v-text-field
-                  v-model="typeForm.name"
-                  label="Название *"
-                  variant="outlined"
-                  density="compact"
-                  placeholder="plate_ldsp_pattern"
-                />
-              </v-col>
-              <v-col cols="12" md="6">
-                <v-select
-                  v-model="typeForm.material_type"
-                  :items="materialTypeOptions"
-                  label="Тип материала *"
-                  variant="outlined"
-                  density="compact"
-                />
-              </v-col>
-              <v-col cols="12" md="8">
-                <v-text-field
-                  v-model="typeForm.pattern"
-                  label="Regex паттерн *"
-                  variant="outlined"
-                  density="compact"
-                  placeholder="(?:ЛДСП|КДСП)"
-                />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-select
-                  v-model="typeForm.target_field"
-                  :items="[{ title: 'Название', value: 'title' }, { title: 'URL', value: 'url' }, { title: 'Оба', value: 'title_or_url' }]"
-                  label="Поле для поиска"
-                  variant="outlined"
-                  density="compact"
-                />
-              </v-col>
-              <v-col cols="12" md="8">
-                <v-textarea
-                  v-model="typeForm.description"
-                  label="Описание"
-                  variant="outlined"
-                  density="compact"
-                  rows="2"
-                />
-              </v-col>
-              <v-col cols="12" md="4">
-                <v-text-field
-                  v-model.number="typeForm.priority"
-                  label="Приоритет"
-                  type="number"
-                  variant="outlined"
-                  density="compact"
-                />
-              </v-col>
-              <v-col cols="12">
-                <v-switch
-                  v-model="typeForm.is_active"
-                  label="Паттерн активен"
-                  color="success"
-                  hide-details
-                />
-              </v-col>
-            </v-row>
-            
-            <div class="d-flex gap-2 mt-4">
+            <AppFormSection
+              title="Параметры паттерна"
+              description="Настройка regex-паттерна и области распознавания типа материала."
+              compact
+            >
+              <v-row>
+                <v-col cols="12" md="6">
+                  <v-text-field
+                    v-model="typeForm.name"
+                    label="Название *"
+                    variant="outlined"
+                    density="compact"
+                    placeholder="plate_ldsp_pattern"
+                  />
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-select
+                    v-model="typeForm.material_type"
+                    :items="materialTypeOptions"
+                    label="Тип материала *"
+                    variant="outlined"
+                    density="compact"
+                  />
+                </v-col>
+                <v-col cols="12" md="8">
+                  <v-text-field
+                    v-model="typeForm.pattern"
+                    label="Regex паттерн *"
+                    variant="outlined"
+                    density="compact"
+                    placeholder="(?:ЛДСП|КДСП)"
+                  />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-select
+                    v-model="typeForm.target_field"
+                    :items="[{ title: 'Название', value: 'title' }, { title: 'URL', value: 'url' }, { title: 'Оба', value: 'title_or_url' }]"
+                    label="Поле для поиска"
+                    variant="outlined"
+                    density="compact"
+                  />
+                </v-col>
+                <v-col cols="12" md="8">
+                  <v-textarea
+                    v-model="typeForm.description"
+                    label="Описание"
+                    variant="outlined"
+                    density="compact"
+                    rows="2"
+                  />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field
+                    v-model.number="typeForm.priority"
+                    label="Приоритет"
+                    type="number"
+                    variant="outlined"
+                    density="compact"
+                  />
+                </v-col>
+                <v-col cols="12">
+                  <v-switch
+                    v-model="typeForm.is_active"
+                    label="Паттерн активен"
+                    color="success"
+                    hide-details
+                  />
+                </v-col>
+              </v-row>
+            </AppFormSection>
+
+            <AppActionFooter class="admin-rules-form-footer">
               <v-btn type="submit" color="primary" :loading="typeSaving">
                 Сохранить
               </v-btn>
               <v-btn variant="text" @click="typeDialog = false">
                 Отмена
               </v-btn>
-            </div>
+            </AppActionFooter>
           </v-form>
         </v-card-text>
       </v-card>
@@ -369,18 +375,17 @@
 
     <!-- Confirm Delete Dialog -->
     <v-dialog v-model="deleteDialog" max-width="400">
-      <v-card>
+      <v-card class="admin-rules-dialog-card">
         <v-card-title>Удалить правило?</v-card-title>
         <v-card-text>
           Это действие нельзя отменить. Правило будет удалено навсегда.
         </v-card-text>
-        <v-card-actions>
-          <v-spacer />
+        <AppActionFooter>
           <v-btn variant="text" @click="deleteDialog = false">Отмена</v-btn>
           <v-btn color="error" variant="flat" :loading="deleting" @click="confirmDelete">
             Удалить
           </v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
   </PageContainer>
@@ -395,8 +400,17 @@ import {
   type MaterialDimensionMaterialType
 } from '@/api/materialDimensions'
 import AdminMaterialDimensionRulesTab from '@/components/admin/AdminMaterialDimensionRulesTab.vue'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppFormSection from '@/components/layout/AppFormSection.vue'
+import AppRowActions from '@/components/layout/AppRowActions.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
+import AppTabs from '@/components/layout/AppTabs.vue'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 
 // Toggle between dimension rules and type patterns
 const ruleType = ref<'dimensions' | 'types'>('dimensions')
@@ -683,6 +697,14 @@ onMounted(() => {
   background: color-mix(in srgb, var(--md-sys-color-surface-container-low) 94%, transparent);
 }
 
+.admin-rules-filter-card :deep(.ds-table-toolbar__filters > *) {
+  min-width: 180px;
+}
+
+.admin-rules-filter-card :deep(.ds-table-toolbar__actions) {
+  margin-left: auto;
+}
+
 .admin-rules-table :deep(.v-table__wrapper) {
   border-radius: var(--ds-radius-12);
   border: 1px solid var(--ds-border-color);
@@ -751,5 +773,19 @@ code {
   background: rgba(var(--v-theme-surface-container-high), 0.72);
   font-size: 12px;
   color: var(--ds-text-primary);
+}
+
+@media (max-width: 600px) {
+  .admin-rules-filter-card :deep(.ds-table-toolbar__search),
+  .admin-rules-filter-card :deep(.ds-table-toolbar__filters),
+  .admin-rules-filter-card :deep(.ds-table-toolbar__filters > *),
+  .admin-rules-filter-card :deep(.ds-table-toolbar__actions) {
+    width: 100%;
+    max-width: none;
+  }
+
+  .admin-rules-filter-card :deep(.ds-table-toolbar__actions .v-btn) {
+    width: 100%;
+  }
 }
 </style>

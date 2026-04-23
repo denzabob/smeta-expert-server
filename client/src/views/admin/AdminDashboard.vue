@@ -8,8 +8,8 @@
     <!-- Quick Stats -->
     <v-row class="mb-6">
       <v-col cols="12" sm="6" md="3">
-        <v-card class="stat-card" variant="outlined" @click="goTo('/admin/problems')">
-          <v-card-text class="d-flex align-center">
+        <SectionCard class="stat-card" variant="outlined" @click="goTo('/admin/problems')">
+          <div class="d-flex align-center">
             <div class="stat-icon stat-icon--warning">
               <v-icon icon="mdi-alert-circle-outline" size="24" />
             </div>
@@ -17,13 +17,13 @@
               <div class="text-h5 font-weight-bold">{{ stats.problemCases }}</div>
               <div class="text-body-2 text-medium-emphasis">Проблемные случаи</div>
             </div>
-          </v-card-text>
-        </v-card>
+          </div>
+        </SectionCard>
       </v-col>
 
       <v-col cols="12" sm="6" md="3">
-        <v-card class="stat-card" variant="outlined" @click="goTo('/admin/materials?status=pending')">
-          <v-card-text class="d-flex align-center">
+        <SectionCard class="stat-card" variant="outlined" @click="goTo('/admin/materials?status=pending')">
+          <div class="d-flex align-center">
             <div class="stat-icon stat-icon--info">
               <v-icon icon="mdi-clock-outline" size="24" />
             </div>
@@ -31,13 +31,13 @@
               <div class="text-h5 font-weight-bold">{{ stats.pendingReview }}</div>
               <div class="text-body-2 text-medium-emphasis">Ожидают проверки</div>
             </div>
-          </v-card-text>
-        </v-card>
+          </div>
+        </SectionCard>
       </v-col>
 
       <v-col cols="12" sm="6" md="3">
-        <v-card class="stat-card" variant="outlined" @click="goTo('/admin/rules')">
-          <v-card-text class="d-flex align-center">
+        <SectionCard class="stat-card" variant="outlined" @click="goTo('/admin/rules')">
+          <div class="d-flex align-center">
             <div class="stat-icon stat-icon--success">
               <v-icon icon="mdi-check-circle-outline" size="24" />
             </div>
@@ -45,13 +45,13 @@
               <div class="text-h5 font-weight-bold">{{ stats.activeRules }}</div>
               <div class="text-body-2 text-medium-emphasis">Активных правил</div>
             </div>
-          </v-card-text>
-        </v-card>
+          </div>
+        </SectionCard>
       </v-col>
 
       <v-col cols="12" sm="6" md="3">
-        <v-card class="stat-card" variant="outlined">
-          <v-card-text class="d-flex align-center">
+        <SectionCard class="stat-card" variant="outlined">
+          <div class="d-flex align-center">
             <div class="stat-icon stat-icon--primary">
               <v-icon icon="mdi-package-variant-closed" size="24" />
             </div>
@@ -59,21 +59,21 @@
               <div class="text-h5 font-weight-bold">{{ stats.totalMaterials }}</div>
               <div class="text-body-2 text-medium-emphasis">Всего материалов</div>
             </div>
-          </v-card-text>
-        </v-card>
+          </div>
+        </SectionCard>
       </v-col>
     </v-row>
 
     <!-- Quick Actions -->
-    <h3 class="text-subtitle-1 font-weight-medium mb-3">Быстрые действия</h3>
-    <v-row class="mb-6">
-      <v-col cols="12" sm="6" md="4">
-        <v-card 
-          class="action-card" 
-          variant="outlined"
-          @click="goTo('/admin/problems')"
-        >
-          <v-card-text>
+    <div class="admin-dashboard-section mb-6">
+      <h2 class="admin-dashboard-section__title">Быстрые действия</h2>
+      <v-row>
+        <v-col cols="12" sm="6" md="4">
+          <SectionCard
+            class="action-card"
+            variant="outlined"
+            @click="goTo('/admin/problems')"
+          >
             <div class="action-card-icon">
               <v-icon icon="mdi-alert-circle-outline" size="32" color="warning" />
             </div>
@@ -83,25 +83,23 @@
             <p class="text-body-2 text-medium-emphasis mb-3">
               Просмотр и исправление ошибок распознавания
             </p>
-            <v-chip 
+            <StatusChip
               v-if="stats.problemCases > 0"
               color="warning" 
               size="small"
               variant="tonal"
             >
               {{ stats.problemCases }} требуют внимания
-            </v-chip>
-          </v-card-text>
-        </v-card>
-      </v-col>
+            </StatusChip>
+          </SectionCard>
+        </v-col>
 
-      <v-col cols="12" sm="6" md="4">
-        <v-card 
-          class="action-card" 
-          variant="outlined"
-          @click="goTo('/admin/materials?status=pending')"
-        >
-          <v-card-text>
+        <v-col cols="12" sm="6" md="4">
+          <SectionCard
+            class="action-card"
+            variant="outlined"
+            @click="goTo('/admin/materials?status=pending')"
+          >
             <div class="action-card-icon">
               <v-icon icon="mdi-eye-check-outline" size="32" color="info" />
             </div>
@@ -111,25 +109,23 @@
             <p class="text-body-2 text-medium-emphasis mb-3">
               Проверка автоматически распознанных параметров
             </p>
-            <v-chip 
+            <StatusChip
               v-if="stats.pendingReview > 0"
               color="info" 
               size="small"
               variant="tonal"
             >
               {{ stats.pendingReview }} на проверке
-            </v-chip>
-          </v-card-text>
-        </v-card>
-      </v-col>
+            </StatusChip>
+          </SectionCard>
+        </v-col>
 
-      <v-col cols="12" sm="6" md="4">
-        <v-card 
-          class="action-card" 
-          variant="outlined"
-          @click="openAddMaterial"
-        >
-          <v-card-text>
+        <v-col cols="12" sm="6" md="4">
+          <SectionCard
+            class="action-card"
+            variant="outlined"
+            @click="openAddMaterial"
+          >
             <div class="action-card-icon">
               <v-icon icon="mdi-plus-circle-outline" size="32" color="success" />
             </div>
@@ -139,17 +135,15 @@
             <p class="text-body-2 text-medium-emphasis mb-3">
               Ручное добавление нового материала в систему
             </p>
-          </v-card-text>
-        </v-card>
-      </v-col>
+          </SectionCard>
+        </v-col>
 
-      <v-col cols="12" sm="6" md="4">
-        <v-card
-          class="action-card"
-          variant="outlined"
-          @click="goTo('/admin/ideas')"
-        >
-          <v-card-text>
+        <v-col cols="12" sm="6" md="4">
+          <SectionCard
+            class="action-card"
+            variant="outlined"
+            @click="goTo('/admin/ideas')"
+          >
             <div class="action-card-icon">
               <v-icon icon="mdi-lightbulb-on-outline" size="32" color="warning" />
             </div>
@@ -159,34 +153,33 @@
             <p class="text-body-2 text-medium-emphasis mb-3">
               Управление статусами, идеями и комментариями пользователей
             </p>
-            <v-chip
+            <StatusChip
               color="warning"
               size="small"
               variant="tonal"
             >
               {{ stats.ideasToModerate }} новых идей
-            </v-chip>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <!-- Recent Problems -->
-    <div class="d-flex align-center mb-3">
-      <h3 class="text-subtitle-1 font-weight-medium">Последние ошибки</h3>
-      <v-spacer />
-      <v-btn 
-        variant="text" 
-        size="small" 
-        color="primary"
-        @click="goTo('/admin/problems')"
-      >
-        Смотреть все
-        <v-icon icon="mdi-arrow-right" size="16" class="ml-1" />
-      </v-btn>
+            </StatusChip>
+          </SectionCard>
+        </v-col>
+      </v-row>
     </div>
 
-    <v-card variant="outlined">
+    <!-- Recent Problems -->
+    <SectionCard title="Последние ошибки" variant="outlined" :loading="loading">
+      <template #header-actions>
+        <v-btn
+          variant="text"
+          size="small"
+          color="primary"
+          append-icon="mdi-arrow-right"
+          @click="goTo('/admin/problems')"
+        >
+          Смотреть все
+        </v-btn>
+      </template>
+
+      <AppDataTableShell>
       <v-data-table
         :headers="recentProblemsHeaders"
         :items="recentProblems"
@@ -203,9 +196,9 @@
         </template>
 
         <template #item.parse_error_reason="{ item }">
-          <v-chip size="small" color="warning" variant="tonal">
+          <StatusChip size="small" color="warning" variant="tonal">
             {{ translateErrorReason(item.parse_error_reason) }}
-          </v-chip>
+          </StatusChip>
         </template>
 
         <template #item.occurrences="{ item }">
@@ -213,7 +206,7 @@
         </template>
 
         <template #item.actions="{ item }">
-          <div class="d-flex gap-1">
+          <AppRowActions>
             <v-btn
               size="small"
               variant="tonal"
@@ -222,17 +215,21 @@
             >
               Исправить
             </v-btn>
-          </div>
+          </AppRowActions>
         </template>
 
         <template #no-data>
-          <div class="text-center py-6 text-medium-emphasis">
-            <v-icon icon="mdi-check-circle-outline" size="48" color="success" class="mb-2" />
-            <div>Нет проблемных случаев</div>
-          </div>
+          <AppStateBlock
+            icon="mdi-check-circle-outline"
+            title="Нет проблемных случаев"
+            description="Новые ошибки распознавания появятся здесь."
+            tone="success"
+            density="compact"
+          />
         </template>
       </v-data-table>
-    </v-card>
+      </AppDataTableShell>
+    </SectionCard>
   </PageContainer>
 </template>
 
@@ -241,8 +238,13 @@ import { ref, onMounted, inject, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { adminMaterialDimensionsApi } from '@/api/materialDimensions'
 import { ideasApi } from '@/api/ideas'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppRowActions from '@/components/layout/AppRowActions.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 
 const router = useRouter()
 
@@ -348,8 +350,8 @@ onMounted(() => {
 }
 
 .stat-card:hover {
-  border-color: rgb(var(--v-theme-primary));
-  box-shadow: 0 2px 8px rgba(var(--v-theme-primary), 0.16);
+  border-color: rgba(var(--v-theme-primary), 0.42);
+  background: rgba(var(--v-theme-primary), 0.04);
 }
 
 .stat-icon {
@@ -388,9 +390,8 @@ onMounted(() => {
 }
 
 .action-card:hover {
-  border-color: rgb(var(--v-theme-primary));
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--v-theme-on-surface), 0.14);
+  border-color: rgba(var(--v-theme-primary), 0.42);
+  background: rgba(var(--v-theme-primary), 0.04);
 }
 
 .action-card-icon {
@@ -403,11 +404,15 @@ onMounted(() => {
   justify-content: center;
 }
 
-.recent-problems-table {
-  border: none;
+.admin-dashboard-section__title {
+  margin: 0 0 var(--ds-space-12);
+  color: var(--ds-text-primary);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
-.gap-1 {
-  gap: 4px;
+.recent-problems-table {
+  border: none;
 }
 </style>

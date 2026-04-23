@@ -139,19 +139,14 @@ function closeModal(): void {
 </script>
 
 <style scoped>
-/* ═══════════════════════════════════════════════════════════════════════════
-   ATTACHMENT ITEMS — Beautiful inline previews
-   ═══════════════════════════════════════════════════════════════════════════ */
-
 .chat-attachment {
   display: flex;
 }
 
-/* Loading skeleton */
 .attachment-img-skeleton {
   width: 180px;
   height: 140px;
-  border-radius: 8px;
+  border-radius: 14px;
   background: linear-gradient(
     90deg,
     rgba(var(--v-theme-on-surface), 0.06) 25%,
@@ -167,27 +162,27 @@ function closeModal(): void {
   100% { background-position: -200% 0; }
 }
 
-/* Error state */
 .attachment-img-error {
   width: 80px;
   height: 60px;
-  border-radius: 8px;
-  background: rgba(var(--v-theme-on-surface), 0.06);
-  border: 1px dashed rgba(var(--v-theme-on-surface), 0.2);
+  border-radius: 12px;
+  background: rgba(var(--v-theme-surface-variant), 0.28);
+  border: 1px dashed rgba(var(--v-theme-outline-variant), 0.72);
   display: flex;
   align-items: center;
   justify-content: center;
   color: rgba(var(--v-theme-on-surface), 0.4);
 }
 
-/* Image preview wrapper with hover effects */
 .attachment-img-wrapper {
   position: relative;
   display: inline-block;
-  border-radius: 8px;
+  border-radius: 16px;
   overflow: hidden;
   cursor: pointer;
   max-width: 100%;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.52);
+  background: rgba(var(--v-theme-surface-variant), 0.22);
 }
 
 .attachment-img {
@@ -198,20 +193,18 @@ function closeModal(): void {
   min-height: 120px;
   width: auto;
   height: auto;
-  border-radius: 8px;
+  border-radius: 16px;
   object-fit: cover;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  box-shadow: none;
+  border: none;
 }
 
 .attachment-img:hover {
-  transform: scale(1.04);
-  filter: brightness(1.08);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  transform: scale(1.01);
+  filter: brightness(1.03);
 }
 
-/* Overlay on hover */
 .attachment-img-overlay {
   position: absolute;
   inset: 0;
@@ -219,7 +212,7 @@ function closeModal(): void {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 16px;
   transition: background 0.2s ease;
   color: white;
   pointer-events: none;
@@ -229,19 +222,18 @@ function closeModal(): void {
   background: rgba(0, 0, 0, 0.3);
 }
 
-/* Generic file link */
 .attachment-file {
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: rgba(var(--v-theme-on-surface), 0.04);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  max-width: min(240px, 100%);
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-surface-variant), 0.28);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.52);
   transition: all 0.15s ease;
-  max-width: 240px;
 }
 
 .attachment-file:hover {
-  background: rgba(var(--v-theme-on-surface), 0.08);
-  border-color: rgba(var(--v-theme-on-surface), 0.12);
+  background: rgba(var(--v-theme-surface-variant), 0.4);
+  border-color: rgba(var(--v-theme-primary), 0.24);
 }
 
 .attachment-filename {
@@ -252,7 +244,6 @@ function closeModal(): void {
   color: rgb(var(--v-theme-on-surface));
 }
 
-/* Modal styles */
 .image-modal {
   z-index: 2000;
 }
@@ -267,20 +258,22 @@ function closeModal(): void {
   display: flex;
   flex-direction: column;
   background: rgb(var(--v-theme-surface));
-  border-radius: 12px;
+  border-radius: 20px;
   overflow: hidden;
   max-width: 90vw;
   max-height: 90vh;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.2);
 }
 
 .image-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 12px 16px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
-  background: rgba(var(--v-theme-on-surface), 0.02);
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+  background: rgba(var(--v-theme-surface-variant), 0.16);
 }
 
 .image-modal-title {
@@ -303,12 +296,11 @@ function closeModal(): void {
   padding: 16px;
 }
 
-/* Dark mode adjustments */
 .v-theme--dark .attachment-img {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: none;
 }
 
 .v-theme--dark .attachment-img:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: none;
 }
 </style>

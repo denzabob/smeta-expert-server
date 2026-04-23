@@ -1,32 +1,51 @@
 <template>
   <PageContainer class="parser-dashboard">
+    <PageHeader
+      title="Parser Dashboard"
+      subtitle="Состояние поставщиков, текущие parser sessions и быстрые действия запуска."
+    >
+      <template #actions>
+        <ButtonGroup>
+          <v-btn
+            variant="text"
+            prepend-icon="mdi-refresh"
+            :loading="loading.status || loading.suppliers"
+            @click="loadData"
+          >
+            Обновить
+          </v-btn>
+        </ButtonGroup>
+      </template>
+    </PageHeader>
+
     <!-- System Health Status Bar -->
     <v-alert
       :type="systemStatus?.scheduler_running ? 'success' : 'error'"
       :icon="systemStatus?.scheduler_running ? 'mdi-check-circle' : 'mdi-alert-circle'"
-      prominent
-      class="mb-6 system-status-alert"
+      variant="tonal"
+      density="compact"
+      class="system-status-alert"
     >
-      <v-row align="center">
-        <v-col>
-          <div class="text-h6">
+      <div class="system-status-alert__content">
+        <div>
+          <div class="system-status-alert__title">
             {{ systemStatus?.scheduler_running ? 'System Operational' : 'Scheduler Offline' }}
           </div>
-          <div class="text-subtitle-2">
+          <div class="system-status-alert__meta">
             Active Sessions: {{ systemStatus?.active_sessions || 0 }} | 
             24h Total: {{ systemStatus?.total_sessions_24h || 0 }} | 
             Health Score: {{ systemStatus?.health_score || 0 }}%
           </div>
-        </v-col>
-        <v-col cols="auto">
+        </div>
+        <div>
           <v-btn
             icon="mdi-refresh"
             variant="text"
             @click="loadSystemStatus"
             :loading="loading.status"
           />
-        </v-col>
-      </v-row>
+        </div>
+      </div>
     </v-alert>
 
     <!-- Suppliers Grid -->
@@ -38,12 +57,12 @@
         md="6"
         lg="4"
       >
-        <v-card
+        <SectionCard
           class="supplier-card"
           :class="getSupplierCardClass(supplier)"
         >
           <!-- Card Header -->
-          <v-card-title class="d-flex align-center justify-space-between">
+          <template #title>
             <div class="d-flex align-center">
               <v-icon
                 :icon="getSupplierIcon(supplier)"
@@ -53,16 +72,18 @@
               />
               <div>
                 <div class="text-h6">{{ supplier.supplier }}</div>
-                <v-chip
+                <StatusChip
                   :color="supplier.active ? 'success' : 'grey'"
                   size="small"
                   class="mt-1"
                 >
                   {{ supplier.active ? 'Active' : 'Disabled' }}
-                </v-chip>
+                </StatusChip>
               </div>
             </div>
-            
+          </template>
+
+          <template #header-actions>
             <!-- Activity Indicator -->
             <div v-if="supplier.current_pid" class="activity-pulse">
               <v-icon
@@ -73,12 +94,9 @@
               />
               <span class="text-caption ml-1">PID: {{ supplier.current_pid }}</span>
             </div>
-          </v-card-title>
-
-          <v-divider />
+          </template>
 
           <!-- Metrics -->
-          <v-card-text>
             <v-row dense>
               <!-- Health Score -->
               <v-col cols="12">
@@ -117,12 +135,9 @@
                 </div>
               </v-col>
             </v-row>
-          </v-card-text>
-
-          <v-divider />
 
           <!-- Actions -->
-          <v-card-actions class="px-4 py-3">
+          <template #actions>
             <v-btn
               v-if="!supplier.current_pid"
               color="primary"
@@ -147,10 +162,9 @@
             </v-btn>
 
             <v-btn
-              color="secondary"
-              variant="outlined"
+              color="primary"
+              variant="tonal"
               prepend-icon="mdi-link-variant"
-              class="ml-2"
               @click="openCollectDialog(supplier.supplier)"
               :disabled="!supplier.active"
               :loading="loading.collect[supplier.supplier]"
@@ -173,14 +187,14 @@
               @click="goToSettings(supplier.supplier)"
               title="Settings"
             />
-          </v-card-actions>
-        </v-card>
+          </template>
+        </SectionCard>
       </v-col>
     </v-row>
 
     <!-- Run Session Dialog -->
     <v-dialog v-model="runDialog.open" max-width="600">
-      <v-card>
+      <v-card class="parser-dialog-card">
         <v-card-title>
           <span class="text-h5">Run Parser: {{ runDialog.supplier }}</span>
         </v-card-title>
@@ -199,8 +213,7 @@
           </v-form>
         </v-card-text>
 
-        <v-card-actions>
-          <v-spacer />
+        <AppActionFooter>
           <v-btn
             variant="text"
             @click="runDialog.open = false"
@@ -215,12 +228,12 @@
           >
             Start
           </v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
 
     <v-dialog v-model="collectDialog.open" max-width="520">
-      <v-card>
+      <v-card class="parser-dialog-card">
         <v-card-title>
           <span class="text-h6">Collect URLs: {{ collectDialog.supplier }}</span>
         </v-card-title>
@@ -239,13 +252,12 @@
           </div>
         </v-card-text>
 
-        <v-card-actions>
-          <v-spacer />
+        <AppActionFooter>
           <v-btn variant="text" @click="collectDialog.open = false">Отмена</v-btn>
           <v-btn color="primary" :loading="loading.collect[collectDialog.supplier]" @click="confirmCollectUrls">
             Запустить
           </v-btn>
-        </v-card-actions>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
 
@@ -258,7 +270,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 import { parserApi, type SystemStatus, type SupplierHealth } from '@/api/parser'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -571,21 +588,39 @@ function showSnackbar(message: string, color: string = 'success') {
 }
 
 .system-status-alert {
-  border-radius: 0 !important;
-  border-left: 4px solid currentColor;
+  margin: 0;
+}
+
+.system-status-alert__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-12);
+}
+
+.system-status-alert__title {
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.system-status-alert__meta {
+  margin-top: 2px;
+  color: var(--ds-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .supplier-card {
-  border-radius: 0 !important;
-  border-left: 4px solid transparent;
-  transition: all 0.3s ease;
+  height: 100%;
+  border: 1px solid var(--ds-border-color);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 
   &:hover {
-    border-left-color: var(--v-primary-base);
+    border-color: rgba(var(--v-theme-primary), 0.42);
   }
 
   &.card-running {
-    border-left-color: var(--v-primary-base);
+    border-color: rgba(var(--v-theme-primary), 0.56);
   }
 
   &.card-disabled {
@@ -595,9 +630,9 @@ function showSnackbar(message: string, color: string = 'success') {
 
 .metric-label {
   font-size: 0.75rem;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--ds-text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   margin-bottom: 4px;
 }
 
@@ -607,7 +642,7 @@ function showSnackbar(message: string, color: string = 'success') {
 }
 
 .health-bar {
-  border-radius: 0 !important;
+  border-radius: var(--ds-radius-8) !important;
 }
 
 .activity-pulse {
@@ -630,5 +665,11 @@ function showSnackbar(message: string, color: string = 'success') {
 
 .mono-font {
   font-family: 'Courier New', Courier, monospace;
+}
+
+.parser-dialog-card {
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-16) !important;
+  overflow: hidden;
 }
 </style>

@@ -2,8 +2,17 @@
   <div class="admin-chat-view">
     <!-- ── Left: conversation list ── -->
     <div class="chat-list-panel">
+      <div class="chat-panel-header">
+        <div>
+          <div class="chat-panel-title">Диалоги поддержки</div>
+          <div class="chat-panel-subtitle">
+            {{ pagination.total }} {{ pagination.total === 1 ? 'обращение' : 'обращений' }}
+          </div>
+        </div>
+      </div>
+
       <!-- Filters -->
-      <div class="pa-3 pb-2">
+      <div class="chat-list-filters">
         <v-text-field
           v-model="search"
           placeholder="Поиск по пользователю..."
@@ -12,10 +21,9 @@
           variant="outlined"
           hide-details
           clearable
-          class="mb-3"
           @update:model-value="debouncedSearch"
         />
-        <v-chip-group v-model="statusFilter" mandatory color="primary" class="flex-wrap">
+        <v-chip-group v-model="statusFilter" mandatory color="primary" class="chat-status-filter">
           <v-chip value="" size="small" filter>Все</v-chip>
           <v-chip value="open" size="small" filter>Открытые</v-chip>
           <v-chip value="pending" size="small" filter>Ожидание</v-chip>
@@ -39,10 +47,13 @@
         <v-skeleton-loader v-for="i in 5" :key="i" type="list-item-two-line" class="mb-1" />
       </div>
 
-      <div v-else-if="!listLoading && conversations.length === 0" class="text-center pa-6 text-medium-emphasis">
-        <v-icon size="40" class="mb-2">mdi-chat-remove-outline</v-icon>
-        <div class="text-body-2">Диалоги не найдены</div>
-      </div>
+      <AppStateBlock
+        v-else-if="!listLoading && conversations.length === 0"
+        icon="mdi-chat-remove-outline"
+        title="Диалоги не найдены"
+        description="Попробуйте изменить фильтр или поисковый запрос."
+        density="compact"
+      />
 
       <v-list v-else density="compact" class="overflow-y-auto chat-list-scroll">
         <v-list-item
@@ -97,67 +108,70 @@
     </div>
 
     <!-- ── Divider ── -->
-    <v-divider vertical />
+    <v-divider vertical class="chat-shell-divider" />
 
     <!-- ── Right: conversation thread ── -->
     <div class="chat-thread-panel">
       <!-- No selection -->
       <div
         v-if="!activeId"
-        class="d-flex flex-column align-center justify-center h-100 text-medium-emphasis"
+        class="chat-thread-empty"
       >
-        <v-icon size="64" class="mb-3">mdi-chat-outline</v-icon>
-        <span class="text-body-1">Выберите диалог</span>
+        <AppStateBlock
+          icon="mdi-chat-outline"
+          title="Выберите диалог"
+          description="Сообщения и действия по обращению появятся в этой области."
+        />
       </div>
 
       <!-- Selected conversation -->
       <template v-else>
         <!-- Thread header -->
-        <div class="thread-header d-flex align-center pa-3 gap-3">
+        <div class="thread-header">
           <div class="flex-grow-1">
-            <div class="text-body-1 font-weight-medium">
+            <div class="thread-header__title">
               {{ activeConversation?.creator?.name ?? '...' }}
             </div>
-            <div class="text-caption text-medium-emphasis">
-              {{ activeConversation?.creator?.email }}
-              &nbsp;·&nbsp;
-              <v-chip
+            <div class="thread-header__meta">
+              <span>{{ activeConversation?.creator?.email }}</span>
+              <StatusChip
                 :color="statusColor(activeConversation?.status ?? 'open')"
                 size="x-small"
                 variant="tonal"
               >
                 {{ statusLabel(activeConversation?.status ?? 'open') }}
-              </v-chip>
+              </StatusChip>
             </div>
           </div>
 
-          <!-- Assign button -->
-          <v-btn
-            v-if="!activeConversation?.assigned_admin_id"
-            size="small"
-            color="primary"
-            variant="tonal"
-            :loading="assigning"
-            prepend-icon="mdi-account-check"
-            @click="assignMe"
-          >
-            Взять в работу
-          </v-btn>
-          <div v-else class="text-caption text-medium-emphasis d-flex align-center gap-1">
+          <!-- Header actions -->
+          <ButtonGroup class="thread-header__actions">
+            <v-btn
+              v-if="!activeConversation?.assigned_admin_id"
+              size="small"
+              color="primary"
+              variant="tonal"
+              :loading="assigning"
+              prepend-icon="mdi-account-check"
+              @click="assignMe"
+            >
+              Взять в работу
+            </v-btn>
+            <v-btn
+              icon
+              variant="text"
+              density="compact"
+              :loading="threadLoading"
+              @click="refreshThread"
+              title="Обновить"
+            >
+              <v-icon size="18">mdi-refresh</v-icon>
+            </v-btn>
+          </ButtonGroup>
+          <div v-if="activeConversation?.assigned_admin_id" class="text-caption text-medium-emphasis d-flex align-center gap-1">
             <v-icon size="14">mdi-account-check</v-icon>
             {{ activeConversation.assigned_admin?.name ?? 'Назначен' }}
           </div>
-
-          <v-btn
-            icon
-            variant="text"
-            density="compact"
-            :loading="threadLoading"
-            @click="refreshThread"
-            title="Обновить"
-          >
-            <v-icon size="18">mdi-refresh</v-icon>
-          </v-btn>
         </div>
 
         <v-divider />
@@ -165,16 +179,17 @@
         <!-- Messages -->
         <div class="thread-messages-wrapper">
           <div ref="messagesEl" class="thread-messages overflow-y-auto" @scroll="onThreadScroll">
-            <div
-              v-if="threadLoading && messages.length === 0"
-              class="pa-4 d-flex flex-column gap-3"
-            >
+            <div v-if="threadLoading && messages.length === 0" class="thread-loading-state">
               <v-skeleton-loader v-for="i in 4" :key="i" type="text" :width="i % 2 ? '55%' : '70%'" />
             </div>
 
-            <div v-else-if="messages.length === 0 && !threadLoading" class="text-center pa-8 text-medium-emphasis">
-              <span class="text-body-2">Сообщений пока нет</span>
-            </div>
+            <AppStateBlock
+              v-else-if="messages.length === 0 && !threadLoading"
+              icon="mdi-message-text-outline"
+              title="Сообщений пока нет"
+              description="История переписки появится после первого сообщения."
+              density="compact"
+            />
 
             <template v-else>
               <!-- Message search bar -->
@@ -191,11 +206,15 @@
                 />
               </div>
 
-              <div v-if="filteredMessages.length === 0" class="text-center pa-6 text-medium-emphasis">
-                <span class="text-body-2">Ничего не найдено</span>
-              </div>
+              <AppStateBlock
+                v-if="filteredMessages.length === 0"
+                icon="mdi-magnify-close"
+                title="Ничего не найдено"
+                description="Измените запрос поиска по сообщениям."
+                density="compact"
+              />
 
-              <div v-else class="d-flex flex-column gap-2 pa-3">
+              <div v-else class="thread-message-stack">
                 <template v-for="(msg, index) in filteredMessages" :key="msg.id">
                   <!-- Date separator -->
                   <div v-if="showDateSeparator(filteredMessages, index)" class="admin-date-separator">
@@ -212,18 +231,18 @@
                     >
                       <div
                         v-if="msg.sender_display_name"
-                        class="text-caption font-weight-medium mb-1 text-medium-emphasis"
+                        class="admin-chat-bubble__sender"
                       >
                         {{ msg.sender_display_name }}
                       </div>
-                      <div v-if="msg.body" style="white-space: pre-wrap;">{{ msg.body }}</div>
+                      <div v-if="msg.body" class="admin-chat-bubble__body">{{ msg.body }}</div>
                       <!-- Attachments -->
                       <ChatAttachmentItem
                         v-for="att in (msg.attachments ?? [])"
                         :key="att.id"
                         :attachment="att"
                       />
-                      <div class="text-right text-caption text-disabled mt-1" style="font-size: 10px;">
+                      <div class="admin-chat-bubble__time">
                         {{ formatTime(msg.created_at) }}
                       </div>
                     </div>
@@ -277,7 +296,7 @@
         <!-- Input -->
         <div
           v-if="activeConversation?.status !== 'closed'"
-          class="d-flex flex-column pa-2 gap-1"
+          class="chat-composer"
         >
           <!-- Hidden file picker -->
           <input
@@ -294,14 +313,14 @@
             size="small"
             closable
             prepend-icon="mdi-paperclip"
-            class="mb-1 text-truncate"
-            style="max-width: 100%;"
+            variant="tonal"
+            class="chat-composer__attachment text-truncate"
             @click:close="attachedFile = null"
           >
             {{ attachedFile.name }}
           </v-chip>
 
-          <div class="d-flex align-end gap-2">
+          <div class="chat-composer__row">
             <!-- Paperclip button -->
             <v-btn
               icon
@@ -344,8 +363,8 @@
           </div>
         </div>
 
-        <div v-else class="text-center text-caption text-medium-emphasis pa-3">
-          Диалог закрыт
+        <div v-else class="chat-closed-state">
+          <StatusChip status="closed" label="Диалог закрыт" color="grey" size="small" />
         </div>
       </template>
     </div>
@@ -361,6 +380,9 @@ import {
 } from '@/api/adminSupportChat'
 import type { ChatMessage } from '@/api/supportChat'
 import type { ConversationStatus } from '@/api/supportChat'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 import ChatAttachmentItem from '@/components/support/ChatAttachmentItem.vue'
 
 // ── Sound ─────────────────────────────────────────────────────────────────────
@@ -759,21 +781,29 @@ onUnmounted(() => {
 <style scoped>
 .admin-chat-view {
   display: flex;
-  height: calc(100vh - 56px); /* topbar height */
+  gap: var(--ds-space-12);
+  height: calc(100dvh - 88px);
+  padding: var(--ds-space-12);
   overflow: hidden;
+  background: rgb(var(--v-theme-background));
 }
 
 .chat-list-panel {
-  width: 300px;
+  width: 340px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
+  background: rgb(var(--v-theme-surface));
 }
 
 .chat-list-scroll {
   flex: 1;
   min-height: 0;
+  padding: var(--ds-space-6);
+  background: color-mix(in srgb, rgb(var(--v-theme-surface-container-low)) 42%, transparent);
 }
 
 .chat-thread-panel {
@@ -782,9 +812,84 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-16);
+  background: rgb(var(--v-theme-surface));
+}
+
+.chat-shell-divider {
+  display: none;
+}
+
+.chat-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-12);
+  padding: var(--ds-space-14) var(--ds-space-16) var(--ds-space-10);
+  border-bottom: 1px solid var(--ds-border-color);
+  background: rgb(var(--v-theme-surface-container-low));
+}
+
+.chat-panel-title {
+  color: var(--ds-text-primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.chat-panel-subtitle {
+  margin-top: var(--ds-space-2);
+  color: var(--ds-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.chat-list-filters {
+  display: grid;
+  gap: var(--ds-space-10);
+  padding: var(--ds-space-12);
+}
+
+.chat-status-filter {
+  margin: calc(var(--ds-space-4) * -1);
+}
+
+.chat-thread-empty {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  padding: var(--ds-space-24);
 }
 
 .thread-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--ds-space-12);
+  padding: var(--ds-space-12) var(--ds-space-16);
+  background: rgb(var(--v-theme-surface-container-low));
+}
+
+.thread-header__title {
+  color: var(--ds-text-primary);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.thread-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-6);
+  margin-top: var(--ds-space-2);
+  color: var(--ds-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.thread-header__actions {
   flex-shrink: 0;
 }
 
@@ -799,6 +904,14 @@ onUnmounted(() => {
 .thread-messages {
   flex: 1;
   min-height: 0;
+  background: color-mix(in srgb, rgb(var(--v-theme-surface-container-low)) 56%, transparent);
+}
+
+.thread-loading-state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-12);
+  padding: var(--ds-space-16);
 }
 
 /* Scroll to bottom button */
@@ -807,20 +920,21 @@ onUnmounted(() => {
   bottom: 12px;
   right: 12px;
   z-index: 10;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: none !important;
 }
 
 /* User typing indicator */
 .admin-typing-indicator {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 16px 8px;
+  gap: var(--ds-space-6);
+  padding: var(--ds-space-4) var(--ds-space-16) var(--ds-space-10);
+  color: var(--ds-text-secondary);
 }
 
 .typing-label {
   font-size: 0.78rem;
-  color: rgba(var(--v-theme-on-surface), 0.52);
+  color: var(--ds-text-secondary);
   font-style: italic;
 }
 
@@ -849,9 +963,9 @@ onUnmounted(() => {
 
 /* Message search bar */
 .thread-search-bar {
-  padding: 8px 12px 4px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
-  background: rgb(var(--v-theme-surface));
+  padding: var(--ds-space-10) var(--ds-space-12);
+  border-bottom: 1px solid var(--ds-border-color);
+  background: rgb(var(--v-theme-surface-container-low));
 }
 
 .thread-search-field {
@@ -862,8 +976,8 @@ onUnmounted(() => {
 .admin-date-separator {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 10px 0 6px;
+  gap: var(--ds-space-8);
+  margin: var(--ds-space-12) 0 var(--ds-space-6);
 }
 
 .admin-date-separator::before,
@@ -871,14 +985,14 @@ onUnmounted(() => {
   content: '';
   flex: 1;
   height: 1px;
-  background: rgba(var(--v-theme-on-surface), 0.10);
+  background: var(--ds-border-color);
 }
 
 .admin-date-separator__label {
   font-size: 0.7rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: var(--ds-text-secondary);
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   text-transform: uppercase;
   white-space: nowrap;
   padding: 0 4px;
@@ -892,25 +1006,143 @@ onUnmounted(() => {
 
 .conv-item {
   cursor: pointer;
+  border-radius: var(--ds-radius-12);
+  margin-bottom: var(--ds-space-4);
+  padding-inline: var(--ds-space-6);
+}
+
+.conv-item :deep(.v-list-item__overlay) {
+  border-radius: var(--ds-radius-12);
+}
+
+.thread-message-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-8);
+  padding: var(--ds-space-14);
 }
 
 .admin-chat-bubble {
   max-width: 72%;
-  padding: 8px 12px;
-  border-radius: 12px;
+  padding: var(--ds-space-10) var(--ds-space-12);
+  border-radius: var(--ds-radius-16);
   word-break: break-word;
   line-height: 1.45;
+  border: 1px solid transparent;
 }
 
 .admin-chat-bubble--customer {
-  background-color: rgb(var(--v-theme-surface-variant));
-  color: rgb(var(--v-theme-on-surface-variant));
-  border-bottom-left-radius: 4px;
+  color: var(--ds-text-primary);
+  border-color: var(--ds-border-color);
+  border-bottom-left-radius: var(--ds-radius-6);
+  background: rgb(var(--v-theme-surface));
 }
 
 .admin-chat-bubble--admin {
-  background-color: rgb(var(--v-theme-primary));
+  border-bottom-right-radius: var(--ds-radius-6);
+  background: rgb(var(--v-theme-primary));
   color: rgb(var(--v-theme-on-primary));
-  border-bottom-right-radius: 4px;
+}
+
+.admin-chat-bubble__sender {
+  margin-bottom: var(--ds-space-4);
+  color: var(--ds-text-secondary);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.admin-chat-bubble--admin .admin-chat-bubble__sender,
+.admin-chat-bubble--admin .admin-chat-bubble__time {
+  color: color-mix(in srgb, rgb(var(--v-theme-on-primary)) 74%, transparent);
+}
+
+.admin-chat-bubble__body {
+  white-space: pre-wrap;
+}
+
+.admin-chat-bubble__time {
+  margin-top: var(--ds-space-6);
+  color: var(--ds-text-secondary);
+  font-size: 0.68rem;
+  line-height: 1.25;
+  text-align: right;
+}
+
+.chat-composer {
+  display: grid;
+  gap: var(--ds-space-8);
+  padding: var(--ds-space-10) var(--ds-space-12);
+  border-top: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-low), 0.76);
+}
+
+.chat-composer__attachment {
+  max-width: 100%;
+  justify-self: start;
+}
+
+.chat-composer__row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--ds-space-8);
+}
+
+.chat-closed-state {
+  display: flex;
+  justify-content: center;
+  padding: var(--ds-space-12);
+  border-top: 1px solid var(--ds-border-color);
+  background: rgba(var(--v-theme-surface-container-low), 0.76);
+}
+
+@media (max-width: 960px) {
+  .admin-chat-view {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100dvh - 88px);
+    overflow: visible;
+  }
+
+  .chat-list-panel {
+    width: 100%;
+    max-height: 42vh;
+  }
+
+  .chat-thread-panel {
+    min-height: 58vh;
+  }
+
+  .thread-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .thread-header__actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .admin-chat-view {
+    gap: var(--ds-space-8);
+    padding: var(--ds-space-8);
+  }
+
+  .chat-list-panel {
+    max-height: 48vh;
+  }
+
+  .thread-header {
+    padding: var(--ds-space-12);
+  }
+
+  .admin-chat-bubble {
+    max-width: 88%;
+  }
+
+  .chat-composer__row {
+    align-items: stretch;
+  }
 }
 </style>

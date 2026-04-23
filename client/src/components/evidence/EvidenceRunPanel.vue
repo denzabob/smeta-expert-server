@@ -117,8 +117,8 @@
       <!-- Selected run details -->
       <template v-if="evidence.selectedRun.value">
         <!-- Run status header -->
-        <v-card variant="flat" class="mt-3 border">
-          <v-card-title class="d-flex align-center flex-wrap ga-2">
+        <v-card variant="flat" class="evidence-run-panel__run">
+          <v-card-title class="evidence-run-panel__run-head">
             <span>Запуск #{{ evidence.selectedRun.value.id }}</span>
             <v-chip
               size="small"
@@ -139,7 +139,7 @@
             </v-chip>
           </v-card-title>
 
-          <v-card-text class="pt-0">
+          <v-card-text class="evidence-run-panel__run-body">
             <!-- Coverage summary -->
             <EvidenceCoverageSummary
               :total="evidence.coverage.value.total"
@@ -180,7 +180,7 @@
             </v-alert>
 
             <!-- Items table -->
-            <div class="mt-3">
+            <div class="evidence-run-panel__table-wrap">
               <EvidenceItemsTable
                 :items="evidence.selectedRunItems.value"
                 :disabled="evidence.actionLoading.value || isRunTerminal"
@@ -357,6 +357,47 @@ async function doFinalize() {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  gap: 10px 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
+}
+
+.evidence-run-panel__toolbar :deep(.v-input) {
+  flex: 1 1 260px;
+  max-width: 360px;
+}
+
+.evidence-run-panel__run {
+  margin-top: 16px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.evidence-run-panel__run-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  padding: 0 0 12px !important;
+}
+
+.evidence-run-panel__run-body {
+  padding: 0 !important;
+}
+
+.evidence-run-panel__table-wrap {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
+}
+
+@media (max-width: 760px) {
+  .evidence-run-panel__toolbar > .v-btn,
+  .evidence-run-panel__toolbar :deep(.v-input) {
+    flex: 1 1 100%;
+    max-width: none;
+  }
 }
 </style>

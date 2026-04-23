@@ -68,7 +68,7 @@
       </v-menu>
     </v-app-bar>
 
-    <v-navigation-drawer v-model="drawer" class="nav-drawer">
+    <v-navigation-drawer v-model="drawer" class="nav-drawer" :temporary="mobile">
       <v-list nav>
         <v-list-item
           prepend-icon="mdi-view-dashboard"
@@ -187,16 +187,17 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
-import { useTheme } from 'vuetify'
+import { useDisplay, useTheme } from 'vuetify'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { parserApi, type SystemStatus } from '@/api/parser'
 
 const theme = useTheme()
+const { mobile } = useDisplay()
 const router = useRouter()
 const authStore = useAuthStore()
 
-const drawer = ref(true)
+const drawer = ref(!mobile.value)
 const statusDialog = ref(false)
 const systemStatus = ref<SystemStatus | null>(null)
 const showScrollTop = ref(false)
@@ -265,6 +266,14 @@ watch(themeMode, () => {
   localStorage.setItem('app-theme-mode', themeMode.value)
   applyThemeMode()
 })
+
+watch(
+  mobile,
+  (isMobile) => {
+    drawer.value = !isMobile
+  },
+  { immediate: true }
+)
 
 async function openSystemStatus() {
   statusDialog.value = true

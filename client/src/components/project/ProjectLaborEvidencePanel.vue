@@ -2,11 +2,7 @@
   <SectionCard class="labor-evidence-panel">
     <div class="panel-head">
       <div class="panel-copy">
-        <div class="panel-copy__eyebrow">Труд и доказательства</div>
         <div class="panel-copy__title">Источники обоснования труда</div>
-        <div class="panel-copy__text">
-          В отчёт попадут только источники, явно привязанные к этому проекту.
-        </div>
       </div>
       <v-btn color="primary" variant="tonal" prepend-icon="mdi-link-plus" @click="openAttachDialog">
         Добавить источники
@@ -352,13 +348,19 @@ function openDetails(source: LaborEvidenceSource) {
   padding: 0 !important;
 }
 
+.labor-evidence-panel {
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
 .panel-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  padding: 16px 18px 14px;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.5);
+  padding: 0 0 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
 }
 
 .panel-copy {
@@ -390,19 +392,20 @@ function openDetails(source: LaborEvidenceSource) {
 }
 
 .empty-wrap {
-  padding: 12px 18px 16px;
+  padding: 14px 0 0;
 }
 
 .sources-table :deep(.v-table__wrapper) {
-  border-radius: calc(var(--md-sys-shape-corner-large) + 2px);
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.52);
-  background: rgba(var(--v-theme-surface), 0.98);
+  border-radius: 0;
+  border: 0;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
+  background: transparent;
 }
 
 .sources-table :deep(thead th) {
   height: 44px !important;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.62) !important;
-  background: rgba(var(--v-theme-surface-container), 0.88) !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.34) !important;
+  background: rgba(var(--v-theme-surface-container-low), 0.54) !important;
 }
 
 .sources-table :deep(thead th .v-data-table-header__content) {
@@ -415,19 +418,19 @@ function openDetails(source: LaborEvidenceSource) {
 
 .sources-table :deep(tbody td) {
   vertical-align: top;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.38) !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.22) !important;
   padding-top: 10px !important;
   padding-bottom: 10px !important;
   background: transparent !important;
 }
 
 .sources-table :deep(.v-data-table-footer) {
-  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.42);
-  background: rgba(var(--v-theme-surface-container-low), 0.74);
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
+  background: transparent;
 }
 
 .sources-table :deep(.v-table) {
-  margin: 14px 18px 18px;
+  margin: 14px 0 0;
 }
 
 .source-title-cell__title {
@@ -519,15 +522,15 @@ function openDetails(source: LaborEvidenceSource) {
 @media (max-width: 900px) {
   .panel-head {
     flex-direction: column;
-    padding: 14px;
+    padding: 0 0 14px;
   }
 
   .empty-wrap {
-    padding: 10px 14px 14px;
+    padding: 14px 0 0;
   }
 
   .sources-table :deep(.v-table) {
-    margin: 12px 14px 14px;
+    margin: 14px 0 0;
   }
 
   .labor-attach-dialog-card__title {

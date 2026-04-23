@@ -142,6 +142,7 @@
 
     <!-- ======================== MODULE: POSITIONS ======================== -->
     <div v-show="activeModule === 'positions'" class="module-content">
+      <section class="dense-module-shell dense-module-shell--positions">
       <!-- Positions Summary -->
       <div class="module-summary">
         <v-chip size="small" variant="tonal" color="primary">Всего: {{ positions.length }}</v-chip>
@@ -423,6 +424,7 @@
             </template>
           </v-data-table>
         </div>
+      </section>
 
         <v-dialog
           v-model="positionDrawer"
@@ -8763,13 +8765,10 @@ onBeforeUnmount(() => {
 .workspace-root {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   height: calc(100dvh - 48px);
   min-height: 0;
   overflow: hidden;
-  background:
-    radial-gradient(circle at top left, rgba(var(--v-theme-primary), 0.05), transparent 32%),
-    rgb(var(--v-theme-background));
 }
 
 .workspace-body {
@@ -8779,8 +8778,8 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-/* Hide sidebar on mobile; it's replaced by the tab bar */
-@media (max-width: 600px) {
+/* Hide sidebar in compact layout; it is replaced by the horizontal module tabs. */
+@media (max-width: 959px) {
   .workspace-sidebar-desktop {
     display: none !important;
   }
@@ -8794,6 +8793,19 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   background: rgb(var(--v-theme-surface));
+}
+
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  row-gap: 10px;
+  padding-inline-end: 2px;
+  box-sizing: border-box;
 }
 
 .workspace-mobile-tab-scroll {
@@ -8964,7 +8976,7 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 959px) {
   .workspace-module-area {
     padding: 12px 12px;
   }
@@ -8976,7 +8988,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 22px;
 }
 
 .module-summary {
@@ -8984,18 +8996,26 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 0;
-  padding: 12px 14px;
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
-  border-radius: var(--md-sys-shape-corner-extra-large);
-  background:
-    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.028), transparent 110px),
-    rgba(var(--v-theme-surface-container-low), 0.88);
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .dense-module-shell {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.46);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.018), transparent 180px),
+    rgba(var(--v-theme-surface-container-lowest), 0.96);
+}
+
+.dense-module-shell > .module-summary {
+  padding: 0 0 12px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.32);
 }
 
 .dense-module-hero {
@@ -9003,12 +9023,11 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.68);
-  border-radius: var(--md-sys-shape-corner-large);
-  background:
-    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.026), transparent 110px),
-    rgba(var(--v-theme-surface-container-lowest), 0.94);
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.32);
+  border-radius: 0;
+  background: transparent;
 }
 
 .dense-module-hero__content,
@@ -9049,17 +9068,22 @@ onBeforeUnmount(() => {
 .dense-module-surface {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 16px;
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.7);
-  border-radius: var(--md-sys-shape-corner-large);
-  background: rgba(var(--v-theme-surface-container-low), 0.94);
+  gap: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.dense-module-surface + .dense-module-surface {
+  padding-top: 18px;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
 }
 
 .dense-module-section-bar,
 .dense-module-actions-bar {
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.52);
+  padding: 0;
+  border-bottom: 0;
 }
 
 .dense-module-section-bar--compact {
@@ -9088,10 +9112,11 @@ onBeforeUnmount(() => {
 
 .dense-module-table-wrap {
   min-width: 0;
-  overflow: hidden;
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.68);
-  border-radius: calc(var(--md-sys-shape-corner-large) + 2px);
-  background: rgba(var(--v-theme-surface), 0.99);
+  overflow: auto;
+  border: 0;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
+  border-radius: 0;
+  background: transparent;
 }
 
 .dense-module-table :deep(table) {
@@ -9102,8 +9127,8 @@ onBeforeUnmount(() => {
 .dense-module-table :deep(thead th) {
   height: 44px !important;
   padding: 0 14px !important;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.72) !important;
-  background: rgba(var(--v-theme-surface-container-high), 0.92) !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.34) !important;
+  background: rgba(var(--v-theme-surface-container-low), 0.54) !important;
   color: rgba(var(--v-theme-on-surface-variant), 1) !important;
   font-size: 0.75rem;
   font-weight: 700;
@@ -9113,7 +9138,7 @@ onBeforeUnmount(() => {
 
 .dense-module-table :deep(tbody td) {
   padding: 10px 14px !important;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.48) !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.24) !important;
   vertical-align: middle;
 }
 
@@ -9124,16 +9149,16 @@ onBeforeUnmount(() => {
 .dense-module-support-grid {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .dense-module-support-card {
   min-width: 0;
   padding: 0;
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.66);
-  border-radius: calc(var(--md-sys-shape-corner-large) + 2px);
-  background: rgba(var(--v-theme-surface), 0.99);
-  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
 }
 
 .dense-module-support-card > :deep(*) {
@@ -9141,7 +9166,8 @@ onBeforeUnmount(() => {
 }
 
 .dense-module-support-card > :deep(.v-card),
-.dense-module-support-card > :deep(.v-sheet) {
+.dense-module-support-card > :deep(.v-sheet),
+.dense-module-support-card > :deep(.saas-section-card) {
   border: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -9162,26 +9188,28 @@ onBeforeUnmount(() => {
 
 .revision-surface-card {
   overflow: hidden;
+  background: transparent;
 }
 
 .revision-run-card :deep(.v-card-title) {
-  padding: 14px 16px 10px;
+  padding: 0 0 12px;
 }
 
 .revision-run-card :deep(.v-card-text) {
-  padding: 0 16px 16px;
+  padding: 0;
 }
 
 .revision-run-card :deep(.v-table) {
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.42);
-  border-radius: var(--md-sys-shape-corner-medium);
-  background: rgba(var(--v-theme-surface), 0.98);
+  border: 0;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
+  border-radius: 0;
+  background: transparent;
 }
 
 .revision-run-card :deep(.v-table th) {
   height: 40px;
   padding: 0 12px;
-  background: rgba(var(--v-theme-surface-container), 0.82);
+  background: rgba(var(--v-theme-surface-container), 0.54);
   color: rgba(var(--v-theme-on-surface-variant), 0.96);
   font-size: 0.73rem;
   font-weight: 700;
@@ -9208,21 +9236,22 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background:
-    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.022), transparent 120px),
-    rgba(var(--v-theme-surface-container-lowest), 0.96);
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
-  border-radius: var(--md-sys-shape-corner-extra-large);
-  margin-bottom: 10px;
+  gap: 10px 12px;
+  padding: 2px 0 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  margin-bottom: 0;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0);
   transition: box-shadow 0.25s ease;
 }
 
 .positions-unified-toolbar.is-stuck {
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-  border-color: rgba(var(--v-theme-outline), 0.86);
+  padding: 10px 12px;
+  border-radius: var(--md-sys-shape-corner-large);
+  background: rgba(var(--v-theme-surface-container-low), 0.9);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+  outline: 1px solid rgba(var(--v-theme-outline-variant), 0.36);
 }
 
 .toolbar-zone {
@@ -9251,11 +9280,12 @@ onBeforeUnmount(() => {
 }
 
 .positions-table-wrap {
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
-  border-radius: var(--md-sys-shape-corner-extra-large);
-  background: rgba(var(--v-theme-surface-container-low), 0.95);
-  padding: 8px;
-  overflow: hidden;
+  border: 0;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  overflow: auto;
 }
 
 .position-sheet {
@@ -9367,8 +9397,8 @@ onBeforeUnmount(() => {
 }
 
 .positions-table-wrap :deep(.v-table__wrapper) {
-  border-radius: calc(var(--md-sys-shape-corner-extra-large) - 8px);
-  background: rgba(var(--v-theme-surface), 0.99);
+  border-radius: 0;
+  background: transparent;
   overflow-y: hidden !important;
   max-height: none !important;
   scrollbar-width: none;
@@ -9387,8 +9417,8 @@ onBeforeUnmount(() => {
 .positions-table :deep(thead th) {
   height: 44px !important;
   padding: 0 12px !important;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.72) !important;
-  background: rgba(var(--v-theme-surface-container-high), 0.94) !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.34) !important;
+  background: rgba(var(--v-theme-surface-container-low), 0.54) !important;
   color: rgba(var(--v-theme-on-surface-variant), 1) !important;
   font-size: 0.75rem;
   font-weight: 700;
@@ -9398,7 +9428,7 @@ onBeforeUnmount(() => {
 
 .positions-table :deep(tbody td) {
   padding: 8px 12px !important;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.48) !important;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.24) !important;
   background: transparent !important;
   vertical-align: middle;
 }
@@ -9498,8 +9528,9 @@ onBeforeUnmount(() => {
     padding: 12px 12px;
   }
 
-  .module-summary {
-    padding: 10px 12px;
+  .toolbar-actions {
+    justify-content: flex-start;
+    padding-inline-end: 0;
   }
 
   .toolbar-zone--right {
@@ -9509,8 +9540,41 @@ onBeforeUnmount(() => {
 
 @media (max-width: 760px) {
   .workspace-root {
-    gap: 10px;
+    gap: 12px;
     height: calc(100dvh - 32px);
+  }
+
+  .toolbar-actions {
+    width: 100%;
+  }
+
+  .toolbar-actions :deep(.v-btn) {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+
+  .module-content {
+    gap: 14px;
+  }
+
+  .dense-module-shell {
+    gap: 14px;
+    padding: 14px;
+    border-radius: var(--md-sys-shape-corner-large);
+  }
+
+  .dense-module-hero {
+    padding-bottom: 10px;
+  }
+
+  .dense-module-actions-bar__actions,
+  .dense-module-section-bar__meta {
+    width: 100%;
+  }
+
+  .dense-module-actions-bar__actions .v-btn,
+  .toolbar-zone .v-btn {
+    flex: 1 1 auto;
   }
 
   .positions-unified-toolbar {
@@ -9522,8 +9586,8 @@ onBeforeUnmount(() => {
   }
 
   .positions-table-wrap {
-    padding: 4px;
-    border-radius: var(--md-sys-shape-corner-large);
+    padding: 0;
+    border-radius: 0;
   }
 
   .positions-table :deep(thead th),

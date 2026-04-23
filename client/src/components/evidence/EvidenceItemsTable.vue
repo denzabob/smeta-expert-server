@@ -182,6 +182,31 @@ function skipReason(item: EvidenceItem): string | null {
 </script>
 
 <style scoped>
+.evidence-items-table {
+  background: transparent;
+}
+
+.evidence-items-table :deep(.v-table__wrapper) {
+  border-radius: 0;
+  background: transparent;
+}
+
+.evidence-items-table :deep(thead th) {
+  height: 44px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.34);
+  background: rgba(var(--v-theme-surface-container-low), 0.54);
+  color: rgba(var(--v-theme-on-surface-variant), 1);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.evidence-items-table :deep(tbody td) {
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.24);
+  vertical-align: middle;
+}
+
 .evidence-items-table__row--skipped {
   opacity: 0.6;
 }

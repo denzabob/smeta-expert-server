@@ -1,17 +1,20 @@
 <template>
   <PageContainer class="parser-history">
+    <PageHeader
+      title="Parser History"
+      subtitle="История запусков, аналитика обработки и быстрый переход к деталям parser sessions."
+    />
+
     <v-row>
       <!-- Header & Filters -->
       <v-col cols="12">
-        <v-card class="filters-card">
-          <v-card-title>
-            <v-icon icon="mdi-history" class="mr-2" />
-            Parsing History & Analytics
-          </v-card-title>
-
-          <v-card-text>
-            <v-row align="center">
-              <v-col cols="12" md="3">
+        <SectionCard
+          class="filters-card"
+          title="Фильтры истории"
+          subtitle="Отбор parser sessions по поставщику, статусу и периоду."
+        >
+          <TableToolbar>
+            <template #filters>
                 <v-select
                   v-model="filters.supplier"
                   :items="suppliers"
@@ -19,10 +22,9 @@
                   clearable
                   variant="outlined"
                   density="compact"
+                  hide-details
                 />
-              </v-col>
 
-              <v-col cols="12" md="3">
                 <v-select
                   v-model="filters.status"
                   :items="statuses"
@@ -30,30 +32,29 @@
                   clearable
                   variant="outlined"
                   density="compact"
+                  hide-details
                 />
-              </v-col>
 
-              <v-col cols="12" md="3">
                 <v-text-field
                   v-model="filters.dateFrom"
                   label="From Date"
                   type="date"
                   variant="outlined"
                   density="compact"
+                  hide-details
                 />
-              </v-col>
 
-              <v-col cols="12" md="3">
                 <v-text-field
                   v-model="filters.dateTo"
                   label="To Date"
                   type="date"
                   variant="outlined"
                   density="compact"
+                  hide-details
                 />
-              </v-col>
-
-              <v-col cols="12" class="text-right">
+            </template>
+            <template #actions>
+              <ButtonGroup>
                 <v-btn
                   color="primary"
                   variant="flat"
@@ -67,51 +68,43 @@
                   variant="text"
                   prepend-icon="mdi-refresh"
                   @click="resetFilters"
-                  class="ml-2"
                 >
                   Reset
                 </v-btn>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
+              </ButtonGroup>
+            </template>
+          </TableToolbar>
+        </SectionCard>
       </v-col>
 
       <!-- Charts -->
       <v-col cols="12" md="6">
-        <v-card class="chart-card">
-          <v-card-title>Processed Items Over Time</v-card-title>
-          <v-card-text>
-            <apexchart
+        <SectionCard class="chart-card" title="Processed Items Over Time">
+            <VueApexCharts
               type="bar"
               :options="processedChartOptions"
               :series="processedChartSeries"
               height="300"
             />
-          </v-card-text>
-        </v-card>
+        </SectionCard>
       </v-col>
 
       <v-col cols="12" md="6">
-        <v-card class="chart-card">
-          <v-card-title>Error Trends</v-card-title>
-          <v-card-text>
-            <apexchart
+        <SectionCard class="chart-card" title="Error Trends">
+            <VueApexCharts
               type="line"
               :options="errorsChartOptions"
               :series="errorsChartSeries"
               height="300"
             />
-          </v-card-text>
-        </v-card>
+        </SectionCard>
       </v-col>
 
       <!-- Sessions Table -->
       <v-col cols="12">
-        <v-card class="sessions-table">
-          <v-card-title>
-            <div class="d-flex align-center justify-space-between w-100">
-              <span>Sessions ({{ total }} total)</span>
+        <SectionCard class="sessions-table" :title="`Sessions (${total} total)`">
+          <AppDataTableShell>
+            <template #search>
               <v-text-field
                 v-model="search"
                 prepend-inner-icon="mdi-magnify"
@@ -120,13 +113,11 @@
                 hide-details
                 density="compact"
                 variant="outlined"
-                style="max-width: 300px"
               />
-            </div>
-          </v-card-title>
+            </template>
 
           <v-data-table
-            :headers="headers"
+            :headers="displayHeaders"
             :items="sessions"
             :loading="loading.sessions"
             :search="search"
@@ -137,7 +128,7 @@
             <!-- Expand Panel -->
             <template v-slot:expanded-row="{ item }">
               <tr class="expansion-row">
-                <td :colspan="headers.length">
+                <td :colspan="displayHeaders.length">
                   <v-card flat class="ma-3">
                     <v-card-text>
                       <v-row>
@@ -217,12 +208,13 @@
 
             <!-- Status Column -->
             <template v-slot:item.status="{ item }">
-              <v-chip
+              <StatusChip
                 :color="getStatusColor(item.status)"
                 size="small"
+                variant="tonal"
               >
                 {{ item.status.toUpperCase() }}
-              </v-chip>
+              </StatusChip>
             </template>
 
             <!-- Started At Column -->
@@ -257,16 +249,9 @@
               </div>
             </template>
 
-            <!-- Actions Column -->
-            <template v-slot:item.actions="{ item }">
-              <v-btn
-                icon="mdi-chevron-down"
-                variant="text"
-                size="small"
-              />
-            </template>
           </v-data-table>
-        </v-card>
+          </AppDataTableShell>
+        </SectionCard>
       </v-col>
     </v-row>
   </PageContainer>
@@ -275,13 +260,21 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useDisplay } from 'vuetify'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import ButtonGroup from '@/components/layout/ButtonGroup.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
+import TableToolbar from '@/components/layout/TableToolbar.vue'
 import { parserApi, type ParsingSession, type ChartDataPoint } from '@/api/parser'
 import { differenceInSeconds, format } from 'date-fns'
 import VueApexCharts from 'vue3-apexcharts'
 
 const router = useRouter()
 const route = useRoute()
+const { mobile } = useDisplay()
 
 // Флаг для предотвращения обновления состояния при размонтировании
 let isUnmounted = false
@@ -322,6 +315,15 @@ const headers = [
   { title: 'Results', key: 'results', sortable: false },
   { title: '', key: 'data-table-expand' }
 ]
+
+const mobileHeaders = [
+  { title: 'Supplier', key: 'supplier' },
+  { title: 'Status', key: 'status' },
+  { title: 'Results', key: 'results', sortable: false },
+  { title: '', key: 'data-table-expand' }
+]
+
+const displayHeaders = computed(() => (mobile.value ? mobileHeaders : headers))
 
 // Charts Configuration
 const processedChartOptions = computed(() => ({
@@ -553,11 +555,11 @@ function downloadLogs(id: number) {
 .filters-card,
 .chart-card,
 .sessions-table {
-  border-radius: 0 !important;
+  border: 1px solid var(--ds-border-color);
 }
 
 .expansion-row {
-  background: #f5f5f5;
+  background: rgba(var(--v-theme-surface-container-low), 0.72);
 
   .detail-section {
     .detail-title {
@@ -565,22 +567,22 @@ function downloadLogs(id: number) {
       margin-bottom: 12px;
       text-transform: uppercase;
       font-size: 0.875rem;
-      color: rgba(0, 0, 0, 0.6);
+      color: var(--ds-text-secondary);
     }
 
     .detail-item {
       display: flex;
       justify-content: space-between;
       padding: 6px 0;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      border-bottom: 1px solid var(--ds-divider);
 
       .label {
         font-weight: 500;
-        color: rgba(0, 0, 0, 0.7);
+        color: var(--ds-text-secondary);
       }
 
       .value {
-        color: rgba(0, 0, 0, 0.87);
+        color: var(--ds-text-primary);
         
         &.error-text {
           color: #f44336;
@@ -603,6 +605,32 @@ function downloadLogs(id: number) {
   .error-count {
     color: #f44336;
     font-weight: 500;
+  }
+}
+
+@media (max-width: 600px) {
+  .expansion-row > td {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    min-width: calc(100vw - var(--ds-space-32));
+    max-width: calc(100vw - var(--ds-space-32));
+    background: rgba(var(--v-theme-surface-container-low), 0.96);
+  }
+
+  .expansion-row :deep(.v-card) {
+    margin: var(--ds-space-8) 0 !important;
+  }
+
+  .expansion-row .detail-item {
+    align-items: flex-start;
+    gap: var(--ds-space-8);
+  }
+
+  .expansion-row .detail-item .value {
+    min-width: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
   }
 }
 </style>

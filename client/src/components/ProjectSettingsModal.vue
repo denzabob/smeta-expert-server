@@ -867,7 +867,19 @@ const onPasteCoefficientDescription = (event: ClipboardEvent) => {
 }
 
 .psm-content-card {
-  border-radius: 8px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.psm-content-card :deep(.v-card-text) {
+  padding: 0 !important;
+}
+
+.psm-content-card + .psm-content-card {
+  padding-top: 16px;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.48);
 }
 
 /* Mode toggle labels */

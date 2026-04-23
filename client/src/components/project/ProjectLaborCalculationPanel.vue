@@ -248,13 +248,19 @@ defineExpose({
   padding: 0 !important;
 }
 
+.labor-calculation-panel {
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
 .panel-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  padding: 16px 18px 14px;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.5);
+  padding: 0 0 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
 }
 
 .panel-copy {
@@ -288,16 +294,14 @@ defineExpose({
 
 .calculation-grid {
   display: grid;
-  gap: 12px;
-  padding: 14px 18px 18px;
+  gap: 14px;
+  padding: 14px 0 0;
 }
 
 .profile-card {
   border-radius: var(--md-sys-shape-corner-large);
-  border-color: rgba(var(--v-theme-outline-variant), 0.56) !important;
-  background:
-    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.02), transparent 120px),
-    rgba(var(--v-theme-surface), 0.98);
+  border: 0 !important;
+  background: rgba(var(--v-theme-surface-container-low), 0.54);
 }
 
 .profile-card__content {
@@ -334,7 +338,7 @@ defineExpose({
 .metric-card {
   padding: 14px 15px;
   border-radius: var(--md-sys-shape-corner-large);
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.42);
+  border: 0;
   background: rgba(var(--v-theme-surface-container-low), 0.9);
 }
 
@@ -377,7 +381,7 @@ defineExpose({
   padding: 14px 15px;
   border-radius: var(--md-sys-shape-corner-large);
   background: rgba(var(--v-theme-surface-container-low), 0.76);
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.46);
+  border: 0;
 }
 
 .breakdown-formula__title {
@@ -431,11 +435,11 @@ defineExpose({
 @media (max-width: 760px) {
   .panel-head {
     flex-direction: column;
-    padding: 14px;
+    padding: 0 0 14px;
   }
 
   .calculation-grid {
-    padding: 12px 14px 14px;
+    padding: 14px 0 0;
   }
 
   .profile-metrics {

@@ -1,22 +1,29 @@
 <template>
   <!-- Loading skeleton -->
-  <div v-if="loading" class="d-flex flex-column gap-3 pa-4">
-    <div v-for="i in 3" :key="i" class="d-flex" :class="i % 2 === 0 ? 'justify-end' : ''">
-      <v-skeleton-loader type="text" width="60%" />
-    </div>
+  <div v-if="loading" class="support-chat-state support-chat-state--loading">
+    <AppStateBlock
+      loading
+      title="Подключаем чат"
+      description="Подгружаем историю переписки."
+      density="compact"
+    />
   </div>
 
   <!-- Empty state -->
   <div
     v-else-if="messages.length === 0"
-    class="d-flex flex-column align-center justify-center h-100 text-medium-emphasis pa-4"
+    class="support-chat-state"
   >
-    <v-icon size="48" class="mb-2">mdi-chat-outline</v-icon>
-    <span class="text-body-2">Напишите нам — мы ответим в ближайшее время.</span>
+    <AppStateBlock
+      icon="mdi-chat-outline"
+      title="Чат готов к сообщению"
+      description="Опишите вопрос, и мы ответим в ближайшее рабочее время."
+      density="compact"
+    />
   </div>
 
   <!-- Message list -->
-  <div v-else class="d-flex flex-column gap-1 pa-2">
+  <div v-else class="support-chat-message-list">
     <template v-for="(msg, index) in messages" :key="msg.id">
       <!-- Date separator -->
       <div v-if="showDateSeparator(index)" class="date-separator">
@@ -24,11 +31,11 @@
       </div>
 
       <div
-        class="d-flex"
-        :class="msg.is_mine ? 'justify-end' : 'justify-start'"
+        class="support-chat-message-row"
+        :class="msg.is_mine ? 'support-chat-message-row--mine' : 'support-chat-message-row--theirs'"
       >
         <div
-          class="chat-bubble text-body-2"
+          class="chat-bubble"
           :class="[
             msg.is_mine ? 'chat-bubble--mine' : 'chat-bubble--theirs',
             !msg.body && msg.attachments?.length ? 'chat-bubble--image-only' : ''
@@ -37,7 +44,7 @@
           <!-- Sender label for admin messages -->
           <div
             v-if="!msg.is_mine && msg.sender_display_name"
-            class="text-caption font-weight-medium mb-1 text-medium-emphasis"
+            class="chat-bubble__sender"
           >
             {{ msg.sender_display_name }}
           </div>
@@ -51,8 +58,8 @@
             :attachment="att"
           />
 
-          <div class="text-right text-caption mt-1" style="font-size: 10px;">
-            {{ formatTime(msg.created_at) }}
+          <div class="chat-bubble__meta">
+            <span class="chat-bubble__time">{{ formatTime(msg.created_at) }}</span>
           </div>
         </div>
       </div>
@@ -62,6 +69,7 @@
 
 <script setup lang="ts">
 import type { ChatMessage } from '@/api/supportChat'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
 import ChatAttachmentItem from './ChatAttachmentItem.vue'
 
 const props = defineProps<{
@@ -100,46 +108,39 @@ function formatDateLabel(iso: string): string {
 </script>
 
 <style scoped>
-/* ==========================================================================
-   CHAT — PREMIUM SUPPORT SAAS
-   ========================================================================== */
-
-/* Loading skeleton */
-:deep(.d-flex.flex-column.gap-3) {
-  padding: 16px;
-  gap: 12px !important;
+.support-chat-state {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 20px;
 }
 
-/* Empty state */
-:deep(.d-flex.flex-column.align-center.justify-center.h-100) {
-  padding: 48px 24px;
+.support-chat-message-list {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+  padding: 18px 16px 20px;
 }
 
-/* Message list container */
-:deep(.d-flex.flex-column.gap-1) {
-  padding: 16px;
-  gap: 12px !important;
+.support-chat-message-row {
+  display: flex;
 }
 
-/* Если сообщения обернуты в дополнительные flex-row блоки */
-:deep(.chat-message-row) {
-  margin-bottom: 10px;
+.support-chat-message-row--mine {
+  justify-content: flex-end;
 }
 
-:deep(.chat-message-row:last-child) {
-  margin-bottom: 0;
+.support-chat-message-row--theirs {
+  justify-content: flex-start;
 }
-
-/* ==========================================================================
-   DATE SEPARATORS
-   ========================================================================== */
 
 .date-separator {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 12px 0 6px;
+  margin: 8px 0 2px;
   flex-shrink: 0;
 }
 
@@ -153,27 +154,26 @@ function formatDateLabel(iso: string): string {
 
 .date-separator__label {
   font-size: 0.7rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
-  font-weight: 500;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
   padding: 0 4px;
 }
 
-/* ==========================================================================
-   MESSAGE BUBBLES
-   ========================================================================== */
-
 .chat-bubble {
+  display: grid;
+  gap: 6px;
   max-width: min(82%, 720px);
-  padding: 10px 14px;
-  border-radius: 16px;
+  padding: 12px 14px 10px;
+  border-radius: 18px;
   word-break: break-word;
+  overflow-wrap: anywhere;
   line-height: 1.5;
   font-size: 0.9375rem;
   animation: bubble-appear 0.18s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid transparent;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.48);
   box-shadow: none;
   position: relative;
 }
@@ -189,28 +189,25 @@ function formatDateLabel(iso: string): string {
   }
 }
 
-/* Мои сообщения */
 .chat-bubble--mine {
-  background: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.92);
   color: rgb(var(--v-theme-on-primary));
-  border-bottom-right-radius: 6px;
-  border-color: rgba(var(--v-theme-primary), 0.9);
+  border-bottom-right-radius: 8px;
+  border-color: rgba(var(--v-theme-primary), 0.32);
 }
 
-/* Сообщения оператора / системы */
 .chat-bubble--theirs {
-  background: #d7d7d7;
+  background: rgba(var(--v-theme-surface), 0.9);
   color: rgb(var(--v-theme-on-surface));
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
-  border-bottom-left-radius: 6px;
+  border-bottom-left-radius: 8px;
 }
 
-/* Image-only messages — no background or border */
 .chat-bubble--image-only {
   background: transparent !important;
   border: none !important;
-  padding: 4px 0 !important;
+  padding: 4px 0 0 !important;
   margin: 0 !important;
+  max-width: min(88%, 720px);
 }
 
 .chat-bubble--image-only:hover {
@@ -218,24 +215,17 @@ function formatDateLabel(iso: string): string {
   background: transparent !important;
 }
 
-/* Time should be visible in image-only messages */
-.chat-bubble--image-only :deep(.text-caption.mt-1) {
-  color: rgba(0, 0, 0, 0.85) !important;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 4px 8px;
-  border-radius: 4px;
-  backdrop-filter: blur(4px);
-  font-weight: 600;
+.chat-bubble--image-only .chat-bubble__meta {
+  justify-content: flex-end;
+  padding-right: 2px;
 }
 
-/* Hover */
 .chat-bubble--mine:hover {
   filter: brightness(0.98);
 }
 
 .chat-bubble--theirs:hover {
-  background: rgba(var(--v-theme-on-surface), 0.02);
-  border-color: rgba(var(--v-theme-on-surface), 0.14);
+  border-color: rgba(var(--v-theme-primary), 0.16);
 }
 
 .chat-bubble--image-only:hover {
@@ -244,53 +234,48 @@ function formatDateLabel(iso: string): string {
   border-color: transparent;
 }
 
-/* Текст сообщения */
-.chat-bubble__body {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  margin-bottom: 6px;
-  letter-spacing: -0.1px;
-}
-
-/* Имя отправителя */
-:deep(.text-caption.font-weight-medium:not(.text-disabled)) {
+.chat-bubble__sender {
   font-size: 0.69rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-bottom: 4px;
-  opacity: 0.72;
+  color: rgba(var(--v-theme-on-surface), 0.56);
 }
 
-/* Время */
-:deep(.text-caption.mt-1) {
+.chat-bubble__body {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  letter-spacing: -0.1px;
+}
+
+.chat-bubble__meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.chat-bubble__time {
   font-size: 0.72rem;
-  margin-top: 4px !important;
   opacity: 0.68;
   line-height: 1.2;
 }
 
-.chat-bubble--mine :deep(.text-caption.mt-1) {
+.chat-bubble--mine .chat-bubble__time {
   color: rgba(var(--v-theme-on-primary), 0.78);
 }
 
-.chat-bubble--theirs :deep(.text-caption.mt-1) {
+.chat-bubble--theirs .chat-bubble__time {
   color: rgba(var(--v-theme-on-surface), 0.52);
 }
 
-/* ==========================================================================
-   ATTACHMENTS
-   ========================================================================== */
-
 :deep(.chat-attachment-item) {
-  margin-top: 8px;
+  margin-top: 2px;
 }
 
 :deep(.chat-attachment-item + .chat-attachment-item) {
   margin-top: 6px;
 }
 
-/* Attachments in image-only messages have proper spacing */
 .chat-bubble--image-only :deep(.chat-attachment-item) {
   margin-top: 0;
 }
@@ -299,37 +284,17 @@ function formatDateLabel(iso: string): string {
   margin-top: 6px;
 }
 
-/* ==========================================================================
-   GROUP SPACING
-   ========================================================================== */
-
-/* Если несколько сообщений подряд от одного автора */
-:deep(.chat-message-group) {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Разделение между группами сообщений */
-:deep(.chat-message-group + .chat-message-group) {
-  margin-top: 12px;
-}
-
-/* ==========================================================================
-   MOBILE
-   ========================================================================== */
-
 @media (max-width: 600px) {
-  :deep(.d-flex.flex-column.gap-1) {
+  .support-chat-message-list {
     padding: 12px;
-    gap: 10px !important;
+    gap: 9px;
   }
 
   .chat-bubble {
     max-width: 90%;
-    padding: 9px 12px;
+    padding: 11px 12px 9px;
     font-size: 0.90rem;
-    border-radius: 14px;
+    border-radius: 16px;
   }
 }
 </style>

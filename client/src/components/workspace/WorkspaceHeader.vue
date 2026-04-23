@@ -52,14 +52,17 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+withDefaults(defineProps<{
   title: string
   positionsCount: number
   totalSum?: number | null
   warningsCount?: number
   latestRevision?: { number: number; status: string } | null
   loading?: boolean
-}>()
+}>(), {
+  warningsCount: 0,
+  loading: false,
+})
 
 const warningsLabel = 'проблем'
 
@@ -73,13 +76,11 @@ const formatSum = (n: number) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  background:
-    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.035), transparent 140px),
-    rgba(var(--v-theme-surface-container-low), 0.96);
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
-  border-radius: var(--md-sys-shape-corner-extra-large);
-  gap: 18px;
+  padding: 6px 4px 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  gap: 20px;
   flex-wrap: wrap;
   min-height: 72px;
 }
@@ -97,13 +98,14 @@ const formatSum = (n: number) => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .workspace-header__project-name {
   font-size: clamp(1.1rem, 1.4vw, 1.32rem);
   font-weight: 800;
   letter-spacing: -0.01em;
-  white-space: nowrap;
+  white-space: normal;
   margin: 0;
   color: rgb(var(--v-theme-on-surface));
 }
@@ -119,8 +121,22 @@ const formatSum = (n: number) => {
   display: flex;
   align-items: center;
   gap: 8px;
+  row-gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  margin-inline-start: auto;
+  min-width: 0;
+  max-width: 100%;
+  padding-inline-end: max(10px, env(safe-area-inset-right));
+  box-sizing: border-box;
+}
+
+@media (max-width: 1180px) {
+  .workspace-header__actions {
+    justify-content: flex-start;
+    width: 100%;
+    margin-inline-start: 0;
+  }
 }
 
 /* Shimmer placeholder chips */
@@ -146,8 +162,9 @@ const formatSum = (n: number) => {
 
 @media (max-width: 760px) {
   .workspace-header {
-    padding: 14px 16px;
+    padding: 4px 0 4px;
     min-height: auto;
+    gap: 14px;
   }
 
   .workspace-header__left,
@@ -166,7 +183,9 @@ const formatSum = (n: number) => {
   }
 
   .workspace-header__actions {
-    justify-content: stretch;
+    justify-content: flex-start;
+    margin-inline-start: 0;
+    padding-inline-end: max(8px, env(safe-area-inset-right));
   }
 
   .workspace-header__actions :deep(.v-btn) {

@@ -7,9 +7,7 @@
 
     <v-row>
       <v-col cols="12" md="3" lg="2">
-        <v-card variant="outlined" class="status-menu-card">
-          <v-card-title class="text-subtitle-1">Статусы</v-card-title>
-          <v-card-text>
+        <SectionCard title="Статусы" class="status-menu-card" variant="outlined">
             <v-list nav variant="outlined" density="compact" class="status-menu-list pa-0">
               <v-list-item
                 v-for="item in statusMenuItems"
@@ -29,15 +27,13 @@
                 </template>
               </v-list-item>
             </v-list>
-          </v-card-text>
-        </v-card>
+        </SectionCard>
       </v-col>
 
       <v-col cols="12" md="9" lg="10">
-        <v-card variant="outlined" class="mb-4">
-          <v-card-text>
-            <v-row align="center" dense>
-              <v-col cols="12" md="6">
+        <SectionCard class="admin-ideas-toolbar" variant="outlined">
+          <AppDataTableShell>
+            <template #search>
                 <v-text-field
                   v-model="search"
                   prepend-inner-icon="mdi-magnify"
@@ -48,8 +44,8 @@
                   clearable
                   @keydown.enter.prevent="handleFiltersChange"
                 />
-              </v-col>
-              <v-col cols="12" sm="6" md="3">
+            </template>
+            <template #filters>
                 <v-select
                   v-model="sort"
                   :items="sortOptions"
@@ -59,17 +55,17 @@
                   hide-details
                   @update:model-value="handleFiltersChange"
                 />
-              </v-col>
-              <v-col cols="12" sm="6" md="3" class="d-flex justify-end">
+            </template>
+            <template #actions>
                 <v-btn variant="tonal" prepend-icon="mdi-refresh" color="primary" @click="loadIdeas">
                   Обновить
                 </v-btn>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
+            </template>
+          </AppDataTableShell>
+        </SectionCard>
 
-        <v-card variant="outlined" :loading="loading">
+        <SectionCard variant="outlined" :loading="loading">
+          <AppDataTableShell>
           <v-data-table-server
             v-model:items-per-page="perPage"
             :headers="headers"
@@ -106,16 +102,16 @@
 
             <template #item.votes="{ item }">
               <div class="d-flex align-center ga-2">
-                <v-chip size="x-small" color="success" variant="tonal">+{{ item.votes_up }}</v-chip>
-                <v-chip size="x-small" color="error" variant="tonal">-{{ item.votes_down }}</v-chip>
+                <StatusChip size="x-small" color="success" variant="tonal">+{{ item.votes_up }}</StatusChip>
+                <StatusChip size="x-small" color="error" variant="tonal">-{{ item.votes_down }}</StatusChip>
                 <span class="text-caption text-medium-emphasis">score: {{ item.score }}</span>
               </div>
             </template>
 
             <template #item.status="{ item }">
-              <v-chip size="small" variant="tonal">
+              <StatusChip size="small" variant="tonal">
                 {{ formatIdeaStatus(item.status) }}
-              </v-chip>
+              </StatusChip>
             </template>
 
             <template #item.created_at="{ item }">
@@ -131,19 +127,21 @@
             </template>
 
             <template #no-data>
-              <div class="text-center py-8 text-medium-emphasis">
-                <v-icon icon="mdi-lightbulb-outline" size="48" class="mb-3" />
-                <div class="text-body-1 mb-1">Идеи не найдены</div>
-                <div class="text-body-2">Попробуйте изменить фильтры</div>
-              </div>
+              <AppStateBlock
+                icon="mdi-lightbulb-outline"
+                title="Идеи не найдены"
+                description="Попробуйте изменить фильтры."
+                density="compact"
+              />
             </template>
           </v-data-table-server>
-        </v-card>
+          </AppDataTableShell>
+        </SectionCard>
       </v-col>
     </v-row>
 
     <v-dialog v-model="descriptionDialog" max-width="820">
-      <v-card>
+      <v-card class="admin-ideas-dialog-card">
         <v-card-title class="d-flex align-center">
           {{ selectedIdea?.title || 'Описание идеи' }}
           <v-spacer />
@@ -156,6 +154,9 @@
           </div>
           <div class="description-full">{{ selectedIdea?.description }}</div>
         </v-card-text>
+        <AppActionFooter>
+          <v-btn variant="text" @click="descriptionDialog = false">Закрыть</v-btn>
+        </AppActionFooter>
       </v-card>
     </v-dialog>
   </PageContainer>
@@ -165,8 +166,13 @@
 import { computed, onMounted, ref } from 'vue'
 import AdminIdeaControls from '@/components/admin/AdminIdeaControls.vue'
 import { IDEA_STATUS_LABELS, formatIdeaStatus, ideasApi, type IdeaItem, type IdeaSort, type IdeaStatus } from '@/api/ideas'
+import AppActionFooter from '@/components/layout/AppActionFooter.vue'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppStateBlock from '@/components/layout/AppStateBlock.vue'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import SectionCard from '@/components/layout/SectionCard.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 
 const loading = ref(false)
 const ideas = ref<IdeaItem[]>([])
@@ -328,6 +334,14 @@ onMounted(() => {
   top: 84px;
 }
 
+.admin-ideas-toolbar {
+  margin-bottom: var(--ds-space-16);
+}
+
+.admin-ideas-toolbar :deep(.app-data-table-shell) {
+  gap: 0;
+}
+
 .status-menu-list :deep(.v-list-item-title) {
   font-weight: 500;
 }
@@ -349,5 +363,11 @@ onMounted(() => {
 
 .description-full {
   white-space: pre-line;
+}
+
+.admin-ideas-dialog-card {
+  border: 1px solid var(--ds-border-color);
+  border-radius: var(--ds-radius-16) !important;
+  overflow: hidden;
 }
 </style>

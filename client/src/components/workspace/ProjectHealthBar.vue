@@ -64,7 +64,6 @@ const issueWord = 'проблем'
 
 <style scoped>
 .health-bar {
-  margin-top: 12px;
   border: 1px solid rgba(var(--v-theme-warning), 0.22);
   border-radius: var(--md-sys-shape-corner-extra-large);
   background:
@@ -76,7 +75,7 @@ const issueWord = 'проблем'
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 12px 16px;
   cursor: pointer;
   user-select: none;
 }
@@ -101,10 +100,11 @@ const issueWord = 'проблем'
 }
 
 .health-bar__list {
-  padding: 0 16px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid rgba(var(--v-theme-warning), 0.14);
+  background: rgba(var(--v-theme-surface), 0.18);
 }
 
 .health-bar__item {
@@ -115,6 +115,7 @@ const issueWord = 'проблем'
   border-radius: var(--md-sys-shape-corner-large);
   font-size: 0.84rem;
   border: 1px solid transparent;
+  box-shadow: none;
 }
 
 .health-bar__item--error {
@@ -142,7 +143,7 @@ const issueWord = 'проблем'
   }
 
   .health-bar__list {
-    padding: 0 12px 12px;
+    padding: 12px 12px 12px;
   }
 
   .health-bar__item {
