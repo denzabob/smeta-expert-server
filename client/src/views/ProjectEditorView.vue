@@ -160,7 +160,15 @@
           <!-- Default mode: no rows selected -->
           <template v-if="selectedPositionIds.length === 0">
             <div class="toolbar-zone toolbar-zone--left">
-              <v-btn size="small" prepend-icon="mdi-plus" @click="openPositionDialog">Добавить позицию</v-btn>
+              <v-btn
+                size="small"
+                prepend-icon="mdi-plus"
+                :loading="positionDialogOpening"
+                :disabled="positionDialogOpening"
+                @click="openPositionDialog"
+              >
+                Добавить позицию
+              </v-btn>
               <v-btn size="small" prepend-icon="mdi-file-import" variant="outlined" class="excel-import-btn" @click="importDialog = true">Импорт из Excel</v-btn>
             </div>
             <div class="toolbar-zone toolbar-zone--middle">
@@ -2160,6 +2168,12 @@
     <v-dialog v-model="positionDialog" max-width="700" class="position-editor-dialog">
       <v-card class="position-sheet position-sheet--editor">
         <v-card-title class="position-sheet-title">{{ editingPosition ? 'Редактировать позицию' : 'Новая позиция' }}</v-card-title>
+        <v-progress-linear
+          v-if="positionDialogOpening"
+          color="primary"
+          indeterminate
+          height="3"
+        />
         <v-card-text class="position-sheet-content">
           <v-form ref="positionForm" class="position-form-stack">
             <!-- Переключатель типа позиции -->
@@ -2232,6 +2246,7 @@
                 :rules="[v => !!v || 'Обязательно']"
                 density="comfortable"
                 class="mb-3"
+                :loading="positionDialogOpening"
                 @update:model-value="onPositionMaterialChange"
               >
                 <template #item="{ props, item }">
@@ -2506,6 +2521,7 @@
                 :rules="[v => !!v || 'Обязательно']"
                 density="comfortable"
                 class="mb-3"
+                :loading="positionDialogOpening"
                 @update:model-value="onPositionEdgeMaterialChange"
               />
               </section>
@@ -4563,6 +4579,7 @@ const positionDialog = ref(false)
 const fittingDialog = ref(false)
 const expenseDialog = ref(false) // ← добавлено!
 const laborCalculationDialog = ref(false)
+const positionDialogOpening = ref(false)
 const positionSaving = ref(false)
 const fittingSaving = ref(false)
 const expenseSaving = ref(false)
@@ -5429,12 +5446,9 @@ const refreshAll = async () => {
 
 // === Позиции ===
 const openPositionDialog = async () => {
-  // Refresh materials every time so newly added items are immediately selectable.
-  try {
-    materials.value = await loadSelectableMaterials()
-  } catch (error) {
-    console.warn('Failed to refresh selectable materials before opening position dialog', error)
-  }
+  if (positionDialogOpening.value) return
+
+  positionDialogOpening.value = true
 
   editingPosition.value = false
   dialogDimensionCalc.value = { width: emptyDimensionCalcState(), length: emptyDimensionCalcState() }
@@ -5453,6 +5467,15 @@ const openPositionDialog = async () => {
   }
   loadFacadeSpecifications()
   positionDialog.value = true
+
+  // Refresh materials in the background so the dialog gives immediate feedback.
+  try {
+    materials.value = await loadSelectableMaterials()
+  } catch (error) {
+    console.warn('Failed to refresh selectable materials after opening position dialog', error)
+  } finally {
+    positionDialogOpening.value = false
+  }
 }
 
 const editPosition = (item: Position) => {

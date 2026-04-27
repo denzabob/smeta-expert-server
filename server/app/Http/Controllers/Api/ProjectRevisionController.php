@@ -359,6 +359,13 @@ class ProjectRevisionController extends Controller
             ], 403);
         }
 
+        $this->checkBillingGateSafely(request()->user(), BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT, [
+            'action' => 'pdf.export',
+            'project_id' => $project->id,
+            'revision_id' => $revision->id,
+            'revision_number' => $revision->number,
+        ]);
+
         $snapshotRaw = $revision->getRawOriginal('snapshot_json');
         if (is_array($snapshotRaw)) {
             $snapshot = $snapshotRaw;
@@ -465,6 +472,13 @@ class ProjectRevisionController extends Controller
                 'error' => 'Ревизия устарела и недоступна для PDF',
             ], 403);
         }
+
+        $this->checkBillingGateSafely(request()->user(), BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT, [
+            'action' => 'pdf.price_justification',
+            'project_id' => $project->id,
+            'revision_id' => $revision->id,
+            'revision_number' => $revision->number,
+        ]);
 
         $snapshotRaw = $revision->getRawOriginal('snapshot_json');
         $snapshot = is_string($snapshotRaw)

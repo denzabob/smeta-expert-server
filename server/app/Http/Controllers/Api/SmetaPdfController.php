@@ -30,6 +30,11 @@ class SmetaPdfController extends Controller
         // Authorize access
         $this->authorize('view', $project);
 
+        $this->checkBillingGateSafely(request()->user(), BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT, [
+            'action' => 'pdf.export',
+            'project_id' => $project->id,
+        ]);
+
         try {
             // Get report using existing ReportService (no duplication!)
             $report = $this->reportService->buildReport($project);

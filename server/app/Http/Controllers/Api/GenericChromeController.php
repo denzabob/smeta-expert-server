@@ -279,6 +279,13 @@ class GenericChromeController extends Controller
 
         $user = $request->user();
         $regionId = $validated['region_id'] ?? $user->settings?->region_id;
+        $sourceHost = parse_url($validated['url'], PHP_URL_HOST) ?: null;
+
+        $this->checkBillingGateSafely($user, BillingCodes::CAP_CHROME_CAPTURES_MONTHLY_LIMIT, [
+            'action' => 'chrome.extract_with_evidence',
+            'source_host' => $sourceHost,
+            'component_type' => null,
+        ]);
 
         // ── Phase 1: Material upsert (always runs) ──
         $materialResult = $this->extractService->createOrUpdateMaterial(

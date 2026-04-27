@@ -114,6 +114,10 @@ class ProjectController extends Controller
         // Объединить валидированные и дефолтные данные
         $validated = array_merge($defaults, array_filter($validated, fn($value) => $value !== null));
         $validated['user_id'] = Auth::id();
+
+        $this->checkBillingGateSafely($request->user(), BillingCodes::CAP_PROJECTS_MAX_ACTIVE, [
+            'action' => 'project.create',
+        ]);
         
         $project = Project::create($validated);
 

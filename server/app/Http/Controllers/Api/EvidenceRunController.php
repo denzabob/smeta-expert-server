@@ -70,6 +70,11 @@ class EvidenceRunController extends Controller
     {
         $this->authorize('update', $project);
 
+        $this->checkBillingGateSafely($request->user(), BillingCodes::CAP_EVIDENCE_RUNS_MONTHLY_LIMIT, [
+            'action' => 'evidence.run',
+            'project_id' => $project->id,
+        ]);
+
         $run = EstimateEvidenceRun::create([
             'uuid'          => (string) Str::uuid(),
             'project_id'    => $project->id,
@@ -1065,6 +1070,12 @@ class EvidenceRunController extends Controller
                 'message' => 'Evidence run has no snapshot data.',
             ], 422);
         }
+
+        $this->checkBillingGateSafely(request()->user(), BillingCodes::CAP_EVIDENCE_RUNS_MONTHLY_LIMIT, [
+            'action' => 'evidence.pdf.export',
+            'project_id' => $project->id,
+            'evidence_run_id' => $run->id,
+        ]);
 
         $viewData = $this->pdfBuilder->build($run, $project);
 
