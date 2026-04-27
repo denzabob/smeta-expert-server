@@ -285,6 +285,18 @@ const router = createRouter({
           meta: { title: 'Журнал системы' }
         },
         {
+          path: 'billing',
+          name: 'admin-billing',
+          component: () => import('@/views/admin/AdminBillingView.vue'),
+          meta: { title: 'Использование' }
+        },
+        {
+          path: 'billing/payments',
+          name: 'admin-billing-payments',
+          component: () => import('@/views/admin/AdminBillingPaymentsView.vue'),
+          meta: { title: 'Платежи' }
+        },
+        {
           path: 'chat',
           name: 'admin-chat',
           component: () => import('@/views/admin/AdminChatView.vue'),

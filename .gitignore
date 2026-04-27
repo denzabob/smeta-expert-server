@@ -47,6 +47,16 @@ server/storage/framework/views/
 server/storage/framework/locks/
 server/storage/logs/
 server/tests/
+!server/tests/
+server/tests/*
+!server/tests/Unit/
+server/tests/Unit/*
+!server/tests/Unit/Billing/
+!server/tests/Unit/Billing/*.php
+!server/tests/Feature/
+server/tests/Feature/*
+!server/tests/Feature/Billing/
+!server/tests/Feature/Billing/*.php
 
 # If you really do not need these generated trees in git
 server/server/storage/

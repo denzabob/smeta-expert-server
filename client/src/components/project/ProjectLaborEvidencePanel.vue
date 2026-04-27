@@ -96,7 +96,7 @@
         <div class="panel-actions">
           <v-btn
             icon="mdi-open-in-new"
-            size="small"
+            size="x-small"
             variant="text"
             color="primary"
             title="Открыть детали"
@@ -104,7 +104,7 @@
           />
           <v-btn
             icon="mdi-link-off"
-            size="small"
+            size="x-small"
             variant="text"
             color="error"
             title="Убрать источник"
@@ -183,7 +183,7 @@
               <div class="panel-actions">
                 <v-btn
                   icon="mdi-open-in-new"
-                  size="small"
+                  size="x-small"
                   variant="text"
                   color="primary"
                   title="Просмотр"
@@ -403,7 +403,8 @@ function openDetails(source: LaborEvidenceSource) {
 }
 
 .sources-table :deep(thead th) {
-  height: 44px !important;
+  height: 36px !important;
+  padding: 0 10px !important;
   border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.34) !important;
   background: rgba(var(--v-theme-surface-container-low), 0.54) !important;
 }
@@ -417,82 +418,146 @@ function openDetails(source: LaborEvidenceSource) {
 }
 
 .sources-table :deep(tbody td) {
-  vertical-align: top;
+  height: auto !important;
+  vertical-align: middle;
   border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.22) !important;
-  padding-top: 10px !important;
-  padding-bottom: 10px !important;
+  padding: 6px 10px !important;
   background: transparent !important;
+  line-height: 1.25;
 }
 
 .sources-table :deep(.v-data-table-footer) {
+  min-height: 42px;
+  padding: 4px 8px;
   border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
   background: transparent;
+}
+
+.sources-table :deep(.v-data-table-footer__items-per-page),
+.sources-table :deep(.v-data-table-footer__pagination) {
+  align-items: center;
+  margin: 0;
+}
+
+.sources-table :deep(.v-data-table-footer .v-field) {
+  min-height: 30px;
+}
+
+.sources-table :deep(.v-data-table-footer .v-field__input) {
+  min-height: 30px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.sources-table :deep(.v-data-table-footer .v-btn--icon) {
+  width: 30px;
+  height: 30px;
 }
 
 .sources-table :deep(.v-table) {
   margin: 14px 0 0;
 }
 
+.source-title-cell {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding-block: 1px;
+}
+
 .source-title-cell__title {
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.22;
   color: rgba(var(--v-theme-on-surface), 1);
+  overflow-wrap: anywhere;
 }
 
 .source-title-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 6px;
+  min-width: 0;
+}
+
+.source-title-head :deep(.v-btn) {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: -2px 0;
 }
 
 .source-title-cell__meta {
-  margin-top: 2px;
   font-size: 0.75rem;
+  line-height: 1.18;
   color: rgba(var(--v-theme-on-surface-variant), 0.9);
 }
 
 .source-title-cell__domain {
-  margin-top: 2px;
   font-size: 0.75rem;
+  line-height: 1.18;
   color: rgba(var(--v-theme-on-surface-variant), 0.78);
 }
 
 .provider-cell {
   display: grid;
-  gap: 2px;
+  gap: 1px;
+  min-width: 0;
 }
 
 .provider-cell__title {
   font-weight: 500;
+  line-height: 1.22;
   color: rgba(var(--v-theme-on-surface), 1);
+  overflow-wrap: anywhere;
 }
 
 .provider-cell__meta {
   font-size: 0.75rem;
+  line-height: 1.18;
   color: rgba(var(--v-theme-on-surface-variant), 0.9);
 }
 
 .rate-cell {
   display: inline-flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 100%;
 }
 
 .rate-cell__value {
   font-weight: 600;
+  line-height: 1.2;
   text-align: right;
   color: rgba(var(--v-theme-on-surface), 1);
+}
+
+.sources-table :deep(tbody td .v-chip) {
+  height: 22px;
+  min-width: 0;
+  padding-inline: 7px;
+}
+
+.sources-table :deep(tbody td .v-chip__content) {
+  line-height: 1;
 }
 
 .panel-actions {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-width: 84px;
+  gap: 2px;
+  min-width: 60px;
   margin: 0 auto;
+}
+
+.panel-actions :deep(.v-btn) {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
 }
 
 .labor-attach-dialog-card {

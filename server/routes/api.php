@@ -43,6 +43,9 @@ use App\Http\Controllers\Api\AdminMaterialDimensionRuleController;
 use App\Http\Controllers\Api\AdminMaterialTypePatternController;
 use App\Http\Controllers\Api\AdminSystemLogController;
 use App\Http\Controllers\Api\AdminUsersController;
+use App\Http\Controllers\Api\Admin\AdminBillingController;
+use App\Http\Controllers\Api\Admin\AdminBillingPaymentsController;
+use App\Http\Controllers\Api\BillingWebhookController;
 use App\Http\Controllers\Api\PinAuthController;
 use App\Http\Controllers\Api\PhoneAuthController;
 use App\Http\Controllers\Api\YandexAuthController;
@@ -115,6 +118,9 @@ Route::get('email/verify/{id}/{hash}', [EmailVerificationController::class, 'ver
 // Public resend for users who cannot log in yet (unverified state).
 // Rate-limited; anti-enumeration: always 200 regardless of email existence.
 Route::post('email/resend-verification', [EmailVerificationController::class, 'resendVerification']);
+
+// ========== Hidden Billing Provider Webhooks ==========
+Route::post('billing/webhooks/{provider}', [BillingWebhookController::class, 'handle']);
 
 Route::post('/parser/materials', [ParserMaterialController::class, 'store']);
 Route::post('/parser/materials/batch', [ParserMaterialController::class, 'storeBatch']);
@@ -647,6 +653,26 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('admin/system/users/{id}/force', [AdminUsersController::class, 'hardDelete'])->where('id', '[0-9]+');
     Route::post('admin/system/users/{id}/restore', [AdminUsersController::class, 'restore'])->where('id', '[0-9]+');
     Route::put('admin/system/users/{id}/role', [AdminUsersController::class, 'updateRole'])->where('id', '[0-9]+');
+
+    // ========== Admin Billing Usage Overview API ==========
+    Route::prefix('admin/billing')->group(function () {
+        Route::get('overview', [AdminBillingController::class, 'overview']);
+        Route::get('users/{user}/overview', [AdminBillingController::class, 'userOverview'])->whereNumber('user');
+        Route::get('usage', [AdminBillingController::class, 'usage']);
+        Route::get('events', [AdminBillingController::class, 'events']);
+        Route::get('invoices', [AdminBillingPaymentsController::class, 'invoices']);
+        Route::post('invoices', [AdminBillingPaymentsController::class, 'storeInvoice']);
+        Route::post('invoices/{invoice}/payments', [AdminBillingPaymentsController::class, 'storePayment'])->whereNumber('invoice');
+        Route::get('invoices/{invoice}/details', [AdminBillingPaymentsController::class, 'invoiceDetails'])->whereNumber('invoice');
+        Route::get('invoices/{invoice}', [AdminBillingPaymentsController::class, 'showInvoice'])->whereNumber('invoice');
+        Route::get('payments', [AdminBillingPaymentsController::class, 'payments']);
+        Route::post('payments/{payment}/refresh-provider-status', [AdminBillingPaymentsController::class, 'refreshProviderStatus'])->whereNumber('payment');
+        Route::get('payments/{payment}/details', [AdminBillingPaymentsController::class, 'paymentDetails'])->whereNumber('payment');
+        Route::get('payments/{payment}', [AdminBillingPaymentsController::class, 'showPayment'])->whereNumber('payment');
+        Route::get('provider-events', [AdminBillingPaymentsController::class, 'providerEvents']);
+        Route::get('provider-events/{event}/details', [AdminBillingPaymentsController::class, 'providerEventDetails'])->whereNumber('event');
+        Route::get('payment-plans', [AdminBillingPaymentsController::class, 'paymentPlans']);
+    });
 
     // ========== Admin Material Dimensions API ==========
     Route::post('admin/material-dimension-rules/preview', [AdminMaterialDimensionRuleController::class, 'preview']);

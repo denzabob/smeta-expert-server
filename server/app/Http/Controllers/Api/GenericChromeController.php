@@ -6,10 +6,12 @@ use App\Evidence\CostComponent;
 use App\Evidence\EvidenceFeatures;
 use App\Evidence\EvidenceItemStatus;
 use App\Evidence\EvidenceRunStatus;
+use App\Http\Controllers\Concerns\RecordsUsageEvents;
 use App\Http\Controllers\Controller;
 use App\Models\ChromeExtLog;
 use App\Models\EstimateEvidenceItem;
 use App\Models\EstimateEvidenceRun;
+use App\Services\Billing\BillingCodes;
 use App\Services\ChromeExtractService;
 use App\Services\GenericChromeCaptureService;
 use App\Services\TrustScoreService;
@@ -18,6 +20,8 @@ use Illuminate\Http\Request;
 
 class GenericChromeController extends Controller
 {
+    use RecordsUsageEvents;
+
     /**
      * Whitelist mapping: Material::TYPE_* → CostComponent::*.
      * Only these stable mappings are used for auto-link derivation.
@@ -119,6 +123,29 @@ class GenericChromeController extends Controller
 
         $status = $result['duplicate'] ? 200 : 201;
 
+        $this->recordUsageEvent(BillingCodes::METRIC_EVIDENCE_CHROME_CAPTURES, 1, [
+            'user' => $request->user(),
+            'feature_code' => BillingCodes::FEATURE_EVIDENCE_CHROME_CAPTURE,
+            'subject_type' => get_class($result['record']),
+            'subject_id' => $result['record']->id,
+            'unit' => 'count',
+            'source' => 'chrome_extension',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+                'duplicate' => $result['duplicate'],
+                'cost_component' => $validated['cost_component'],
+            ],
+            'idempotency_key' => hash('sha256', implode('|', [
+                BillingCodes::METRIC_EVIDENCE_CHROME_CAPTURES,
+                $request->user()->id,
+                $validated['source_url'],
+                $validated['cost_component'],
+                $validated['observed_price'] ?? '',
+                now()->format('Y-m-d H:i'),
+            ])),
+        ]);
+
         return response()->json([
             'success'   => true,
             'duplicate' => $result['duplicate'],
@@ -178,6 +205,31 @@ class GenericChromeController extends Controller
         $this->logChromeAction($request, 'capture_generic_item', $result['duplicate'] ? 'duplicate' : 'ok', $result['record']);
 
         $status = $result['duplicate'] ? 200 : 201;
+
+        $this->recordUsageEvent(BillingCodes::METRIC_EVIDENCE_CHROME_ITEM_CAPTURES, 1, [
+            'project' => $item->run->project,
+            'user' => $request->user(),
+            'feature_code' => BillingCodes::FEATURE_EVIDENCE_CHROME_CAPTURE,
+            'subject_type' => EstimateEvidenceItem::class,
+            'subject_id' => $item->id,
+            'unit' => 'count',
+            'source' => 'chrome_extension',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+                'duplicate' => $result['duplicate'],
+                'record_id' => $result['record']->id,
+                'evidence_run_id' => $item->evidence_run_id,
+            ],
+            'idempotency_key' => hash('sha256', implode('|', [
+                BillingCodes::METRIC_EVIDENCE_CHROME_ITEM_CAPTURES,
+                $request->user()->id,
+                $item->id,
+                $validated['source_url'],
+                $validated['observed_price'] ?? '',
+                now()->format('Y-m-d H:i'),
+            ])),
+        ]);
 
         return response()->json([
             'success'   => true,
@@ -256,10 +308,12 @@ class GenericChromeController extends Controller
         $evidenceStatus = 'skipped_feature_disabled';
         $autoLink = null;
         $evidenceData = null;
+        $componentType = null;
 
         // ── Phase 2: Evidence + screenshot (only when feature enabled) ──
         if (EvidenceFeatures::genericChromeEnabled()) {
             $derivedComponent = self::MATERIAL_TYPE_TO_COST_COMPONENT[$material->type] ?? null;
+            $componentType = $derivedComponent;
 
             if ($derivedComponent) {
                 $screenshot = $request->file('screenshot_file');
@@ -342,6 +396,31 @@ class GenericChromeController extends Controller
         app(TrustScoreService::class)->recalculate($material);
 
         $this->logChromeAction($request, 'extract_with_evidence', 'ok', null, $validated['url']);
+
+        $this->recordUsageEvent(BillingCodes::METRIC_CHROME_EXTRACT_WITH_EVIDENCE, 1, [
+            'user' => $user,
+            'feature_code' => BillingCodes::FEATURE_CHROME_EXTRACT_WITH_EVIDENCE,
+            'subject_type' => get_class($material),
+            'subject_id' => $material->id,
+            'unit' => 'count',
+            'source' => 'chrome_extension',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+                'material_status' => $materialStatus,
+                'evidence_status' => $evidenceStatus,
+                'screenshot_status' => $screenshotStatus,
+                'component_type' => $componentType,
+            ],
+            'idempotency_key' => hash('sha256', implode('|', [
+                BillingCodes::METRIC_CHROME_EXTRACT_WITH_EVIDENCE,
+                $user->id,
+                $validated['url'],
+                $componentType ?? '',
+                $validated['extracted']['price'] ?? '',
+                now()->format('Y-m-d H:i'),
+            ])),
+        ]);
 
         return response()->json([
             'success'           => true,

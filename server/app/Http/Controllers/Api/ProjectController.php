@@ -2,14 +2,18 @@
 // app/Http/Controllers/Api/ProjectController.php
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\RecordsUsageEvents;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\UserSettings;
+use App\Services\Billing\BillingCodes;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class ProjectController extends Controller
 {
+    use RecordsUsageEvents;
+
     public function index()
     {
         $projects = Project::where('user_id', Auth::id())
@@ -112,6 +116,21 @@ class ProjectController extends Controller
         $validated['user_id'] = Auth::id();
         
         $project = Project::create($validated);
+
+        $this->recordUsageEvent(BillingCodes::METRIC_PROJECTS_CREATED, 1, [
+            'user' => $request->user(),
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_PROJECTS_CREATE,
+            'subject_type' => Project::class,
+            'subject_id' => $project->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+            ],
+        ]);
+
         return response()->json($project, 201);
     }
 
@@ -261,6 +280,21 @@ class ProjectController extends Controller
 
         $project->archived_at = now();
         $project->save();
+
+        $this->recordUsageEvent(BillingCodes::METRIC_PROJECTS_ARCHIVED, 1, [
+            'user' => $request->user(),
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_PROJECTS_ARCHIVE,
+            'subject_type' => Project::class,
+            'subject_id' => $project->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+            ],
+        ]);
+
         return response()->json(['message' => 'Проект архивирован'], 200);
     }
 }

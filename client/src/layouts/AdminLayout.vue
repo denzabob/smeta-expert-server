@@ -197,6 +197,8 @@ const navSections = computed(() => [
     items: [
       { to: '/admin/system/llm', label: 'LLM', icon: 'mdi-robot-outline' },
       { to: '/admin/system/users', label: 'Пользователи', icon: 'mdi-account-group-outline' },
+      { to: '/admin/billing', label: 'Использование', icon: 'mdi-chart-timeline-variant', exact: true },
+      { to: '/admin/billing/payments', label: 'Платежи', icon: 'mdi-credit-card-clock-outline' },
       { to: '/admin/system/notifications', label: 'Уведомления', icon: 'mdi-bell-outline' },
       { to: '/admin/system/logs', label: 'Журнал системы', icon: 'mdi-text-box-search-outline' },
     ]

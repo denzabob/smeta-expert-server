@@ -2,16 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\RecordsUsageEvents;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
-use App\Service\ReportService;
-use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\RevisionPublication;
+use App\Service\ReportService;
+use App\Services\Billing\BillingCodes;
+use Barryvdh\DomPDF\Facade\Pdf;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
 
 class SmetaPdfController extends Controller
 {
+    use RecordsUsageEvents;
+
     public function __construct(
         private ReportService $reportService
     ) {}
@@ -66,6 +70,20 @@ class SmetaPdfController extends Controller
 
             // Return as download with sanitized filename
             $filename = $this->sanitizeFilename("smeta_{$project->number}_{$project->id}.pdf");
+
+            $this->recordUsageEvent(BillingCodes::METRIC_PDF_SMETA_GENERATED, 1, [
+                'project' => $project,
+                'feature_code' => BillingCodes::FEATURE_PDF_SMETA,
+                'subject_type' => Project::class,
+                'subject_id' => $project->id,
+                'unit' => 'count',
+                'source' => 'api',
+                'metadata' => [
+                    'controller' => static::class,
+                    'action' => __FUNCTION__,
+                ],
+            ]);
+
             return $pdf->download($filename);
 
         } catch (\Exception $e) {

@@ -9,6 +9,7 @@ use App\Evidence\EvidenceRunStatus;
 use App\Evidence\EvidenceFeatures;
 use App\Evidence\SourceType;
 use App\Evidence\VerificationStatus;
+use App\Http\Controllers\Concerns\RecordsUsageEvents;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreEvidenceRecordRequest;
 use App\Http\Requests\StoreEvidenceRunRequest;
@@ -20,6 +21,7 @@ use App\Models\GenericEvidenceAsset;
 use App\Models\Project;
 use App\Models\ProjectPosition;
 use App\Services\MaterialConfirmationService;
+use App\Services\Billing\BillingCodes;
 use App\Services\EvidenceRunFinalizer;
 use App\Services\EvidenceRunItemCollector;
 use App\Services\EstimateEvidencePdfBuilder;
@@ -34,6 +36,8 @@ use Illuminate\Validation\ValidationException;
 
 class EvidenceRunController extends Controller
 {
+    use RecordsUsageEvents;
+
     public function __construct(
         private EvidenceRunItemCollector $itemCollector,
         private EvidenceRunFinalizer $finalizer,
@@ -78,6 +82,19 @@ class EvidenceRunController extends Controller
         ]);
 
         $run = $this->itemCollector->populateRun($run, $project, auth()->id());
+
+        $this->recordUsageEvent(BillingCodes::METRIC_EVIDENCE_RUNS_CREATED, 1, [
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_EVIDENCE_RUNS,
+            'subject_type' => EstimateEvidenceRun::class,
+            'subject_id' => $run->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+            ],
+        ]);
 
         return response()->json([
             'success' => true,
@@ -127,6 +144,20 @@ class EvidenceRunController extends Controller
 
         $this->refreshRunCounters($run);
 
+        $this->recordUsageEvent(BillingCodes::METRIC_EVIDENCE_RUNS_REFRESHED, 1, [
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_EVIDENCE_REFRESH,
+            'subject_type' => EstimateEvidenceRun::class,
+            'subject_id' => $run->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+                'auto_resolved' => $resolved,
+            ],
+        ]);
+
         return response()->json([
             'success'       => true,
             'data'          => $run->fresh()->load('items.evidenceRecord'),
@@ -153,6 +184,19 @@ class EvidenceRunController extends Controller
         }
 
         $run = $this->finalizer->finalize($run);
+
+        $this->recordUsageEvent(BillingCodes::METRIC_EVIDENCE_RUNS_FINALIZED, 1, [
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_EVIDENCE_FINALIZE,
+            'subject_type' => EstimateEvidenceRun::class,
+            'subject_id' => $run->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+            ],
+        ]);
 
         return response()->json([
             'success' => true,
@@ -222,6 +266,21 @@ class EvidenceRunController extends Controller
 
         $this->refreshRunCounters($run);
 
+        $this->recordUsageEvent(BillingCodes::METRIC_EVIDENCE_ITEMS_RESOLVED, 1, [
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_EVIDENCE_RESOLVE,
+            'subject_type' => EstimateEvidenceItem::class,
+            'subject_id' => $item->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+                'evidence_run_id' => $run->id,
+                'evidence_record_id' => $record->id,
+            ],
+        ]);
+
         return response()->json([
             'success' => true,
             'data'    => $item->fresh()->load('evidenceRecord'),
@@ -267,6 +326,20 @@ class EvidenceRunController extends Controller
         ]);
 
         $this->refreshRunCounters($run);
+
+        $this->recordUsageEvent(BillingCodes::METRIC_EVIDENCE_ITEMS_SKIPPED, 1, [
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_EVIDENCE_RESOLVE,
+            'subject_type' => EstimateEvidenceItem::class,
+            'subject_id' => $item->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+                'evidence_run_id' => $run->id,
+            ],
+        ]);
 
         return response()->json([
             'success' => true,
@@ -332,6 +405,38 @@ class EvidenceRunController extends Controller
             'mime_type'         => $file->getMimeType(),
             'file_size'         => $file->getSize(),
             'sha256'            => hash_file('sha256', $file->getRealPath()),
+        ]);
+
+        $assetMetadata = [
+            'disk' => 'public',
+            'path' => $path,
+            'mime_type' => $asset->mime_type,
+            'original_name' => $asset->original_filename,
+            'controller' => static::class,
+            'action' => __FUNCTION__,
+            'evidence_record_id' => $record->id,
+        ];
+
+        $this->recordUsageEvent(BillingCodes::METRIC_EVIDENCE_ASSETS_UPLOADED, 1, [
+            'user' => $request->user(),
+            'feature_code' => BillingCodes::FEATURE_EVIDENCE_ASSETS,
+            'subject_type' => GenericEvidenceAsset::class,
+            'subject_id' => $asset->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => $assetMetadata,
+            'idempotency_key' => 'evidence_asset:' . $asset->id,
+        ]);
+
+        $this->recordUsageEvent(BillingCodes::METRIC_STORAGE_BYTES_UPLOADED, (int) ($asset->file_size ?? 0), [
+            'user' => $request->user(),
+            'feature_code' => BillingCodes::FEATURE_EVIDENCE_ASSETS,
+            'subject_type' => GenericEvidenceAsset::class,
+            'subject_id' => $asset->id,
+            'unit' => 'bytes',
+            'source' => 'api',
+            'metadata' => $assetMetadata,
+            'idempotency_key' => 'evidence_asset_bytes:' . $asset->id,
         ]);
 
         return response()->json([
@@ -832,7 +937,7 @@ class EvidenceRunController extends Controller
             'extracted_name' => 'nullable|string|max:500',
         ]);
 
-        return DB::transaction(function () use ($request, $item, $run) {
+        $response = DB::transaction(function () use ($request, $item, $run) {
             $file = $request->file('file');
 
             // 1. Create EvidenceRecord
@@ -883,6 +988,23 @@ class EvidenceRunController extends Controller
                 'data'    => $item->fresh()->load('evidenceRecord'),
             ], 201);
         });
+
+        $this->recordUsageEvent(BillingCodes::METRIC_EVIDENCE_ITEMS_RESOLVED, 1, [
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_EVIDENCE_RESOLVE,
+            'subject_type' => EstimateEvidenceItem::class,
+            'subject_id' => $item->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+                'evidence_run_id' => $run->id,
+                'resolution_type' => 'manual',
+            ],
+        ]);
+
+        return $response;
     }
 
     /**
@@ -956,6 +1078,19 @@ class EvidenceRunController extends Controller
 
         $rawFilename = "evidence_{$project->number}_run_{$run->id}.pdf";
         $filename = preg_replace('#[\\/:*?"<>|]#', '_', $rawFilename);
+
+        $this->recordUsageEvent(BillingCodes::METRIC_PDF_EVIDENCE_RUN_GENERATED, 1, [
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_PDF_EVIDENCE,
+            'subject_type' => EstimateEvidenceRun::class,
+            'subject_id' => $run->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+            ],
+        ]);
 
         return $pdf->download($filename);
     }

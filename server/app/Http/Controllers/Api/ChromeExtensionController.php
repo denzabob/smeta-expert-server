@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Evidence\CaptureSource;
 use App\Evidence\EvidenceFeatures;
+use App\Http\Controllers\Concerns\RecordsUsageEvents;
 use App\Http\Controllers\Controller;
 use App\Models\EvidenceArtifact;
 use App\Models\EvidenceAsset;
@@ -12,6 +13,7 @@ use App\Models\ParserSupplierCollectProfile;
 use App\Models\RevisionRun;
 use App\Models\RevisionRunItem;
 use App\Models\User;
+use App\Services\Billing\BillingCodes;
 use App\Services\ChromeExtractService;
 use App\Services\UrlNormalizer;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +25,8 @@ use Illuminate\Support\Str;
 
 class ChromeExtensionController extends Controller
 {
+    use RecordsUsageEvents;
+
     protected ChromeExtractService $service;
 
     public function __construct(ChromeExtractService $service)
@@ -392,6 +396,29 @@ class ChromeExtensionController extends Controller
                 'message' => 'Не удалось создать материал: ' . implode('; ', $result['errors']),
             ], 422);
         }
+
+        $this->recordUsageEvent(BillingCodes::METRIC_CHROME_EXTRACTS, 1, [
+            'user' => $user,
+            'feature_code' => BillingCodes::FEATURE_CHROME_EXTRACT,
+            'subject_type' => get_class($result['material']),
+            'subject_id' => $result['material']->id,
+            'unit' => 'count',
+            'source' => 'chrome_extension',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+                'status' => $result['status'],
+                'is_new' => $result['is_new'],
+                'dedup_match' => $result['dedup_match'],
+            ],
+            'idempotency_key' => hash('sha256', implode('|', [
+                BillingCodes::METRIC_CHROME_EXTRACTS,
+                $user->id,
+                $validated['url'],
+                $validated['extracted']['price'] ?? '',
+                now()->format('Y-m-d H:i'),
+            ])),
+        ]);
 
         return response()->json([
             'success' => true,

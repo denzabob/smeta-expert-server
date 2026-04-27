@@ -2,23 +2,27 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\RecordsUsageEvents;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\ProjectRevision;
 use App\Models\RevisionPublication;
 use App\Service\ReportService;
+use App\Services\Billing\BillingCodes;
 use App\Services\FinishedProductFacadeRevisionRowAssembler;
 use App\Services\FinishedProductFacadeSnapshotPresenter;
 use App\Services\SnapshotService;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Illuminate\Support\Str;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class ProjectRevisionController extends Controller
 {
+    use RecordsUsageEvents;
+
     public function __construct(
         private SnapshotService $snapshotService,
         private ReportService $reportService,
@@ -53,6 +57,20 @@ class ProjectRevisionController extends Controller
                 $project,
                 auth()->id()
             );
+
+            $this->recordUsageEvent(BillingCodes::METRIC_REVISIONS_CREATED, 1, [
+                'project' => $project,
+                'feature_code' => BillingCodes::FEATURE_REVISIONS,
+                'subject_type' => ProjectRevision::class,
+                'subject_id' => $revision->id,
+                'unit' => 'count',
+                'source' => 'api',
+                'metadata' => [
+                    'controller' => static::class,
+                    'action' => __FUNCTION__,
+                    'revision_number' => $revision->number,
+                ],
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -414,6 +432,20 @@ class ProjectRevisionController extends Controller
         $rawFilename = "smeta_{$project->number}_rev_{$revision->number}.pdf";
         $filename = preg_replace('#[\\/:*?"<>|]#', '_', $rawFilename);
 
+        $this->recordUsageEvent(BillingCodes::METRIC_PDF_REVISION_GENERATED, 1, [
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_PDF_REVISION,
+            'subject_type' => ProjectRevision::class,
+            'subject_id' => $revision->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+                'revision_number' => $revision->number,
+            ],
+        ]);
+
         return $pdf->download($filename);
     }
 
@@ -509,6 +541,20 @@ class ProjectRevisionController extends Controller
 
         $rawFilename = "price_justification_{$project->number}_rev_{$revision->number}.pdf";
         $filename = preg_replace('#[\\/:*?"<>|]#', '_', $rawFilename);
+
+        $this->recordUsageEvent(BillingCodes::METRIC_PDF_PRICE_JUSTIFICATION_GENERATED, 1, [
+            'project' => $project,
+            'feature_code' => BillingCodes::FEATURE_PDF_PRICE_JUSTIFICATION,
+            'subject_type' => ProjectRevision::class,
+            'subject_id' => $revision->id,
+            'unit' => 'count',
+            'source' => 'api',
+            'metadata' => [
+                'controller' => static::class,
+                'action' => __FUNCTION__,
+                'revision_number' => $revision->number,
+            ],
+        ]);
 
         return $pdf->download($filename);
     }

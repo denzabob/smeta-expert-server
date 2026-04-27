@@ -197,16 +197,16 @@ const sections = [
     title: 'Материалы',
     description: 'Цены на материалы и комплектующие',
     icon: 'mdi-package-variant-closed',
-    to: '/pricing/materials',
-    available: false,
+    to: '/catalog',
+    available: true,
   },
   {
     key: 'products',
     title: 'Изделия',
     description: 'Котировки на готовые изделия',
     icon: 'mdi-door',
-    to: '/pricing/products',
-    available: false,
+    to: '/products',
+    available: true,
   },
 ]
 
@@ -246,7 +246,7 @@ function handleTypeSelection(type: PricingTargetType) {
   }
 
   const targetRoute = {
-    material: '/materials',
+    material: '/catalog',
     labor: '/pricing/labor',
     product: '/products',
   }[type]
