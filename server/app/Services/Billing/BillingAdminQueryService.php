@@ -3,6 +3,11 @@
 namespace App\Services\Billing;
 
 use App\Models\BillingSubscription;
+use App\Models\BillingGateEvent;
+use App\Models\BillingInvoice;
+use App\Models\BillingPayment;
+use App\Models\BillingPlan;
+use App\Models\BillingProviderEvent;
 use App\Models\FeatureEntitlement;
 use App\Models\Project;
 use App\Models\UsageCounter;
@@ -41,6 +46,7 @@ class BillingAdminQueryService
                 'bytes_uploaded_from_usage_events' => $this->sumMetric($eventQuery, BillingCodes::METRIC_STORAGE_BYTES_UPLOADED),
                 'legacy_storage_not_included' => true,
             ],
+            'billing_diagnostics' => $this->billingDiagnostics(),
         ];
     }
 
@@ -302,6 +308,24 @@ class BillingAdminQueryService
             'plan_code' => $subscription->plan_code ?: $subscription->plan?->code ?: config('billing.default_plan', 'legacy_unlimited'),
             'subscription_status' => $subscription->status,
             'source' => $subscription->source,
+        ];
+    }
+
+    private function billingDiagnostics(): array
+    {
+        return [
+            'enabled' => (bool) config('billing.enabled', false),
+            'enforce_limits' => (bool) config('billing.enforce_limits', false),
+            'checkout_ui_enabled' => (bool) config('billing.payments.checkout_ui_enabled', false),
+            'default_provider' => config('billing.payments.default_provider'),
+            'yookassa_enabled' => (bool) config('billing.payments.providers.yookassa.enabled', false),
+            'yookassa_mode' => config('billing.payments.providers.yookassa.mode'),
+            'plans_count' => BillingPlan::query()->count(),
+            'active_subscriptions_count' => BillingSubscription::query()->where('status', 'active')->count(),
+            'invoices_count' => BillingInvoice::query()->count(),
+            'payments_count' => BillingPayment::query()->count(),
+            'webhook_events_count' => BillingProviderEvent::query()->count(),
+            'would_block_events_count' => BillingGateEvent::query()->where('would_block', true)->count(),
         ];
     }
 

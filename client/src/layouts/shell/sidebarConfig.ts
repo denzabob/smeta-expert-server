@@ -3,6 +3,8 @@
  * Централизованное место для настройки пунктов меню
  */
 
+import { billingFlags } from '@/config/billingFlags'
+
 export interface MenuItem {
   title: string
   routeName: string
@@ -94,6 +96,8 @@ export interface AccountMenuItem {
   badge?: boolean
   /** Визуальный разделитель перед элементом */
   dividerBefore?: boolean
+  /** Условие видимости */
+  visibleIf?: (me: { id: number } | null) => boolean
 }
 
 /**
@@ -122,6 +126,13 @@ export const accountMenuItems: AccountMenuItem[] = [
     title: 'Настройки проекта по умолчанию',
     icon: 'mdi-tune-variant',
     route: '/settings',
+  },
+  {
+    id: 'billing-preview',
+    title: 'Тариф и лимиты',
+    icon: 'mdi-chart-box-outline',
+    route: '/settings/billing',
+    visibleIf: () => billingFlags.userUiEnabled,
   },
   {
     id: 'notifications',

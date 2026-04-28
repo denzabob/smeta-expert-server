@@ -23,7 +23,7 @@
 
             <!-- Flat navigation hub — no sections, no overflow bucket -->
             <nav class="drawer-nav">
-              <template v-for="item in accountMenuItems" :key="item.id">
+              <template v-for="item in visibleAccountMenuItems" :key="item.id">
                 <div v-if="item.dividerBefore" class="drawer-divider drawer-divider--inner" />
                 <button
                   class="drawer-item"
@@ -69,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { accountMenuItems, type AccountMenuItem } from './sidebarConfig'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -91,6 +91,9 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const notificationsStore = useNotificationsStore()
+const visibleAccountMenuItems = computed(() => {
+  return accountMenuItems.filter((item) => !item.visibleIf || item.visibleIf(null))
+})
 
 // ── Theme ──────────────────────────────────────────────────────────────────
 const themeModes = [

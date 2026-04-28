@@ -483,6 +483,10 @@
                 item-value="id"
                 label="Материал"
                 density="comfortable"
+                :loading="materialSearchLoading.plate"
+                no-filter
+                no-data-text="Введите минимум 2 символа для поиска"
+                @update:search="onMaterialSearch('plate', $event)"
                 @update:model-value="(v) => updatePositionField(selectedPosition!, 'material_id', v)"
                 class="mb-2"
               />
@@ -681,6 +685,10 @@
                 item-value="id"
                 label="Кромка"
                 density="comfortable"
+                :loading="materialSearchLoading.edge"
+                no-filter
+                no-data-text="Введите минимум 2 символа для поиска"
+                @update:search="onMaterialSearch('edge', $event)"
                 @update:model-value="(v) => updatePositionField(selectedPosition!, 'edge_material_id', v)"
               />
               </section>
@@ -2246,7 +2254,10 @@
                 :rules="[v => !!v || 'Обязательно']"
                 density="comfortable"
                 class="mb-3"
-                :loading="positionDialogOpening"
+                :loading="positionDialogOpening || materialSearchLoading.plate"
+                no-filter
+                no-data-text="Введите минимум 2 символа для поиска"
+                @update:search="onMaterialSearch('plate', $event)"
                 @update:model-value="onPositionMaterialChange"
               >
                 <template #item="{ props, item }">
@@ -2521,7 +2532,10 @@
                 :rules="[v => !!v || 'Обязательно']"
                 density="comfortable"
                 class="mb-3"
-                :loading="positionDialogOpening"
+                :loading="positionDialogOpening || materialSearchLoading.edge"
+                no-filter
+                no-data-text="Введите минимум 2 символа для поиска"
+                @update:search="onMaterialSearch('edge', $event)"
                 @update:model-value="onPositionEdgeMaterialChange"
               />
               </section>
@@ -4307,10 +4321,21 @@ const units = ref<string[]>([])
 const regions = ref<any[]>([])
 
 const MATERIALS_CACHE_TTL_MS = 25_000
+const MATERIAL_SEARCH_MIN_LENGTH = 2
+const MATERIAL_SEARCH_DEBOUNCE_MS = 350
 const selectableMaterialsCache = ref<{ expiresAt: number; data: Material[] } | null>(null)
 
 const materialsPlate = computed(() => materials.value.filter(m => m.type === 'plate'))
 const materialsEdge = computed(() => materials.value.filter(m => m.type === 'edge'))
+const materialSearchLoading = reactive<Record<'plate' | 'edge', boolean>>({
+  plate: false,
+  edge: false,
+})
+let materialSearchTimeouts: Partial<Record<'plate' | 'edge', ReturnType<typeof setTimeout>>> = {}
+let materialSearchRequestIds: Record<'plate' | 'edge', number> = {
+  plate: 0,
+  edge: 0,
+}
 
 // === Фасады ===
 const loadingFacades = ref(false)
@@ -5208,16 +5233,39 @@ const mergeMaterialOptions = (target: Map<number, Material>, rows: any[]) => {
   }
 }
 
-const fetchCatalogModeMaterials = async (mode: 'library' | 'public' | 'curated'): Promise<any[]> => {
+const mergeMaterialsIntoState = (rows: any[]) => {
+  if (!rows || rows.length === 0) return
+
+  const byId = new Map<number, Material>()
+  mergeMaterialOptions(byId, materials.value)
+  mergeMaterialOptions(byId, rows)
+  materials.value = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+}
+
+type CatalogMaterialMode = 'own' | 'library' | 'public' | 'curated'
+
+const fetchCatalogModeMaterials = async (
+  mode: CatalogMaterialMode,
+  options: {
+    type?: 'plate' | 'edge' | 'hardware'
+    search?: string
+    perPage?: number
+    maxPages?: number
+  } = {}
+): Promise<any[]> => {
   const allRows: any[] = []
   let page = 1
   let lastPage = 1
+  const perPage = options.perPage || 200
+  const maxPages = options.maxPages || Number.POSITIVE_INFINITY
 
   do {
     const response = await api.get('/api/materials/catalog', {
       params: {
         mode,
-        per_page: 200,
+        type: options.type,
+        search: options.search || undefined,
+        per_page: perPage,
         page,
       },
     })
@@ -5229,7 +5277,7 @@ const fetchCatalogModeMaterials = async (mode: 'library' | 'public' | 'curated')
 
     lastPage = Number(response?.data?.meta?.last_page || 1)
     page += 1
-  } while (page <= lastPage)
+  } while (page <= lastPage && page <= maxPages)
 
   return allRows
 }
@@ -5241,21 +5289,17 @@ const loadSelectableMaterials = async (force = false): Promise<Material[]> => {
   }
 
   const byId = new Map<number, Material>()
-
-  // Legacy endpoint: own + parser materials.
-  const ownResponse = await api.get('/api/materials')
-  const ownRows = Array.isArray(ownResponse?.data) ? ownResponse.data : []
-  mergeMaterialOptions(byId, ownRows)
-
-  // Extend selector with library/public/curated catalog materials.
-  for (const mode of ['library', 'public', 'curated'] as const) {
+  const preloadTypes: Array<'plate' | 'edge' | 'hardware'> = ['plate', 'edge', 'hardware']
+  const preloadRequests = preloadTypes.map(async (type) => {
     try {
-      const rows = await fetchCatalogModeMaterials(mode)
+      const rows = await fetchCatalogModeMaterials('library', { type })
       mergeMaterialOptions(byId, rows)
     } catch (error) {
-      console.warn(`Failed to load materials catalog mode: ${mode}`, error)
+      console.warn(`Failed to load material library for type: ${type}`, error)
     }
-  }
+  })
+
+  await Promise.all(preloadRequests)
 
   const merged = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru'))
   selectableMaterialsCache.value = {
@@ -5264,6 +5308,90 @@ const loadSelectableMaterials = async (force = false): Promise<Material[]> => {
   }
 
   return merged
+}
+
+const ensureProjectMaterialsLoaded = async () => {
+  const ids = new Set<number>()
+
+  const addId = (value?: number | string | null) => {
+    const id = Number(value)
+    if (Number.isFinite(id) && id > 0) ids.add(id)
+  }
+
+  addId(project.value?.default_plate_material_id)
+  addId(project.value?.default_edge_material_id)
+
+  positions.value.forEach((position) => {
+    addId(position.material_id)
+    addId(position.edge_material_id)
+  })
+  fittings.value.forEach((fitting) => addId(fitting.material_id))
+
+  const missingIds = Array.from(ids).filter((id) => !materials.value.some((material) => material.id === id))
+  if (missingIds.length === 0) return
+
+  const loadedRows = await Promise.all(
+    missingIds.map(async (id) => {
+      try {
+        const response = await api.get(`/api/materials/${id}`)
+        return response.data
+      } catch (error) {
+        console.warn(`Failed to load project material #${id}`, error)
+        return null
+      }
+    })
+  )
+
+  mergeMaterialsIntoState(loadedRows.filter(Boolean))
+}
+
+const searchMaterialOptions = async (type: 'plate' | 'edge', searchRaw: string) => {
+  const search = String(searchRaw || '').trim()
+  const requestId = ++materialSearchRequestIds[type]
+
+  if (search.length < MATERIAL_SEARCH_MIN_LENGTH) {
+    materialSearchLoading[type] = false
+    return
+  }
+
+  materialSearchLoading[type] = true
+
+  try {
+    const modes: CatalogMaterialMode[] = ['own', 'library', 'public']
+    const results = await Promise.all(
+      modes.map(async (mode) => {
+        try {
+          return await fetchCatalogModeMaterials(mode, {
+            type,
+            search,
+            perPage: 50,
+            maxPages: 1,
+          })
+        } catch (error) {
+          console.warn(`Failed to search materials mode: ${mode}, type: ${type}`, error)
+          return []
+        }
+      })
+    )
+
+    if (requestId === materialSearchRequestIds[type]) {
+      mergeMaterialsIntoState(results.flat())
+    }
+  } finally {
+    if (requestId === materialSearchRequestIds[type]) {
+      materialSearchLoading[type] = false
+    }
+  }
+}
+
+const onMaterialSearch = (type: 'plate' | 'edge', value: string) => {
+  if (materialSearchTimeouts[type]) {
+    clearTimeout(materialSearchTimeouts[type])
+  }
+
+  materialSearchTimeouts[type] = setTimeout(() => {
+    searchMaterialOptions(type, value)
+  }, MATERIAL_SEARCH_DEBOUNCE_MS)
 }
 
 // === Загрузка данных ===
@@ -5381,6 +5509,7 @@ const fetchData = async (): Promise<boolean> => {
     positions.value = (await api.get(`/api/projects/${projectId}/positions`)).data
     fittings.value = (await api.get(`/api/projects/${projectId}/fittings`)).data
     expenses.value = (await api.get(`/api/projects/${projectId}/expenses`)).data
+    await ensureProjectMaterialsLoaded()
     
     console.log('Loaded positions:', positions.value)
     console.log('Loaded expenses:', expenses.value)
@@ -5470,7 +5599,7 @@ const openPositionDialog = async () => {
 
   // Refresh materials in the background so the dialog gives immediate feedback.
   try {
-    materials.value = await loadSelectableMaterials()
+    mergeMaterialsIntoState(await loadSelectableMaterials())
   } catch (error) {
     console.warn('Failed to refresh selectable materials after opening position dialog', error)
   } finally {
@@ -8778,6 +8907,9 @@ onBeforeUnmount(() => {
   if (fittingSearchTimeout) {
     clearTimeout(fittingSearchTimeout)
   }
+  Object.values(materialSearchTimeouts).forEach((timeout) => {
+    if (timeout) clearTimeout(timeout)
+  })
   window.removeEventListener('paste', onWindowPasteForManualClose)
   stopRevisionRunPolling()
 })

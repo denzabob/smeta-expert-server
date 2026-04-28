@@ -44,7 +44,13 @@ use App\Http\Controllers\Api\AdminMaterialTypePatternController;
 use App\Http\Controllers\Api\AdminSystemLogController;
 use App\Http\Controllers\Api\AdminUsersController;
 use App\Http\Controllers\Api\Admin\AdminBillingController;
+use App\Http\Controllers\Api\Admin\AdminBillingGateEventsController;
+use App\Http\Controllers\Api\Admin\AdminBillingPlansController;
 use App\Http\Controllers\Api\Admin\AdminBillingPaymentsController;
+use App\Http\Controllers\Api\Admin\AdminBillingUserSubscriptionsController;
+use App\Http\Controllers\Api\BillingCheckoutController;
+use App\Http\Controllers\Api\BillingMeController;
+use App\Http\Controllers\Api\BillingPaymentRefreshController;
 use App\Http\Controllers\Api\BillingWebhookController;
 use App\Http\Controllers\Api\PinAuthController;
 use App\Http\Controllers\Api\PhoneAuthController;
@@ -598,6 +604,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // User Settings API
     Route::get('user/settings', [UserSettingsController::class, 'get']);
     Route::put('user/settings', [UserSettingsController::class, 'update']);
+
+    // User-facing billing APIs are hidden by billing feature flags until launch.
+    Route::get('billing/me', BillingMeController::class);
+    Route::post('billing/checkout', [BillingCheckoutController::class, 'store']);
+    Route::post('billing/payments/{payment}/refresh', [BillingPaymentRefreshController::class, 'store'])->whereNumber('payment');
     
     // ========== User Notifications API ==========
     Route::get('notifications', [UserNotificationController::class, 'index']);
@@ -658,8 +669,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('admin/billing')->group(function () {
         Route::get('overview', [AdminBillingController::class, 'overview']);
         Route::get('users/{user}/overview', [AdminBillingController::class, 'userOverview'])->whereNumber('user');
+        Route::get('users/{user}/subscription', [AdminBillingUserSubscriptionsController::class, 'show'])->whereNumber('user');
+        Route::post('users/{user}/subscription/assign', [AdminBillingUserSubscriptionsController::class, 'assign'])->whereNumber('user');
+        Route::post('users/{user}/subscription/extend', [AdminBillingUserSubscriptionsController::class, 'extend'])->whereNumber('user');
+        Route::post('users/{user}/subscription/cancel', [AdminBillingUserSubscriptionsController::class, 'cancel'])->whereNumber('user');
+        Route::post('users/{user}/subscription/legacy', [AdminBillingUserSubscriptionsController::class, 'legacy'])->whereNumber('user');
+        Route::get('users/{user}/subscription/history', [AdminBillingUserSubscriptionsController::class, 'history'])->whereNumber('user');
         Route::get('usage', [AdminBillingController::class, 'usage']);
         Route::get('events', [AdminBillingController::class, 'events']);
+        Route::get('gate-events', [AdminBillingGateEventsController::class, 'index']);
+        Route::get('gate-events/summary', [AdminBillingGateEventsController::class, 'summary']);
+        Route::get('plans', [AdminBillingPlansController::class, 'index']);
+        Route::post('plans', [AdminBillingPlansController::class, 'store']);
+        Route::get('plans/{plan}', [AdminBillingPlansController::class, 'show'])->whereNumber('plan');
+        Route::patch('plans/{plan}', [AdminBillingPlansController::class, 'update'])->whereNumber('plan');
         Route::get('invoices', [AdminBillingPaymentsController::class, 'invoices']);
         Route::post('invoices', [AdminBillingPaymentsController::class, 'storeInvoice']);
         Route::post('invoices/{invoice}/payments', [AdminBillingPaymentsController::class, 'storePayment'])->whereNumber('invoice');

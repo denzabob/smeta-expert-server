@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api/axios'
 import { setProjectsFlashMessage, storePrefetchedProject } from './projectAccess'
+import { billingFlags } from '@/config/billingFlags'
 
 import AppShell from '@/layouts/AppShell.vue'
 import ParserLayout from '@/layouts/ParserLayout.vue'
@@ -155,6 +156,12 @@ const router = createRouter({
           meta: { title: 'Настройки проекта по умолчанию' }
         },
         {
+          path: 'settings/billing',
+          name: 'settings-billing',
+          component: () => import('@/views/settings/UserBillingView.vue'),
+          meta: { title: 'Тариф и лимиты', requiresBillingUserUi: true }
+        },
+        {
           path: 'settings/project',
           redirect: { name: 'settings' }
         },
@@ -288,13 +295,37 @@ const router = createRouter({
           path: 'billing',
           name: 'admin-billing',
           component: () => import('@/views/admin/AdminBillingView.vue'),
-          meta: { title: 'Использование' }
+          meta: { title: 'Биллинг' }
+        },
+        {
+          path: 'billing/plans',
+          name: 'admin-billing-plans',
+          component: () => import('@/views/admin/AdminBillingView.vue'),
+          meta: { title: 'Тарифы' }
+        },
+        {
+          path: 'billing/subscriptions',
+          name: 'admin-billing-subscriptions',
+          component: () => import('@/views/admin/AdminBillingView.vue'),
+          meta: { title: 'Подписки пользователей' }
         },
         {
           path: 'billing/payments',
           name: 'admin-billing-payments',
           component: () => import('@/views/admin/AdminBillingPaymentsView.vue'),
           meta: { title: 'Платежи' }
+        },
+        {
+          path: 'billing/webhooks',
+          name: 'admin-billing-webhooks',
+          component: () => import('@/views/admin/AdminBillingPaymentsView.vue'),
+          meta: { title: 'Webhook-события' }
+        },
+        {
+          path: 'billing/gate-events',
+          name: 'admin-billing-gate-events',
+          component: () => import('@/views/admin/AdminBillingView.vue'),
+          meta: { title: 'Log-only лимиты' }
         },
         {
           path: 'chat',
@@ -385,6 +416,10 @@ router.beforeEach(async (to, from, next) => {
     if (!isAdminUser()) {
       return next({ name: 'projects' })
     }
+  }
+
+  if (to.meta.requiresBillingUserUi && !billingFlags.userUiEnabled) {
+    return next({ name: 'settings', replace: true })
   }
 
   if (to.name === 'ProjectEditorView') {

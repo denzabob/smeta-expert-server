@@ -2,21 +2,27 @@
 
 return [
     'enabled' => env('BILLING_ENABLED', false),
-    'track_usage' => env('BILLING_TRACK_USAGE', true),
-    'enforce_limits' => env('BILLING_ENFORCE_LIMITS', false),
+    'checkout_enabled' => env('BILLING_CHECKOUT_ENABLED', env('BILLING_CHECKOUT_UI_ENABLED', false)),
+    'enforcement_enabled' => env('BILLING_ENFORCEMENT_ENABLED', env('BILLING_ENFORCE_LIMITS', false)),
+    'user_ui_enabled' => env('BILLING_USER_UI_ENABLED', false),
+    'admin_ui_enabled' => env('BILLING_ADMIN_UI_ENABLED', true),
+    'usage_tracking_enabled' => env('BILLING_USAGE_TRACKING_ENABLED', env('BILLING_TRACK_USAGE', true)),
+    'provider' => env('BILLING_PROVIDER', env('BILLING_PROVIDER_DEFAULT', 'yookassa')),
+    'provider_mode' => env('BILLING_PROVIDER_MODE', env('BILLING_PROVIDER_YOOKASSA_MODE', 'test')),
+    'track_usage' => env('BILLING_USAGE_TRACKING_ENABLED', env('BILLING_TRACK_USAGE', true)),
+    'enforce_limits' => env('BILLING_ENFORCEMENT_ENABLED', env('BILLING_ENFORCE_LIMITS', false)),
     'log_only' => env('BILLING_LOG_ONLY', true),
     'fail_open' => env('BILLING_FAIL_OPEN', true),
     'default_plan' => env('BILLING_DEFAULT_PLAN', 'legacy_unlimited'),
-    'admin_ui_enabled' => env('BILLING_ADMIN_UI_ENABLED', false),
     'storage_tracking_enabled' => env('BILLING_STORAGE_TRACKING_ENABLED', false),
     'payments' => [
         'enabled' => env('BILLING_PAYMENTS_ENABLED', false),
-        'checkout_ui_enabled' => env('BILLING_CHECKOUT_UI_ENABLED', false),
-        'default_provider' => env('BILLING_PROVIDER_DEFAULT', 'yookassa'),
+        'checkout_ui_enabled' => env('BILLING_CHECKOUT_ENABLED', env('BILLING_CHECKOUT_UI_ENABLED', false)),
+        'default_provider' => env('BILLING_PROVIDER', env('BILLING_PROVIDER_DEFAULT', 'yookassa')),
         'providers' => [
             'yookassa' => [
                 'enabled' => env('BILLING_PROVIDER_YOOKASSA_ENABLED', false),
-                'mode' => env('BILLING_PROVIDER_YOOKASSA_MODE', 'test'),
+                'mode' => env('BILLING_PROVIDER_MODE', env('BILLING_PROVIDER_YOOKASSA_MODE', 'test')),
                 'shop_id' => env('YOOKASSA_SHOP_ID'),
                 'secret_key' => env('YOOKASSA_SECRET_KEY'),
                 'return_url' => env('YOOKASSA_RETURN_URL'),

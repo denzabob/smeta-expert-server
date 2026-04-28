@@ -130,8 +130,8 @@
             <v-list-item to="/settings" prepend-icon="mdi-cog">
               Настройки
             </v-list-item>
-            <v-list-item to="/subscription" prepend-icon="mdi-credit-card">
-              Тариф и оплата
+            <v-list-item v-if="billingFlags.userUiEnabled" to="/settings/billing" prepend-icon="mdi-chart-box-outline">
+              Тариф и лимиты
             </v-list-item>
             <v-divider></v-divider>
             <v-list-item prepend-icon="mdi-help-circle-outline" @click="openSupport">
@@ -174,6 +174,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify' // ← добавьте useTheme
 import { useAuthStore } from '@/stores/auth'
 import GeoIpWarningBanner from '@/components/GeoIpWarningBanner.vue'
+import { billingFlags } from '@/config/billingFlags'
 
 const authStore = useAuthStore()
 const router = useRouter()

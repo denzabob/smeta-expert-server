@@ -2,9 +2,9 @@
   <v-container fluid class="admin-billing-payments pa-0">
     <div class="page-header">
       <div>
-        <h2 class="text-h5 font-weight-medium mb-1">Платежи</h2>
+        <h2 class="text-h5 font-weight-medium mb-1">Биллинг</h2>
         <p class="text-body-2 text-medium-emphasis mb-0">
-          Скрытый админский раздел для тестирования invoice, payments и webhook-событий. Пользователям не отображается.
+          Скрытый административный режим для платежей и webhook-событий. Пользователям не отображается.
         </p>
       </div>
       <v-btn
@@ -17,6 +17,18 @@
         Обновить
       </v-btn>
     </div>
+
+    <v-alert type="info" variant="tonal" density="compact" class="mb-3 billing-admin-alert">
+      Монетизация выключена. Checkout и enforcement отключены. Пользователи не видят этот раздел.
+    </v-alert>
+
+    <AppTabs
+      :model-value="activeBillingTab"
+      :items="billingTabs"
+      density="comfortable"
+      class="billing-tabs mb-4"
+      @update:model-value="goBillingTab"
+    />
 
     <v-alert
       type="warning"
@@ -51,7 +63,7 @@
       {{ successMessage }}
     </v-alert>
 
-    <v-card class="mb-4" variant="outlined">
+    <v-card v-if="activeBillingTab === 'payments'" class="mb-4 billing-module-card" variant="flat">
       <v-card-title class="text-subtitle-1">Создать тестовый invoice</v-card-title>
       <v-card-text>
         <v-row dense>
@@ -102,11 +114,17 @@
       </v-card-text>
     </v-card>
 
-    <v-card class="mb-4" variant="outlined">
+    <v-card v-if="activeBillingTab === 'payments'" class="mb-4 billing-module-card" variant="flat">
       <v-card-title class="section-title">
         <span>Invoices</span>
         <v-chip size="small" variant="tonal">{{ invoices.length }}</v-chip>
       </v-card-title>
+      <AppDataTableShell
+        :empty="!loading && !invoices.length"
+        empty-title="Invoices нет"
+        empty-description="Создайте тестовый invoice, чтобы проверить payment flow."
+        empty-icon="mdi-receipt-text-plus-outline"
+      >
       <v-table density="compact" class="billing-table">
         <thead>
           <tr>
@@ -130,41 +148,33 @@
             <td>{{ userLabel(invoice.user, invoice.user_id) }}</td>
             <td>{{ invoice.plan_code }}</td>
             <td class="text-right">{{ formatMoneyMinor(invoice.amount_minor, invoice.currency) }}</td>
-            <td><v-chip size="small" :color="statusColor(invoice.status)" variant="tonal">{{ invoice.status }}</v-chip></td>
+            <td><StatusChip :status="invoice.status" :color="statusColor(invoice.status)" :label="invoice.status" /></td>
             <td>{{ formatDateTime(invoice.created_at) }}</td>
             <td>{{ formatDateTime(invoice.paid_at) }}</td>
             <td class="text-right">
-              <v-btn
-                size="small"
-                variant="text"
-                color="primary"
-                :disabled="invoice.status === 'paid'"
-                :loading="paymentInvoiceId === invoice.id"
-                @click="handleCreatePayment(invoice)"
-              >
-                Payment
-              </v-btn>
-              <v-btn
-                size="small"
-                variant="text"
-                @click="openInvoiceDetails(invoice.id)"
-              >
-                Детали
-              </v-btn>
+              <AppRowActions
+                dense
+                :actions="invoiceRowActions(invoice)"
+                @action="(action) => handleInvoiceRowAction(action, invoice)"
+              />
             </td>
-          </tr>
-          <tr v-if="!invoices.length">
-            <td colspan="8" class="empty-cell">Нет invoices</td>
           </tr>
         </tbody>
       </v-table>
+      </AppDataTableShell>
     </v-card>
 
-    <v-card class="mb-4" variant="outlined">
+    <v-card v-if="activeBillingTab === 'payments'" class="mb-4 billing-module-card" variant="flat">
       <v-card-title class="section-title">
         <span>Payments</span>
         <v-chip size="small" variant="tonal">{{ payments.length }}</v-chip>
       </v-card-title>
+      <AppDataTableShell
+        :empty="!loading && !payments.length"
+        empty-title="Payments нет"
+        empty-description="Платежи появятся после создания payment по invoice."
+        empty-icon="mdi-credit-card-off-outline"
+      >
       <v-table density="compact" class="billing-table">
         <thead>
           <tr>
@@ -186,7 +196,7 @@
             <td>{{ payment.provider_code }}</td>
             <td class="mono-cell">{{ payment.provider_payment_id || '—' }}</td>
             <td class="text-right">{{ formatMoneyMinor(payment.amount_minor, payment.currency) }}</td>
-            <td><v-chip size="small" :color="statusColor(payment.status)" variant="tonal">{{ payment.status }}</v-chip></td>
+            <td><StatusChip :status="payment.status" :color="statusColor(payment.status)" :label="payment.status" /></td>
             <td>{{ formatDateTime(payment.created_at) }}</td>
             <td>
               <v-btn
@@ -202,27 +212,29 @@
               <span v-else class="text-medium-emphasis">—</span>
             </td>
             <td class="text-right">
-              <v-btn
-                size="small"
-                variant="text"
-                @click="openPaymentDetails(payment.id)"
-              >
-                Детали
-              </v-btn>
+              <AppRowActions
+                dense
+                :actions="paymentRowActions"
+                @action="(action) => handlePaymentRowAction(action, payment)"
+              />
             </td>
-          </tr>
-          <tr v-if="!payments.length">
-            <td colspan="9" class="empty-cell">Нет payments</td>
           </tr>
         </tbody>
       </v-table>
+      </AppDataTableShell>
     </v-card>
 
-    <v-card variant="outlined">
+    <v-card v-if="activeBillingTab === 'webhooks'" class="billing-module-card" variant="flat">
       <v-card-title class="section-title">
         <span>Provider events</span>
         <v-chip size="small" variant="tonal">{{ providerEvents.length }}</v-chip>
       </v-card-title>
+      <AppDataTableShell
+        :empty="!loading && !providerEvents.length"
+        empty-title="Webhook-событий нет"
+        empty-description="Provider events появятся после webhook или refresh статуса платежа."
+        empty-icon="mdi-webhook"
+      >
       <v-table density="compact" class="billing-table">
         <thead>
           <tr>
@@ -243,33 +255,30 @@
             <td>{{ event.provider_code }}</td>
             <td>{{ event.event_type }}</td>
             <td class="mono-cell">{{ event.provider_payment_id || '—' }}</td>
-            <td><v-chip size="small" :color="statusColor(event.processing_status)" variant="tonal">{{ event.processing_status }}</v-chip></td>
+            <td><StatusChip :status="event.processing_status" :color="statusColor(event.processing_status)" :label="event.processing_status" /></td>
             <td>{{ formatDateTime(event.processed_at) }}</td>
             <td>{{ formatDateTime(event.created_at) }}</td>
             <td class="error-cell">{{ event.processing_error || '—' }}</td>
             <td class="text-right">
-              <v-btn
-                size="small"
-                variant="text"
-                @click="openProviderEventDetails(event.id)"
-              >
-                Детали
-              </v-btn>
+              <AppRowActions
+                dense
+                :actions="providerEventRowActions"
+                @action="(action) => handleProviderEventRowAction(action, event)"
+              />
             </td>
-          </tr>
-          <tr v-if="!providerEvents.length">
-            <td colspan="9" class="empty-cell">Нет provider events</td>
           </tr>
         </tbody>
       </v-table>
+      </AppDataTableShell>
     </v-card>
 
     <v-navigation-drawer
-      v-model="detailsDrawerOpen"
+      v-model="detailsDrawerModel"
       temporary
       location="right"
-      width="520"
-      class="details-drawer"
+      :scrim="true"
+      width="560"
+      class="billing-overlay-drawer details-drawer"
     >
       <div class="drawer-header">
         <div>
@@ -292,7 +301,7 @@
                 <span>User</span><strong>{{ userLabel(invoiceDetails.invoice.user, invoiceDetails.invoice.user_id) }}</strong>
                 <span>Plan</span><strong>{{ invoiceDetails.invoice.plan_code }}</strong>
                 <span>Amount</span><strong>{{ formatMoneyMinor(invoiceDetails.invoice.amount_minor, invoiceDetails.invoice.currency) }}</strong>
-                <span>Status</span><v-chip size="small" :color="statusColor(invoiceDetails.invoice.status)" variant="tonal">{{ invoiceDetails.invoice.status }}</v-chip>
+                <span>Status</span><StatusChip :status="invoiceDetails.invoice.status" :color="statusColor(invoiceDetails.invoice.status)" :label="invoiceDetails.invoice.status" />
                 <span>Period</span><strong>{{ formatDateTime(invoiceDetails.invoice.period_start) }} — {{ formatDateTime(invoiceDetails.invoice.period_end) }}</strong>
                 <span>Paid</span><strong>{{ formatDateTime(invoiceDetails.invoice.paid_at) }}</strong>
                 <span>Canceled</span><strong>{{ formatDateTime(invoiceDetails.invoice.canceled_at) }}</strong>
@@ -321,7 +330,7 @@
               <div class="detail-grid">
                 <span>ID</span><strong>#{{ invoiceDetails.subscription.id }}</strong>
                 <span>Plan</span><strong>{{ invoiceDetails.subscription.plan_code }}</strong>
-                <span>Status</span><v-chip size="small" :color="statusColor(invoiceDetails.subscription.status)" variant="tonal">{{ invoiceDetails.subscription.status }}</v-chip>
+                <span>Status</span><StatusChip :status="invoiceDetails.subscription.status" :color="statusColor(invoiceDetails.subscription.status)" :label="invoiceDetails.subscription.status" />
                 <span>Current end</span><strong>{{ formatDateTime(invoiceDetails.subscription.current_period_end) }}</strong>
               </div>
             </v-card-text>
@@ -352,7 +361,7 @@
                 <span>Provider ID</span><code>{{ paymentDetails.payment.provider_payment_id || '—' }}</code>
                 <span>Invoice</span><strong>#{{ paymentDetails.payment.invoice_id }}</strong>
                 <span>Amount</span><strong>{{ formatMoneyMinor(paymentDetails.payment.amount_minor, paymentDetails.payment.currency) }}</strong>
-                <span>Status</span><v-chip size="small" :color="statusColor(paymentDetails.payment.status)" variant="tonal">{{ paymentDetails.payment.status }}</v-chip>
+                <span>Status</span><StatusChip :status="paymentDetails.payment.status" :color="statusColor(paymentDetails.payment.status)" :label="paymentDetails.payment.status" />
                 <span>Succeeded</span><strong>{{ formatDateTime(paymentDetails.payment.succeeded_at) }}</strong>
                 <span>Canceled</span><strong>{{ formatDateTime(paymentDetails.payment.canceled_at) }}</strong>
               </div>
@@ -374,7 +383,7 @@
             <v-card-text>
               <div class="detail-grid">
                 <span>Provider payment ID</span><code>{{ paymentDetails.payment.provider_payment_id || '—' }}</code>
-                <span>Last local status</span><v-chip size="small" :color="statusColor(paymentDetails.payment.status)" variant="tonal">{{ paymentDetails.payment.status }}</v-chip>
+                <span>Last local status</span><StatusChip :status="paymentDetails.payment.status" :color="statusColor(paymentDetails.payment.status)" :label="paymentDetails.payment.status" />
                 <span>Provider payload status</span><strong>{{ providerPayloadStatus(paymentDetails.payment.provider_payload) }}</strong>
                 <span>Last provider event</span><strong>{{ lastProviderEvent(paymentDetails.provider_events)?.event_type || '—' }}</strong>
                 <span>Last processed at</span><strong>{{ formatDateTime(lastProviderEvent(paymentDetails.provider_events)?.processed_at) }}</strong>
@@ -393,12 +402,17 @@
               @click="openProviderEventDetails(event.id)"
             >
               <template #append>
-                <v-chip size="small" :color="statusColor(event.processing_status)" variant="tonal">{{ event.processing_status }}</v-chip>
+                <StatusChip :status="event.processing_status" :color="statusColor(event.processing_status)" :label="event.processing_status" />
               </template>
             </v-list-item>
           </v-list>
 
-          <h3 class="drawer-section-title">Sanitized provider payload</h3>
+          <div class="drawer-section-heading">
+            <h3 class="drawer-section-title">Sanitized provider payload</h3>
+            <v-btn size="x-small" variant="text" prepend-icon="mdi-content-copy" @click="copyJson(paymentDetails.payment.provider_payload)">
+              Copy
+            </v-btn>
+          </div>
           <pre class="json-block">{{ prettyJson(paymentDetails.payment.provider_payload) }}</pre>
         </template>
 
@@ -410,7 +424,7 @@
                 <span>Provider</span><strong>{{ eventDetails.event.provider_code }}</strong>
                 <span>Event</span><strong>{{ eventDetails.event.event_type }}</strong>
                 <span>Payment ID</span><code>{{ eventDetails.event.provider_payment_id || '—' }}</code>
-                <span>Status</span><v-chip size="small" :color="statusColor(eventDetails.event.processing_status)" variant="tonal">{{ eventDetails.event.processing_status }}</v-chip>
+                <span>Status</span><StatusChip :status="eventDetails.event.processing_status" :color="statusColor(eventDetails.event.processing_status)" :label="eventDetails.event.processing_status" />
                 <span>Processed</span><strong>{{ formatDateTime(eventDetails.event.processed_at) }}</strong>
                 <span>Error</span><strong class="text-error">{{ eventDetails.event.processing_error || '—' }}</strong>
               </div>
@@ -428,10 +442,20 @@
             Payment #{{ eventDetails.payment.id }} · {{ eventDetails.payment.status }}
           </v-btn>
 
-          <h3 class="drawer-section-title">Sanitized payload</h3>
+          <div class="drawer-section-heading">
+            <h3 class="drawer-section-title">Sanitized payload</h3>
+            <v-btn size="x-small" variant="text" prepend-icon="mdi-content-copy" @click="copyJson(eventDetails.event.payload)">
+              Copy
+            </v-btn>
+          </div>
           <pre class="json-block">{{ prettyJson(eventDetails.event.payload) }}</pre>
 
-          <h3 class="drawer-section-title mt-3">Sanitized headers</h3>
+          <div class="drawer-section-heading mt-3">
+            <h3 class="drawer-section-title">Sanitized headers</h3>
+            <v-btn size="x-small" variant="text" prepend-icon="mdi-content-copy" @click="copyJson(eventDetails.event.headers)">
+              Copy
+            </v-btn>
+          </div>
           <pre class="json-block">{{ prettyJson(eventDetails.event.headers) }}</pre>
         </template>
       </div>
@@ -440,7 +464,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   createBillingInvoice,
   createBillingPayment,
@@ -453,6 +478,10 @@ import {
   getBillingProviderEvents,
   refreshBillingPaymentProviderStatus,
 } from '@/api/adminBillingPayments'
+import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
+import AppRowActions, { type AppRowAction } from '@/components/layout/AppRowActions.vue'
+import AppTabs, { type AppTabItem } from '@/components/layout/AppTabs.vue'
+import StatusChip from '@/components/layout/StatusChip.vue'
 
 type UserSummary = {
   id: number
@@ -552,6 +581,24 @@ type PaymentPlan = {
   billing_period: 'month' | 'year' | string
 }
 
+type BillingTab = 'overview' | 'plans' | 'subscriptions' | 'payments' | 'webhooks' | 'gate-events'
+
+const route = useRoute()
+const router = useRouter()
+
+const billingTabs: Array<AppTabItem & { value: BillingTab; to: string }> = [
+  { label: 'Обзор', value: 'overview', to: '/admin/billing' },
+  { label: 'Тарифы', value: 'plans', to: '/admin/billing/plans' },
+  { label: 'Подписки', value: 'subscriptions', to: '/admin/billing/subscriptions' },
+  { label: 'Платежи', value: 'payments', to: '/admin/billing/payments' },
+  { label: 'Webhook-события', value: 'webhooks', to: '/admin/billing/webhooks' },
+  { label: 'Log-only лимиты', value: 'gate-events', to: '/admin/billing/gate-events' },
+]
+
+const activeBillingTab = computed<BillingTab>(() => (
+  route.path.endsWith('/webhooks') ? 'webhooks' : 'payments'
+))
+
 const invoices = ref<BillingInvoice[]>([])
 const payments = ref<BillingPayment[]>([])
 const providerEvents = ref<BillingProviderEvent[]>([])
@@ -593,12 +640,79 @@ const planItems = computed(() => paymentPlans.value.map((plan) => ({
 
 const canCreateInvoice = computed(() => Number(invoiceForm.user_id) > 0 && Boolean(invoiceForm.plan_code))
 
+const paymentRowActions: AppRowAction[] = [
+  { key: 'details', label: 'Детали', icon: 'mdi-information-outline', color: 'primary' },
+]
+
+const providerEventRowActions: AppRowAction[] = [
+  { key: 'details', label: 'Детали', icon: 'mdi-information-outline', color: 'primary' },
+]
+
 const detailsTitle = computed(() => {
   if (detailsKind.value === 'invoice') return 'Детали invoice'
   if (detailsKind.value === 'payment') return 'Детали платежа'
   if (detailsKind.value === 'event') return 'Событие провайдера'
   return 'Детали'
 })
+const selectedDetailsReady = computed(() => {
+  if (detailsKind.value === 'invoice') return Boolean(invoiceDetails.value)
+  if (detailsKind.value === 'payment') return Boolean(paymentDetails.value)
+  if (detailsKind.value === 'event') return Boolean(eventDetails.value)
+  return false
+})
+const detailsDrawerModel = computed({
+  get: () => detailsDrawerOpen.value && Boolean(detailsKind.value) && (detailsLoading.value || selectedDetailsReady.value),
+  set: (value: boolean) => {
+    if (!value) {
+      closeDetails()
+    }
+  },
+})
+
+function goBillingTab(value: unknown) {
+  const tab = billingTabs.find((item) => item.value === value)
+  if (tab && tab.value !== activeBillingTab.value) {
+    router.push(tab.to)
+  }
+}
+
+function invoiceRowActions(invoice: BillingInvoice): AppRowAction[] {
+  return [
+    {
+      key: 'payment',
+      label: 'Создать payment',
+      icon: 'mdi-credit-card-plus-outline',
+      color: 'primary',
+      variant: 'tonal',
+      disabled: invoice.status === 'paid',
+      loading: paymentInvoiceId.value === invoice.id,
+    },
+    { key: 'details', label: 'Детали', icon: 'mdi-information-outline' },
+  ]
+}
+
+function handleInvoiceRowAction(action: unknown, invoice: BillingInvoice) {
+  if (action === 'payment') {
+    handleCreatePayment(invoice)
+    return
+  }
+
+  if (action === 'details') {
+    openInvoiceDetails(invoice.id)
+  }
+}
+
+function handlePaymentRowAction(action: unknown, payment: BillingPayment) {
+  if (action === 'details') {
+    openPaymentDetails(payment.id)
+  }
+}
+
+function handleProviderEventRowAction(action: unknown, event: BillingProviderEvent) {
+  if (action === 'details') {
+    openProviderEventDetails(event.id)
+  }
+}
 
 onMounted(() => {
   loadAll()
@@ -607,6 +721,7 @@ onMounted(() => {
 async function loadAll() {
   loading.value = true
   errorMessage.value = ''
+  closeDetails()
 
   try {
     const [plansResponse, invoicesResponse, paymentsResponse, eventsResponse] = await Promise.all([
@@ -696,6 +811,7 @@ async function openInvoiceDetails(invoiceId: number) {
     invoiceDetails.value = await getBillingInvoiceDetails(invoiceId)
   } catch (error: any) {
     errorMessage.value = error?.response?.data?.message || 'Не удалось открыть детали invoice'
+    closeDetails()
   } finally {
     detailsLoading.value = false
   }
@@ -714,6 +830,7 @@ async function openPaymentDetails(paymentId: number) {
     selectedInvoiceId.value = paymentDetails.value?.payment.invoice_id || null
   } catch (error: any) {
     errorMessage.value = error?.response?.data?.message || 'Не удалось открыть детали платежа'
+    closeDetails()
   } finally {
     detailsLoading.value = false
   }
@@ -731,6 +848,7 @@ async function openProviderEventDetails(eventId: number) {
     eventDetails.value = await getBillingProviderEventDetails(eventId)
   } catch (error: any) {
     errorMessage.value = error?.response?.data?.message || 'Не удалось открыть событие провайдера'
+    closeDetails()
   } finally {
     detailsLoading.value = false
   }
@@ -755,6 +873,11 @@ async function handleRefreshProviderStatus(paymentId: number) {
 
 function closeDetails() {
   detailsDrawerOpen.value = false
+  detailsLoading.value = false
+  detailsKind.value = null
+  invoiceDetails.value = null
+  paymentDetails.value = null
+  eventDetails.value = null
 }
 
 function formatMoneyMinor(amountMinor: number | null | undefined, currency: string | null | undefined): string {
@@ -792,7 +915,31 @@ function statusColor(status: string): string {
 function prettyJson(value: unknown): string {
   if (!value) return '{}'
 
-  return JSON.stringify(value, null, 2)
+  return JSON.stringify(sanitizeJson(value), null, 2)
+}
+
+function sanitizeJson(value: unknown): unknown {
+  const sensitiveKeys = ['authorization', 'cookie', 'token', 'secret', 'password', 'session', 'api_key']
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeJson(item))
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => {
+        const normalizedKey = key.toLowerCase()
+        const isSensitive = sensitiveKeys.some((sensitiveKey) => normalizedKey.includes(sensitiveKey))
+        return [key, isSensitive ? '[hidden]' : sanitizeJson(item)]
+      })
+    )
+  }
+
+  return value
+}
+
+async function copyJson(value: unknown) {
+  await navigator.clipboard?.writeText(prettyJson(value))
 }
 
 function providerPayloadStatus(payload: Record<string, unknown> | null | undefined): string {
@@ -804,6 +951,13 @@ function providerPayloadStatus(payload: Record<string, unknown> | null | undefin
 function lastProviderEvent(events: BillingProviderEvent[]): BillingProviderEvent | null {
   return events[0] || null
 }
+
+watch(
+  () => route.fullPath,
+  () => {
+    closeDetails()
+  }
+)
 </script>
 
 <style scoped>
@@ -817,6 +971,21 @@ function lastProviderEvent(events: BillingProviderEvent[]): BillingProviderEvent
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+.billing-tabs {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.billing-admin-alert {
+  border-radius: 12px;
+}
+
+.billing-module-card {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 12px;
 }
 
 .section-title {
@@ -858,7 +1027,18 @@ function lastProviderEvent(events: BillingProviderEvent[]): BillingProviderEvent
 }
 
 .details-drawer {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  width: min(560px, 100vw) !important;
+  max-width: min(640px, 100vw) !important;
+  height: 100dvh !important;
   border-left: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+}
+
+.details-drawer :deep(.v-navigation-drawer__content) {
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .drawer-header {
@@ -871,6 +1051,8 @@ function lastProviderEvent(events: BillingProviderEvent[]): BillingProviderEvent
 
 .drawer-body {
   padding: 16px;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .drawer-actions {
@@ -884,6 +1066,18 @@ function lastProviderEvent(events: BillingProviderEvent[]): BillingProviderEvent
   font-size: 0.875rem;
   font-weight: 600;
   color: rgb(var(--v-theme-on-surface));
+}
+
+.drawer-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.drawer-section-heading .drawer-section-title {
+  margin: 0;
 }
 
 .detail-grid {
@@ -905,6 +1099,7 @@ function lastProviderEvent(events: BillingProviderEvent[]): BillingProviderEvent
 
 .json-block {
   max-height: 280px;
+  max-width: 100%;
   margin: 0;
   padding: 12px;
   overflow: auto;
@@ -920,6 +1115,10 @@ function lastProviderEvent(events: BillingProviderEvent[]): BillingProviderEvent
 @media (max-width: 960px) {
   .page-header {
     flex-direction: column;
+  }
+
+  .details-drawer {
+    width: min(100vw, 96vw) !important;
   }
 }
 </style>

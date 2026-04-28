@@ -1,0 +1,59 @@
+import api from './axios'
+
+export type BillingPreviewFlags = {
+  enabled: boolean
+  enforce_limits: boolean
+  log_only: boolean
+  checkout_enabled: boolean
+  mode_label: string
+}
+
+export type BillingPreviewPlan = {
+  code: string
+  name: string
+  description?: string | null
+  price?: number | null
+  price_minor?: number | null
+  currency?: string | null
+  billing_period?: string | null
+  period?: string | null
+  is_current?: boolean
+  is_available?: boolean
+  is_default?: boolean
+  features?: string[]
+  limits?: Array<{
+    code: string
+    name?: string
+    label: string
+    limit: number | null
+    unit: string
+  }>
+}
+
+export type BillingPreviewSubscription = {
+  status: string
+  current_period_start?: string | null
+  current_period_end?: string | null
+}
+
+export type BillingPreviewUsageItem = {
+  code: string
+  label: string
+  used: number
+  limit: number | null
+  unit: string
+  period: 'current' | 'month' | string
+}
+
+export type BillingPreview = {
+  billing: BillingPreviewFlags
+  current_plan: BillingPreviewPlan
+  subscription: BillingPreviewSubscription
+  usage: BillingPreviewUsageItem[]
+  public_plans: BillingPreviewPlan[]
+}
+
+export async function getMyBillingPreview(): Promise<BillingPreview> {
+  const { data } = await api.get('/api/billing/me')
+  return data
+}
