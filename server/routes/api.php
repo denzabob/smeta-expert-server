@@ -48,6 +48,7 @@ use App\Http\Controllers\Api\Admin\AdminBillingGateEventsController;
 use App\Http\Controllers\Api\Admin\AdminBillingPlansController;
 use App\Http\Controllers\Api\Admin\AdminBillingPaymentsController;
 use App\Http\Controllers\Api\Admin\AdminBillingUserSubscriptionsController;
+use App\Http\Controllers\Api\BillingCapabilitiesController;
 use App\Http\Controllers\Api\BillingCheckoutController;
 use App\Http\Controllers\Api\BillingMeController;
 use App\Http\Controllers\Api\BillingPaymentRefreshController;
@@ -606,6 +607,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('user/settings', [UserSettingsController::class, 'update']);
 
     // User-facing billing APIs are hidden by billing feature flags until launch.
+    Route::get('billing/capabilities', BillingCapabilitiesController::class);
     Route::get('billing/me', BillingMeController::class);
     Route::post('billing/checkout', [BillingCheckoutController::class, 'store']);
     Route::post('billing/payments/{payment}/refresh', [BillingPaymentRefreshController::class, 'store'])->whereNumber('payment');

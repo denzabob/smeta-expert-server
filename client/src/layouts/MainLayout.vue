@@ -130,7 +130,7 @@
             <v-list-item to="/settings" prepend-icon="mdi-cog">
               Настройки
             </v-list-item>
-            <v-list-item v-if="billingFlags.userUiEnabled" to="/settings/billing" prepend-icon="mdi-chart-box-outline">
+            <v-list-item v-if="billingCapabilities.userUiEnabled" to="/settings/billing" prepend-icon="mdi-chart-box-outline">
               Тариф и лимиты
             </v-list-item>
             <v-divider></v-divider>
@@ -173,10 +173,11 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify' // ← добавьте useTheme
 import { useAuthStore } from '@/stores/auth'
+import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
 import GeoIpWarningBanner from '@/components/GeoIpWarningBanner.vue'
-import { billingFlags } from '@/config/billingFlags'
 
 const authStore = useAuthStore()
+const billingCapabilities = useBillingCapabilitiesStore()
 const router = useRouter()
 const route = useRoute()
 const { lgAndUp } = useDisplay()
@@ -236,6 +237,9 @@ onMounted(() => {
   if (typeof window !== 'undefined') {
     window.addEventListener('scroll', handleScroll, { passive: true })
     handleScroll()
+  }
+  if (authStore.isAuthenticated) {
+    void billingCapabilities.load()
   }
   applyThemeMode()
 })

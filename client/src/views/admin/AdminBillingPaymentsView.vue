@@ -4,7 +4,7 @@
       <div>
         <h2 class="text-h5 font-weight-medium mb-1">Биллинг</h2>
         <p class="text-body-2 text-medium-emphasis mb-0">
-          Скрытый административный режим для платежей и webhook-событий. Пользователям не отображается.
+          {{ adminBillingHeaderSubtitle }}
         </p>
       </div>
       <v-btn
@@ -18,10 +18,33 @@
       </v-btn>
     </div>
 
-    <v-alert type="info" variant="tonal" density="compact" class="mb-3 billing-admin-alert">
-      Монетизация выключена. Checkout и enforcement отключены. Пользователи не видят этот раздел.
+    <v-alert
+      v-if="billingCapabilities.error"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      class="mb-3 billing-admin-alert"
+    >
+      Не удалось получить состояние биллинга от backend. Проверьте API /api/billing/capabilities и авторизацию.
     </v-alert>
 
+    <v-alert v-else type="info" variant="tonal" density="compact" class="mb-3 billing-admin-alert">
+      {{ adminBillingSummaryText }}
+    </v-alert>
+
+    <v-card
+      v-if="billingCapabilities.loaded && !billingCapabilities.adminUiEnabled"
+      class="mb-4 billing-module-card"
+      variant="flat"
+    >
+      <v-card-title class="text-subtitle-1">Биллинг выключен</v-card-title>
+      <v-card-text class="text-body-2 text-medium-emphasis">
+        Административные действия с платежами недоступны в текущем режиме. Измените BILLING_ENABLED и BILLING_MODE на
+        backend, затем очистите Laravel config cache.
+      </v-card-text>
+    </v-card>
+
+    <template v-else>
     <AppTabs
       :model-value="activeBillingTab"
       :items="billingTabs"
@@ -36,7 +59,7 @@
       density="compact"
       class="mb-4"
     >
-      Оплата находится в тестовом режиме. Enforcement и пользовательский checkout отключены.
+      {{ adminBillingPaymentsNotice }}
     </v-alert>
 
     <v-alert
@@ -460,6 +483,7 @@
         </template>
       </div>
     </v-navigation-drawer>
+    </template>
   </v-container>
 </template>
 
@@ -482,6 +506,7 @@ import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
 import AppRowActions, { type AppRowAction } from '@/components/layout/AppRowActions.vue'
 import AppTabs, { type AppTabItem } from '@/components/layout/AppTabs.vue'
 import StatusChip from '@/components/layout/StatusChip.vue'
+import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
 
 type UserSummary = {
   id: number
@@ -585,6 +610,7 @@ type BillingTab = 'overview' | 'plans' | 'subscriptions' | 'payments' | 'webhook
 
 const route = useRoute()
 const router = useRouter()
+const billingCapabilities = useBillingCapabilitiesStore()
 
 const billingTabs: Array<AppTabItem & { value: BillingTab; to: string }> = [
   { label: 'Обзор', value: 'overview', to: '/admin/billing' },
@@ -638,7 +664,43 @@ const planItems = computed(() => paymentPlans.value.map((plan) => ({
   value: plan.code,
 })))
 
-const canCreateInvoice = computed(() => Number(invoiceForm.user_id) > 0 && Boolean(invoiceForm.plan_code))
+const canCreateInvoice = computed(() => (
+  billingCapabilities.paymentsEnabled &&
+  Number(invoiceForm.user_id) > 0 &&
+  Boolean(invoiceForm.plan_code)
+))
+const adminBillingHeaderSubtitle = computed(() => {
+  if (billingCapabilities.loading && !billingCapabilities.loaded) {
+    return 'Загружаем состояние платежей и webhook-событий из backend.'
+  }
+
+  if (!billingCapabilities.adminUiEnabled) {
+    return 'Административные платежные действия недоступны в текущем режиме биллинга.'
+  }
+
+  return 'Административный раздел для платежей, invoice и webhook-событий.'
+})
+const adminBillingSummaryText = computed(() => {
+  const mode = billingCapabilities.billingMode
+
+  if (billingCapabilities.loading && !billingCapabilities.loaded) return 'Состояние биллинга загружается.'
+  if (mode === 'off') return 'Режим биллинга: выключен. Пользовательская оплата, платежи и ограничения отключены.'
+  if (mode === 'admin_only') return 'Режим биллинга: только администратор. Платёжные действия доступны для диагностики.'
+  if (mode === 'visible') return 'Режим биллинга: видимый. Пользователи видят тарифы, но оплата и платежи выключены.'
+  if (mode === 'checkout') return 'Режим биллинга: checkout. Оплата и платежи включены, ограничения выключены.'
+  if (mode === 'enforced') return 'Режим биллинга: enforced. Оплата, платежи и ограничения включены.'
+
+  return 'Состояние биллинга загружается.'
+})
+const adminBillingPaymentsNotice = computed(() => {
+  if (billingCapabilities.checkoutEnabled && billingCapabilities.paymentsEnabled) {
+    return billingCapabilities.enforcementEnabled
+      ? 'Пользовательская оплата и применение лимитов включены.'
+      : 'Пользовательская оплата включена на уровне режима. Ограничения пока не применяются.'
+  }
+
+  return 'Пользовательская оплата выключена. Платежи в админке используются для диагностики и подготовки запуска.'
+})
 
 const paymentRowActions: AppRowAction[] = [
   { key: 'details', label: 'Детали', icon: 'mdi-information-outline', color: 'primary' },
@@ -724,6 +786,8 @@ async function loadAll() {
   closeDetails()
 
   try {
+    await billingCapabilities.load()
+
     const [plansResponse, invoicesResponse, paymentsResponse, eventsResponse] = await Promise.all([
       getBillingPaymentPlans(),
       getBillingInvoices({ limit: 25 }),

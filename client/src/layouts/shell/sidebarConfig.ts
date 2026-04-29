@@ -3,7 +3,7 @@
  * Централизованное место для настройки пунктов меню
  */
 
-import { billingFlags } from '@/config/billingFlags'
+import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
 
 export interface MenuItem {
   title: string
@@ -26,6 +26,11 @@ export interface MenuSection {
 
 /** Проверка: владелец (user_id === 1) */
 const isOwner = (me: { id: number } | null) => me?.id === 1
+
+const canShowUserBilling = () => {
+  const billingCapabilities = useBillingCapabilitiesStore()
+  return billingCapabilities.userUiEnabled
+}
 
 export const sidebarSections: MenuSection[] = [
   {
@@ -132,7 +137,7 @@ export const accountMenuItems: AccountMenuItem[] = [
     title: 'Тариф и лимиты',
     icon: 'mdi-chart-box-outline',
     route: '/settings/billing',
-    visibleIf: () => billingFlags.userUiEnabled,
+    visibleIf: canShowUserBilling,
   },
   {
     id: 'notifications',

@@ -103,7 +103,7 @@
             sm="6"
             lg="4"
           >
-            <BillingPlanCard :plan="plan" />
+            <BillingPlanCard :plan="plan" :checkout-enabled="billingCapabilities.checkoutEnabled" />
           </v-col>
         </v-row>
       </SectionCard>
@@ -114,6 +114,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { getMyBillingPreview, type BillingPreview, type BillingPreviewUsageItem } from '@/api/billing'
+import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
 import BillingPlanCard from '@/components/billing/BillingPlanCard.vue'
 import BillingUsageLimitRow from '@/components/billing/BillingUsageLimitRow.vue'
 import AppStateBlock from '@/components/layout/AppStateBlock.vue'
@@ -125,6 +126,7 @@ import StatusChip from '@/components/layout/StatusChip.vue'
 const loading = ref(true)
 const error = ref('')
 const preview = ref<BillingPreview | null>(null)
+const billingCapabilities = useBillingCapabilitiesStore()
 
 const usageDefinitions = [
   {
@@ -176,8 +178,8 @@ const currentPlanDescription = computed(() => {
   return plan.description || 'Доступ настроен на время тестового периода.'
 })
 
-const paymentStatusLabel = computed(() => preview.value?.billing.checkout_enabled ? 'доступна' : 'пока отключена')
-const limitsStatusLabel = computed(() => preview.value?.billing.enforce_limits ? 'применяются' : 'не применяются')
+const paymentStatusLabel = computed(() => billingCapabilities.checkoutEnabled ? 'доступна' : 'пока отключена')
+const limitsStatusLabel = computed(() => billingCapabilities.enforcementEnabled ? 'применяются' : 'не применяются')
 
 const hasSubscriptionPeriod = computed(() => {
   const subscription = preview.value?.subscription
@@ -215,6 +217,7 @@ async function loadBilling() {
   error.value = ''
 
   try {
+    await billingCapabilities.load()
     preview.value = await getMyBillingPreview()
   } catch (err: any) {
     error.value = err?.response?.data?.message || 'Попробуйте обновить страницу позже.'

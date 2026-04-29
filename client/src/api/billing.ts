@@ -53,7 +53,31 @@ export type BillingPreview = {
   public_plans: BillingPreviewPlan[]
 }
 
+export type BillingCapabilities = {
+  enabled: boolean
+  mode: 'off' | 'admin_only' | 'visible' | 'checkout' | 'enforced' | string
+  adminUiEnabled: boolean
+  userUiEnabled: boolean
+  checkoutEnabled: boolean
+  paymentsEnabled: boolean
+  enforcementEnabled: boolean
+  usageTrackingEnabled: boolean
+  provider: string
+  providerMode: string
+  defaultPlan: string
+  failOpen: boolean
+}
+
+export type BillingCapabilitiesResponse = {
+  billing: BillingCapabilities
+}
+
 export async function getMyBillingPreview(): Promise<BillingPreview> {
   const { data } = await api.get('/api/billing/me')
+  return data
+}
+
+export async function getBillingCapabilities(): Promise<BillingCapabilitiesResponse> {
+  const { data } = await api.get('/api/billing/capabilities')
   return data
 }

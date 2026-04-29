@@ -199,6 +199,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
+import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
 import { useNotificationsStore } from '@/stores/notifications'
 import { sidebarSections, type MenuSection, type MenuItem } from './sidebarConfig'
 import AccountDrawer from './AccountDrawer.vue'
@@ -222,6 +223,7 @@ const emit = defineEmits<{
 
 const { smAndDown } = useDisplay()
 const authStore = useAuthStore()
+const billingCapabilities = useBillingCapabilitiesStore()
 const notificationsStore = useNotificationsStore()
 const mobile = computed(() => smAndDown.value)
 
@@ -344,6 +346,7 @@ onMounted(() => {
   }
   // Start polling unread count
   if (authStore.isAuthenticated) {
+    void billingCapabilities.load()
     notificationsStore.startPolling()
   }
   window.addEventListener('app-sidebar:request-rail', handleRequestRail)
@@ -392,8 +395,10 @@ watch(modelValue, (opened) => {
 // Start/stop polling on auth change
 watch(() => authStore.isAuthenticated, (authed) => {
   if (authed) {
+    void billingCapabilities.load(true)
     notificationsStore.startPolling()
   } else {
+    billingCapabilities.reset()
     notificationsStore.stopPolling()
   }
 })

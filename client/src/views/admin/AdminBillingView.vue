@@ -11,30 +11,65 @@
       </template>
     </PageHeader>
 
-    <v-alert type="info" variant="tonal" density="compact" class="mb-4 billing-admin-alert">
-      Монетизация выключена. Checkout и enforcement отключены. Пользователи не видят этот раздел.
-    </v-alert>
-
-    <v-alert
-      v-if="billingDiagnostics && !billingDiagnostics.enabled"
-      type="warning"
-      variant="tonal"
-      density="compact"
-      class="mb-3"
+    <SectionCard
+      title="Текущее состояние"
+      variant="flat"
+      class="mb-4 billing-status-card"
+      :loading="billingCapabilities.loading && !billingCapabilities.loaded"
     >
-      Монетизация выключена. Система собирает usage и позволяет тестировать тарифы без блокировок.
-    </v-alert>
+      <v-alert
+        v-if="billingCapabilities.error"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+      >
+        Не удалось получить состояние биллинга от backend. Проверьте API /api/billing/capabilities и авторизацию.
+      </v-alert>
 
-    <v-alert
-      v-if="billingDiagnostics && !billingDiagnostics.enforce_limits"
-      type="info"
-      variant="tonal"
-      density="compact"
+      <template v-else>
+        <div class="billing-status-hero">
+          <div>
+            <div class="billing-status-hero__eyebrow">Режим биллинга</div>
+            <div class="billing-status-hero__title">{{ billingModeLabel }}</div>
+            <p class="billing-status-hero__description">{{ billingModeDescription }}</p>
+          </div>
+          <StatusChip
+            :status="billingCapabilities.billingEnabled ? 'enabled' : 'disabled'"
+            :color="billingCapabilities.billingEnabled ? 'success' : 'grey'"
+            :label="billingCapabilities.billingEnabled ? 'Включён' : 'Выключен'"
+          />
+        </div>
+
+        <div class="billing-status-grid">
+          <div
+            v-for="item in billingStatusItems"
+            :key="item.label"
+            class="billing-status-item"
+          >
+            <div class="billing-status-item__top">
+              <span>{{ item.label }}</span>
+              <StatusChip :status="item.status" :color="item.color" :label="item.badge" size="x-small" />
+            </div>
+            <div class="billing-status-item__value">{{ item.value }}</div>
+          </div>
+        </div>
+      </template>
+    </SectionCard>
+
+    <SectionCard
+      v-if="billingCapabilities.loaded && !billingCapabilities.adminUiEnabled"
+      title="Биллинг выключен"
+      variant="outlined"
       class="mb-4"
     >
-      Лимиты работают в режиме log-only: события записываются, но пользователи не блокируются.
-    </v-alert>
+      <p class="text-body-2 text-medium-emphasis mb-0">
+        Административные действия биллинга недоступны в текущем режиме. Измените BILLING_ENABLED и BILLING_MODE на backend,
+        затем очистите Laravel config cache.
+      </p>
+    </SectionCard>
 
+    <template v-else>
     <AppTabs
       :model-value="activeBillingTab"
       :items="billingTabs"
@@ -227,7 +262,7 @@
       :loading="plansLoading"
     >
       <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-        Тарифы пока используются только для скрытого тестирования и log-only аналитики. Пользователи не видят эту страницу, checkout отключён, enforcement отключён.
+        {{ adminPlansNotice }}
       </v-alert>
 
       <div class="d-flex justify-end mb-3">
@@ -289,7 +324,7 @@
       :loading="subscriptionLoading"
     >
       <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-        Ручное управление подпиской доступно только администраторам. Checkout и enforcement остаются отключёнными.
+        {{ adminSubscriptionsNotice }}
       </v-alert>
 
       <v-row dense>
@@ -929,6 +964,7 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+    </template>
   </PageContainer>
 </template>
 
@@ -963,6 +999,7 @@ import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
 import AppRowActions, { type AppRowAction } from '@/components/layout/AppRowActions.vue'
 import AppTabs, { type AppTabItem } from '@/components/layout/AppTabs.vue'
 import StatusChip from '@/components/layout/StatusChip.vue'
+import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
 
 type GateEventUser = {
   id: number
@@ -1064,6 +1101,7 @@ type BillingTab = 'overview' | 'plans' | 'subscriptions' | 'payments' | 'webhook
 
 const route = useRoute()
 const router = useRouter()
+const billingCapabilities = useBillingCapabilitiesStore()
 
 const billingTabs: Array<AppTabItem & { value: BillingTab; to: string }> = [
   { label: 'Обзор', value: 'overview', to: '/admin/billing' },
@@ -1242,6 +1280,125 @@ const planRowActions: AppRowAction[] = [
 ]
 
 const billingDiagnostics = computed(() => overview.value?.billing_diagnostics || null)
+const billingModeLabel = computed(() => {
+  const mode = billingCapabilities.billingMode
+
+  if (mode === 'off') return 'Выключен'
+  if (mode === 'admin_only') return 'Только администратор'
+  if (mode === 'visible') return 'Видимый пользователям'
+  if (mode === 'checkout') return 'Оплата включена'
+  if (mode === 'enforced') return 'Полный режим'
+
+  return billingCapabilities.loading ? 'Загрузка' : 'Неизвестный режим'
+})
+
+const billingModeDescription = computed(() => {
+  const mode = billingCapabilities.billingMode
+
+  if (billingCapabilities.loading && !billingCapabilities.loaded) {
+    return 'Загружаем состояние биллинга из backend.'
+  }
+
+  if (mode === 'off') {
+    return 'Биллинг выключен. Пользователи не видят раздел тарифов, оплата и ограничения отключены.'
+  }
+
+  if (mode === 'admin_only') {
+    return 'Биллинг доступен только администратору для настройки и диагностики. Пользователи не видят раздел тарифов.'
+  }
+
+  if (mode === 'visible') {
+    return 'Пользователи видят тариф и лимиты, но оплата ещё отключена.'
+  }
+
+  if (mode === 'checkout') {
+    return 'Пользователи видят тарифы, оплата включена на уровне режима. Реальное действие checkout может быть disabled до отдельного подключения checkout action.'
+  }
+
+  if (mode === 'enforced') {
+    return 'Полный режим: пользователи видят тарифы, оплата доступна, лимиты и ограничения применяются.'
+  }
+
+  return 'Состояние биллинга загружается.'
+})
+
+const billingStatusItems = computed(() => [
+  {
+    label: 'Состояние',
+    value: billingCapabilities.billingEnabled ? 'Биллинг включён' : 'Биллинг выключен',
+    badge: billingCapabilities.billingEnabled ? 'enabled' : 'disabled',
+    status: billingCapabilities.billingEnabled ? 'enabled' : 'disabled',
+    color: billingCapabilities.billingEnabled ? 'success' : 'grey',
+  },
+  {
+    label: 'Пользовательский кабинет',
+    value: billingCapabilities.userUiEnabled ? 'Пользователи видят “Тариф и лимиты”' : 'Скрыт для пользователей',
+    badge: billingCapabilities.userUiEnabled ? 'включён' : 'выключен',
+    status: billingCapabilities.userUiEnabled ? 'active' : 'disabled',
+    color: billingCapabilities.userUiEnabled ? 'success' : 'grey',
+  },
+  {
+    label: 'Оплата',
+    value: billingCapabilities.checkoutEnabled
+      ? 'Включена на уровне режима; frontend action подключается отдельно'
+      : 'Выключена для пользователей',
+    badge: billingCapabilities.checkoutEnabled ? 'включена' : 'выключена',
+    status: billingCapabilities.checkoutEnabled ? 'warning' : 'disabled',
+    color: billingCapabilities.checkoutEnabled ? 'warning' : 'grey',
+  },
+  {
+    label: 'Ограничения',
+    value: billingCapabilities.enforcementEnabled ? 'Лимиты применяются' : 'Лимиты не блокируют пользователей',
+    badge: billingCapabilities.enforcementEnabled ? 'включены' : 'выключены',
+    status: billingCapabilities.enforcementEnabled ? 'warning' : 'info',
+    color: billingCapabilities.enforcementEnabled ? 'warning' : 'info',
+  },
+  {
+    label: 'Учёт использования',
+    value: billingCapabilities.usageTrackingEnabled ? 'Usage собирается' : 'Usage не собирается',
+    badge: billingCapabilities.usageTrackingEnabled ? 'включён' : 'выключен',
+    status: billingCapabilities.usageTrackingEnabled ? 'active' : 'disabled',
+    color: billingCapabilities.usageTrackingEnabled ? 'success' : 'grey',
+  },
+  {
+    label: 'Провайдер',
+    value: providerLabel(billingCapabilities.provider),
+    badge: billingCapabilities.providerMode,
+    status: billingCapabilities.providerMode === 'live' ? 'active' : 'pending',
+    color: billingCapabilities.providerMode === 'live' ? 'success' : 'info',
+  },
+  {
+    label: 'План по умолчанию',
+    value: billingCapabilities.defaultPlan,
+    badge: 'default',
+    status: 'active',
+    color: 'primary',
+  },
+])
+
+const adminPlansNotice = computed(() => {
+  if (!billingCapabilities.userUiEnabled) {
+    return 'Тарифы доступны только администратору для настройки и диагностики. Пользовательский раздел тарифов сейчас скрыт.'
+  }
+
+  if (!billingCapabilities.checkoutEnabled) {
+    return 'Пользователи видят тарифы и лимиты, но оплата пока выключена.'
+  }
+
+  return billingCapabilities.enforcementEnabled
+    ? 'Пользовательский раздел тарифов и применение лимитов включены.'
+    : 'Пользовательский раздел тарифов и оплата включены. Лимиты пока не блокируют пользователей.'
+})
+
+const adminSubscriptionsNotice = computed(() => {
+  if (!billingCapabilities.checkoutEnabled) {
+    return 'Ручное управление подпиской доступно только администраторам. Пользовательская оплата сейчас выключена.'
+  }
+
+  return billingCapabilities.enforcementEnabled
+    ? 'Ручное управление подпиской доступно администраторам. Пользовательская оплата и ограничения включены.'
+    : 'Ручное управление подпиской доступно администраторам. Пользовательская оплата включена, ограничения пока не применяются.'
+})
 
 const dashboardCards = computed(() => {
   const diagnostics = billingDiagnostics.value || {}
@@ -1249,34 +1406,34 @@ const dashboardCards = computed(() => {
   return [
     {
       title: 'Billing status',
-      value: diagnostics.enabled ? 'Включён' : 'Выключен',
-      statusLabel: diagnostics.enabled ? 'enabled' : 'disabled',
-      status: diagnostics.enabled ? 'enabled' : 'disabled',
-      color: diagnostics.enabled ? 'success' : 'grey',
+      value: billingCapabilities.billingEnabled ? 'Включён' : 'Выключен',
+      statusLabel: billingCapabilities.billingMode,
+      status: billingCapabilities.billingEnabled ? 'enabled' : 'disabled',
+      color: billingCapabilities.billingEnabled ? 'success' : 'grey',
       icon: 'mdi-power',
     },
     {
       title: 'Provider',
-      value: diagnostics.default_provider || '—',
-      statusLabel: diagnostics.yookassa_mode === 'live' ? 'live' : 'test',
-      status: diagnostics.yookassa_mode === 'live' ? 'active' : 'pending',
-      color: diagnostics.yookassa_mode === 'live' ? 'success' : 'info',
+      value: providerLabel(billingCapabilities.provider),
+      statusLabel: billingCapabilities.providerMode,
+      status: billingCapabilities.providerMode === 'live' ? 'active' : 'pending',
+      color: billingCapabilities.providerMode === 'live' ? 'success' : 'info',
       icon: 'mdi-credit-card-clock-outline',
     },
     {
-      title: 'Checkout',
-      value: diagnostics.checkout_ui_enabled ? 'Показан' : 'Скрыт',
-      statusLabel: diagnostics.checkout_ui_enabled ? 'visible' : 'hidden checkout',
-      status: diagnostics.checkout_ui_enabled ? 'warning' : 'disabled',
-      color: diagnostics.checkout_ui_enabled ? 'warning' : 'grey',
+      title: 'Оплата',
+      value: billingCapabilities.checkoutEnabled ? 'Включена' : 'Выключена',
+      statusLabel: billingCapabilities.paymentsEnabled ? 'payments on' : 'payments off',
+      status: billingCapabilities.checkoutEnabled ? 'warning' : 'disabled',
+      color: billingCapabilities.checkoutEnabled ? 'warning' : 'grey',
       icon: 'mdi-cart-off',
     },
     {
-      title: 'Limits',
-      value: diagnostics.enforce_limits ? 'Enforced' : 'Log-only',
-      statusLabel: diagnostics.enforce_limits ? 'enforced' : 'log-only',
-      status: diagnostics.enforce_limits ? 'warning' : 'info',
-      color: diagnostics.enforce_limits ? 'warning' : 'info',
+      title: 'Ограничения',
+      value: billingCapabilities.enforcementEnabled ? 'Применяются' : 'Выключены',
+      statusLabel: billingCapabilities.enforcementEnabled ? 'enforced' : 'not applied',
+      status: billingCapabilities.enforcementEnabled ? 'warning' : 'info',
+      color: billingCapabilities.enforcementEnabled ? 'warning' : 'info',
       icon: 'mdi-shield-alert-outline',
     },
     {
@@ -1423,6 +1580,8 @@ async function loadAll() {
   plansError.value = ''
 
   try {
+    await billingCapabilities.load()
+
     const params = { ...filters }
     const gateParams = gateEventParams()
     const [overviewData, usageData, eventsData, gateEventsData, gateSummaryData, plansData] = await Promise.all([
@@ -1446,8 +1605,9 @@ async function loadAll() {
     gateEvents.value = gateEventsData
     gateSummary.value = gateSummaryData
     billingPlans.value = plansData.data || []
-    if (!assignForm.plan_code && billingPlans.value.length) {
-      assignForm.plan_code = billingPlans.value[0].code
+    const defaultPlanCode = billingPlans.value[0]?.code
+    if (!assignForm.plan_code && defaultPlanCode) {
+      assignForm.plan_code = defaultPlanCode
     }
 
     userOverview.value = filters.user_id
@@ -1469,8 +1629,9 @@ async function loadBillingPlans() {
   try {
     const data = await getAdminBillingPlans()
     billingPlans.value = data.data || []
-    if (!assignForm.plan_code && billingPlans.value.length) {
-      assignForm.plan_code = billingPlans.value[0].code
+    const defaultPlanCode = billingPlans.value[0]?.code
+    if (!assignForm.plan_code && defaultPlanCode) {
+      assignForm.plan_code = defaultPlanCode
     }
   } catch (err: any) {
     plansError.value = err?.response?.data?.message || 'Не удалось загрузить тарифы'
@@ -1519,6 +1680,13 @@ function gateEventParams(): AdminBillingGateEventFilters {
 
 function formatNumber(value: number | string) {
   return new Intl.NumberFormat('ru-RU').format(Number(value || 0))
+}
+
+function providerLabel(provider?: string | null) {
+  if (provider === 'yookassa') return 'YooKassa'
+  if (!provider || provider === '—') return '—'
+
+  return provider
 }
 
 function booleanLabel(value: unknown) {
@@ -1970,6 +2138,69 @@ onMounted(loadAll)
 
 .billing-admin-alert {
   border-radius: 12px;
+}
+
+.billing-status-card {
+  overflow: hidden;
+}
+
+.billing-status-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.billing-status-hero__eyebrow {
+  margin-bottom: 4px;
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.billing-status-hero__title {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.billing-status-hero__description {
+  max-width: 920px;
+  margin: 8px 0 0;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.billing-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.billing-status-item {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-surface), 0.72);
+}
+
+.billing-status-item__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 12px;
+}
+
+.billing-status-item__value {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .billing-dashboard-card {

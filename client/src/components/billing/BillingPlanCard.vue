@@ -26,13 +26,14 @@
     </ul>
 
     <v-btn
+      v-if="showAction"
       block
       class="billing-plan-card__action"
       color="primary"
       variant="tonal"
       :disabled="true"
     >
-      {{ isCurrent ? 'Текущий тариф' : 'Скоро будет доступно' }}
+      {{ actionLabel }}
     </v-btn>
   </div>
 </template>
@@ -44,6 +45,7 @@ import StatusChip from '@/components/layout/StatusChip.vue'
 
 const props = defineProps<{
   plan: BillingPreviewPlan
+  checkoutEnabled?: boolean
 }>()
 
 const preferredLimitOrder = [
@@ -55,6 +57,14 @@ const preferredLimitOrder = [
 ]
 
 const isCurrent = computed(() => Boolean(props.plan.is_current))
+const checkoutEnabled = computed(() => props.checkoutEnabled === true)
+const showAction = computed(() => isCurrent.value || checkoutEnabled.value)
+const actionLabel = computed(() => {
+  if (isCurrent.value) return 'Текущий тариф'
+  if (checkoutEnabled.value) return 'Оплата будет доступна после подключения'
+
+  return 'Скоро будет доступно'
+})
 
 const displayName = computed(() => {
   if (props.plan.code === 'sandbox_pro_month') return 'Профессиональный'

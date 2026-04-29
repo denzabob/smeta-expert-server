@@ -1,9 +1,9 @@
 // src/router/index.ts
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
 import api from '@/api/axios'
 import { setProjectsFlashMessage, storePrefetchedProject } from './projectAccess'
-import { billingFlags } from '@/config/billingFlags'
 
 import AppShell from '@/layouts/AppShell.vue'
 import ParserLayout from '@/layouts/ParserLayout.vue'
@@ -348,6 +348,7 @@ const router = createRouter({
 // Глобальный navigation guard
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
+  const billingCapabilities = useBillingCapabilitiesStore()
 
   const isAdminUser = () => {
     const u = authStore.user as any
@@ -418,8 +419,16 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
-  if (to.meta.requiresBillingUserUi && !billingFlags.userUiEnabled) {
-    return next({ name: 'settings', replace: true })
+  if (to.meta.requiresBillingUserUi) {
+    await billingCapabilities.load()
+
+    if (!billingCapabilities.userUiEnabled) {
+      return next({ name: 'settings', replace: true })
+    }
+  }
+
+  if (authStore.isAuthenticated && !billingCapabilities.loaded && !billingCapabilities.loading) {
+    void billingCapabilities.load()
   }
 
   if (to.name === 'ProjectEditorView') {
