@@ -50,7 +50,7 @@ class AdminBillingPlansTest extends TestCase
             ->assertJsonPath('data.metadata_json.currency', 'RUB')
             ->assertJsonPath('data.metadata_json.billing_period', 'month');
 
-        $this->assertSame(30, $response->json('data.metadata_json.limits')[BillingCodes::CAP_PROJECTS_MAX_ACTIVE]);
+        $this->assertSame(30, $response->json('data.metadata_json.limits')[BillingCodes::CAP_PROJECTS_MAX_OWNED]);
 
         $this->assertDatabaseHas('billing_plans', [
             'id' => $response->json('data.id'),
@@ -59,7 +59,7 @@ class AdminBillingPlansTest extends TestCase
         ]);
 
         $plan = BillingPlan::query()->where('code', 'created_plan')->firstOrFail();
-        $this->assertSame(30, $plan->metadata_json['limits'][BillingCodes::CAP_PROJECTS_MAX_ACTIVE]);
+        $this->assertSame(30, $plan->metadata_json['limits'][BillingCodes::CAP_PROJECTS_MAX_OWNED]);
     }
 
     public function test_admin_can_create_public_plan(): void
@@ -121,7 +121,7 @@ class AdminBillingPlansTest extends TestCase
                 'currency' => 'RUB',
                 'billing_period' => 'year',
                 'limits' => [
-                    BillingCodes::CAP_PROJECTS_MAX_ACTIVE => 40,
+                    BillingCodes::CAP_PROJECTS_MAX_OWNED => 40,
                     BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT => 200,
                 ],
             ])
@@ -132,7 +132,7 @@ class AdminBillingPlansTest extends TestCase
             ->assertJsonPath('data.metadata_json.billing_period', 'year');
 
         $plan->refresh();
-        $this->assertSame(40, $plan->metadata_json['limits'][BillingCodes::CAP_PROJECTS_MAX_ACTIVE]);
+        $this->assertSame(40, $plan->metadata_json['limits'][BillingCodes::CAP_PROJECTS_MAX_OWNED]);
         $this->assertSame(200, $plan->metadata_json['limits'][BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT]);
     }
 
@@ -186,7 +186,7 @@ class AdminBillingPlansTest extends TestCase
         $this->actingAs($admin, 'sanctum')
             ->patchJson("/api/admin/billing/plans/{$legacy->id}", [
                 'limits' => [
-                    BillingCodes::CAP_PROJECTS_MAX_ACTIVE => 1,
+                    BillingCodes::CAP_PROJECTS_MAX_OWNED => 1,
                 ],
             ])
             ->assertUnprocessable();
@@ -200,14 +200,14 @@ class AdminBillingPlansTest extends TestCase
             ->postJson('/api/admin/billing/plans', [
                 ...$this->planPayload('partial_limits'),
                 'limits' => [
-                    BillingCodes::CAP_PROJECTS_MAX_ACTIVE => 10,
+                    BillingCodes::CAP_PROJECTS_MAX_OWNED => 10,
                 ],
             ])
             ->assertCreated();
 
         $limits = BillingPlan::query()->where('code', 'partial_limits')->firstOrFail()->metadata_json['limits'];
 
-        $this->assertSame(10, $limits[BillingCodes::CAP_PROJECTS_MAX_ACTIVE]);
+        $this->assertSame(10, $limits[BillingCodes::CAP_PROJECTS_MAX_OWNED]);
         $this->assertNull($limits[BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT]);
         $this->assertNull($limits[BillingCodes::CAP_EVIDENCE_RUNS_MONTHLY_LIMIT]);
         $this->assertNull($limits[BillingCodes::CAP_CHROME_CAPTURES_MONTHLY_LIMIT]);
@@ -223,7 +223,7 @@ class AdminBillingPlansTest extends TestCase
             ->postJson('/api/admin/billing/plans', [
                 ...$this->planPayload('empty_limits'),
                 'limits' => [
-                    BillingCodes::CAP_PROJECTS_MAX_ACTIVE => '',
+                    BillingCodes::CAP_PROJECTS_MAX_OWNED => '',
                     BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT => 5,
                 ],
             ])
@@ -231,7 +231,7 @@ class AdminBillingPlansTest extends TestCase
 
         $limits = BillingPlan::query()->where('code', 'empty_limits')->firstOrFail()->metadata_json['limits'];
 
-        $this->assertNull($limits[BillingCodes::CAP_PROJECTS_MAX_ACTIVE]);
+        $this->assertNull($limits[BillingCodes::CAP_PROJECTS_MAX_OWNED]);
         $this->assertSame(5, $limits[BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT]);
     }
 
@@ -282,7 +282,7 @@ class AdminBillingPlansTest extends TestCase
                 'PDF-выгрузки',
             ],
             'limits' => [
-                BillingCodes::CAP_PROJECTS_MAX_ACTIVE => 30,
+                BillingCodes::CAP_PROJECTS_MAX_OWNED => 30,
                 BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT => 100,
                 BillingCodes::CAP_EVIDENCE_RUNS_MONTHLY_LIMIT => 50,
                 BillingCodes::CAP_CHROME_CAPTURES_MONTHLY_LIMIT => 300,

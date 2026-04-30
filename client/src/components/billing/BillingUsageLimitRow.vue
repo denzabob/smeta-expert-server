@@ -24,7 +24,7 @@
     />
 
     <div v-if="exceeded" class="billing-usage-row__note">
-      В тестовом режиме превышение не ограничивает работу.
+      {{ exceededNote }}
     </div>
   </div>
 </template>
@@ -49,6 +49,13 @@ const unlimited = computed(() => props.limit === null || Number(props.limit) <= 
 const safeUsed = computed(() => Math.max(0, Number(props.used || 0)))
 const safeLimit = computed(() => unlimited.value ? null : Math.max(0, Number(props.limit)))
 const exceeded = computed(() => !unlimited.value && safeLimit.value !== null && safeUsed.value > safeLimit.value)
+const exceededNote = computed(() => {
+  if (props.label === 'Проекты в аккаунте') {
+    return 'Лимит превышен. Вы можете просматривать существующие проекты, но создание и редактирование ограничены.'
+  }
+
+  return 'В тестовом режиме превышение не ограничивает работу.'
+})
 
 const progressValue = computed(() => {
   if (unlimited.value) return 100

@@ -9,6 +9,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\Billing\BillingCodes;
 use App\Services\Billing\BillingGateService;
+use App\Services\Billing\BillingUsageExclusionService;
 use App\Services\Billing\DTO\BillingGateResult;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use RuntimeException;
@@ -87,6 +88,27 @@ class BillingGateServiceTest extends TestCase
             'would_block' => true,
             'enforced' => false,
         ]);
+    }
+
+    public function test_superadmin_owner_is_excluded_from_gate_events(): void
+    {
+        config([
+            'billing.enabled' => true,
+            'billing.log_only' => true,
+        ]);
+
+        $user = User::factory()->create(['id' => 1]);
+        $this->makePlan('limited', [BillingCodes::CAP_CHROME_CAPTURES_MONTHLY_LIMIT => 10]);
+        $this->makeSubscription($user, 'limited');
+
+        $result = app(BillingGateService::class)->check(
+            $user,
+            BillingCodes::CAP_CHROME_CAPTURES_MONTHLY_LIMIT,
+            ['usage' => 10, 'source' => 'unit_test'],
+        );
+
+        $this->assertTrue($result->wouldBlock);
+        $this->assertSame(0, BillingGateEvent::query()->count());
     }
 
     public function test_does_not_create_gate_event_when_under_limit(): void
@@ -181,7 +203,7 @@ class BillingGateServiceTest extends TestCase
     {
         config(['billing.fail_open' => true]);
 
-        $service = new class extends BillingGateService
+        $service = new class(app(BillingUsageExclusionService::class)) extends BillingGateService
         {
             protected function resolvePlan(User $user): ?BillingPlan
             {
@@ -202,7 +224,7 @@ class BillingGateServiceTest extends TestCase
             allowed: true,
             logOnly: true,
             planCode: 'legacy_unlimited',
-            capability: BillingCodes::CAP_PROJECTS_MAX_ACTIVE,
+            capability: BillingCodes::CAP_PROJECTS_MAX_OWNED,
             limit: null,
             usage: 2,
             wouldBlock: false,
@@ -214,7 +236,7 @@ class BillingGateServiceTest extends TestCase
             'allowed' => true,
             'log_only' => true,
             'plan_code' => 'legacy_unlimited',
-            'capability' => BillingCodes::CAP_PROJECTS_MAX_ACTIVE,
+            'capability' => BillingCodes::CAP_PROJECTS_MAX_OWNED,
             'limit' => null,
             'usage' => 2,
             'would_block' => false,
@@ -223,10 +245,10 @@ class BillingGateServiceTest extends TestCase
         ], $result->toArray());
     }
 
-    public function test_projects_max_active_counts_active_projects(): void
+    public function test_projects_max_owned_counts_archived_projects(): void
     {
         $user = User::factory()->create();
-        $this->makePlan('limited', [BillingCodes::CAP_PROJECTS_MAX_ACTIVE => 2]);
+        $this->makePlan('limited', [BillingCodes::CAP_PROJECTS_MAX_OWNED => 3]);
         $this->makeSubscription($user, 'limited');
 
         Project::query()->create([
@@ -251,8 +273,36 @@ class BillingGateServiceTest extends TestCase
         ]);
         $archivedProject->forceFill(['archived_at' => now()])->save();
 
-        $result = app(BillingGateService::class)->check($user, BillingCodes::CAP_PROJECTS_MAX_ACTIVE);
+        $result = app(BillingGateService::class)->check($user, BillingCodes::CAP_PROJECTS_MAX_OWNED);
 
+        $this->assertSame(3, $result->usage);
+        $this->assertTrue($result->wouldBlock);
+    }
+
+    public function test_projects_max_owned_uses_projects_max_active_as_legacy_fallback(): void
+    {
+        $user = User::factory()->create();
+        $this->makePlan('legacy_limited', [BillingCodes::CAP_PROJECTS_MAX_ACTIVE => 2]);
+        $this->makeSubscription($user, 'legacy_limited');
+
+        Project::query()->create([
+            'user_id' => $user->id,
+            'number' => uniqid('GATE-LEGACY-ACTIVE-'),
+            'expert_name' => 'Gate Expert',
+            'address' => 'Gate address',
+        ]);
+
+        $archivedProject = Project::query()->create([
+            'user_id' => $user->id,
+            'number' => uniqid('GATE-LEGACY-ARCHIVED-'),
+            'expert_name' => 'Gate Expert',
+            'address' => 'Gate address',
+        ]);
+        $archivedProject->forceFill(['archived_at' => now()])->save();
+
+        $result = app(BillingGateService::class)->check($user, BillingCodes::CAP_PROJECTS_MAX_OWNED);
+
+        $this->assertSame(2, $result->limit);
         $this->assertSame(2, $result->usage);
         $this->assertTrue($result->wouldBlock);
     }

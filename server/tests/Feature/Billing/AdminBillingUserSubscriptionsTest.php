@@ -77,6 +77,13 @@ class AdminBillingUserSubscriptionsTest extends TestCase
             'event_type' => 'assigned',
             'new_plan_code' => 'pro_assign',
         ]);
+
+        $subscription = BillingSubscription::query()
+            ->where('user_id', $user->id)
+            ->where('plan_code', 'pro_assign')
+            ->firstOrFail();
+        $this->assertSame('admin_manual', $subscription->overrides_json['source'] ?? null);
+        $this->assertSame($admin->id, $subscription->overrides_json['assigned_by'] ?? null);
     }
 
     public function test_assign_closes_previous_active_subscription(): void
@@ -103,7 +110,7 @@ class AdminBillingUserSubscriptionsTest extends TestCase
         ]);
     }
 
-    public function test_assign_custom_requires_ends_at(): void
+    public function test_assign_custom_without_ends_at_creates_indefinite_subscription(): void
     {
         [$admin, $user] = $this->makeUsers();
         $this->makePlan('custom_plan');
@@ -113,7 +120,16 @@ class AdminBillingUserSubscriptionsTest extends TestCase
                 'plan_code' => 'custom_plan',
                 'period' => 'custom',
             ])
-            ->assertUnprocessable();
+            ->assertCreated()
+            ->assertJsonPath('subscription.plan_code', 'custom_plan')
+            ->assertJsonPath('subscription.current_period_end', null);
+
+        $this->assertDatabaseHas('billing_subscriptions', [
+            'user_id' => $user->id,
+            'plan_code' => 'custom_plan',
+            'status' => 'active',
+            'current_period_end' => null,
+        ]);
     }
 
     public function test_extend_extends_active_subscription(): void

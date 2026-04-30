@@ -16,8 +16,8 @@
             color="secondary"
             prepend-icon="mdi-file-pdf-box"
             :loading="pdfLoading"
-            :disabled="pdfLoading || estimateHardInvalid"
-            :title="estimateHardInvalid ? 'Смета содержит ошибки и не может быть использована' : 'Сформировать PDF'"
+            :disabled="isProjectReadOnly || pdfLoading || estimateHardInvalid"
+            :title="readOnlyActionTitle || (estimateHardInvalid ? 'Смета содержит ошибки и не может быть использована' : 'Сформировать PDF')"
             @click="generatePdf"
           >
             PDF
@@ -27,9 +27,9 @@
             color="primary"
             prepend-icon="mdi-shield-check"
             :loading="snapshotLoading"
-            :disabled="snapshotLoading || estimateHardInvalid"
+            :disabled="isProjectReadOnly || snapshotLoading || estimateHardInvalid"
             @click="createSnapshot"
-            title="Запустить строгую ревизию с обоснованием цен"
+            :title="readOnlyActionTitle || 'Запустить строгую ревизию с обоснованием цен'"
           >
             Ревизия (strict)
           </v-btn>
@@ -46,6 +46,8 @@
           <v-btn
             size="small"
             prepend-icon="mdi-cog"
+            :disabled="isProjectReadOnly"
+            :title="readOnlyActionTitle || 'Настройки'"
             @click="activeModule = 'settings'"
           >
             Настройки
@@ -68,6 +70,28 @@
       class="ma-4 mb-0"
     >
       Смета содержит ошибки и не может быть использована
+    </v-alert>
+
+    <v-alert
+      v-if="isProjectReadOnly"
+      type="info"
+      variant="tonal"
+      density="comfortable"
+      class="ma-4 mb-0"
+      icon="mdi-lock-outline"
+    >
+      <div class="project-read-only-alert">
+        <div>{{ projectReadOnlyMessage }}</div>
+        <v-btn
+          size="small"
+          color="primary"
+          variant="tonal"
+          prepend-icon="mdi-credit-card-outline"
+          @click="router.push('/settings/billing')"
+        >
+          Перейти к тарифам
+        </v-btn>
+      </div>
     </v-alert>
 
     <div class="workspace-body">
@@ -164,12 +188,13 @@
                 size="small"
                 prepend-icon="mdi-plus"
                 :loading="positionDialogOpening"
-                :disabled="positionDialogOpening"
+                :disabled="isProjectReadOnly || positionDialogOpening"
+                :title="readOnlyActionTitle || 'Добавить позицию'"
                 @click="openPositionDialog"
               >
                 Добавить позицию
               </v-btn>
-              <v-btn size="small" prepend-icon="mdi-file-import" variant="outlined" class="excel-import-btn" @click="importDialog = true">Импорт из Excel</v-btn>
+              <v-btn size="small" prepend-icon="mdi-file-import" variant="outlined" class="excel-import-btn" :disabled="isProjectReadOnly" :title="readOnlyActionTitle || 'Импорт из Excel'" @click="importDialog = true">Импорт из Excel</v-btn>
             </div>
             <div class="toolbar-zone toolbar-zone--middle">
               <v-btn size="x-small" variant="tonal" prepend-icon="mdi-checkbox-multiple-outline" @click="selectPositionsByKind('panel')" :disabled="positions.filter(p => p.kind === 'panel').length === 0">Выбрать панели</v-btn>
@@ -301,7 +326,7 @@
               <v-btn
                 color="primary"
                 size="small"
-                :disabled="!bulkActionReady || bulkApplicableCount === 0 || (bulkApplyMode === 'strict' && bulkSkippedCount > 0)"
+                :disabled="isProjectReadOnly || !bulkActionReady || bulkApplicableCount === 0 || (bulkApplyMode === 'strict' && bulkSkippedCount > 0)"
                 @click="confirmBulkDialog = true"
               >
                 Применить
@@ -1028,7 +1053,7 @@
         <section class="dense-module-surface">
           <div class="dense-module-actions-bar">
             <div class="dense-module-actions-bar__actions">
-              <v-btn prepend-icon="mdi-plus" @click="openOperationDialog">Добавить операцию</v-btn>
+              <v-btn prepend-icon="mdi-plus" :disabled="isProjectReadOnly" :title="readOnlyActionTitle || 'Добавить операцию'" @click="openOperationDialog">Добавить операцию</v-btn>
             </div>
           </div>
           <v-skeleton-loader v-if="loadingStates.operations" type="table" />
@@ -1112,14 +1137,16 @@
               v-if="item.is_manual"
               @click="editOperation(item)"
               class="me-2"
-              color="primary"
+              :color="isProjectReadOnly ? 'disabled' : 'primary'"
+              :title="readOnlyActionTitle || 'Изменить'"
             >
               mdi-pencil
             </v-icon>
             <v-icon
               v-if="item.is_manual"
               @click="deleteOperation(item)"
-              color="error"
+              :color="isProjectReadOnly ? 'disabled' : 'error'"
+              :title="readOnlyActionTitle || 'Удалить'"
               icon="mdi-delete"
             ></v-icon>
           </template>
@@ -1283,7 +1310,7 @@
         <section class="dense-module-surface">
           <div class="dense-module-actions-bar">
             <div class="dense-module-actions-bar__actions">
-              <v-btn prepend-icon="mdi-plus" @click="openFittingDialog">Добавить фурнитуру</v-btn>
+              <v-btn prepend-icon="mdi-plus" :disabled="isProjectReadOnly" :title="readOnlyActionTitle || 'Добавить фурнитуру'" @click="openFittingDialog">Добавить фурнитуру</v-btn>
             </div>
           </div>
 
@@ -1296,7 +1323,8 @@
                     size="x-small"
                     variant="text"
                     icon="mdi-pencil"
-                    title="Изменить"
+                    :disabled="isProjectReadOnly"
+                    :title="readOnlyActionTitle || 'Изменить'"
                     @click.stop="editFitting(item)"
                   />
                   <v-btn
@@ -1304,7 +1332,8 @@
                     variant="text"
                     color="error"
                     icon="mdi-delete"
-                    title="Удалить"
+                    :disabled="isProjectReadOnly"
+                    :title="readOnlyActionTitle || 'Удалить'"
                     @click.stop="deleteFitting(item)"
                   />
                 </div>
@@ -1343,7 +1372,7 @@
               >
                 Расчёт нормо-часа
               </v-btn>
-              <v-btn prepend-icon="mdi-plus" @click="openLaborWorkDialog">Добавить работу</v-btn>
+              <v-btn prepend-icon="mdi-plus" :disabled="isProjectReadOnly" :title="readOnlyActionTitle || 'Добавить работу'" @click="openLaborWorkDialog">Добавить работу</v-btn>
             </div>
           </div>
 
@@ -1453,7 +1482,7 @@
         <section class="dense-module-surface">
           <div class="dense-module-actions-bar">
             <div class="dense-module-actions-bar__actions">
-              <v-btn prepend-icon="mdi-plus" @click="openExpenseDialog">Добавить расход</v-btn>
+              <v-btn prepend-icon="mdi-plus" :disabled="isProjectReadOnly" :title="readOnlyActionTitle || 'Добавить расход'" @click="openExpenseDialog">Добавить расход</v-btn>
             </div>
           </div>
 
@@ -1469,7 +1498,8 @@
                     size="x-small"
                     variant="text"
                     icon="mdi-pencil"
-                    title="Изменить"
+                    :disabled="isProjectReadOnly"
+                    :title="readOnlyActionTitle || 'Изменить'"
                     @click.stop="editExpense(item)"
                   />
                   <v-btn
@@ -1477,7 +1507,8 @@
                     variant="text"
                     color="error"
                     icon="mdi-delete"
-                    title="Удалить"
+                    :disabled="isProjectReadOnly"
+                    :title="readOnlyActionTitle || 'Удалить'"
                     @click.stop="deleteExpense(item)"
                   />
                 </div>
@@ -1585,7 +1616,7 @@
               variant="outlined"
               prepend-icon="mdi-reload"
               :loading="revisionRunRetryLoading"
-              :disabled="!canRetryRevisionRun"
+              :disabled="isProjectReadOnly || !canRetryRevisionRun"
               @click="retryRevisionRun"
             >
               Повторить
@@ -1595,7 +1626,7 @@
               color="success"
               prepend-icon="mdi-check-bold"
               :loading="revisionRunFinalizeLoading"
-              :disabled="!canFinalizeRevisionRun"
+              :disabled="isProjectReadOnly || !canFinalizeRevisionRun"
               @click="finalizeRevisionRun"
             >
               Завершить
@@ -1736,7 +1767,7 @@
                       color="primary"
                       variant="text"
                       prepend-icon="mdi-pencil"
-                      :disabled="runItem.status === 'OK'"
+                      :disabled="isProjectReadOnly || runItem.status === 'OK'"
                       @click="openManualCloseDialog(runItem)"
                     >
                       Ручное закрытие
@@ -1778,7 +1809,7 @@
         <section class="dense-module-surface">
           <div class="dense-module-actions-bar">
             <div class="dense-module-actions-bar__actions">
-              <v-btn color="secondary" @click="generatePdf" :loading="pdfLoading" :disabled="pdfLoading || estimateHardInvalid">
+              <v-btn color="secondary" @click="generatePdf" :loading="pdfLoading" :disabled="isProjectReadOnly || pdfLoading || estimateHardInvalid">
                 Генерировать PDF
               </v-btn>
             </div>
@@ -2564,7 +2595,7 @@
             color="primary"
             @click="savePosition"
             :loading="positionSaving"
-            :disabled="positionSaving || (positionFormModel.kind === 'facade' && (!positionFormModel.finished_product_specification_id || !(Number(positionFormModel.price_per_m2) > 0)))"
+            :disabled="isProjectReadOnly || positionSaving || (positionFormModel.kind === 'facade' && (!positionFormModel.finished_product_specification_id || !(Number(positionFormModel.price_per_m2) > 0)))"
           >Сохранить</v-btn>
         </v-card-actions>
       </v-card>
@@ -2607,7 +2638,7 @@
         <v-card-actions>
           <v-spacer />
           <v-btn @click="fittingDialog = false" :disabled="fittingSaving">Отмена</v-btn>
-          <v-btn color="primary" @click="saveFitting" :loading="fittingSaving" :disabled="fittingSaving">Сохранить</v-btn>
+          <v-btn color="primary" @click="saveFitting" :loading="fittingSaving" :disabled="isProjectReadOnly || fittingSaving">Сохранить</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -2642,7 +2673,7 @@
         <v-card-actions>
           <v-spacer />
           <v-btn @click="expenseDialog = false" :disabled="expenseSaving">Отмена</v-btn>
-          <v-btn color="primary" @click="saveExpense" :loading="expenseSaving" :disabled="expenseSaving">Сохранить</v-btn>
+          <v-btn color="primary" @click="saveExpense" :loading="expenseSaving" :disabled="isProjectReadOnly || expenseSaving">Сохранить</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -2729,7 +2760,7 @@
         <v-card-actions>
           <v-spacer />
           <v-btn @click="closeNormohourSourceDialog" :disabled="normohourSourceSaving">Отмена</v-btn>
-          <v-btn color="primary" @click="saveNormohourSource" :loading="normohourSourceSaving" :disabled="normohourSourceSaving">Сохранить</v-btn>
+          <v-btn color="primary" @click="saveNormohourSource" :loading="normohourSourceSaving" :disabled="isProjectReadOnly || normohourSourceSaving">Сохранить</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -2794,7 +2825,7 @@
     <v-card-actions>
       <v-spacer />
       <v-btn @click="operationDialog = false" :disabled="operationSaving">Отмена</v-btn>
-      <v-btn color="primary" @click="saveOperation" :loading="operationSaving" :disabled="operationSaving">Сохранить</v-btn>
+      <v-btn color="primary" @click="saveOperation" :loading="operationSaving" :disabled="isProjectReadOnly || operationSaving">Сохранить</v-btn>
     </v-card-actions>
   </v-card>
 </v-dialog>
@@ -2907,7 +2938,7 @@
     <v-card-actions>
       <v-spacer />
       <v-btn @click="laborWorkDialog = false" :disabled="laborWorkSaving">Отмена</v-btn>
-      <v-btn color="primary" @click="saveLaborWork" :loading="laborWorkSaving" :disabled="laborWorkSaving">Сохранить</v-btn>
+      <v-btn color="primary" @click="saveLaborWork" :loading="laborWorkSaving" :disabled="isProjectReadOnly || laborWorkSaving">Сохранить</v-btn>
     </v-card-actions>
   </v-card>
 </v-dialog>
@@ -3150,7 +3181,8 @@
             block
             prepend-icon="mdi-auto-fix"
             :loading="aiLoading"
-            :disabled="!selectedLaborWork?.title"
+            :disabled="isProjectReadOnly || !selectedLaborWork?.title"
+            :title="readOnlyActionTitle || 'Сгенерировать этапы'"
             @click="generateAiSteps"
           >
             Сгенерировать этапы (AI)
@@ -3207,7 +3239,8 @@
                   size="small"
                   prepend-icon="mdi-swap-horizontal"
                   :loading="aiApplying"
-                  :disabled="aiSelectedCount === 0"
+                  :disabled="isProjectReadOnly || aiSelectedCount === 0"
+                  :title="readOnlyActionTitle || 'Заменить этапы'"
                   @click="applyAiSteps('replace')"
                 >
                   {{ aiSelectedCount === aiSuggestion.steps.length ? 'Заменить всё' : `Заменить (${aiSelectedCount})` }}
@@ -3218,7 +3251,8 @@
                   size="small"
                   prepend-icon="mdi-plus"
                   :loading="aiApplying"
-                  :disabled="aiSelectedCount === 0"
+                  :disabled="isProjectReadOnly || aiSelectedCount === 0"
+                  :title="readOnlyActionTitle || 'Добавить этапы'"
                   @click="applyAiSteps('append')"
                 >
                   {{ aiSelectedCount === aiSuggestion.steps.length ? 'Добавить все' : `Добавить (${aiSelectedCount})` }}
@@ -3487,6 +3521,14 @@ interface Project {
   normohour_date?: string | null
   normohour_method?: string | null
   normohour_justification?: string | null
+  billing_workspace?: {
+    read_only: boolean
+    reason?: string | null
+    owned_projects?: number
+    active_projects?: number
+    limit?: number | null
+    message?: string | null
+  }
 }
 interface CoefficientDescription {
   title: string
@@ -3639,8 +3681,27 @@ const project = ref<Project>({
   normohour_region: null,
   normohour_date: null,
   normohour_method: null,
-  normohour_justification: null
+  normohour_justification: null,
+  billing_workspace: {
+    read_only: false,
+    reason: null,
+    owned_projects: 0,
+    active_projects: 0,
+    limit: null,
+    message: null,
+  },
 })
+
+const billingWorkspace = computed(() => project.value.billing_workspace)
+const isProjectReadOnly = computed(() => billingWorkspace.value?.read_only === true)
+const projectReadOnlyMessage = computed(() => {
+  if (billingWorkspace.value?.message) return billingWorkspace.value.message
+
+  const limit = billingWorkspace.value?.limit ?? 0
+  const ownedProjects = billingWorkspace.value?.owned_projects ?? billingWorkspace.value?.active_projects ?? 0
+  return `Превышен лимит тарифа. На текущем тарифе доступно проектов: ${limit}. Сейчас в аккаунте: ${ownedProjects}. Проекты доступны для просмотра, но редактирование временно ограничено. Выберите подходящий тариф, чтобы продолжить работу.`
+})
+const readOnlyActionTitle = computed(() => isProjectReadOnly.value ? projectReadOnlyMessage.value : '')
 
 // Функция для очистки текста от HTML и форматирования
 // ВАЖНО: сохраняет переносы строк!
@@ -3944,19 +4005,22 @@ const getQuickActions = (item: Position): RowAction[] => [
     key: 'edit', 
     icon: 'mdi-pencil', 
     label: 'Изменить',
-    disabled: processingPositionId.value !== null
+    tooltip: readOnlyActionTitle.value || 'Изменить',
+    disabled: isProjectReadOnly.value || processingPositionId.value !== null
   },
   { 
     key: 'duplicate', 
     icon: 'mdi-content-duplicate', 
     label: 'Дублировать',
-    disabled: processingPositionId.value !== null
+    tooltip: readOnlyActionTitle.value || 'Дублировать',
+    disabled: isProjectReadOnly.value || processingPositionId.value !== null
   },
   { 
     key: 'delete', 
     icon: 'mdi-delete', 
     label: 'Удалить',
-    disabled: processingPositionId.value !== null,
+    tooltip: readOnlyActionTitle.value || 'Удалить',
+    disabled: isProjectReadOnly.value || processingPositionId.value !== null,
     color: 'error'
   }
 ]
@@ -3979,6 +4043,10 @@ const getMenuActions = (item: Position): RowAction[] => [
 const handleRowAction = (payload: { rowId: number | string, actionKey: string }) => {
   const item = positions.value.find(p => p.id === payload.rowId)
   if (!item) return
+
+  if (['edit', 'duplicate', 'delete'].includes(payload.actionKey) && guardReadOnlyAction()) {
+    return
+  }
   
   switch (payload.actionKey) {
     case 'edit':
@@ -4080,6 +4148,31 @@ const showNotification = (message: string, color: string = 'info', timeout: numb
     color,
     timeout
   }
+}
+
+const isBillingLockedError = (error: any): boolean => {
+  const status = error?.response?.status
+  return (status === 423 || status === 403) && error?.response?.data?.billing?.read_only === true
+}
+
+const showBillingLockedError = (error: any): boolean => {
+  if (!isBillingLockedError(error)) return false
+
+  project.value.billing_workspace = {
+    ...(project.value.billing_workspace || {}),
+    ...error.response.data.billing,
+    message: error.response.data.message || projectReadOnlyMessage.value,
+  }
+  showNotification(project.value.billing_workspace?.message || projectReadOnlyMessage.value, 'warning', 8000)
+
+  return true
+}
+
+const guardReadOnlyAction = (): boolean => {
+  if (!isProjectReadOnly.value) return false
+
+  showNotification(projectReadOnlyMessage.value, 'warning', 8000)
+  return true
 }
 
 // === Утилиты ===
@@ -4634,7 +4727,7 @@ const evidenceDetailDialog = ref(false)
 const evidenceDetailItem = ref<RevisionRunItem | null>(null)
 const evidenceDetailArtifact = computed<EvidenceArtifactDetail | null>(() => {
   const artifacts = evidenceDetailItem.value?.evidence_artifacts
-  return artifacts && artifacts.length > 0 ? artifacts[0] : null
+  return artifacts?.[0] ?? null
 })
 const expenseDocFile = ref<File[] | File | null>(null)
 const expenseDocLoading = ref(false)
@@ -5576,6 +5669,7 @@ const refreshAll = async () => {
 // === Позиции ===
 const openPositionDialog = async () => {
   if (positionDialogOpening.value) return
+  if (guardReadOnlyAction()) return
 
   positionDialogOpening.value = true
 
@@ -5608,6 +5702,8 @@ const openPositionDialog = async () => {
 }
 
 const editPosition = (item: Position) => {
+  if (guardReadOnlyAction()) return
+
   editingPosition.value = true
   dialogDimensionCalc.value = { width: emptyDimensionCalcState(), length: emptyDimensionCalcState() }
   positionFormModel.value = { ...item }
@@ -5625,6 +5721,8 @@ const editPosition = (item: Position) => {
 
 const savePosition = async () => {
   if (positionSaving.value) return
+  if (guardReadOnlyAction()) return
+
   positionSaving.value = true
 
   const { valid } = await positionForm.value.validate()
@@ -5728,6 +5826,8 @@ const savePosition = async () => {
     positionDialog.value = false
     await fetchData()
   } catch (e: any) {
+    if (showBillingLockedError(e)) return
+
     console.error(e)
     const validationErrors = e.response?.data?.errors
     if (validationErrors) {
@@ -5743,13 +5843,22 @@ const savePosition = async () => {
 }
 
 const deletePosition = async (item: Position) => {
+  if (guardReadOnlyAction()) return
+
   if (confirm('Удалить позицию?')) {
-    await api.delete(`/api/project-positions/${item.id}`)
-    await fetchData()
+    try {
+      await api.delete(`/api/project-positions/${item.id}`)
+      await fetchData()
+    } catch (e: any) {
+      if (showBillingLockedError(e)) return
+      showNotification(`Ошибка удаления позиции: ${e.response?.data?.message || e.message}`, 'error')
+    }
   }
 }
 
 const clonePosition = async (item: Position) => {
+  if (guardReadOnlyAction()) return
+
   try {
     // Устанавливаем индикатор обработки
     processingPositionId.value = item.id || null
@@ -5795,6 +5904,8 @@ const clonePosition = async (item: Position) => {
       }, 2000)
     }
   } catch (e: any) {
+    if (showBillingLockedError(e)) return
+
     console.error('❌ Error cloning position:', e)
     showNotification(`Ошибка при клонировании: ${e.response?.data?.message || e.message}`, 'error')
   } finally {
@@ -5804,6 +5915,8 @@ const clonePosition = async (item: Position) => {
 }
 
 const updatePositionField = async (item: Position, field: string, value: any) => {
+  if (guardReadOnlyAction()) return
+
   if (!item.id) {
     showNotification('Сначала сохраните позицию через диалог', 'warning')
     return
@@ -5828,7 +5941,9 @@ const updatePositionField = async (item: Position, field: string, value: any) =>
     }
     // trigger operations recalculation after position change
     scheduleRecalc()
-  } catch (e) {
+  } catch (e: any) {
+    if (showBillingLockedError(e)) return
+
     console.error(e)
     showNotification('Ошибка сохранения позиции', 'error')
     await fetchData()
@@ -6133,6 +6248,7 @@ const positionsWithoutEdge = computed(() => {
 
 const applyBulkAction = async () => {
   if (!bulkAction.value) return
+  if (guardReadOnlyAction()) return
 
   if (bulkApplicableCount.value === 0) {
     showNotification('Для выбранного действия нет подходящих позиций', 'warning')
@@ -6198,6 +6314,8 @@ const applyBulkAction = async () => {
     await fetchData()
     scheduleRecalc()
   } catch (e: any) {
+    if (showBillingLockedError(e)) return
+
     console.error(e)
     showNotification(e.response?.data?.message || 'Ошибка массовой операции', 'error')
   }
@@ -6205,6 +6323,8 @@ const applyBulkAction = async () => {
 
 // === Фурнитура ===
 const openFittingDialog = () => {
+  if (guardReadOnlyAction()) return
+
   fittingSearchQuery.value = ''
   refreshHardwareMaterials('')
   editingFitting.value = false
@@ -6225,6 +6345,8 @@ const openFittingDialog = () => {
 }
 
 const editFitting = (item: Fitting) => {
+  if (guardReadOnlyAction()) return
+
   fittingSearchQuery.value = ''
   refreshHardwareMaterials('')
   editingFitting.value = true
@@ -6245,6 +6367,7 @@ const editFitting = (item: Fitting) => {
 
 const saveFitting = async () => {
   if (fittingSaving.value) return
+  if (guardReadOnlyAction()) return
 
   if (!fittingForm.value.material_id) {
     showNotification('Выберите материал фурнитуры', 'warning')
@@ -6274,6 +6397,8 @@ const saveFitting = async () => {
     fittingDialog.value = false
     await fetchData()
   } catch (e) {
+    if (showBillingLockedError(e)) return
+
     const err: any = e
     const validation = err?.response?.data?.errors
     const message = validation
@@ -6286,14 +6411,23 @@ const saveFitting = async () => {
 }
 
 const deleteFitting = async (item: Fitting) => {
+  if (guardReadOnlyAction()) return
+
   if (confirm('Удалить фурнитуру?')) {
-    await api.delete(`/api/project-fittings/${item.id}`)
-    await fetchData()
+    try {
+      await api.delete(`/api/project-fittings/${item.id}`)
+      await fetchData()
+    } catch (e: any) {
+      if (showBillingLockedError(e)) return
+      showNotification(`Ошибка удаления фурнитуры: ${e.response?.data?.message || e.message}`, 'error')
+    }
   }
 }
 
 // === Проект ===
 const updateProject = async () => {
+  if (guardReadOnlyAction()) return
+
   try {
     // Убеждаемся что все коэффициенты числовые и не отрицательные
     const waste_coeff_value = Number(project.value.waste_coefficient)
@@ -6447,6 +6581,8 @@ const updateProject = async () => {
       await fetchData()
     }
     } catch (error: any) {
+      if (showBillingLockedError(error)) return
+
       console.error('❌ Error saving project:', error)
       const validationErrors = error.response?.data?.errors
       const message = validationErrors
@@ -6525,6 +6661,8 @@ const validateNormohourSourceForm = (): boolean => {
 
 const saveNormohourSource = async () => {
   if (normohourSourceSaving.value) return
+  if (guardReadOnlyAction()) return
+
   normohourSourceSaving.value = true
 
   if (!validateNormohourSourceForm()) {
@@ -6559,6 +6697,8 @@ const saveNormohourSource = async () => {
     await loadNormohourSources()
     closeNormohourSourceDialog()
   } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
     console.error('❌ Error saving normohour source:', error)
     const message = error.response?.data?.message || error.message
     showNotification(`Ошибка: ${message}`, 'error')
@@ -6568,6 +6708,8 @@ const saveNormohourSource = async () => {
 }
 
 const deleteNormohourSource = async (id: number) => {
+  if (guardReadOnlyAction()) return
+
   if (!confirm('Вы уверены, что хотите удалить этот источник?')) {
     return
   }
@@ -6577,6 +6719,8 @@ const deleteNormohourSource = async (id: number) => {
     console.log('✅ Normohour source deleted')
     await loadNormohourSources()
   } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
     console.error('❌ Error deleting normohour source:', error)
     showNotification(`Ошибка удаления: ${error.response?.data?.message || error.message}`, 'error')
   }
@@ -6589,6 +6733,8 @@ const calculate = async () => {
 }
 
 const generatePdf = async () => {
+  if (guardReadOnlyAction()) return
+
   if (estimateHardInvalid.value) {
     showNotification('Смета содержит ошибки и не может быть использована', 'error')
     return
@@ -6609,6 +6755,8 @@ const generatePdf = async () => {
     a.click()
     URL.revokeObjectURL(url)
   } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
     console.error('❌ PDF generation error:', error)
     showNotification(`Ошибка генерации PDF: ${error.response?.data?.message || error.message}`, 'error')
   } finally {
@@ -6936,6 +7084,8 @@ const refreshRevisionRun = async (silent = false) => {
 }
 
 const createSnapshot = async () => {
+  if (guardReadOnlyAction()) return
+
   if (estimateHardInvalid.value) {
     showNotification('Смета содержит ошибки и не может быть использована', 'error')
     return
@@ -6959,6 +7109,8 @@ const createSnapshot = async () => {
     showNotification(`Сессия ревизии #${res.run_id} запущена`, 'success')
     await refreshRevisionRun()
   } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
     console.error('❌ Revision run start error:', error)
     showNotification(`Ошибка запуска ревизии: ${error.response?.data?.message || error.message}`, 'error')
   } finally {
@@ -7146,12 +7298,16 @@ const unpublishRevision = async (rev: any) => {
 
 const retryRevisionRun = async () => {
   if (!activeRevisionRun.value) return
+  if (guardReadOnlyAction()) return
+
   revisionRunRetryLoading.value = true
   try {
     await revisionRunApi.retry(projectId, activeRevisionRun.value.id)
       showNotification('Повторная проверка запущена для проблемных позиций', 'success')
     await refreshRevisionRun()
   } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
     showNotification(`Ошибка retry: ${error.response?.data?.message || error.message}`, 'error')
   } finally {
     revisionRunRetryLoading.value = false
@@ -7159,6 +7315,8 @@ const retryRevisionRun = async () => {
 }
 
 const openManualCloseDialog = (item: RevisionRunItem) => {
+  if (guardReadOnlyAction()) return
+
   manualCloseItem.value = item
   manualCloseForm.price_per_unit = getSuggestedManualClosePrice(item)
   manualCloseForm.currency = 'RUB'
@@ -7291,6 +7449,7 @@ const getManualScreenshotFile = (): File | null => {
 
 const submitManualClose = async () => {
   if (!activeRevisionRun.value || !manualCloseItem.value) return
+  if (guardReadOnlyAction()) return
 
   const screenshotFile = getManualScreenshotFile()
   if (!screenshotFile) {
@@ -7315,6 +7474,8 @@ const submitManualClose = async () => {
     manualCloseDialog.value = false
     await refreshRevisionRun()
   } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
     showNotification(`Ошибка ручного закрытия: ${error.response?.data?.message || error.message}`, 'error')
   } finally {
     manualCloseLoading.value = false
@@ -7323,6 +7484,8 @@ const submitManualClose = async () => {
 
 const finalizeRevisionRun = async () => {
   if (!activeRevisionRun.value) return
+  if (guardReadOnlyAction()) return
+
   if (estimateHardInvalid.value) {
     showNotification('Смета содержит ошибки и не может быть использована', 'error')
     return
@@ -7340,6 +7503,8 @@ const finalizeRevisionRun = async () => {
     await fetchLatestRevision()
     await fetchRevisions(1)
   } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
     if (error.response?.status === 409) {
       showNotification('Есть незакрытые позиции. Закройте все и повторите завершение', 'warning')
       await refreshRevisionRun()
@@ -7358,12 +7523,16 @@ const openPdfLink = (url?: string) => {
 
 
 const openExpenseDialog = () => {
+  if (guardReadOnlyAction()) return
+
   editingExpense.value = false
   expenseForm.value = { id: 0, project_id: projectId, name: '', description: '', amount: 0 }
   expenseDialog.value = true
 }
 
 const editExpense = (item: any) => {
+  if (guardReadOnlyAction()) return
+
   editingExpense.value = true
   expenseForm.value = { ...item }
   expenseDialog.value = true
@@ -7371,6 +7540,8 @@ const editExpense = (item: any) => {
 
 const saveExpense = async () => {
   if (expenseSaving.value) return
+  if (guardReadOnlyAction()) return
+
   expenseSaving.value = true
 
   try {
@@ -7388,6 +7559,8 @@ const saveExpense = async () => {
     expenseDialog.value = false
     await fetchData()
   } catch (e) {
+    if (showBillingLockedError(e)) return
+
     const err: any = e
     const validation = err?.response?.data?.errors
     const message = validation
@@ -7400,9 +7573,16 @@ const saveExpense = async () => {
 }
 
 const deleteExpense = async (item: any) => {
+  if (guardReadOnlyAction()) return
+
   if (confirm('Удалить расход?')) {
-    await api.delete(`/api/projects/${projectId}/expenses/${item.id}`)
-    await fetchData()
+    try {
+      await api.delete(`/api/projects/${projectId}/expenses/${item.id}`)
+      await fetchData()
+    } catch (e: any) {
+      if (showBillingLockedError(e)) return
+      showNotification(`Ошибка удаления расхода: ${e.response?.data?.message || e.message}`, 'error')
+    }
   }
 }
 
@@ -7587,12 +7767,16 @@ const getLaborQuickActions = (item: LaborWork): RowAction[] => [
   {
     key: 'edit',
     icon: 'mdi-pencil',
-    label: 'Изменить'
+    label: 'Изменить',
+    tooltip: readOnlyActionTitle.value || 'Изменить',
+    disabled: isProjectReadOnly.value
   },
   {
     key: 'delete',
     icon: 'mdi-delete',
     label: 'Удалить',
+    tooltip: readOnlyActionTitle.value || 'Удалить',
+    disabled: isProjectReadOnly.value,
     color: 'error'
   }
 ]
@@ -7602,6 +7786,10 @@ const getLaborMenuActions = (_item: LaborWork): RowAction[] => []
 const handleLaborRowAction = (payload: { rowId: number | string, actionKey: string }) => {
   const item = laborWorks.value.find(w => w.id === payload.rowId)
   if (!item) return
+
+  if (['edit', 'delete'].includes(payload.actionKey) && guardReadOnlyAction()) {
+    return
+  }
 
   switch (payload.actionKey) {
     case 'details':
@@ -8104,6 +8292,8 @@ const healthIssues = computed<HealthIssue[]>(() => {
 
 // === Ручные операции ===
 const openOperationDialog = () => {
+  if (guardReadOnlyAction()) return
+
   editingOperation.value = false
   operationForm.value = { id: 0, project_id: projectId, operation_id: null, quantity: 1, note: '' }
   operationDialog.value = true
@@ -8111,6 +8301,8 @@ const openOperationDialog = () => {
 
 const saveOperation = async () => {
   if (operationSaving.value) return
+  if (guardReadOnlyAction()) return
+
   operationSaving.value = true
 
   try {
@@ -8131,6 +8323,8 @@ const saveOperation = async () => {
     operationDialog.value = false
     await fetchData()
   } catch (e: any) {
+    if (showBillingLockedError(e)) return
+
     console.error('saveOperation error', e)
     showNotification('Ошибка сохранения операции: ' + (e.response?.data?.message || e.message), 'error')
   } finally {
@@ -8139,17 +8333,22 @@ const saveOperation = async () => {
 }
 
 const editOperation = (item: any) => {
+  if (guardReadOnlyAction()) return
+
   editingOperation.value = true
   operationForm.value = { ...item }
   operationDialog.value = true
 }
 
 const deleteOperation = async (item: any) => {
+  if (guardReadOnlyAction()) return
+
   if (confirm('Удалить ручную операцию?')) {
     try {
       await api.delete(`/api/project-operations/${item.id}`)
       await fetchData()
-    } catch (e) {
+    } catch (e: any) {
+      if (showBillingLockedError(e)) return
       showNotification('Ошибка удаления операции', 'error')
     }
   }
@@ -8157,6 +8356,8 @@ const deleteOperation = async (item: any) => {
 
 // === Монтажно-сборочные работы (нормо-час) ===
 const recalculateLaborRates = async () => {
+  if (guardReadOnlyAction()) return
+
   recalculatingRates.value = true
   try {
     // Использовать новый endpoint для фиксации ставок
@@ -8178,6 +8379,8 @@ const recalculateLaborRates = async () => {
       showNotification('Ошибка при пересчете ставок: ' + response.data.message, 'error')
     }
   } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
     console.error('❌ Ошибка запроса пересчета ставок:', error)
     // Попытаться перезагрузить работы несмотря на ошибку
     try {
@@ -8192,6 +8395,8 @@ const recalculateLaborRates = async () => {
 }
 
 const lockLaborRates = async () => {
+  if (guardReadOnlyAction()) return
+
   lockingRates.value = true
   try {
     const isCurrentlyLocked = ratesLocked.value
@@ -8244,6 +8449,8 @@ const lockLaborRates = async () => {
       }
     }
   } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
     console.error('❌ Ошибка при изменении статуса блокировки ставок:', error)
     // Попытаться перезагрузить работы несмотря на ошибку
     try {
@@ -8258,6 +8465,8 @@ const lockLaborRates = async () => {
 }
 
 const openLaborWorkDialog = () => {
+  if (guardReadOnlyAction()) return
+
   editingLaborWork.value = null
   laborWorkSubmitError.value = ''
   laborWorkFieldErrors.value = {}
@@ -8273,6 +8482,8 @@ const openLaborWorkDialog = () => {
 
 const saveLaborWork = async () => {
   if (laborWorkSaving.value) return
+  if (guardReadOnlyAction()) return
+
   laborWorkSaving.value = true
 
   try {
@@ -8308,6 +8519,8 @@ const saveLaborWork = async () => {
     laborWorkDialog.value = false
     await loadLaborWorks()
   } catch (e: any) {
+    if (showBillingLockedError(e)) return
+
     console.error('saveLaborWork error', e)
     const responseData = e.response?.data
     laborWorkFieldErrors.value = responseData?.errors || {}
@@ -8319,6 +8532,8 @@ const saveLaborWork = async () => {
 }
 
 const editLaborWork = (item: LaborWork) => {
+  if (guardReadOnlyAction()) return
+
   editingLaborWork.value = item
   laborWorkSubmitError.value = ''
   laborWorkFieldErrors.value = {}
@@ -8333,6 +8548,8 @@ const editLaborWork = (item: LaborWork) => {
 }
 
 const deleteLaborWork = async (item: LaborWork) => {
+  if (guardReadOnlyAction()) return
+
   if (!confirm(`Удалить работу "${item.title}"?`)) {
     return
   }
@@ -8341,6 +8558,8 @@ const deleteLaborWork = async (item: LaborWork) => {
     await laborWorksApi.delete(Number(projectId), item.id!)
     await loadLaborWorks()
   } catch (e: any) {
+    if (showBillingLockedError(e)) return
+
     console.error('deleteLaborWork error', e)
     showNotification('Ошибка удаления работы: ' + (e.response?.data?.message || e.message), 'error')
   }
@@ -8353,6 +8572,8 @@ const toggleSortMode = () => {
 }
 
 const openCreateStep = () => {
+  if (guardReadOnlyAction()) return
+
   stepForm.value = {
     title: '',
     basis: '',
@@ -8395,6 +8616,8 @@ const openStepsModal = async (laborWork: LaborWork) => {
 // === AI Decomposition Functions ===
 
 const generateAiSteps = async () => {
+  if (guardReadOnlyAction()) return
+
   if (!selectedLaborWork.value?.title) {
     showNotification('Не выбрана работа для детализации', 'error')
     return
@@ -8428,6 +8651,8 @@ const generateAiSteps = async () => {
     // Auto-select all generated steps
     aiSelectedSteps.value = new Set(result.steps.map((_, i) => i))
   } catch (e: any) {
+    if (showBillingLockedError(e)) return
+
     console.error('AI decomposition error:', e)
     const message = e.response?.data?.message || e.message || 'Ошибка AI генерации'
     showNotification(message, 'error')
@@ -8465,6 +8690,8 @@ const toggleAiSelectAll = () => {
 
 const applyAiSteps = async (mode: 'replace' | 'append') => {
   if (!aiSuggestion.value || !selectedLaborWork.value) return
+  if (guardReadOnlyAction()) return
+
   if (aiSelectedSteps.value.size === 0) {
     showNotification('Выберите хотя бы один этап', 'warning')
     return
@@ -8514,6 +8741,8 @@ const applyAiSteps = async (mode: 'replace' | 'append') => {
     loadLaborWorks().catch(e => console.warn('Background reload failed:', e))
 
   } catch (e: any) {
+    if (showBillingLockedError(e)) return
+
     console.error('Apply AI steps error:', e)
     showNotification(e.response?.data?.message || 'Ошибка применения этапов', 'error')
   } finally {
@@ -8601,6 +8830,8 @@ const loadSteps = async (laborWorkId: number) => {
 }
 
 const saveStep = async () => {
+  if (guardReadOnlyAction()) return
+
   if (!stepForm.value.title.trim()) {
     showNotification('Заполните наименование подоперации', 'error')
     return
@@ -8663,6 +8894,8 @@ const saveStep = async () => {
     })
 
   } catch (err: any) {
+    if (showBillingLockedError(err)) return
+
     console.error('Error saving step:', err)
 
     // ВАЖНО: даже при 500 можно попытаться обновить список,
@@ -8682,6 +8915,8 @@ const saveStep = async () => {
 }
 
 const editStep = (step: any) => {
+  if (guardReadOnlyAction()) return
+
   editingStepId.value = step.id
   stepForm.value = {
     title: step.title || '',
@@ -8708,6 +8943,8 @@ const onDragEnd = () => {
 }
 
 const onDrop = async (targetStep: any) => {
+  if (guardReadOnlyAction()) return
+
   if (!draggedStepId.value || draggedStepId.value === targetStep.id) {
     return
   }
@@ -8742,6 +8979,8 @@ const onDrop = async (targetStep: any) => {
     )
     showNotification('Порядок подопераций обновлён', 'success')
   } catch (err: any) {
+    if (showBillingLockedError(err)) return
+
     console.error('Error reordering steps:', err)
     // Перезагрузить при ошибке
     await loadSteps(selectedLaborWork.value?.id!)
@@ -8750,6 +8989,8 @@ const onDrop = async (targetStep: any) => {
 }
 
 const deleteStep = async (step: any) => {
+  if (guardReadOnlyAction()) return
+
   if (!confirm(`Удалить подоперацию "${step.title}"?`)) {
     return
   }
@@ -8775,6 +9016,8 @@ const deleteStep = async (step: any) => {
     })
 
   } catch (err: any) {
+    if (showBillingLockedError(err)) return
+
     console.error('Error deleting step:', err)
     
     // По твоей ситуации — удаление могло случиться, но ответ 500
@@ -8876,6 +9119,8 @@ onMounted(async () => {
     if (sentinel && el) {
       toolbarSentinelObserver = new IntersectionObserver(
         ([entry]) => {
+          if (!entry) return
+
           el.classList.toggle('is-stuck', !entry.isIntersecting)
         },
         { root: sentinel.closest('.workspace-module-area'), threshold: 0 }
@@ -8916,6 +9161,20 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.project-read-only-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .project-read-only-alert {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 /* === Workspace Layout === */
 .workspace-root {
   display: flex;

@@ -49,6 +49,12 @@ class BillingPaymentService
 
         $billingPeriod = $options['billing_period'] ?? $metadata['billing_period'] ?? 'month';
 
+        $invoiceMetadata = array_merge([
+            'billing_period' => $billingPeriod,
+            'created_by_admin_id' => $options['created_by_admin_id'] ?? null,
+            'source' => $options['source'] ?? 'admin_test',
+        ], $options['metadata'] ?? []);
+
         return BillingInvoice::query()->create([
             'uuid' => (string) Str::uuid(),
             'user_id' => $user->id,
@@ -57,15 +63,11 @@ class BillingPaymentService
             'currency' => $currency,
             'status' => BillingInvoice::STATUS_DRAFT,
             'description' => $options['description'] ?? "PrismCore: тариф {$plan->name}",
-            'metadata_json' => [
-                'billing_period' => $billingPeriod,
-                'created_by_admin_id' => $options['created_by_admin_id'] ?? null,
-                'source' => $options['source'] ?? 'admin_test',
-            ],
+            'metadata_json' => $invoiceMetadata,
         ]);
     }
 
-    public function createPaymentForInvoice(BillingInvoice $invoice, ?string $providerCode = null): BillingPayment
+    public function createPaymentForInvoice(BillingInvoice $invoice, ?string $providerCode = null, array $options = []): BillingPayment
     {
         $provider = $this->providerManager->driver($providerCode);
         $this->providerManager->assertEnabled($provider->code());
@@ -95,7 +97,7 @@ class BillingPaymentService
         try {
             $result = $provider->createPaymentIntent($invoice, new PaymentIntentOptions(
                 confirmationType: 'redirect',
-                returnUrl: config('billing.payments.providers.' . $provider->code() . '.return_url'),
+                returnUrl: $options['return_url'] ?? config('billing.payments.providers.' . $provider->code() . '.return_url'),
                 description: $invoice->description,
                 metadata: [
                     'invoice_uuid' => $invoice->uuid,

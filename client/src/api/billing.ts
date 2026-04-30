@@ -101,6 +101,26 @@ export type BillingPaymentRefreshResponse = {
   message: string
 }
 
+export type BillingPaymentResultResponse = {
+  status: 'paid' | 'pending' | 'canceled' | 'failed' | 'not_found' | string
+  title: string
+  message: string
+  invoice: {
+    id: number
+    amount: number
+    currency: string
+    plan_code: string
+    plan_name: string
+    created_at?: string | null
+    paid_at?: string | null
+  } | null
+  subscription: {
+    is_active: boolean
+    plan_code: string
+    period_ends_at?: string | null
+  } | null
+}
+
 export async function getMyBillingPreview(): Promise<BillingPreview> {
   const { data } = await api.get('/api/billing/me')
   return data
@@ -125,5 +145,14 @@ export async function createBillingCheckout(planCode: string): Promise<BillingCh
 
 export async function refreshBillingPayment(paymentId: number | string): Promise<BillingPaymentRefreshResponse> {
   const { data } = await api.post(`/api/billing/payments/${paymentId}/refresh`)
+  return data
+}
+
+export async function getBillingPaymentResult(invoiceId: number | string): Promise<BillingPaymentResultResponse> {
+  const { data } = await api.get('/api/billing/payment-result', {
+    params: {
+      invoice_id: invoiceId,
+    },
+  })
   return data
 }

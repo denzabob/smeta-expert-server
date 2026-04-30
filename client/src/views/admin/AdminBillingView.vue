@@ -906,7 +906,7 @@
               <v-textarea
                 v-model="planForm.featuresText"
                 label="Преимущества, по одной строке"
-                placeholder="Без ограничений по активным проектам&#10;До 100 PDF-документов в месяц&#10;До 500 скриншотов из расширения"
+                placeholder="Без ограничений по проектам в аккаунте&#10;До 100 PDF-документов в месяц&#10;До 500 скриншотов из расширения"
                 hint="Каждая строка будет показана пользователю как отдельное преимущество тарифа."
                 persistent-hint
                 rows="4"
@@ -1184,6 +1184,16 @@ const gateFilters = reactive<AdminBillingGateEventFilters & { only_would_block: 
   page: 1,
 })
 
+function syncBillingFiltersFromRoute() {
+  const userId = Array.isArray(route.query.user_id) ? route.query.user_id[0] : route.query.user_id
+  if (userId) {
+    gateFilters.user_id = String(userId)
+    filters.user_id = String(userId)
+  }
+}
+
+syncBillingFiltersFromRoute()
+
 const planForm = reactive({
   code: '',
   name: '',
@@ -1229,7 +1239,7 @@ const subscriptionPeriodItems = [
 ] as const
 
 const limitDefinitions = [
-  { key: 'projects.max_active', label: 'Активные проекты' },
+  { key: 'projects.max_owned', label: 'Проекты в аккаунте' },
   { key: 'pdf_exports.monthly_limit', label: 'PDF-документы в месяц' },
   { key: 'evidence_runs.monthly_limit', label: 'Проверки цен в месяц' },
   { key: 'chrome_captures.monthly_limit', label: 'Скриншоты из расширения в месяц' },
@@ -1944,7 +1954,12 @@ function fillPlanForm(plan: BillingPlan) {
 
 function emptyLimitForm(values: Record<string, number | null> = {}) {
   return Object.fromEntries(
-    limitDefinitions.map((limit) => [limit.key, values[limit.key] ?? ''])
+    limitDefinitions.map((limit) => [
+      limit.key,
+      limit.key === 'projects.max_owned'
+        ? values[limit.key] ?? values['projects.max_active'] ?? ''
+        : values[limit.key] ?? '',
+    ])
   ) as Record<string, string | number | null>
 }
 
@@ -2136,6 +2151,7 @@ function closeBillingDrawers() {
 watch(
   () => route.fullPath,
   () => {
+    syncBillingFiltersFromRoute()
     closeBillingDrawers()
   }
 )

@@ -13,6 +13,7 @@ class UsageTracker
 {
     public function __construct(
         private readonly BillingContextResolver $contextResolver,
+        private readonly BillingUsageExclusionService $usageExclusion,
     ) {}
 
     public function record(string $metricCode, int|float $quantity = 1, array $context = []): void
@@ -23,6 +24,10 @@ class UsageTracker
 
         try {
             $billingContext = $this->contextResolver->fromArray($context);
+            if ($this->usageExclusion->shouldIgnoreUserId($billingContext->userId)) {
+                return;
+            }
+
             $this->writeUsage($billingContext, $metricCode, (float) $quantity, $context);
         } catch (Throwable $e) {
             report($e);

@@ -3,9 +3,10 @@
 
 namespace App\Policies;
 
+use App\Exceptions\ProjectWorkspaceReadOnlyException;
 use App\Models\Project;
 use App\Models\User;
-use Illuminate\Auth\Access\Response;
+use App\Services\Billing\ProjectWorkspaceAccessService;
 use Illuminate\Support\Facades\Log;
 
 class ProjectPolicy
@@ -33,7 +34,17 @@ class ProjectPolicy
             ]);
         }
         
-        return $authorized;
+        if (! $authorized) {
+            return false;
+        }
+
+        $billingStatus = app(ProjectWorkspaceAccessService::class)->editStatus($project);
+
+        if ($billingStatus['blocked']) {
+            throw new ProjectWorkspaceReadOnlyException($billingStatus);
+        }
+
+        return true;
     }
 
     /**

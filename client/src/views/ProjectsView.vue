@@ -5,12 +5,35 @@
     <PageHeader title="Проекты" :subtitle="headerSubtitle">
       <template #actions>
         <ButtonGroup>
-          <v-btn prepend-icon="mdi-plus" color="primary" variant="flat" :loading="creating" @click="createProject">
+          <v-btn
+            prepend-icon="mdi-plus"
+            color="primary"
+            variant="flat"
+            :loading="creating"
+            :disabled="createProjectDisabled"
+            :title="projectLimitMessage || 'Создать проект'"
+            @click="createProject"
+          >
             Новый проект
           </v-btn>
         </ButtonGroup>
       </template>
     </PageHeader>
+
+    <v-alert
+      v-if="projectLimitMessage"
+      type="warning"
+      variant="tonal"
+      density="comfortable"
+      class="mb-4"
+    >
+      {{ projectLimitMessage }}
+      <template #append>
+        <v-btn size="small" variant="tonal" color="primary" @click="router.push('/settings/billing')">
+          Выбрать тариф
+        </v-btn>
+      </template>
+    </v-alert>
 
     <!-- ── Table card ────────────────────────────────────────────────────── -->
     <SectionCard class="projects-card" subtitle="Рабочий список проектов, статусы ревизий и быстрые действия.">
@@ -123,7 +146,15 @@
               description="Создайте первый проект, чтобы начать работу"
             >
               <template #actions>
-                <v-btn prepend-icon="mdi-plus" color="primary" variant="flat" :loading="creating" @click="createProject">
+                <v-btn
+                  prepend-icon="mdi-plus"
+                  color="primary"
+                  variant="flat"
+                  :loading="creating"
+                  :disabled="createProjectDisabled"
+                  :title="projectLimitMessage || 'Создать проект'"
+                  @click="createProject"
+                >
                   Создать проект
                 </v-btn>
               </template>
@@ -188,7 +219,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/api/axios'
+import { getMyBillingPreview } from '@/api/billing'
 import { consumeProjectsFlashMessage } from '@/router/projectAccess'
+import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
 import AppDataTableShell from '@/components/layout/AppDataTableShell.vue'
 import AppRowActions, { type AppRowAction } from '@/components/layout/AppRowActions.vue'
 import ButtonGroup from '@/components/layout/ButtonGroup.vue'
@@ -199,6 +232,7 @@ import EmptyState from '@/components/layout/EmptyState.vue'
 import StatusChip from '@/components/layout/StatusChip.vue'
 
 const router = useRouter()
+const billingCapabilities = useBillingCapabilitiesStore()
 
 const projects = ref<any[]>([])
 const loading = ref(false)
@@ -214,6 +248,7 @@ const searchQuery = ref('')
 const statusFilter = ref<string | null>(null)
 
 const snackbar = ref({ show: false, message: '', color: 'warning' })
+const projectLimit = ref<{ used: number, limit: number | null } | null>(null)
 
 const showNotification = (message: string, color = 'warning') => {
   snackbar.value = { show: true, message, color }
@@ -225,6 +260,20 @@ const headerSubtitle = computed(() => {
   const n = filteredProjects.value.length
   return `${n} ${pluralize(n, ['проект', 'проекта', 'проектов'])}`
 })
+
+const projectLimitMessage = computed(() => {
+  if (!billingCapabilities.enforcementEnabled || !projectLimit.value || projectLimit.value.limit === null) {
+    return ''
+  }
+
+  const { used, limit } = projectLimit.value
+  if (used < limit) return ''
+
+  const state = used > limit ? 'превышен' : 'достигнут'
+  return `Лимит проектов ${state}. На текущем тарифе доступно проектов: ${limit}. Сейчас в аккаунте: ${used}. Чтобы создать новый проект, выберите подходящий тариф.`
+})
+
+const createProjectDisabled = computed(() => creating.value || Boolean(projectLimitMessage.value))
 
 // ── Table columns ───────────────────────────────────────────────────────────
 const headers = [
@@ -351,6 +400,27 @@ const fetchProjects = async () => {
   }
 }
 
+const fetchProjectLimitStatus = async () => {
+  try {
+    await billingCapabilities.load()
+
+    if (!billingCapabilities.enforcementEnabled) {
+      projectLimit.value = null
+      return
+    }
+
+    const preview = await getMyBillingPreview()
+    const usage = preview.usage.find((item) => item.code === 'projects.owned')
+      || preview.usage.find((item) => item.code === 'projects.active')
+
+    projectLimit.value = usage
+      ? { used: Number(usage.used || 0), limit: usage.limit === null ? null : Number(usage.limit) }
+      : null
+  } catch {
+    projectLimit.value = null
+  }
+}
+
 const showQueuedNotification = () => {
   const flash = consumeProjectsFlashMessage()
   if (flash) showNotification(flash.message, flash.color)
@@ -358,6 +428,11 @@ const showQueuedNotification = () => {
 
 // ── Actions ─────────────────────────────────────────────────────────────────
 const createProject = async () => {
+  if (projectLimitMessage.value) {
+    showNotification(projectLimitMessage.value, 'warning')
+    return
+  }
+
   if (creating.value) return
   creating.value = true
   try {
@@ -365,7 +440,8 @@ const createProject = async () => {
     router.push(`/projects/${response.data.id}/edit`)
   } catch (e) {
     console.error('Ошибка создания проекта:', e)
-    alert('Не удалось создать проект')
+    const message = (e as any)?.response?.data?.message
+    showNotification(message || 'Не удалось создать проект', 'warning')
   } finally {
     creating.value = false
   }
@@ -400,7 +476,7 @@ const deleteProjectRequest = async (item: any, confirmDelete?: string) => {
     await api.delete(`/api/projects/${item.id}`, {
       data: confirmDelete ? { confirm_delete: confirmDelete } : undefined,
     })
-    await fetchProjects()
+    await Promise.all([fetchProjects(), fetchProjectLimitStatus()])
   } catch (e) {
     console.error('Ошибка удаления:', e)
     alert('Не удалось архивировать проект')
@@ -423,7 +499,7 @@ const confirmDeleteWithRevisions = async () => {
 }
 
 onMounted(async () => {
-  await fetchProjects()
+  await Promise.all([fetchProjects(), fetchProjectLimitStatus()])
   showQueuedNotification()
 })
 </script>

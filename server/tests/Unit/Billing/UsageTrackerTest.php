@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Billing\BillingCodes;
 use App\Services\Billing\BillingContext;
 use App\Services\Billing\BillingContextResolver;
+use App\Services\Billing\BillingUsageExclusionService;
 use App\Services\Billing\UsageTracker;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -98,11 +99,46 @@ class UsageTrackerTest extends TestCase
         $this->assertSame((int) $project->id, (int) $event->subject_id);
     }
 
+    public function test_superadmin_owner_is_excluded_from_usage_tracking(): void
+    {
+        config(['billing.track_usage' => true]);
+
+        $user = User::factory()->create(['id' => 1]);
+
+        app(UsageTracker::class)->record(BillingCodes::METRIC_PROJECTS_CREATED, 1, [
+            'user' => $user,
+            'feature_code' => BillingCodes::FEATURE_PROJECTS_CREATE,
+        ]);
+
+        $this->assertSame(0, UsageEvent::query()->count());
+        $this->assertSame(0, UsageCounter::query()->count());
+    }
+
+    public function test_superadmin_project_context_is_excluded_from_usage_tracking(): void
+    {
+        config(['billing.track_usage' => true]);
+
+        $user = User::factory()->create(['id' => 1]);
+        $project = Project::query()->create([
+            'user_id' => $user->id,
+            'number' => 'BILL-OWNER-1',
+            'expert_name' => 'Billing Expert',
+            'address' => 'Billing address',
+        ]);
+
+        app(UsageTracker::class)->record(BillingCodes::METRIC_EVIDENCE_RUNS_CREATED, 1, [
+            'project' => $project,
+        ]);
+
+        $this->assertSame(0, UsageEvent::query()->count());
+        $this->assertSame(0, UsageCounter::query()->count());
+    }
+
     public function test_tracking_error_does_not_escape_record_call(): void
     {
         config(['billing.track_usage' => true]);
 
-        $tracker = new class(app(BillingContextResolver::class)) extends UsageTracker
+        $tracker = new class(app(BillingContextResolver::class), app(BillingUsageExclusionService::class)) extends UsageTracker
         {
             protected function writeUsage(
                 BillingContext $billingContext,

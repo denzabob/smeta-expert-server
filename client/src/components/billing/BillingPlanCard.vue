@@ -50,6 +50,8 @@ const props = defineProps<{
   checkoutEnabled?: boolean
   paymentsEnabled?: boolean
   loading?: boolean
+  currentPlanPrice?: number | null
+  currentPlanCode?: string | null
 }>()
 
 defineEmits<{
@@ -57,6 +59,7 @@ defineEmits<{
 }>()
 
 const preferredLimitOrder = [
+  'projects.owned',
   'projects.active',
   'pdf.generated',
   'evidence.runs',
@@ -70,16 +73,42 @@ const hasPositivePrice = computed(() => {
   const priceMinor = props.plan.price_minor ?? props.plan.price
   return Number(priceMinor ?? 0) > 0
 })
+const isFreePlan = computed(() => {
+  const priceMinor = props.plan.price_minor ?? props.plan.price
+  return Number(priceMinor ?? 0) === 0
+})
 const checkoutAvailable = computed(() => (
   !isCurrent.value
   && props.checkoutEnabled === true
   && props.paymentsEnabled === true
   && hasPositivePrice.value
+  && !isDowngrade.value
+  && !isLateralChange.value
 ))
 const canCheckout = computed(() => checkoutAvailable.value && !props.loading)
+const currentPlanPriceMinor = computed(() => Number(props.currentPlanPrice ?? 0))
+const isCurrentPlanPaid = computed(() => currentPlanPriceMinor.value > 0)
+const planPriceMinor = computed(() => Number((props.plan.price_minor ?? props.plan.price) ?? 0))
+const isDowngrade = computed(() => (
+  isCurrentPlanPaid.value
+  && hasPositivePrice.value
+  && planPriceMinor.value < currentPlanPriceMinor.value
+))
+const isLateralChange = computed(() => (
+  isCurrentPlanPaid.value
+  && hasPositivePrice.value
+  && props.currentPlanCode !== props.plan.code
+  && planPriceMinor.value === currentPlanPriceMinor.value
+))
 const actionLabel = computed(() => {
+  if (props.loading) return 'Создаём ссылку на оплату...'
   if (isCurrent.value) return 'Текущий тариф'
-  if (checkoutAvailable.value) return 'Оплатить'
+  if (checkoutAvailable.value) return 'Выбрать тариф'
+  if (isFreePlan.value && isCurrentPlanPaid.value) return 'Будет применён после окончания периода'
+  if (isFreePlan.value) return 'Бесплатный тариф'
+  if (isDowngrade.value) return 'Будет доступен после окончания периода'
+  if (isLateralChange.value) return 'Смена пока недоступна'
+  if (props.checkoutEnabled !== true || props.paymentsEnabled !== true) return 'Оплата пока недоступна'
 
   return 'Будет доступно после запуска оплаты'
 })
@@ -132,7 +161,7 @@ function limitLine(item: NonNullable<BillingPreviewPlan['limits']>[number]) {
     return `${label}: до ${value} ${item.unit}`
   }
 
-  if (item.code === 'projects.active') {
+  if (item.code === 'projects.owned' || item.code === 'projects.active') {
     return `${label}: до ${value} ${item.unit}`
   }
 
@@ -148,7 +177,7 @@ function periodLabel(period: string) {
 }
 
 function limitName(code: string) {
-  if (code === 'projects.active') return 'Активные проекты'
+  if (code === 'projects.owned' || code === 'projects.active') return 'Проекты в аккаунте'
   if (code === 'pdf.generated') return 'PDF-документы'
   if (code === 'evidence.runs') return 'Проверки цен'
   if (code === 'chrome.captures') return 'Скриншоты из расширения'

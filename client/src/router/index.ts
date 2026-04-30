@@ -162,6 +162,12 @@ const router = createRouter({
           meta: { title: 'Тариф и лимиты', requiresBillingUserUi: true }
         },
         {
+          path: 'billing/payment-result',
+          name: 'billing-payment-result',
+          component: () => import('@/views/billing/PaymentResultView.vue'),
+          meta: { title: 'Результат оплаты', requiresBillingUserUi: true }
+        },
+        {
           path: 'settings/project',
           redirect: { name: 'settings' }
         },

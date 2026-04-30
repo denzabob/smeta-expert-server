@@ -104,6 +104,8 @@ class BillingCodes
 
     public const METRIC_AI_WORK_DECOMPOSE_REQUESTS = 'ai.work_decompose.requests';
 
+    public const CAP_PROJECTS_MAX_OWNED = 'projects.max_owned';
+
     public const CAP_PROJECTS_MAX_ACTIVE = 'projects.max_active';
 
     public const CAP_PDF_EXPORTS_MONTHLY_LIMIT = 'pdf_exports.monthly_limit';
@@ -181,6 +183,7 @@ class BillingCodes
     public static function capabilities(): array
     {
         return [
+            self::CAP_PROJECTS_MAX_OWNED,
             self::CAP_PROJECTS_MAX_ACTIVE,
             self::CAP_PDF_EXPORTS_MONTHLY_LIMIT,
             self::CAP_EVIDENCE_RUNS_MONTHLY_LIMIT,

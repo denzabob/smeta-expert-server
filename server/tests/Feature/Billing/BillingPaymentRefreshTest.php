@@ -108,6 +108,60 @@ class BillingPaymentRefreshTest extends TestCase
         ]);
     }
 
+    public function test_paid_upgrade_replaces_previous_subscription(): void
+    {
+        [$user, $invoice, $payment] = $this->makeFixture();
+        $this->configureBilling();
+
+        $previousPlan = BillingPlan::query()->create([
+            'code' => 'basic_refresh',
+            'name' => 'Basic Refresh',
+            'is_active' => true,
+            'metadata_json' => [
+                'price_minor' => 59000,
+                'currency' => 'RUB',
+                'billing_period' => 'month',
+            ],
+        ]);
+
+        $previousSubscription = BillingSubscription::query()->create([
+            'user_id' => $user->id,
+            'plan_id' => $previousPlan->id,
+            'plan_code' => 'basic_refresh',
+            'status' => 'active',
+            'source' => 'payment',
+            'current_period_start' => now()->subDay(),
+            'current_period_end' => now()->addMonth(),
+        ]);
+
+        $invoice->forceFill([
+            'metadata_json' => array_merge($invoice->metadata_json ?? [], [
+                'checkout_type' => 'upgrade',
+                'previous_subscription_id' => $previousSubscription->id,
+                'previous_plan_code' => 'basic_refresh',
+            ]),
+        ])->save();
+
+        $this->fakeProviderPayment('succeeded');
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/billing/payments/{$payment->id}/refresh")
+            ->assertOk()
+            ->assertJsonPath('subscription.status', 'active')
+            ->assertJsonPath('subscription.plan_code', 'pro_refresh');
+
+        $this->assertSame('replaced', $previousSubscription->refresh()->status);
+        $this->assertSame(1, BillingSubscription::query()
+            ->where('user_id', $user->id)
+            ->where('status', 'active')
+            ->count());
+
+        $newSubscription = $invoice->refresh()->subscription;
+        $this->assertSame('checkout_upgrade', $newSubscription->overrides_json['source']);
+        $this->assertSame($previousSubscription->id, $newSubscription->overrides_json['previous_subscription_id']);
+        $this->assertSame('basic_refresh', $newSubscription->overrides_json['previous_plan_code']);
+    }
+
     public function test_repeated_refresh_does_not_extend_subscription_twice(): void
     {
         [$user, $invoice, $payment] = $this->makeFixture();

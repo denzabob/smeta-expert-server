@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\UserSettings;
 use App\Services\Billing\BillingCodes;
+use App\Services\Billing\ProjectWorkspaceAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -115,9 +116,21 @@ class ProjectController extends Controller
         $validated = array_merge($defaults, array_filter($validated, fn($value) => $value !== null));
         $validated['user_id'] = Auth::id();
 
-        $this->checkBillingGateSafely($request->user(), BillingCodes::CAP_PROJECTS_MAX_ACTIVE, [
-            'action' => 'project.create',
+        $billingStatus = app(ProjectWorkspaceAccessService::class)->createStatus($request->user());
+        $this->checkBillingGateSafely($request->user(), BillingCodes::CAP_PROJECTS_MAX_OWNED, [
+            'action' => 'projects.create',
+            'limit_key' => $billingStatus['limit_key'] ?? BillingCodes::CAP_PROJECTS_MAX_OWNED,
+            'allowed' => $billingStatus['limit'] ?? null,
+            'actual' => $billingStatus['owned_projects'] ?? 0,
+            'usage' => $billingStatus['owned_projects'] ?? 0,
         ]);
+
+        if ($billingStatus['blocked']) {
+            return response()->json(
+                app(ProjectWorkspaceAccessService::class)->responsePayload($billingStatus),
+                423,
+            );
+        }
         
         $project = Project::create($validated);
 
@@ -149,6 +162,10 @@ class ProjectController extends Controller
         $data['profileRates'] = $project->profileRates->map(function($rate) {
             return $rate->toArray();
         })->values()->all();
+        $workspaceAccess = app(ProjectWorkspaceAccessService::class);
+        $workspaceStatus = $workspaceAccess->editStatus($project);
+        $data['billing_workspace'] = $workspaceAccess->responsePayload($workspaceStatus)['billing'];
+        $data['billing_workspace']['message'] = $workspaceStatus['message'];
         
         \Log::debug('API show() method', [
             'project_id' => $project->id,

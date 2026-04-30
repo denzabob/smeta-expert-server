@@ -119,6 +119,7 @@ class AdminBillingGateEventsController extends Controller
     private function filteredQuery(array $filters): Builder
     {
         return BillingGateEvent::query()
+            ->where(fn (Builder $query) => $query->whereNull('user_id')->orWhere('user_id', '!=', 1))
             ->when(isset($filters['user_id']), fn (Builder $query) => $query->where('user_id', (int) $filters['user_id']))
             ->when(isset($filters['capability']), fn (Builder $query) => $query->where('capability', $filters['capability']))
             ->when(array_key_exists('would_block', $filters), fn (Builder $query) => $query->where('would_block', $this->booleanFilter($filters['would_block'])))

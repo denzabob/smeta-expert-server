@@ -39,8 +39,19 @@ class SubscriptionActivationService
                 ->lockForUpdate()
                 ->first();
 
-            $periodStart = $this->resolvePeriodStart($subscription);
+            $isUpgrade = ($lockedInvoice->metadata_json['checkout_type'] ?? null) === 'upgrade';
+            $previousSubscription = $isUpgrade ? $subscription : null;
+            $periodStart = $isUpgrade ? now() : $this->resolvePeriodStart($subscription);
             $periodEnd = $this->resolvePeriodEnd($periodStart, $lockedInvoice->metadata_json['billing_period'] ?? 'month');
+
+            if ($isUpgrade && $subscription) {
+                $subscription->forceFill([
+                    'status' => 'replaced',
+                    'current_period_end' => now(),
+                ])->save();
+
+                $subscription = null;
+            }
 
             if (! $subscription) {
                 $subscription = new BillingSubscription([
@@ -51,6 +62,7 @@ class SubscriptionActivationService
                     'source' => 'payment',
                     'current_period_start' => $periodStart,
                     'current_period_end' => $periodEnd,
+                    'overrides_json' => $this->subscriptionOverrides($lockedInvoice, $previousSubscription),
                 ]);
             } else {
                 $subscription->fill([
@@ -59,6 +71,7 @@ class SubscriptionActivationService
                     'status' => 'active',
                     'source' => 'payment',
                     'current_period_end' => $periodEnd,
+                    'overrides_json' => $this->subscriptionOverrides($lockedInvoice, null, $subscription->overrides_json ?? []),
                 ]);
             }
 
@@ -89,5 +102,23 @@ class SubscriptionActivationService
             'year' => $periodStart->copy()->addYear(),
             default => $periodStart->copy()->addMonth(),
         };
+    }
+
+    private function subscriptionOverrides(
+        BillingInvoice $invoice,
+        ?BillingSubscription $previousSubscription,
+        array $existing = [],
+    ): array {
+        $metadata = $invoice->metadata_json ?? [];
+        $overrides = array_merge($existing, [
+            'source' => ($metadata['checkout_type'] ?? null) === 'upgrade' ? 'checkout_upgrade' : ($metadata['source'] ?? 'payment'),
+        ]);
+
+        if ($previousSubscription) {
+            $overrides['previous_subscription_id'] = $previousSubscription->id;
+            $overrides['previous_plan_code'] = $previousSubscription->plan_code;
+        }
+
+        return $overrides;
     }
 }

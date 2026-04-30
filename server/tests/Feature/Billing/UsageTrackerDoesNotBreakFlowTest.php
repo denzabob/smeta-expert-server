@@ -4,6 +4,7 @@ namespace Tests\Feature\Billing;
 
 use App\Models\User;
 use App\Services\Billing\BillingContextResolver;
+use App\Services\Billing\BillingUsageExclusionService;
 use App\Services\Billing\UsageTracker;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use RuntimeException;
@@ -17,7 +18,7 @@ class UsageTrackerDoesNotBreakFlowTest extends TestCase
     {
         $this->app->instance(
             UsageTracker::class,
-            new class(app(BillingContextResolver::class)) extends UsageTracker
+            new class(app(BillingContextResolver::class), app(BillingUsageExclusionService::class)) extends UsageTracker
             {
                 public function record(string $metricCode, int|float $quantity = 1, array $context = []): void
                 {

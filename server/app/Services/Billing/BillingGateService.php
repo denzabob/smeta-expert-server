@@ -14,6 +14,10 @@ use Throwable;
 
 class BillingGateService
 {
+    public function __construct(
+        private readonly BillingUsageExclusionService $usageExclusion,
+    ) {}
+
     public function check(User $user, string $capability, array $context = []): BillingGateResult
     {
         $logOnly = (bool) config('billing.log_only', true);
@@ -46,7 +50,7 @@ class BillingGateService
                 reason: $reason,
             );
 
-            if ($wouldBlock || (bool) ($context['force_log'] ?? false)) {
+            if (! $this->usageExclusion->shouldIgnoreUser($user) && ($wouldBlock || (bool) ($context['force_log'] ?? false))) {
                 $this->recordEvent($user, $result, $context);
             }
 
@@ -111,12 +115,21 @@ class BillingGateService
     protected function resolveLimit(?BillingPlan $plan, string $capability): ?int
     {
         $limits = $plan?->metadata_json['limits'] ?? [];
+        $limitKey = $capability;
 
-        if (! array_key_exists($capability, $limits) || $limits[$capability] === null) {
+        if (
+            $capability === BillingCodes::CAP_PROJECTS_MAX_OWNED
+            && ! array_key_exists(BillingCodes::CAP_PROJECTS_MAX_OWNED, $limits)
+            && array_key_exists(BillingCodes::CAP_PROJECTS_MAX_ACTIVE, $limits)
+        ) {
+            $limitKey = BillingCodes::CAP_PROJECTS_MAX_ACTIVE;
+        }
+
+        if (! array_key_exists($limitKey, $limits) || $limits[$limitKey] === null) {
             return null;
         }
 
-        return (int) $limits[$capability];
+        return (int) $limits[$limitKey];
     }
 
     protected function resolveUsage(User $user, string $capability, array $context): int
@@ -125,10 +138,12 @@ class BillingGateService
             return (int) $context['usage'];
         }
 
-        if ($capability === BillingCodes::CAP_PROJECTS_MAX_ACTIVE) {
+        if (
+            $capability === BillingCodes::CAP_PROJECTS_MAX_OWNED
+            || $capability === BillingCodes::CAP_PROJECTS_MAX_ACTIVE
+        ) {
             return Project::query()
                 ->where('user_id', $user->id)
-                ->whereNull('archived_at')
                 ->count();
         }
 

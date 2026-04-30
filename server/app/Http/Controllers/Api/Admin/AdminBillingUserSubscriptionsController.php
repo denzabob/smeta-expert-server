@@ -34,12 +34,6 @@ class AdminBillingUserSubscriptionsController extends Controller
             'reason' => 'nullable|string|max:1000',
         ]);
 
-        if (($validated['period'] ?? null) === 'custom' && empty($validated['ends_at'])) {
-            throw ValidationException::withMessages([
-                'ends_at' => 'ends_at is required when period is custom.',
-            ]);
-        }
-
         $subscription = DB::transaction(function () use ($request, $user, $validated) {
             $plan = BillingPlan::query()
                 ->where('code', $validated['plan_code'])
@@ -80,9 +74,11 @@ class AdminBillingUserSubscriptionsController extends Controller
                 'current_period_start' => $periodStart,
                 'current_period_end' => $periodEnd,
                 'overrides_json' => [
-                    'source' => 'manual',
+                    'source' => 'admin_manual',
                     'period' => $validated['period'] ?? 'month',
                     'reason' => $validated['reason'] ?? null,
+                    'comment' => $validated['reason'] ?? null,
+                    'assigned_by' => $request->user()->id,
                     'admin_user_id' => $request->user()->id,
                 ],
             ]);
@@ -381,7 +377,7 @@ class AdminBillingUserSubscriptionsController extends Controller
         ];
     }
 
-    private function resolvePeriodEnd(Carbon $periodStart, string $period, ?string $endsAt): Carbon
+    private function resolvePeriodEnd(Carbon $periodStart, string $period, ?string $endsAt): ?Carbon
     {
         if ($endsAt) {
             return Carbon::parse($endsAt);
@@ -389,7 +385,7 @@ class AdminBillingUserSubscriptionsController extends Controller
 
         return match ($period) {
             'year' => $periodStart->copy()->addYear(),
-            'custom' => throw ValidationException::withMessages(['ends_at' => 'ends_at is required when period is custom.']),
+            'custom' => null,
             default => $periodStart->copy()->addMonth(),
         };
     }

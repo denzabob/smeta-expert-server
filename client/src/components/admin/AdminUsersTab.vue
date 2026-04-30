@@ -125,6 +125,26 @@
           <span class="font-weight-medium">{{ item.ai_requests_count || 0 }}</span>
         </template>
 
+        <template #item.billing_plan="{ item }">
+          <div class="text-body-2 font-weight-medium">{{ billingPlanLabel(item) }}</div>
+          <div class="text-caption text-medium-emphasis">{{ item.billing?.plan_code || '—' }}</div>
+        </template>
+
+        <template #item.billing_status="{ item }">
+          <v-chip size="small" :color="billingStatusColor(item.billing?.subscription_status)" variant="tonal">
+            {{ billingStatusLabel(item.billing?.subscription_status) }}
+          </v-chip>
+        </template>
+
+        <template #item.billing_period_end="{ item }">
+          <span class="text-body-2">{{ item.billing?.current_period_end ? formatDate(item.billing.current_period_end) : 'Бессрочно' }}</span>
+        </template>
+
+        <template #item.billing_gate_events="{ item }">
+          <div class="text-body-2 font-weight-medium">{{ item.billing?.gate_events_count || 0 }}</div>
+          <div class="text-caption text-medium-emphasis">would block: {{ item.billing?.would_block_events_count || 0 }}</div>
+        </template>
+
         <!-- Actions -->
         <template #item.actions="{ item }">
           <div class="d-flex ga-1">
@@ -142,6 +162,20 @@
                   <template #prepend><v-icon size="small" color="success">mdi-lock-open</v-icon></template>
                   <v-list-item-title>Разблокировать</v-list-item-title>
                 </v-list-item>
+                <v-divider />
+                <v-list-item @click="openAssignPlanDialog(item)">
+                  <template #prepend><v-icon size="small" color="primary">mdi-card-account-details-star</v-icon></template>
+                  <v-list-item-title>Назначить тариф</v-list-item-title>
+                </v-list-item>
+                <v-list-item @click="openBillingStats(item)">
+                  <template #prepend><v-icon size="small" color="info">mdi-chart-timeline-variant</v-icon></template>
+                  <v-list-item-title>Статистика лимитов</v-list-item-title>
+                </v-list-item>
+                <v-list-item @click="openGateEventsForUser(item)">
+                  <template #prepend><v-icon size="small" color="info">mdi-open-in-new</v-icon></template>
+                  <v-list-item-title>Открыть события лимитов</v-list-item-title>
+                </v-list-item>
+                <v-divider />
                 <v-list-item v-if="!item.deleted_at" @click="openDeleteDialog(item, 'soft')">
                   <template #prepend><v-icon size="small" color="error">mdi-delete</v-icon></template>
                   <v-list-item-title>Удалить (soft)</v-list-item-title>
@@ -213,6 +247,7 @@
         <v-card-text style="max-height: 75vh; overflow-y: auto">
           <v-tabs v-model="cardTab" density="compact" class="mb-4">
             <v-tab value="info">Основные данные</v-tab>
+            <v-tab value="billing">Биллинг</v-tab>
             <v-tab value="ai">Статистика ИИ</v-tab>
             <v-tab value="deps">Зависимости</v-tab>
             <v-tab value="audit">Журнал действий</v-tab>
@@ -266,6 +301,80 @@
                   </tbody>
                 </v-table>
               </div>
+            </v-window-item>
+
+            <v-window-item value="billing">
+              <div class="d-flex flex-wrap align-center ga-2 mb-4">
+                <v-btn color="primary" variant="tonal" prepend-icon="mdi-card-account-details-star" @click="selectedUser && openAssignPlanDialog(selectedUser)">
+                  Назначить тариф
+                </v-btn>
+                <v-btn variant="outlined" prepend-icon="mdi-open-in-new" @click="selectedUser && openGateEventsForUser(selectedUser)">
+                  Открыть события лимитов
+                </v-btn>
+              </div>
+
+              <v-row dense class="mb-4">
+                <v-col cols="12" md="6">
+                  <v-card variant="tonal" class="pa-3 h-100">
+                    <div class="text-subtitle-2 mb-2">Текущая подписка</div>
+                    <v-table density="compact">
+                      <tbody>
+                        <tr><td class="text-medium-emphasis" width="160">Тариф</td><td>{{ billingDetailPlanName }}</td></tr>
+                        <tr><td class="text-medium-emphasis">Код тарифа</td><td>{{ userDetail?.billing?.subscription?.plan_code || userDetail?.billing?.effective_plan_code || '—' }}</td></tr>
+                        <tr><td class="text-medium-emphasis">Статус</td><td>{{ billingStatusLabel(userDetail?.billing?.subscription?.status) }}</td></tr>
+                        <tr><td class="text-medium-emphasis">Источник</td><td>{{ userDetail?.billing?.subscription?.source || 'fallback' }}</td></tr>
+                        <tr><td class="text-medium-emphasis">Действует до</td><td>{{ userDetail?.billing?.subscription?.current_period_end ? formatDate(userDetail.billing.subscription.current_period_end) : 'Бессрочно' }}</td></tr>
+                      </tbody>
+                    </v-table>
+                  </v-card>
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-card variant="tonal" class="pa-3 h-100">
+                    <div class="text-subtitle-2 mb-2">Log-only события</div>
+                    <v-row dense>
+                      <v-col cols="6"><div class="text-h6">{{ userDetail?.billing?.gate_stats?.total_events || 0 }}</div><div class="text-caption text-medium-emphasis">Всего</div></v-col>
+                      <v-col cols="6"><div class="text-h6">{{ userDetail?.billing?.gate_stats?.current_month_events || 0 }}</div><div class="text-caption text-medium-emphasis">За месяц</div></v-col>
+                      <v-col cols="6"><div class="text-h6">{{ userDetail?.billing?.gate_stats?.last_7_days_events || 0 }}</div><div class="text-caption text-medium-emphasis">За 7 дней</div></v-col>
+                      <v-col cols="6"><div class="text-body-2">{{ formatDate(userDetail?.billing?.gate_stats?.last_event_at || null) }}</div><div class="text-caption text-medium-emphasis">Последнее</div></v-col>
+                    </v-row>
+                  </v-card>
+                </v-col>
+              </v-row>
+
+              <div class="text-subtitle-2 mb-2">Самые частые действия</div>
+              <div v-if="userDetail?.billing?.gate_stats?.top_actions?.length" class="d-flex flex-wrap ga-2 mb-4">
+                <v-chip v-for="action in userDetail.billing.gate_stats.top_actions" :key="action.action" size="small" variant="tonal">
+                  {{ billingActionLabel(action.action) }}: {{ action.count }}
+                </v-chip>
+              </div>
+              <v-alert v-else type="info" variant="tonal" density="compact" class="mb-4">
+                Log-only событий по пользователю пока нет.
+              </v-alert>
+
+              <div class="text-subtitle-2 mb-2">История назначений</div>
+              <v-table v-if="userDetail?.billing?.history?.length" density="compact">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Изменение</th>
+                    <th>Назначил</th>
+                    <th>Срок</th>
+                    <th>Комментарий</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="event in userDetail.billing.history" :key="event.id">
+                    <td>{{ formatDate(event.created_at) }}</td>
+                    <td>{{ event.old_plan_code || '—' }} → {{ event.new_plan_code || '—' }}</td>
+                    <td>{{ event.admin_user?.name || event.admin_user?.email || '—' }}</td>
+                    <td>{{ event.new_period_end ? `до ${formatDate(event.new_period_end)}` : 'бессрочно' }}</td>
+                    <td>{{ event.reason || '—' }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+              <v-alert v-else type="info" variant="tonal" density="compact">
+                История назначений пока пуста.
+              </v-alert>
             </v-window-item>
 
             <!-- AI Stats Tab -->
@@ -519,6 +628,79 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="showAssignPlanDialog" max-width="560">
+      <v-card>
+        <v-card-title>
+          <v-icon class="mr-2">mdi-card-account-details-star</v-icon>
+          Назначить тариф пользователю
+        </v-card-title>
+        <v-card-text>
+          <div class="mb-4">
+            <div class="text-caption text-medium-emphasis">Пользователь</div>
+            <div class="font-weight-medium">{{ actionTarget?.name || actionTarget?.email || '—' }}</div>
+            <div class="text-caption text-medium-emphasis">{{ actionTarget?.email || actionTarget?.phone || `ID ${actionTarget?.id}` }}</div>
+          </div>
+
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            Это административное назначение тарифа. Оно не создаёт оплату и не запускает перерасчёты.
+          </v-alert>
+
+          <v-table density="compact" class="mb-4">
+            <tbody>
+              <tr><td class="text-medium-emphasis" width="160">Текущий тариф</td><td>{{ actionTarget ? billingPlanLabel(actionTarget) : '—' }}</td></tr>
+              <tr><td class="text-medium-emphasis">Статус</td><td>{{ billingStatusLabel(actionTarget?.billing?.subscription_status) }}</td></tr>
+              <tr><td class="text-medium-emphasis">Действует до</td><td>{{ actionTarget?.billing?.current_period_end ? formatDate(actionTarget.billing.current_period_end) : 'Бессрочно' }}</td></tr>
+            </tbody>
+          </v-table>
+
+          <v-select
+            v-model="assignPlanForm.plan_code"
+            :items="billingPlanItems"
+            :loading="billingPlansLoading"
+            label="Новый тариф"
+            variant="outlined"
+            density="compact"
+            class="mb-3"
+          />
+
+          <v-select
+            v-model="assignPlanForm.term"
+            :items="assignTermOptions"
+            label="Срок действия"
+            variant="outlined"
+            density="compact"
+            class="mb-3"
+          />
+
+          <v-text-field
+            v-if="assignPlanForm.term === 'custom_date'"
+            v-model="assignPlanForm.ends_at"
+            type="date"
+            label="Дата окончания"
+            variant="outlined"
+            density="compact"
+            class="mb-3"
+          />
+
+          <v-textarea
+            v-model="assignPlanForm.reason"
+            label="Комментарий администратора"
+            placeholder="Тестовый доступ на период MVP"
+            variant="outlined"
+            density="compact"
+            rows="3"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showAssignPlanDialog = false">Отмена</v-btn>
+          <v-btn color="primary" variant="flat" :loading="assignPlanLoading" :disabled="!assignPlanForm.plan_code || (assignPlanForm.term === 'custom_date' && !assignPlanForm.ends_at)" @click="confirmAssignPlan">
+            Назначить тариф
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Snackbar -->
     <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="4000" location="bottom right">
       {{ snackbarText }}
@@ -528,10 +710,16 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '@/api/axios'
 import AdminUsersLlmStats from './AdminUsersLlmStats.vue'
 import { useAuthStore } from '@/stores/auth'
 import TableToolbar from '@/components/layout/TableToolbar.vue'
+import {
+  assignAdminBillingUserSubscription,
+  getAdminBillingPlans,
+  type AssignBillingSubscriptionPayload,
+} from '@/api/adminBilling'
 
 // ----- Types -----
 interface UserItem {
@@ -553,6 +741,7 @@ interface UserItem {
   registration_completed_at: string | null
   deleted_at: string | null
   ai_requests_count: number
+  billing?: BillingSummary
 }
 
 interface UserDetail {
@@ -563,6 +752,47 @@ interface UserDetail {
   settings: any
   social_accounts: any[]
   tokens_count: number
+  billing?: BillingDetail
+}
+
+interface BillingSummary {
+  plan_code?: string | null
+  plan_name?: string | null
+  subscription_status?: string | null
+  current_period_end?: string | null
+  source?: string | null
+  gate_events_count?: number
+  would_block_events_count?: number
+}
+
+interface BillingDetail {
+  subscription: {
+    id: number
+    plan_code: string
+    plan_name?: string | null
+    status: string
+    source?: string | null
+    current_period_start?: string | null
+    current_period_end?: string | null
+  } | null
+  effective_plan_code: string
+  gate_stats: {
+    total_events: number
+    current_month_events: number
+    last_7_days_events: number
+    last_event_at?: string | null
+    top_actions: Array<{ action: string; count: number }>
+  }
+  history: Array<{
+    id: number
+    event_type: string
+    old_plan_code?: string | null
+    new_plan_code?: string | null
+    new_period_end?: string | null
+    reason?: string | null
+    created_at?: string | null
+    admin_user?: { id: number; name?: string | null; email?: string | null } | null
+  }>
 }
 
 interface Pagination {
@@ -582,6 +812,7 @@ interface Metrics {
 
 // ----- State -----
 const authStore = useAuthStore()
+const router = useRouter()
 const currentUserId = computed(() => authStore.user?.id)
 
 const loading = ref(false)
@@ -625,6 +856,16 @@ const showRoleDialog = ref(false)
 const newRole = ref('user')
 const showBulkActionDialog = ref(false)
 const bulkAction = ref<string | null>(null)
+const showAssignPlanDialog = ref(false)
+const billingPlansLoading = ref(false)
+const billingPlans = ref<any[]>([])
+const assignPlanLoading = ref(false)
+const assignPlanForm = ref({
+  plan_code: '',
+  term: 'forever',
+  ends_at: '',
+  reason: '',
+})
 
 // Snackbar
 const snackbar = ref(false)
@@ -649,11 +890,25 @@ const bulkActionOptions = [
   { title: 'Удалить (soft)', value: 'soft_delete' },
 ]
 
+const assignTermOptions = [
+  { title: 'Бессрочно', value: 'forever' },
+  { title: '7 дней', value: '7' },
+  { title: '14 дней', value: '14' },
+  { title: '30 дней', value: '30' },
+  { title: '60 дней', value: '60' },
+  { title: '90 дней', value: '90' },
+  { title: 'Указать дату вручную', value: 'custom_date' },
+]
+
 const headers = [
   { title: 'ID', key: 'id', sortable: true, width: 70 },
   { title: 'Пользователь', key: 'name', sortable: true },
   { title: 'Роль', key: 'role', sortable: false, width: 130 },
   { title: 'Статус', key: 'auth_status', sortable: false, width: 140 },
+  { title: 'Тариф', key: 'billing_plan', sortable: false, width: 170 },
+  { title: 'Подписка', key: 'billing_status', sortable: false, width: 120 },
+  { title: 'Действует до', key: 'billing_period_end', sortable: false, width: 150 },
+  { title: 'Log-only', key: 'billing_gate_events', sortable: false, width: 110 },
   { title: 'Регистрация', key: 'created_at', sortable: true, width: 140 },
   { title: 'Последний вход', key: 'last_login_at', sortable: true, width: 140 },
   { title: 'ИИ запросов', key: 'ai_requests_count', sortable: true, width: 110 },
@@ -679,6 +934,18 @@ const aiStatCards = computed(() => {
     { label: 'Токенов', value: formatNumber(s.total_tokens || 0) },
     { label: 'Стоимость', value: `$${Number(s.total_cost || 0).toFixed(4)}` },
   ]
+})
+
+const billingPlanItems = computed(() => billingPlans.value
+  .filter((plan) => plan.is_active !== false)
+  .map((plan) => ({
+    title: `${plan.name || plan.code} (${plan.code})`,
+    value: plan.code,
+  })))
+
+const billingDetailPlanName = computed(() => {
+  const subscription = userDetail.value?.billing?.subscription
+  return subscription?.plan_name || subscription?.plan_code || userDetail.value?.billing?.effective_plan_code || '—'
 })
 
 // ----- Methods -----
@@ -732,6 +999,40 @@ function getRoleColor(role: string): string {
 function getRoleLabel(role: string): string {
   const map: Record<string, string> = { user: 'Пользователь', admin: 'Администратор', superadmin: 'Суперадмин' }
   return map[role] || role
+}
+
+function billingPlanLabel(user: UserItem): string {
+  return user.billing?.plan_name || user.billing?.plan_code || '—'
+}
+
+function billingStatusLabel(status?: string | null): string {
+  const map: Record<string, string> = {
+    active: 'Активна',
+    trialing: 'Тестовая',
+    canceled: 'Отменена',
+    replaced: 'Заменена',
+    expired: 'Истекла',
+  }
+  return status ? (map[status] || status) : 'Fallback'
+}
+
+function billingStatusColor(status?: string | null): string {
+  if (status === 'active') return 'success'
+  if (status === 'trialing') return 'info'
+  if (status === 'canceled' || status === 'expired') return 'warning'
+  if (status === 'replaced') return 'grey'
+  return 'default'
+}
+
+function billingActionLabel(action: string): string {
+  const map: Record<string, string> = {
+    'project.create': 'Создание проекта',
+    'projects.create': 'Создание проекта',
+    'pdf.generate': 'PDF',
+    'evidence.run': 'Проверка цен',
+    'chrome.capture': 'Скриншот из расширения',
+  }
+  return map[action] || action
 }
 
 const depLabels: Record<string, string> = {
@@ -828,6 +1129,96 @@ async function openUserCard(user: UserItem) {
     userDetail.value = data
   } catch (err: any) {
     notify('Ошибка загрузки карточки', 'error')
+  }
+}
+
+async function loadBillingPlansForAssignment() {
+  if (billingPlans.value.length > 0) return
+
+  billingPlansLoading.value = true
+  try {
+    const data = await getAdminBillingPlans()
+    billingPlans.value = data.data || []
+  } catch (err: any) {
+    notify(err.response?.data?.message || 'Не удалось загрузить тарифы', 'error')
+  } finally {
+    billingPlansLoading.value = false
+  }
+}
+
+async function openAssignPlanDialog(user: UserItem) {
+  actionTarget.value = user
+  assignPlanForm.value = {
+    plan_code: user.billing?.plan_code || '',
+    term: 'forever',
+    ends_at: '',
+    reason: '',
+  }
+  showAssignPlanDialog.value = true
+  await loadBillingPlansForAssignment()
+}
+
+async function openBillingStats(user: UserItem) {
+  await openUserCard(user)
+  cardTab.value = 'billing'
+}
+
+function openGateEventsForUser(user: UserItem) {
+  router.push({
+    path: '/admin/billing/gate-events',
+    query: { user_id: String(user.id) },
+  })
+}
+
+function resolveAssignPayload(): AssignBillingSubscriptionPayload {
+  const payload: AssignBillingSubscriptionPayload = {
+    plan_code: assignPlanForm.value.plan_code,
+    period: 'custom',
+    starts_at: null,
+    ends_at: null,
+    reason: assignPlanForm.value.reason || null,
+  }
+
+  if (assignPlanForm.value.term === 'forever') {
+    return payload
+  }
+
+  if (assignPlanForm.value.term === 'custom_date') {
+    payload.ends_at = assignPlanForm.value.ends_at
+      ? new Date(`${assignPlanForm.value.ends_at}T23:59:59`).toISOString()
+      : null
+    return payload
+  }
+
+  const days = Number(assignPlanForm.value.term)
+  if (Number.isFinite(days) && days > 0) {
+    const date = new Date()
+    date.setDate(date.getDate() + days)
+    payload.ends_at = date.toISOString()
+  }
+
+  return payload
+}
+
+async function confirmAssignPlan() {
+  if (!actionTarget.value || !assignPlanForm.value.plan_code) return
+
+  assignPlanLoading.value = true
+  try {
+    await assignAdminBillingUserSubscription(actionTarget.value.id, resolveAssignPayload())
+    notify('Тариф назначен')
+    showAssignPlanDialog.value = false
+    await loadUsers()
+    if (showUserCard.value && selectedUser.value?.id === actionTarget.value.id) {
+      await openUserCard(actionTarget.value)
+      cardTab.value = 'billing'
+    }
+  } catch (err: any) {
+    const errors = err.response?.data?.errors
+    const message = errors ? Object.values(errors).flat().join('; ') : err.response?.data?.message
+    notify(message || 'Не удалось назначить тариф', 'error')
+  } finally {
+    assignPlanLoading.value = false
   }
 }
 

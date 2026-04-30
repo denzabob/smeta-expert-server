@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Exceptions\BillingCheckoutException;
 use App\Services\Billing\UserCheckoutService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,11 @@ class BillingCheckoutController extends Controller
                 $request->user(),
                 $validated['plan_code'],
             );
+        } catch (BillingCheckoutException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code' => $e->errorCode(),
+            ], $e->statusCode());
         } catch (RuntimeException $e) {
             if ($e instanceof HttpExceptionInterface) {
                 throw $e;

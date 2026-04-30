@@ -4,8 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdminAuditLog;
+use App\Models\BillingGateEvent;
+use App\Models\BillingSubscription;
+use App\Models\BillingSubscriptionEvent;
 use App\Models\User;
 use App\Services\Admin\AdminUserService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -77,6 +81,7 @@ class AdminUsersController extends Controller
         $paginated = $query->paginate($perPage);
 
         // Make auth_status visible (it's $hidden on User model)
+        $this->attachBillingSummaries($paginated->getCollection());
         $paginated->getCollection()->each(fn ($u) => $u->makeVisible(['auth_status']));
 
         // Get summary metrics
@@ -153,6 +158,7 @@ class AdminUsersController extends Controller
             'settings' => $settings,
             'social_accounts' => $socialAccounts,
             'tokens_count' => $tokensCount,
+            'billing' => $this->billingDetail($user),
         ]);
     }
 
@@ -461,6 +467,155 @@ class AdminUsersController extends Controller
             'blocked' => User::where('auth_status', 'blocked')->count(),
             'deleted' => User::onlyTrashed()->count(),
             'total_ai_requests' => DB::table('ai_logs')->count(),
+        ];
+    }
+
+    private function attachBillingSummaries($users): void
+    {
+        $userIds = $users->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        if ($userIds === []) {
+            return;
+        }
+
+        $subscriptions = BillingSubscription::query()
+            ->with('plan:id,code,name,metadata_json')
+            ->whereIn('user_id', $userIds)
+            ->where('status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('current_period_end')
+                    ->orWhere('current_period_end', '>=', now());
+            })
+            ->get()
+            ->groupBy('user_id')
+            ->map(fn ($items) => $items
+                ->sortByDesc(fn (BillingSubscription $subscription) => [
+                    $subscription->current_period_end?->getTimestamp() ?? PHP_INT_MAX,
+                    $subscription->id,
+                ])
+                ->first());
+
+        $gateCounts = BillingGateEvent::query()
+            ->whereIn('user_id', array_filter($userIds, fn ($id) => $id !== 1))
+            ->select([
+                'user_id',
+                DB::raw('COUNT(*) as total_count'),
+                DB::raw('SUM(CASE WHEN would_block THEN 1 ELSE 0 END) as would_block_count'),
+            ])
+            ->groupBy('user_id')
+            ->get()
+            ->keyBy('user_id');
+
+        foreach ($users as $user) {
+            $subscription = $subscriptions->get($user->id);
+            $gateCount = $gateCounts->get($user->id);
+
+            $user->setAttribute('billing', [
+                'plan_code' => $subscription?->plan_code ?? config('billing.default_plan', 'legacy_unlimited'),
+                'plan_name' => $subscription?->plan?->name,
+                'subscription_status' => $subscription?->status,
+                'current_period_end' => $subscription?->current_period_end?->toDateTimeString(),
+                'source' => $subscription?->source,
+                'gate_events_count' => (int) ($gateCount?->total_count ?? 0),
+                'would_block_events_count' => (int) ($gateCount?->would_block_count ?? 0),
+            ]);
+        }
+    }
+
+    private function billingDetail(User $user): array
+    {
+        $subscription = $this->activeBillingSubscription($user);
+        $history = BillingSubscriptionEvent::query()
+            ->with('adminUser:id,name,email')
+            ->where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(20)
+            ->get()
+            ->map(fn (BillingSubscriptionEvent $event) => [
+                'id' => $event->id,
+                'event_type' => $event->event_type,
+                'old_plan_code' => $event->old_plan_code,
+                'new_plan_code' => $event->new_plan_code,
+                'old_status' => $event->old_status,
+                'new_status' => $event->new_status,
+                'old_period_end' => $event->old_period_end?->toDateTimeString(),
+                'new_period_end' => $event->new_period_end?->toDateTimeString(),
+                'reason' => $event->reason,
+                'created_at' => $event->created_at?->toDateTimeString(),
+                'admin_user' => $event->adminUser ? [
+                    'id' => $event->adminUser->id,
+                    'name' => $event->adminUser->name,
+                    'email' => $event->adminUser->email,
+                ] : null,
+            ])
+            ->values();
+
+        return [
+            'subscription' => $subscription ? [
+                'id' => $subscription->id,
+                'plan_code' => $subscription->plan_code,
+                'plan_name' => $subscription->plan?->name,
+                'status' => $subscription->status,
+                'source' => $subscription->source,
+                'current_period_start' => $subscription->current_period_start?->toDateTimeString(),
+                'current_period_end' => $subscription->current_period_end?->toDateTimeString(),
+            ] : null,
+            'effective_plan_code' => $subscription?->plan_code ?? config('billing.default_plan', 'legacy_unlimited'),
+            'gate_stats' => $this->gateStatsForUser($user),
+            'history' => $history,
+        ];
+    }
+
+    private function activeBillingSubscription(User $user): ?BillingSubscription
+    {
+        return BillingSubscription::query()
+            ->with('plan:id,code,name,metadata_json')
+            ->where('user_id', $user->id)
+            ->where('status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('current_period_end')
+                    ->orWhere('current_period_end', '>=', now());
+            })
+            ->orderByRaw('current_period_end IS NULL DESC')
+            ->orderByDesc('current_period_end')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function gateStatsForUser(User $user): array
+    {
+        if ((int) $user->id === 1) {
+            return [
+                'total_events' => 0,
+                'current_month_events' => 0,
+                'last_7_days_events' => 0,
+                'last_event_at' => null,
+                'top_actions' => [],
+            ];
+        }
+
+        $baseQuery = BillingGateEvent::query()->where('user_id', $user->id);
+        $eventsForActions = (clone $baseQuery)
+            ->latest()
+            ->limit(500)
+            ->get(['context_json']);
+
+        $topActions = $eventsForActions
+            ->map(fn (BillingGateEvent $event) => $event->context_json['action'] ?? $event->context_json['metric_code'] ?? $event->context_json['feature_code'] ?? null)
+            ->filter()
+            ->countBy()
+            ->sortDesc()
+            ->take(10)
+            ->map(fn ($count, $action) => ['action' => $action, 'count' => (int) $count])
+            ->values();
+
+        return [
+            'total_events' => (clone $baseQuery)->count(),
+            'current_month_events' => (clone $baseQuery)->where('created_at', '>=', Carbon::now()->startOfMonth())->count(),
+            'last_7_days_events' => (clone $baseQuery)->where('created_at', '>=', Carbon::now()->subDays(7))->count(),
+            'last_event_at' => (clone $baseQuery)->max('created_at'),
+            'top_actions' => $topActions,
         ];
     }
 

@@ -2,9 +2,11 @@
 
 namespace App\Services\Billing;
 
+use App\Exceptions\BillingCheckoutException;
 use App\Models\BillingInvoice;
 use App\Models\BillingPayment;
 use App\Models\BillingPlan;
+use App\Models\BillingSubscription;
 use App\Models\User;
 use App\Services\Billing\Payments\BillingPaymentService;
 use App\Services\Billing\Payments\PaymentProviderManager;
@@ -31,9 +33,7 @@ class UserCheckoutService
         $providerCode = (string) config('billing.payments.default_provider', config('billing.provider', 'yookassa'));
 
         if ($amountMinor <= 0) {
-            throw ValidationException::withMessages([
-                'plan_code' => 'Этот тариф пока нельзя оплатить.',
-            ]);
+            throw new BillingCheckoutException('Бесплатный тариф не требует оплаты.', 'free_plan');
         }
 
         if ($currency !== 'RUB') {
@@ -47,6 +47,7 @@ class UserCheckoutService
         }
 
         $this->providerManager->assertEnabled($providerCode);
+        $changeContext = $this->validatePlanChange($user, $plan, $amountMinor);
 
         $existingPayment = $this->pendingCheckoutPayment($user, $plan->code);
 
@@ -58,9 +59,12 @@ class UserCheckoutService
             'billing_period' => $metadata['billing_period'] ?? 'month',
             'description' => "PrismCore: тариф {$plan->name}",
             'source' => 'user_checkout',
+            'metadata' => $changeContext,
         ]);
 
-        $payment = $this->paymentService->createPaymentForInvoice($invoice, $providerCode);
+        $payment = $this->paymentService->createPaymentForInvoice($invoice, $providerCode, [
+            'return_url' => $this->returnUrlForInvoice($invoice),
+        ]);
 
         return $this->checkoutPayload($payment);
     }
@@ -102,6 +106,72 @@ class UserCheckoutService
             && ! (bool) Arr::get($metadata, 'internal', false);
     }
 
+    private function validatePlanChange(User $user, BillingPlan $newPlan, int $newPriceMinor): array
+    {
+        $subscription = $this->activeSubscription($user);
+
+        if (! $subscription) {
+            return [
+                'checkout_type' => 'new_subscription',
+            ];
+        }
+
+        $subscription->loadMissing('plan');
+        $currentPlan = $subscription->plan ?: BillingPlan::query()
+            ->where('code', $subscription->plan_code)
+            ->first();
+
+        if (! $currentPlan) {
+            return [
+                'checkout_type' => 'new_subscription',
+            ];
+        }
+
+        $currentPriceMinor = $this->priceMinor($currentPlan->metadata_json ?? []);
+
+        if ($currentPlan->code === $newPlan->code && $currentPriceMinor > 0) {
+            throw new BillingCheckoutException('Вы уже используете этот тариф.', 'current_plan');
+        }
+
+        if ($currentPriceMinor <= 0) {
+            return [
+                'checkout_type' => 'new_subscription',
+            ];
+        }
+
+        if ($newPriceMinor > $currentPriceMinor) {
+            return [
+                'checkout_type' => 'upgrade',
+                'previous_subscription_id' => $subscription->id,
+                'previous_plan_code' => $currentPlan->code,
+            ];
+        }
+
+        if ($newPriceMinor < $currentPriceMinor) {
+            throw new BillingCheckoutException(
+                'Смена на этот тариф будет доступна после окончания текущего периода.',
+                'downgrade_not_available',
+            );
+        }
+
+        throw new BillingCheckoutException('Смена на этот тариф пока недоступна.', 'plan_change_not_available');
+    }
+
+    private function activeSubscription(User $user): ?BillingSubscription
+    {
+        return BillingSubscription::query()
+            ->with('plan')
+            ->where('user_id', $user->id)
+            ->whereIn('status', ['active', 'trialing'])
+            ->where(function ($query) {
+                $query->whereNull('current_period_end')
+                    ->orWhere('current_period_end', '>=', now());
+            })
+            ->orderByDesc('current_period_end')
+            ->orderByDesc('id')
+            ->first();
+    }
+
     private function pendingCheckoutPayment(User $user, string $planCode): ?BillingPayment
     {
         return BillingPayment::query()
@@ -132,6 +202,23 @@ class UserCheckoutService
             'payment_id' => $payment->id,
             'confirmation_url' => $payment->confirmation_url,
         ];
+    }
+
+    private function returnUrlForInvoice(BillingInvoice $invoice): string
+    {
+        $configuredUrl = (string) config('billing.payments.providers.yookassa.return_url', '');
+        $frontendUrl = rtrim((string) (config('app.frontend_url') ?: config('app.url')), '/');
+        $baseUrl = $configuredUrl !== '' ? $configuredUrl : "{$frontendUrl}/billing/payment-result";
+
+        if (str_contains($baseUrl, '/admin/') || ! str_contains($baseUrl, '/billing/payment-result')) {
+            $baseUrl = "{$frontendUrl}/billing/payment-result";
+        }
+
+        $separator = str_contains($baseUrl, '?') ? '&' : '?';
+
+        return $baseUrl . $separator . http_build_query([
+            'invoice_id' => $invoice->id,
+        ]);
     }
 
     private function priceMinor(array $metadata): int

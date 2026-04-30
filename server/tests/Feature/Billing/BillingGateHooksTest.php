@@ -28,7 +28,7 @@ class BillingGateHooksTest extends TestCase
     {
         $user = User::factory()->create();
         $this->subscribeToPlan($user, 'limited_projects', [
-            BillingCodes::CAP_PROJECTS_MAX_ACTIVE => 1,
+            BillingCodes::CAP_PROJECTS_MAX_OWNED => 1,
         ]);
 
         $this->makeProject($user, 'GATE-EXISTING-');
@@ -44,13 +44,13 @@ class BillingGateHooksTest extends TestCase
 
         $event = BillingGateEvent::query()
             ->where('user_id', $user->id)
-            ->where('capability', BillingCodes::CAP_PROJECTS_MAX_ACTIVE)
+            ->where('capability', BillingCodes::CAP_PROJECTS_MAX_OWNED)
             ->first();
 
         $this->assertNotNull($event);
         $this->assertTrue($event->would_block);
         $this->assertFalse($event->enforced);
-        $this->assertSame('project.create', $event->context_json['action'] ?? null);
+        $this->assertSame('projects.create', $event->context_json['action'] ?? null);
     }
 
     public function test_project_create_continues_when_gate_service_throws(): void

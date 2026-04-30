@@ -131,13 +131,12 @@ class UserBillingPreviewService
 
         $items = [
             [
-                'code' => 'projects.active',
-                'label' => 'Активные проекты',
+                'code' => 'projects.owned',
+                'label' => 'Проекты в аккаунте',
                 'used' => Project::query()
                     ->where('user_id', $user->id)
-                    ->whereNull('archived_at')
                     ->count(),
-                'limit' => $this->limitValue($limits, BillingCodes::CAP_PROJECTS_MAX_ACTIVE),
+                'limit' => $this->projectLimitValue($limits),
                 'unit' => 'шт.',
                 'period' => 'current',
             ],
@@ -248,7 +247,7 @@ class UserBillingPreviewService
             && ! (bool) ($metadata['internal'] ?? false)
             && $plan->code !== 'legacy_unlimited'
             && is_numeric($priceMinor)
-            && (int) $priceMinor > 0
+            && (int) $priceMinor >= 0
             && $currency === 'RUB';
     }
 
@@ -259,7 +258,9 @@ class UserBillingPreviewService
                 'code' => $definition['code'],
                 'name' => $definition['label'],
                 'label' => $definition['label'],
-                'limit' => $this->limitValue($limits, $definition['capability']),
+                'limit' => $definition['capability'] === BillingCodes::CAP_PROJECTS_MAX_OWNED
+                    ? $this->projectLimitValue($limits)
+                    : $this->limitValue($limits, $definition['capability']),
                 'unit' => $definition['unit'],
             ])
             ->values()
@@ -269,7 +270,7 @@ class UserBillingPreviewService
     private function limitDefinitions(): array
     {
         return [
-            ['code' => 'projects.active', 'capability' => BillingCodes::CAP_PROJECTS_MAX_ACTIVE, 'label' => 'Активные проекты', 'unit' => 'шт.'],
+            ['code' => 'projects.owned', 'capability' => BillingCodes::CAP_PROJECTS_MAX_OWNED, 'label' => 'Проекты в аккаунте', 'unit' => 'шт.'],
             ['code' => 'pdf.generated', 'capability' => BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT, 'label' => 'PDF-документы', 'unit' => 'шт.'],
             ['code' => 'evidence.runs', 'capability' => BillingCodes::CAP_EVIDENCE_RUNS_MONTHLY_LIMIT, 'label' => 'Проверки цен', 'unit' => 'шт.'],
             ['code' => 'chrome.captures', 'capability' => BillingCodes::CAP_CHROME_CAPTURES_MONTHLY_LIMIT, 'label' => 'Скриншоты из расширения', 'unit' => 'шт.'],
@@ -284,6 +285,15 @@ class UserBillingPreviewService
         }
 
         return (int) $limits[$capability];
+    }
+
+    private function projectLimitValue(array $limits): ?int
+    {
+        if (array_key_exists(BillingCodes::CAP_PROJECTS_MAX_OWNED, $limits)) {
+            return $this->limitValue($limits, BillingCodes::CAP_PROJECTS_MAX_OWNED);
+        }
+
+        return $this->limitValue($limits, BillingCodes::CAP_PROJECTS_MAX_ACTIVE);
     }
 
     private function sumMonthlyUsage(User $user, array $metricCodes): int

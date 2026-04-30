@@ -116,7 +116,7 @@ class BillingMeTest extends TestCase
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/billing/me')->assertOk();
 
         $this->assertSame('own_plan', $response->json('current_plan.code'));
-        $this->assertSame(1, $this->usageItem($response->json('usage'), 'projects.active')['used']);
+        $this->assertSame(1, $this->usageItem($response->json('usage'), 'projects.owned')['used']);
         $this->assertSame(2, $this->usageItem($response->json('usage'), 'pdf.generated')['used']);
         $this->assertSame(20, $this->usageItem($response->json('usage'), 'pdf.generated')['limit']);
     }
@@ -187,9 +187,48 @@ class BillingMeTest extends TestCase
             ->assertOk()
             ->assertJsonPath('plans.0.code', 'public_plan')
             ->assertJsonPath('plans.0.price_minor', 99000)
-            ->assertJsonPath('plans.0.period', 'month');
+            ->assertJsonPath('plans.0.period', 'month')
+            ->assertJsonPath('plans.1.code', 'free_plan')
+            ->assertJsonPath('plans.1.price_minor', 0);
 
-        $this->assertSame(['public_plan'], collect($response->json('plans'))->pluck('code')->all());
+        $this->assertSame(['public_plan', 'free_plan'], collect($response->json('plans'))->pluck('code')->all());
+    }
+
+    public function test_expired_paid_subscription_falls_back_to_default_free_plan(): void
+    {
+        config(['billing.default_plan' => 'free']);
+
+        $user = User::factory()->create();
+        $free = $this->makePlan('free', 'Free', [
+            'hidden' => false,
+            'price_minor' => 0,
+            'currency' => 'RUB',
+            'billing_period' => 'month',
+        ]);
+        $paid = $this->makePlan('pro_month', 'Pro Month', [
+            'hidden' => false,
+            'price_minor' => 99000,
+            'currency' => 'RUB',
+            'billing_period' => 'month',
+        ]);
+
+        BillingSubscription::query()->create([
+            'user_id' => $user->id,
+            'plan_id' => $paid->id,
+            'plan_code' => 'pro_month',
+            'status' => 'active',
+            'source' => 'payment',
+            'current_period_start' => now()->subMonths(2),
+            'current_period_end' => now()->subDay(),
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/billing/me')
+            ->assertOk()
+            ->assertJsonPath('current_plan.code', $free->code)
+            ->assertJsonPath('current_plan.name', 'Free')
+            ->assertJsonPath('current_plan.price', 0)
+            ->assertJsonPath('subscription.status', 'active');
     }
 
     public function test_public_plans_endpoint_hidden_when_user_billing_ui_disabled(): void
@@ -243,8 +282,8 @@ class BillingMeTest extends TestCase
             ->assertJsonPath('public_plans.0.period', 'month')
             ->assertJsonPath('public_plans.0.is_current', true)
             ->assertJsonPath('public_plans.0.is_available', false)
-            ->assertJsonPath('public_plans.0.limits.0.label', 'Активные проекты')
-            ->assertJsonPath('public_plans.0.limits.0.name', 'Активные проекты')
+            ->assertJsonPath('public_plans.0.limits.0.label', 'Проекты в аккаунте')
+            ->assertJsonPath('public_plans.0.limits.0.name', 'Проекты в аккаунте')
             ->assertJsonPath('public_plans.0.limits.2.label', 'Проверки цен')
             ->assertJsonPath('public_plans.0.limits.3.label', 'Скриншоты из расширения')
             ->assertJsonPath('public_plans.0.limits.4.label', 'Хранилище файлов');

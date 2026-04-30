@@ -112,12 +112,46 @@
             :plan="plan"
             :checkout-enabled="billingCapabilities.checkoutEnabled"
             :payments-enabled="billingCapabilities.paymentsEnabled"
+            :current-plan-price="preview.current_plan.price ?? preview.current_plan.price_minor ?? null"
+            :current-plan-code="preview.current_plan.code"
             :loading="checkoutLoadingPlanCode === plan.code"
-            @checkout="startCheckout"
+            @checkout="openCheckoutConfirm"
           />
         </div>
       </SectionCard>
     </template>
+
+    <v-dialog v-model="checkoutConfirmDialog" max-width="520">
+      <v-card class="checkout-confirm-card">
+        <v-card-title>Переход к оплате</v-card-title>
+        <v-card-text>
+          <p class="checkout-confirm-card__text">
+            Вы переходите к оплате тарифа “{{ selectedCheckoutPlanName }}”.
+          </p>
+          <p class="checkout-confirm-card__text">
+            {{ checkoutConfirmDescription }}
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            variant="text"
+            :disabled="checkoutLoadingPlanCode !== null"
+            @click="closeCheckoutConfirm"
+          >
+            Отмена
+          </v-btn>
+          <v-btn
+            color="primary"
+            :loading="checkoutLoadingPlanCode !== null"
+            :disabled="!selectedCheckoutPlan || checkoutLoadingPlanCode !== null"
+            @click="confirmCheckout"
+          >
+            Перейти к оплате
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </PageContainer>
 </template>
 
@@ -147,16 +181,18 @@ const preview = ref<BillingPreview | null>(null)
 const billingCapabilities = useBillingCapabilitiesStore()
 const route = useRoute()
 const checkoutLoadingPlanCode = ref<string | null>(null)
+const checkoutConfirmDialog = ref(false)
+const selectedCheckoutPlan = ref<BillingPreviewPlan | null>(null)
 const paymentReturnNotice = ref<{ type: 'info' | 'success' | 'warning' | 'error', message: string } | null>(null)
 
 const lastPaymentStorageKey = 'prismcore.billing.lastPaymentId'
 
 const usageDefinitions = [
   {
-    code: 'projects.active',
-    label: 'Активные проекты',
+    code: 'projects.owned',
+    label: 'Проекты в аккаунте',
     unit: 'шт.',
-    description: 'Текущие проекты, которые не перенесены в архив.',
+    description: 'Все проекты в аккаунте, включая архивные.',
   },
   {
     code: 'pdf.generated',
@@ -221,6 +257,18 @@ const publicPlansSubtitle = computed(() => {
 
   return 'Тарифы показаны для ознакомления. Оплата пока отключена.'
 })
+const selectedCheckoutPlanName = computed(() => selectedCheckoutPlan.value?.name || 'выбранного тарифа')
+const checkoutConfirmDescription = computed(() => {
+  if (!selectedCheckoutPlan.value) {
+    return 'После успешной оплаты тариф будет активирован автоматически.'
+  }
+
+  if (isUpgradePlan(selectedCheckoutPlan.value)) {
+    return 'После оплаты новый тариф начнёт действовать сразу. Текущий тариф будет заменён.'
+  }
+
+  return 'После успешной оплаты тариф будет активирован автоматически. Статус оплаты можно будет увидеть после возврата в сервис.'
+})
 
 const hasSubscriptionPeriod = computed(() => {
   const subscription = preview.value?.subscription
@@ -241,6 +289,9 @@ const usageRows = computed(() => {
 
   return usageDefinitions.map((definition) => {
     const item = items.find((usageItem) => usageItem.code === definition.code)
+      || (definition.code === 'projects.owned'
+        ? items.find((usageItem) => usageItem.code === 'projects.active')
+        : undefined)
 
     return {
       ...definition,
@@ -281,10 +332,66 @@ async function loadBilling() {
   }
 }
 
-async function startCheckout(plan: BillingPreviewPlan) {
-  if (!billingCapabilities.checkoutEnabled || !billingCapabilities.paymentsEnabled || checkoutLoadingPlanCode.value) {
+function openCheckoutConfirm(plan: BillingPreviewPlan) {
+  if (!canStartCheckout(plan)) {
     return
   }
+
+  selectedCheckoutPlan.value = plan
+  checkoutConfirmDialog.value = true
+}
+
+function closeCheckoutConfirm() {
+  if (checkoutLoadingPlanCode.value) return
+
+  checkoutConfirmDialog.value = false
+  selectedCheckoutPlan.value = null
+}
+
+async function confirmCheckout() {
+  if (!selectedCheckoutPlan.value) return
+
+  await startCheckout(selectedCheckoutPlan.value)
+}
+
+function canStartCheckout(plan: BillingPreviewPlan) {
+  if (!billingCapabilities.checkoutEnabled || !billingCapabilities.paymentsEnabled || checkoutLoadingPlanCode.value) {
+    return false
+  }
+
+  const priceMinor = plan.price_minor ?? plan.price
+  if (plan.is_current || Number(priceMinor ?? 0) <= 0 || isDowngradePlan(plan) || isLateralPlanChange(plan)) {
+    return false
+  }
+
+  return true
+}
+
+function currentPlanPriceMinor() {
+  return Number((preview.value?.current_plan.price ?? preview.value?.current_plan.price_minor) ?? 0)
+}
+
+function planPriceMinor(plan: BillingPreviewPlan) {
+  return Number((plan.price_minor ?? plan.price) ?? 0)
+}
+
+function isUpgradePlan(plan: BillingPreviewPlan) {
+  return currentPlanPriceMinor() > 0 && planPriceMinor(plan) > currentPlanPriceMinor()
+}
+
+function isDowngradePlan(plan: BillingPreviewPlan) {
+  return currentPlanPriceMinor() > 0 && planPriceMinor(plan) > 0 && planPriceMinor(plan) < currentPlanPriceMinor()
+}
+
+function isLateralPlanChange(plan: BillingPreviewPlan) {
+  return currentPlanPriceMinor() > 0
+    && planPriceMinor(plan) > 0
+    && preview.value?.current_plan.code !== plan.code
+    && planPriceMinor(plan) === currentPlanPriceMinor()
+}
+
+async function startCheckout(plan: BillingPreviewPlan) {
+  if (!canStartCheckout(plan)) return
 
   checkoutLoadingPlanCode.value = plan.code
   error.value = ''
@@ -301,11 +408,46 @@ async function startCheckout(plan: BillingPreviewPlan) {
   } catch (err: any) {
     paymentReturnNotice.value = {
       type: 'error',
-      message: err?.response?.data?.message || 'Не удалось создать оплату. Попробуйте позже.',
+      message: checkoutErrorMessage(err),
     }
   } finally {
     checkoutLoadingPlanCode.value = null
+    checkoutConfirmDialog.value = false
+    selectedCheckoutPlan.value = null
   }
+}
+
+function checkoutErrorMessage(err: any) {
+  const status = err?.response?.status
+  const message = String(err?.response?.data?.message || '')
+  const planErrors = err?.response?.data?.errors?.plan_code
+  const code = err?.response?.data?.code
+
+  if (Array.isArray(planErrors) && planErrors[0]) {
+    return String(planErrors[0])
+  }
+
+  if (code === 'current_plan') return 'Вы уже используете этот тариф.'
+  if (code === 'downgrade_not_available') return 'Смена на этот тариф будет доступна после окончания текущего периода.'
+  if (code === 'free_plan') return 'Бесплатный тариф не требует оплаты.'
+
+  if (status === 403 || message.includes('недоступ')) {
+    return 'Оплата временно отключена.'
+  }
+
+  if (status === 404) {
+    return 'Этот тариф сейчас недоступен.'
+  }
+
+  if (status === 409) {
+    return 'Вы уже используете этот тариф.'
+  }
+
+  if (message && !/exception|stack|provider|invoice|webhook/i.test(message)) {
+    return message
+  }
+
+  return 'Не удалось создать оплату. Попробуйте ещё раз.'
 }
 
 async function handlePaymentReturn() {
@@ -485,6 +627,20 @@ function normalizeLimit(value: BillingPreviewUsageItem['limit']) {
   grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 360px));
   gap: 16px;
   align-items: stretch;
+}
+
+.checkout-confirm-card {
+  border-radius: 18px;
+}
+
+.checkout-confirm-card__text {
+  margin: 0 0 10px;
+  color: rgb(var(--v-theme-on-surface-variant));
+  line-height: 1.5;
+}
+
+.checkout-confirm-card__text:last-child {
+  margin-bottom: 0;
 }
 
 @media (max-width: 960px) {
