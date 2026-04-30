@@ -36,6 +36,17 @@ class UserBillingPreviewService
         ];
     }
 
+    public function publicPlans(User $user): array
+    {
+        $subscription = $this->activeSubscription($user);
+        $plan = $this->resolvePlan($subscription);
+        $currentPlanCode = $subscription?->plan_code ?: $plan?->code ?: (string) config('billing.default_plan', 'legacy_unlimited');
+
+        return [
+            'plans' => $this->publicPlansPayload($currentPlanCode),
+        ];
+    }
+
     private function activeSubscription(User $user): ?BillingSubscription
     {
         return BillingSubscription::query()
@@ -228,11 +239,17 @@ class UserBillingPreviewService
     private function isPublicPlan(BillingPlan $plan): bool
     {
         $metadata = $plan->metadata_json ?? [];
+        $priceMinor = $metadata['price_minor'] ?? null;
+        $currency = strtoupper((string) ($metadata['currency'] ?? ''));
 
-        return ! (bool) ($metadata['hidden'] ?? false)
+        return ! (bool) ($metadata['hidden'] ?? true)
             && ! (bool) ($metadata['sandbox'] ?? false)
             && ! (bool) ($metadata['system'] ?? false)
-            && $plan->code !== 'legacy_unlimited';
+            && ! (bool) ($metadata['internal'] ?? false)
+            && $plan->code !== 'legacy_unlimited'
+            && is_numeric($priceMinor)
+            && (int) $priceMinor > 0
+            && $currency === 'RUB';
     }
 
     private function publicLimits(array $limits): array

@@ -45,6 +45,7 @@ class AdminBillingPlansController extends Controller
         $validated = $this->validatePlanPayload($request, create: true);
         $metadata = $this->metadataFromValidated($validated);
         $this->validateProtectedMetadata($validated['code'], $metadata, true);
+        $this->validatePublicPlanMetadata($validated['code'], $validated['name'], $metadata);
 
         $plan = BillingPlan::query()->create([
             'code' => $validated['code'],
@@ -83,6 +84,7 @@ class AdminBillingPlansController extends Controller
 
         $metadata = $this->metadataFromValidated($validated, $plan->metadata_json ?? []);
         $this->validateProtectedMetadata($plan->code, $metadata, (bool) ($validated['is_active'] ?? $plan->is_active));
+        $this->validatePublicPlanMetadata($plan->code, $validated['name'] ?? $plan->name, $metadata);
 
         $plan->fill([
             'name' => $validated['name'] ?? $plan->name,
@@ -237,6 +239,34 @@ class AdminBillingPlansController extends Controller
         }
     }
 
+    private function validatePublicPlanMetadata(string $code, string $name, array $metadata): void
+    {
+        $isPublicCandidate = ! (bool) ($metadata['hidden'] ?? false)
+            && ! (bool) ($metadata['system'] ?? false)
+            && ! (bool) ($metadata['sandbox'] ?? false)
+            && $code !== 'legacy_unlimited';
+
+        if (! $isPublicCandidate) {
+            return;
+        }
+
+        if (trim($name) === '') {
+            abort(422, 'Public plan must have a name.');
+        }
+
+        if (! array_key_exists('price_minor', $metadata) || ! is_numeric($metadata['price_minor'])) {
+            abort(422, 'Public plan must have a price.');
+        }
+
+        if (($metadata['currency'] ?? null) !== 'RUB') {
+            abort(422, 'Public plan must have RUB currency.');
+        }
+
+        if (! in_array($metadata['billing_period'] ?? null, self::PERIODS, true)) {
+            abort(422, 'Public plan must have a billing period.');
+        }
+    }
+
     private function planPayload(BillingPlan $plan): array
     {
         return [
@@ -244,6 +274,7 @@ class AdminBillingPlansController extends Controller
             'code' => $plan->code,
             'name' => $plan->name,
             'is_active' => (bool) $plan->is_active,
+            'is_public' => $plan->is_active && ! (bool) (($plan->metadata_json ?? [])['hidden'] ?? false),
             'metadata_json' => $this->normalizedPayloadMetadata($plan),
             'created_at' => $plan->created_at?->toDateTimeString(),
             'updated_at' => $plan->updated_at?->toDateTimeString(),

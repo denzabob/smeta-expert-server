@@ -291,16 +291,16 @@
           {{ planMetadataValue(item, 'billing_period') || '—' }}
         </template>
         <template #item.is_active="{ item }">
-          <StatusChip :status="item.is_active ? 'active' : 'inactive'" :label="item.is_active ? 'Active' : 'Inactive'" />
+          <StatusChip :status="item.is_active ? 'active' : 'inactive'" :label="item.is_active ? 'Активен' : 'Выключен'" />
         </template>
         <template #item.public="{ item }">
           <StatusChip :color="planPublic(item) ? 'success' : 'grey'" :label="planPublic(item) ? 'Публичный' : 'Скрыт'" />
         </template>
         <template #item.system="{ item }">
-          <StatusChip :color="planFlag(item, 'system') ? 'error' : 'grey'" :label="planFlag(item, 'system') ? 'System' : 'No'" />
+          <StatusChip :color="planFlag(item, 'system') ? 'error' : 'grey'" :label="planFlag(item, 'system') ? 'Системный' : 'Нет'" />
         </template>
         <template #item.sandbox="{ item }">
-          <StatusChip :color="planFlag(item, 'sandbox') ? 'info' : 'grey'" :label="planFlag(item, 'sandbox') ? 'Sandbox' : 'No'" />
+          <StatusChip :color="planFlag(item, 'sandbox') ? 'info' : 'grey'" :label="planFlag(item, 'sandbox') ? 'Тестовый' : 'Нет'" />
         </template>
         <template #item.limits="{ item }">
           {{ limitsSummary(item) }}
@@ -743,7 +743,7 @@
       <div class="plan-drawer__header">
         <div>
           <div class="text-subtitle-1 font-weight-medium">{{ planDrawerTitle }}</div>
-          <div class="text-caption text-medium-emphasis">Admin-only BillingPlan</div>
+          <div class="text-caption text-medium-emphasis">Административная карточка тарифа</div>
         </div>
         <v-btn icon="mdi-close" variant="text" size="small" @click="closePlanDrawer" />
       </div>
@@ -757,7 +757,7 @@
           density="compact"
           class="mb-4"
         >
-          Системный тариф защищён. Его нельзя сделать платным, отключить или ограничить.
+          Системный тестовый тариф защищён. Его нельзя сделать платным, отключить, ограничить или опубликовать как обычный платный тариф.
         </v-alert>
 
         <v-alert
@@ -775,18 +775,19 @@
             <v-col cols="12" md="6">
               <v-text-field
                 v-model="planForm.code"
-                label="Code"
+                label="Код тарифа"
                 density="compact"
                 variant="outlined"
                 :readonly="planDrawerMode !== 'create'"
                 :disabled="planDrawerMode === 'view'"
+                hint="Стабильный системный идентификатор. После создания не меняется."
                 hide-details="auto"
               />
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field
                 v-model="planForm.name"
-                label="Name"
+                label="Название"
                 density="compact"
                 variant="outlined"
                 :readonly="planDrawerMode === 'view'"
@@ -796,7 +797,7 @@
             <v-col cols="12" md="4">
               <v-text-field
                 v-model.number="planForm.price_minor"
-                label="Price, коп."
+                label="Цена, коп."
                 type="number"
                 min="0"
                 density="compact"
@@ -809,7 +810,7 @@
               <v-select
                 v-model="planForm.currency"
                 :items="currencyItems"
-                label="Currency"
+                label="Валюта"
                 density="compact"
                 variant="outlined"
                 :readonly="planDrawerMode === 'view' || protectedDangerousFieldsDisabled"
@@ -820,58 +821,65 @@
               <v-select
                 v-model="planForm.billing_period"
                 :items="periodItems"
-                label="Period"
+                label="Период"
                 density="compact"
                 variant="outlined"
                 :readonly="planDrawerMode === 'view' || protectedDangerousFieldsDisabled"
                 hide-details="auto"
               />
             </v-col>
-            <v-col cols="12" sm="6" md="3">
+            <v-col cols="12">
+              <h3 class="drawer-section-title mt-2 mb-1">Состояния тарифа</h3>
+            </v-col>
+            <v-col cols="12" md="6" class="plan-switch-col">
               <v-switch
                 v-model="planForm.is_active"
-                label="Active"
+                label="Активен"
                 color="primary"
                 density="compact"
                 :disabled="planDrawerMode === 'view' || protectedDangerousFieldsDisabled"
-                hide-details
+                hint="Выключенный тариф не используется в пользовательском списке."
+                persistent-hint
               />
             </v-col>
-            <v-col cols="12" sm="6" md="3">
+            <v-col cols="12" md="6" class="plan-switch-col">
               <v-switch
                 :model-value="!planForm.hidden"
                 label="Показывать пользователям"
                 color="primary"
                 density="compact"
-                :disabled="planDrawerMode === 'view'"
+                :disabled="planDrawerMode === 'view' || protectedDangerousFieldsDisabled"
                 @update:model-value="planForm.hidden = !$event"
-                hide-details
+                hint="Если включено, тариф появится в пользовательском разделе “Тариф и лимиты”. Оплата всё равно будет доступна только после включения checkout."
+                persistent-hint
               />
             </v-col>
-            <v-col cols="12" sm="6" md="3">
+            <v-col cols="12" md="6" class="plan-switch-col">
               <v-switch
                 v-model="planForm.system"
-                label="System"
+                label="Системный"
                 color="primary"
                 density="compact"
                 :disabled="planDrawerMode === 'view' || protectedDangerousFieldsDisabled"
-                hide-details
+                hint="Системные тарифы нужны для внутренних режимов и не предназначены для выбора пользователями."
+                persistent-hint
               />
             </v-col>
-            <v-col cols="12" sm="6" md="3">
+            <v-col cols="12" md="6" class="plan-switch-col">
               <v-switch
                 v-model="planForm.sandbox"
-                label="Sandbox"
+                label="Тестовый"
                 color="primary"
                 density="compact"
                 :disabled="planDrawerMode === 'view' || protectedDangerousFieldsDisabled"
-                hide-details
+                hint="Тестовый тариф для проверки логики без реальной продажи."
+                persistent-hint
               />
             </v-col>
             <v-col cols="12" md="4">
               <v-text-field
                 v-model.number="planForm.sort_order"
-                label="Sort order"
+                label="Порядок сортировки"
                 type="number"
                 density="compact"
                 variant="outlined"
@@ -880,12 +888,12 @@
               />
             </v-col>
             <v-col cols="12">
-              <h3 class="drawer-section-title mt-2 mb-2">Features</h3>
+              <h3 class="drawer-section-title mt-2 mb-2">Преимущества тарифа</h3>
             </v-col>
             <v-col cols="12">
               <v-textarea
                 v-model="planForm.description"
-                label="Description"
+                label="Описание тарифа"
                 rows="3"
                 auto-grow
                 density="compact"
@@ -897,7 +905,10 @@
             <v-col cols="12">
               <v-textarea
                 v-model="planForm.featuresText"
-                label="Features, по одной строке"
+                label="Преимущества, по одной строке"
+                placeholder="Без ограничений по активным проектам&#10;До 100 PDF-документов в месяц&#10;До 500 скриншотов из расширения"
+                hint="Каждая строка будет показана пользователю как отдельное преимущество тарифа."
+                persistent-hint
                 rows="4"
                 auto-grow
                 density="compact"
@@ -909,7 +920,9 @@
           </v-row>
 
           <h3 class="drawer-section-title mt-4 mb-2">Лимиты</h3>
-          <div class="text-caption text-medium-emphasis mb-3">Пустое значение сохраняется как “Без ограничений”.</div>
+          <div class="text-caption text-medium-emphasis mb-3">
+            Пустое значение сохраняется как “Без ограничений”. Значение 0 означает лимит, равный нулю.
+          </div>
           <v-row dense>
             <v-col
               v-for="limit in limitDefinitions"
@@ -1046,6 +1059,7 @@ type BillingPlan = {
   code: string
   name: string
   is_active: boolean
+  is_public?: boolean
   metadata_json?: {
     price_minor?: number | null
     currency?: string | null
@@ -1202,10 +1216,10 @@ const extendForm = reactive({
 
 const currencyItems = ['RUB'] as const
 const periodItems = [
-  { title: 'month', value: 'month' },
-  { title: 'year', value: 'year' },
-  { title: 'one_time', value: 'one_time' },
-  { title: 'custom', value: 'custom' },
+  { title: 'Месяц', value: 'month' },
+  { title: 'Год', value: 'year' },
+  { title: 'Разовый', value: 'one_time' },
+  { title: 'Особый период', value: 'custom' },
 ] as const
 
 const subscriptionPeriodItems = [
@@ -1216,10 +1230,10 @@ const subscriptionPeriodItems = [
 
 const limitDefinitions = [
   { key: 'projects.max_active', label: 'Активные проекты' },
-  { key: 'pdf_exports.monthly_limit', label: 'PDF в месяц' },
-  { key: 'evidence_runs.monthly_limit', label: 'Evidence runs в месяц' },
-  { key: 'chrome_captures.monthly_limit', label: 'Chrome-захваты в месяц' },
-  { key: 'storage.max_mb', label: 'Хранилище, МБ' },
+  { key: 'pdf_exports.monthly_limit', label: 'PDF-документы в месяц' },
+  { key: 'evidence_runs.monthly_limit', label: 'Проверки цен в месяц' },
+  { key: 'chrome_captures.monthly_limit', label: 'Скриншоты из расширения в месяц' },
+  { key: 'storage.max_mb', label: 'Хранилище файлов, МБ' },
   { key: 'team_members.max_count', label: 'Пользователи команды' },
 ] as const
 
@@ -1251,16 +1265,16 @@ const gateEventHeaders = [
 ] as const
 
 const planHeaders = [
-  { title: 'Code', key: 'code' },
-  { title: 'Name', key: 'name' },
-  { title: 'Price', key: 'price', align: 'end' as const },
-  { title: 'Period', key: 'period' },
-  { title: 'Active', key: 'is_active' },
-  { title: 'Public', key: 'public' },
-  { title: 'System', key: 'system' },
-  { title: 'Sandbox', key: 'sandbox' },
-  { title: 'Limits summary', key: 'limits' },
-  { title: 'Actions', key: 'actions', align: 'end' as const, sortable: false },
+  { title: 'Код', key: 'code' },
+  { title: 'Название', key: 'name' },
+  { title: 'Цена', key: 'price', align: 'end' as const },
+  { title: 'Период', key: 'period' },
+  { title: 'Активен', key: 'is_active' },
+  { title: 'Публичность', key: 'public' },
+  { title: 'Системный', key: 'system' },
+  { title: 'Тестовый', key: 'sandbox' },
+  { title: 'Лимиты', key: 'limits' },
+  { title: 'Действия', key: 'actions', align: 'end' as const, sortable: false },
 ] as const
 
 const subscriptionHistoryHeaders = [
@@ -2295,6 +2309,14 @@ onMounted(loadAll)
 .drawer-section-title {
   font-size: 14px;
   font-weight: 600;
+}
+
+.plan-switch-col :deep(.v-selection-control) {
+  align-items: flex-start;
+}
+
+.plan-switch-col :deep(.v-label) {
+  white-space: normal;
 }
 
 .drawer-section-heading {

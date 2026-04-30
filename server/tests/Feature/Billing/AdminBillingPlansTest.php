@@ -62,6 +62,42 @@ class AdminBillingPlansTest extends TestCase
         $this->assertSame(30, $plan->metadata_json['limits'][BillingCodes::CAP_PROJECTS_MAX_ACTIVE]);
     }
 
+    public function test_admin_can_create_public_plan(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/admin/billing/plans', [
+                ...$this->planPayload('public_created_plan'),
+                'hidden' => false,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.is_public', true)
+            ->assertJsonPath('data.metadata_json.hidden', false);
+    }
+
+    public function test_incomplete_plan_cannot_be_published(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $plan = BillingPlan::query()->create([
+            'code' => 'draft_plan',
+            'name' => 'Draft plan',
+            'is_active' => true,
+            'metadata_json' => [
+                'hidden' => true,
+                'sandbox' => false,
+                'system' => false,
+                'limits' => array_fill_keys(BillingCodes::capabilities(), null),
+            ],
+        ]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->patchJson("/api/admin/billing/plans/{$plan->id}", [
+                'hidden' => false,
+            ])
+            ->assertUnprocessable();
+    }
+
     public function test_code_must_be_unique(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);

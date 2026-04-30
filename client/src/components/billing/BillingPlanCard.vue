@@ -31,7 +31,9 @@
       class="billing-plan-card__action"
       color="primary"
       variant="tonal"
-      :disabled="true"
+      :disabled="!canCheckout"
+      :loading="loading"
+      @click="$emit('checkout', plan)"
     >
       {{ actionLabel }}
     </v-btn>
@@ -46,6 +48,12 @@ import StatusChip from '@/components/layout/StatusChip.vue'
 const props = defineProps<{
   plan: BillingPreviewPlan
   checkoutEnabled?: boolean
+  paymentsEnabled?: boolean
+  loading?: boolean
+}>()
+
+defineEmits<{
+  checkout: [plan: BillingPreviewPlan]
 }>()
 
 const preferredLimitOrder = [
@@ -57,13 +65,23 @@ const preferredLimitOrder = [
 ]
 
 const isCurrent = computed(() => Boolean(props.plan.is_current))
-const checkoutEnabled = computed(() => props.checkoutEnabled === true)
-const showAction = computed(() => isCurrent.value || checkoutEnabled.value)
+const showAction = computed(() => true)
+const hasPositivePrice = computed(() => {
+  const priceMinor = props.plan.price_minor ?? props.plan.price
+  return Number(priceMinor ?? 0) > 0
+})
+const checkoutAvailable = computed(() => (
+  !isCurrent.value
+  && props.checkoutEnabled === true
+  && props.paymentsEnabled === true
+  && hasPositivePrice.value
+))
+const canCheckout = computed(() => checkoutAvailable.value && !props.loading)
 const actionLabel = computed(() => {
   if (isCurrent.value) return 'Текущий тариф'
-  if (checkoutEnabled.value) return 'Оплата будет доступна после подключения'
+  if (checkoutAvailable.value) return 'Оплатить'
 
-  return 'Скоро будет доступно'
+  return 'Будет доступно после запуска оплаты'
 })
 
 const displayName = computed(() => {
@@ -90,9 +108,9 @@ const priceLabel = computed(() => {
     maximumFractionDigits: 0,
   }).format(amount)
 
-  return props.plan.period || props.plan.billing_period
-    ? `${price} / ${periodLabel(props.plan.period || props.plan.billing_period || '')}`
-    : price
+  const period = periodLabel(props.plan.period || props.plan.billing_period || '')
+
+  return period ? `${price} ${period}` : price
 })
 
 const visibleLimits = computed(() => {
@@ -106,17 +124,27 @@ const visibleLimits = computed(() => {
 
 function limitLine(item: NonNullable<BillingPreviewPlan['limits']>[number]) {
   const label = item.name || item.label || limitName(item.code)
-  if (item.limit === null || Number(item.limit) <= 0) return `${label}: Без ограничений`
+  if (item.limit === null || Number(item.limit) <= 0) return `${label}: без ограничений`
 
-  return `${label}: До ${formatNumber(Number(item.limit))} ${item.unit}`
+  const value = formatNumber(Number(item.limit))
+
+  if (item.code === 'storage.uploaded') {
+    return `${label}: до ${value} ${item.unit}`
+  }
+
+  if (item.code === 'projects.active') {
+    return `${label}: до ${value} ${item.unit}`
+  }
+
+  return `${label}: до ${value} ${item.unit} в месяц`
 }
 
 function periodLabel(period: string) {
-  if (period === 'month') return 'месяц'
-  if (period === 'year') return 'год'
+  if (period === 'month') return 'в месяц'
+  if (period === 'year') return 'в год'
   if (period === 'one_time') return 'разово'
 
-  return period
+  return ''
 }
 
 function limitName(code: string) {
@@ -206,6 +234,13 @@ function formatNumber(value: number) {
 
 .billing-plan-card__action {
   margin-top: auto;
+  min-height: 40px;
+}
+
+.billing-plan-card__action :deep(.v-btn__content) {
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
 }
 
 @media (max-width: 600px) {

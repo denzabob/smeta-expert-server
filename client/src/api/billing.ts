@@ -53,6 +53,10 @@ export type BillingPreview = {
   public_plans: BillingPreviewPlan[]
 }
 
+export type BillingPublicPlansResponse = {
+  plans: BillingPreviewPlan[]
+}
+
 export type BillingCapabilities = {
   enabled: boolean
   mode: 'off' | 'admin_only' | 'visible' | 'checkout' | 'enforced' | string
@@ -72,6 +76,31 @@ export type BillingCapabilitiesResponse = {
   billing: BillingCapabilities
 }
 
+export type BillingCheckoutResponse = {
+  invoice_id: number
+  payment_id: number
+  confirmation_url: string
+}
+
+export type BillingPaymentRefreshResponse = {
+  payment: {
+    id: number
+    status: 'pending' | 'paid' | 'failed' | 'canceled' | string
+    amount: number
+    currency: string
+  }
+  invoice: {
+    id: number
+    status: 'pending' | 'paid' | 'failed' | 'canceled' | string
+  } | null
+  subscription: {
+    status: string
+    plan_code: string
+    current_period_end?: string | null
+  } | null
+  message: string
+}
+
 export async function getMyBillingPreview(): Promise<BillingPreview> {
   const { data } = await api.get('/api/billing/me')
   return data
@@ -79,5 +108,22 @@ export async function getMyBillingPreview(): Promise<BillingPreview> {
 
 export async function getBillingCapabilities(): Promise<BillingCapabilitiesResponse> {
   const { data } = await api.get('/api/billing/capabilities')
+  return data
+}
+
+export async function getBillingPlans(): Promise<BillingPublicPlansResponse> {
+  const { data } = await api.get('/api/billing/plans')
+  return data
+}
+
+export async function createBillingCheckout(planCode: string): Promise<BillingCheckoutResponse> {
+  const { data } = await api.post('/api/billing/checkout', {
+    plan_code: planCode,
+  })
+  return data
+}
+
+export async function refreshBillingPayment(paymentId: number | string): Promise<BillingPaymentRefreshResponse> {
+  const { data } = await api.post(`/api/billing/payments/${paymentId}/refresh`)
   return data
 }

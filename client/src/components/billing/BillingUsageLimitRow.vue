@@ -14,14 +14,18 @@
     </div>
 
     <v-progress-linear
+      v-if="!unlimited"
       class="billing-usage-row__progress"
-      :class="{ 'billing-usage-row__progress--unlimited': unlimited }"
       :model-value="progressValue"
       :color="progressColor"
       bg-color="surface-variant"
       height="6"
       rounded
     />
+
+    <div v-if="exceeded" class="billing-usage-row__note">
+      В тестовом режиме превышение не ограничивает работу.
+    </div>
   </div>
 </template>
 
@@ -44,6 +48,7 @@ const props = withDefaults(
 const unlimited = computed(() => props.limit === null || Number(props.limit) <= 0)
 const safeUsed = computed(() => Math.max(0, Number(props.used || 0)))
 const safeLimit = computed(() => unlimited.value ? null : Math.max(0, Number(props.limit)))
+const exceeded = computed(() => !unlimited.value && safeLimit.value !== null && safeUsed.value > safeLimit.value)
 
 const progressValue = computed(() => {
   if (unlimited.value) return 100
@@ -54,7 +59,8 @@ const progressValue = computed(() => {
 
 const progressColor = computed(() => {
   if (unlimited.value) return 'grey'
-  if (progressValue.value >= 90) return 'warning'
+  if (progressValue.value >= 90) return 'error'
+  if (progressValue.value >= 70) return 'warning'
 
   return 'primary'
 })
@@ -73,7 +79,7 @@ const metaLabel = computed(() => {
   }
 
   const left = Math.max(0, Number(safeLimit.value ?? 0) - safeUsed.value)
-  return `Использовано: ${formatNumber(safeUsed.value)} из ${formatNumber(safeLimit.value ?? 0)} · Осталось: ${formatNumber(left)} ${props.unit}`
+  return `Использовано: ${formatNumber(safeUsed.value)} ${props.unit} · Лимит: ${formatNumber(safeLimit.value ?? 0)} ${props.unit} · Осталось: ${formatNumber(left)} ${props.unit}`
 })
 
 function formatNumber(value: number) {
@@ -128,8 +134,10 @@ function formatNumber(value: number) {
   opacity: 0.95;
 }
 
-.billing-usage-row__progress--unlimited {
-  opacity: 0.34;
+.billing-usage-row__note {
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 0.8rem;
+  line-height: 1.35;
 }
 
 @media (max-width: 600px) {

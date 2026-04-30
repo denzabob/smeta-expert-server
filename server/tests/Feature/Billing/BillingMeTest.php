@@ -146,6 +146,9 @@ class BillingMeTest extends TestCase
             'hidden' => false,
             'sandbox' => false,
             'system' => false,
+            'price_minor' => 99000,
+            'currency' => 'RUB',
+            'billing_period' => 'month',
         ]);
         $this->makePlan('hidden_plan', 'Hidden Plan', ['hidden' => true]);
         $this->makePlan('sandbox_plan', 'Sandbox Plan', ['hidden' => false, 'sandbox' => true]);
@@ -159,6 +162,45 @@ class BillingMeTest extends TestCase
         $this->assertSame(['public_plan'], $codes);
         $this->assertFalse($response->json('public_plans.0.is_current'));
         $this->assertFalse($response->json('public_plans.0.is_available'));
+    }
+
+    public function test_public_plans_endpoint_returns_only_public_plans(): void
+    {
+        $user = User::factory()->create();
+        $this->makePlan('public_plan', 'Public Plan', [
+            'hidden' => false,
+            'sandbox' => false,
+            'system' => false,
+            'price_minor' => 99000,
+            'currency' => 'RUB',
+            'billing_period' => 'month',
+        ]);
+        $this->makePlan('hidden_plan', 'Hidden Plan', ['hidden' => true]);
+        $this->makePlan('sandbox_plan', 'Sandbox Plan', ['hidden' => false, 'sandbox' => true]);
+        $this->makePlan('system_plan', 'System Plan', ['hidden' => false, 'system' => true]);
+        $this->makePlan('free_plan', 'Free Plan', ['hidden' => false, 'price_minor' => 0]);
+        $this->makePlan('no_price_plan', 'No Price Plan', ['hidden' => false, 'price_minor' => null]);
+        $this->makePlan('usd_plan', 'USD Plan', ['hidden' => false, 'price_minor' => 99000, 'currency' => 'USD']);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/billing/plans')
+            ->assertOk()
+            ->assertJsonPath('plans.0.code', 'public_plan')
+            ->assertJsonPath('plans.0.price_minor', 99000)
+            ->assertJsonPath('plans.0.period', 'month');
+
+        $this->assertSame(['public_plan'], collect($response->json('plans'))->pluck('code')->all());
+    }
+
+    public function test_public_plans_endpoint_hidden_when_user_billing_ui_disabled(): void
+    {
+        config(['billing.user_ui_enabled' => false]);
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/billing/plans')
+            ->assertNotFound();
     }
 
     public function test_public_plan_payload_contains_user_card_fields(): void

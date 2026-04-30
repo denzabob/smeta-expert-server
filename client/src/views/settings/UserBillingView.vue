@@ -6,7 +6,17 @@
     />
 
     <v-alert type="info" variant="tonal" density="comfortable" class="mb-4 user-billing-alert">
-      Сейчас действует тестовый период. Оплата и ограничения пока отключены.
+      {{ billingIntroText }}
+    </v-alert>
+
+    <v-alert
+      v-if="paymentReturnNotice"
+      :type="paymentReturnNotice.type"
+      variant="tonal"
+      density="comfortable"
+      class="mb-4 user-billing-alert"
+    >
+      {{ paymentReturnNotice.message }}
     </v-alert>
 
     <AppStateBlock
@@ -84,28 +94,28 @@
 
       <SectionCard title="Доступные тарифы" variant="flat">
         <template #subtitle>
-          Когда тарифы будут готовы, они появятся здесь. Смена тарифа и оплата через интерфейс будут добавлены позже.
+          {{ publicPlansSubtitle }}
         </template>
 
         <AppStateBlock
           v-if="!preview.public_plans.length"
           title="Тарифы скоро появятся"
-          description="Сейчас действует тестовый период. После публикации тарифов здесь появятся доступные варианты."
+          description="Сейчас сервис работает в тестовом режиме. После публикации тарифов они появятся здесь."
           icon="mdi-credit-card-off-outline"
           density="compact"
         />
 
-        <v-row v-else dense>
-          <v-col
+        <div v-else class="billing-plans-grid">
+          <BillingPlanCard
             v-for="plan in preview.public_plans"
             :key="plan.code"
-            cols="12"
-            sm="6"
-            lg="4"
-          >
-            <BillingPlanCard :plan="plan" :checkout-enabled="billingCapabilities.checkoutEnabled" />
-          </v-col>
-        </v-row>
+            :plan="plan"
+            :checkout-enabled="billingCapabilities.checkoutEnabled"
+            :payments-enabled="billingCapabilities.paymentsEnabled"
+            :loading="checkoutLoadingPlanCode === plan.code"
+            @checkout="startCheckout"
+          />
+        </div>
       </SectionCard>
     </template>
   </PageContainer>
@@ -113,7 +123,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { getMyBillingPreview, type BillingPreview, type BillingPreviewUsageItem } from '@/api/billing'
+import { useRoute } from 'vue-router'
+import {
+  createBillingCheckout,
+  getMyBillingPreview,
+  refreshBillingPayment,
+  type BillingPreview,
+  type BillingPreviewPlan,
+  type BillingPreviewUsageItem,
+} from '@/api/billing'
 import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
 import BillingPlanCard from '@/components/billing/BillingPlanCard.vue'
 import BillingUsageLimitRow from '@/components/billing/BillingUsageLimitRow.vue'
@@ -127,6 +145,11 @@ const loading = ref(true)
 const error = ref('')
 const preview = ref<BillingPreview | null>(null)
 const billingCapabilities = useBillingCapabilitiesStore()
+const route = useRoute()
+const checkoutLoadingPlanCode = ref<string | null>(null)
+const paymentReturnNotice = ref<{ type: 'info' | 'success' | 'warning' | 'error', message: string } | null>(null)
+
+const lastPaymentStorageKey = 'prismcore.billing.lastPaymentId'
 
 const usageDefinitions = [
   {
@@ -178,8 +201,26 @@ const currentPlanDescription = computed(() => {
   return plan.description || 'Доступ настроен на время тестового периода.'
 })
 
+const billingIntroText = computed(() => {
+  if (billingCapabilities.checkoutEnabled && billingCapabilities.paymentsEnabled) {
+    return 'Оплата доступна. Ограничения пока не применяются до полного режима.'
+  }
+
+  return 'Сейчас действует тестовый период. Оплата и ограничения пока отключены.'
+})
 const paymentStatusLabel = computed(() => billingCapabilities.checkoutEnabled ? 'доступна' : 'пока отключена')
 const limitsStatusLabel = computed(() => billingCapabilities.enforcementEnabled ? 'применяются' : 'не применяются')
+const publicPlansSubtitle = computed(() => {
+  if (!preview.value?.public_plans.length) {
+    return 'Сейчас сервис работает в тестовом режиме. После публикации тарифов они появятся здесь.'
+  }
+
+  if (billingCapabilities.checkoutEnabled && billingCapabilities.paymentsEnabled) {
+    return 'Выберите тариф и перейдите к оплате.'
+  }
+
+  return 'Тарифы показаны для ознакомления. Оплата пока отключена.'
+})
 
 const hasSubscriptionPeriod = computed(() => {
   const subscription = preview.value?.subscription
@@ -210,7 +251,21 @@ const usageRows = computed(() => {
   })
 })
 
-onMounted(loadBilling)
+onMounted(async () => {
+  const isPaymentReturn = route.query.payment_return === '1'
+  if (isPaymentReturn) {
+    paymentReturnNotice.value = {
+      type: 'info',
+      message: 'Проверяем статус оплаты…',
+    }
+  }
+
+  await loadBilling()
+
+  if (isPaymentReturn) {
+    await handlePaymentReturn()
+  }
+})
 
 async function loadBilling() {
   loading.value = true
@@ -223,6 +278,102 @@ async function loadBilling() {
     error.value = err?.response?.data?.message || 'Попробуйте обновить страницу позже.'
   } finally {
     loading.value = false
+  }
+}
+
+async function startCheckout(plan: BillingPreviewPlan) {
+  if (!billingCapabilities.checkoutEnabled || !billingCapabilities.paymentsEnabled || checkoutLoadingPlanCode.value) {
+    return
+  }
+
+  checkoutLoadingPlanCode.value = plan.code
+  error.value = ''
+
+  try {
+    const checkout = await createBillingCheckout(plan.code)
+
+    if (!checkout.confirmation_url) {
+      throw new Error('Не удалось получить ссылку на оплату.')
+    }
+
+    rememberLastPaymentId(checkout.payment_id)
+    window.location.assign(checkout.confirmation_url)
+  } catch (err: any) {
+    paymentReturnNotice.value = {
+      type: 'error',
+      message: err?.response?.data?.message || 'Не удалось создать оплату. Попробуйте позже.',
+    }
+  } finally {
+    checkoutLoadingPlanCode.value = null
+  }
+}
+
+async function handlePaymentReturn() {
+  const paymentId = readLastPaymentId()
+
+  if (!paymentId) {
+    paymentReturnNotice.value = {
+      type: 'warning',
+      message: 'Проверяем оплату. Если статус не обновится, обновите страницу через несколько минут.',
+    }
+    return
+  }
+
+  try {
+    const result = await refreshBillingPayment(paymentId)
+    await loadBilling()
+
+    if (result.payment.status === 'paid' || result.invoice?.status === 'paid') {
+      forgetLastPaymentId()
+      paymentReturnNotice.value = {
+        type: 'success',
+        message: 'Оплата прошла успешно. Тариф активирован.',
+      }
+      return
+    }
+
+    if (result.payment.status === 'canceled' || result.payment.status === 'failed') {
+      forgetLastPaymentId()
+      paymentReturnNotice.value = {
+        type: 'error',
+        message: 'Оплата не завершена. Вы можете попробовать снова.',
+      }
+      return
+    }
+
+    paymentReturnNotice.value = {
+      type: 'warning',
+      message: 'Платёж ещё обрабатывается. Обновите статус через несколько минут.',
+    }
+  } catch (err: any) {
+    paymentReturnNotice.value = {
+      type: 'warning',
+      message: err?.response?.data?.message || 'Не удалось обновить статус оплаты. Попробуйте обновить страницу позже.',
+    }
+  }
+}
+
+function rememberLastPaymentId(paymentId: number | string) {
+  try {
+    window.sessionStorage.setItem(lastPaymentStorageKey, String(paymentId))
+  } catch {
+    // Storage can be unavailable in private mode; checkout itself should still proceed.
+  }
+}
+
+function readLastPaymentId() {
+  try {
+    return window.sessionStorage.getItem(lastPaymentStorageKey)
+  } catch {
+    return null
+  }
+}
+
+function forgetLastPaymentId() {
+  try {
+    window.sessionStorage.removeItem(lastPaymentStorageKey)
+  } catch {
+    // Nothing to clean up if storage is unavailable.
   }
 }
 
@@ -327,6 +478,13 @@ function normalizeLimit(value: BillingPreviewUsageItem['limit']) {
 
 .usage-list {
   display: grid;
+}
+
+.billing-plans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 360px));
+  gap: 16px;
+  align-items: stretch;
 }
 
 @media (max-width: 960px) {
