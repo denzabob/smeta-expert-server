@@ -103,7 +103,7 @@ const router = createRouter({
           meta: { title: 'Идея' }
         },
         {
-          path: '/projects/:id/edit',
+          path: '/projects/:projectPublicId/edit',
           name: 'ProjectEditorView',
           component: () => import('@/views/ProjectEditorView.vue'),
           meta: { title: 'Редактор сметы' }
@@ -438,17 +438,27 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (to.name === 'ProjectEditorView') {
-    const rawProjectId = String(to.params.id ?? '').trim()
-    const projectId = Number(rawProjectId)
+    const projectIdentifier = String(to.params.projectPublicId ?? to.params.id ?? '').trim()
 
-    if (!Number.isInteger(projectId) || projectId <= 0) {
+    if (!projectIdentifier) {
       setProjectsFlashMessage('Проект не существует')
       return next({ name: 'projects', replace: true })
     }
 
     try {
-      const { data } = await api.get(`/api/projects/${projectId}`)
-      storePrefetchedProject(projectId, data)
+      const { data } = await api.get(`/api/projects/${encodeURIComponent(projectIdentifier)}`)
+      const publicId = String(data?.public_id ?? '').trim()
+
+      if (/^\d+$/.test(projectIdentifier) && publicId) {
+        storePrefetchedProject(publicId, data)
+        return next({
+          name: 'ProjectEditorView',
+          params: { projectPublicId: publicId },
+          replace: true,
+        })
+      }
+
+      storePrefetchedProject(projectIdentifier, data)
     } catch (error: any) {
       if (error?.response?.status === 404) {
         setProjectsFlashMessage('Проект не существует')

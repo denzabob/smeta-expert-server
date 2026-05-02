@@ -490,14 +490,16 @@
             <!-- Panel-specific fields -->
             <template v-if="selectedPosition.kind !== 'facade'">
               <v-autocomplete
-                v-model="selectedPosition.detail_type_id"
+                :model-value="selectedPosition.detail_type_id"
                 :items="detailTypes"
                 item-title="name"
                 item-value="id"
                 label="Тип детали"
                 clearable
                 density="comfortable"
-                @update:model-value="(v) => updatePositionField(selectedPosition!, 'detail_type_id', v)"
+                :loading="isApplyingDetailType(selectedPosition.id)"
+                :disabled="isApplyingDetailType(selectedPosition.id)"
+                @update:model-value="(v) => applyDetailTypeToPosition(selectedPosition!, v)"
                 class="mb-2"
               />
 
@@ -683,12 +685,18 @@
               />
               <div class="edge-preview-block mb-2">
                 <div class="text-caption text-medium-emphasis mb-1">Визуализация кромки</div>
-                <div class="edge-preview-box">
+                <div class="edge-preview-diagram">
+                  <div class="edge-preview-length-label">{{ formatEdgeDimension(selectedPosition.length, 'Длина') }}</div>
+                  <div class="edge-preview-row">
+                    <div class="edge-preview-width-label">{{ formatEdgeDimension(selectedPosition.width, 'Ширина') }}</div>
+                    <div class="edge-preview-box" :style="getEdgePreviewStyle(selectedPosition.width, selectedPosition.length)">
                   <div class="edge-side top" :class="{ active: isEdgeSideActive(selectedPosition.edge_scheme, 'top') }"></div>
                   <div class="edge-side right" :class="{ active: isEdgeSideActive(selectedPosition.edge_scheme, 'right') }"></div>
                   <div class="edge-side bottom" :class="{ active: isEdgeSideActive(selectedPosition.edge_scheme, 'bottom') }"></div>
                   <div class="edge-side left" :class="{ active: isEdgeSideActive(selectedPosition.edge_scheme, 'left') }"></div>
                   <div class="edge-center-label">Деталь</div>
+                    </div>
+                  </div>
                 </div>
                 <div class="text-caption mt-1">{{ getEdgeSchemeSummary(selectedPosition.edge_scheme) }}</div>
               </div>
@@ -1379,7 +1387,7 @@
           <div class="dense-module-support-grid">
             <div class="dense-module-support-card">
               <ProjectLaborEvidencePanel
-                :project-id="projectId"
+                :project-id="projectApiId"
                 @sources-changed="handleLaborEvidenceSourcesChanged"
               />
             </div>
@@ -2533,12 +2541,18 @@
               </v-autocomplete>
               <div class="edge-preview-block mb-2">
                 <div class="text-caption text-medium-emphasis mb-1">Визуализация кромки</div>
-                <div class="edge-preview-box">
+                <div class="edge-preview-diagram">
+                  <div class="edge-preview-length-label">{{ formatEdgeDimension(positionFormModel.length, 'Длина') }}</div>
+                  <div class="edge-preview-row">
+                    <div class="edge-preview-width-label">{{ formatEdgeDimension(positionFormModel.width, 'Ширина') }}</div>
+                    <div class="edge-preview-box" :style="getEdgePreviewStyle(positionFormModel.width, positionFormModel.length)">
                   <div class="edge-side top" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'top') }"></div>
                   <div class="edge-side right" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'right') }"></div>
                   <div class="edge-side bottom" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'bottom') }"></div>
                   <div class="edge-side left" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'left') }"></div>
                   <div class="edge-center-label">Деталь</div>
+                    </div>
+                  </div>
                 </div>
                 <div class="text-caption mt-1">{{ getEdgeSchemeSummary(positionFormModel.edge_scheme) }}</div>
               </div>
@@ -3494,6 +3508,7 @@ const handleHealthNavigate = (target: string) => {
 // === Типы ===
 interface Project { 
   id: number
+  public_id?: string | null
   number: string
   expert_name: string
   address: string
@@ -3647,7 +3662,9 @@ interface Material {
 // === Состояния ===
 const router = useRouter()
 const route = useRoute()
-const projectId = route.params.id as string
+const projectRouteIdentifier = String(route.params.projectPublicId ?? route.params.id ?? '').trim()
+const projectApiId = ref(projectRouteIdentifier)
+let projectId = projectRouteIdentifier
 const laborCalculationPanelRef = ref<{ reload?: () => Promise<void> | void } | null>(null)
 
 function handleLaborEvidenceSourcesChanged() {
@@ -3670,6 +3687,7 @@ const redirectToProjectsWithMissingMessage = () => {
 
 const project = ref<Project>({
   id: 0,
+  public_id: null,
   number: '',
   expert_name: '',
   address: '',
@@ -4684,12 +4702,14 @@ const revisionHeaders = [
 
 // === Схемы кромки ===
 const edgeSchemeOptions = [
-  { value: 'none', label: 'Без обработки', icon: 'mdi-minus' },
-  { value: 'O', label: 'Вкруг (O)', icon: 'mdi-circle-outline' },
-  { value: '=', label: 'Параллельно длине (=)', icon: 'mdi-arrow-left-right' },
-  { value: '||', label: 'Параллельно ширине (||)', icon: 'mdi-arrow-up-down' },
-  { value: 'L', label: 'Г-образно (L)', icon: 'mdi-vector-square' },
-  { value: 'П', label: 'П-образно (П)', icon: 'mdi-alpha-p-box-outline' },
+  { value: 'none', label: 'Без кромки', icon: 'mdi-minus' },
+  { value: 'O', label: 'Вкруг', icon: 'mdi-crop-square' },
+  { value: '=', label: 'Две длинные стороны', icon: 'mdi-arrow-left-right' },
+  { value: '||', label: 'Две короткие стороны', icon: 'mdi-arrow-up-down' },
+  { value: 'long_one', label: 'Одна длинная сторона', icon: 'mdi-arrow-right' },
+  { value: 'short_one', label: 'Одна короткая сторона', icon: 'mdi-arrow-down' },
+  { value: 'L', label: 'Г-образно', icon: 'mdi-vector-square' },
+  { value: 'П', label: 'П-образно', icon: 'mdi-alpha-p-box-outline' },
 ]
 
 // === Диалоги ===
@@ -5039,6 +5059,8 @@ const getEdgeDetailsForMaterial = (edgeMaterialId: number) => {
       case '||': perimeterOne = 2 * widthM; break
       case 'L': perimeterOne = widthM + lengthM; break
       case 'П': perimeterOne = 2 * widthM + lengthM; break
+      case 'long_one': perimeterOne = lengthM; break
+      case 'short_one': perimeterOne = widthM; break
     }
     
     const totalLength = perimeterOne * (pos.quantity || 0)
@@ -5523,8 +5545,17 @@ const fetchData = async (): Promise<boolean> => {
     loadingStates.value.fittings = true
     loadingStates.value.expenses = true
     
-    const prefetchedProject = consumePrefetchedProject(projectId)
-    project.value = prefetchedProject || (await api.get(`/api/projects/${projectId}`)).data
+    const prefetchedProject = consumePrefetchedProject(projectRouteIdentifier)
+    project.value = prefetchedProject || (await api.get(`/api/projects/${encodeURIComponent(projectRouteIdentifier)}`)).data
+    projectId = String(project.value.id || projectRouteIdentifier)
+    projectApiId.value = projectId
+
+    if (/^\d+$/.test(projectRouteIdentifier) && project.value.public_id) {
+      await router.replace({
+        name: 'ProjectEditorView',
+        params: { projectPublicId: project.value.public_id },
+      })
+    }
     const pr = (project.value as any).profileRates
     console.log('✅ Project loaded:', {
       id: project.value.id,
@@ -5950,6 +5981,87 @@ const updatePositionField = async (item: Position, field: string, value: any) =>
   }
 }
 
+const applyingDetailTypePositionIds = ref<Set<number>>(new Set())
+
+const setApplyingDetailType = (positionId: number, isApplying: boolean) => {
+  const next = new Set(applyingDetailTypePositionIds.value)
+  if (isApplying) {
+    next.add(positionId)
+  } else {
+    next.delete(positionId)
+  }
+  applyingDetailTypePositionIds.value = next
+}
+
+const isApplyingDetailType = (positionId?: number | null) => {
+  return typeof positionId === 'number' && applyingDetailTypePositionIds.value.has(positionId)
+}
+
+const mergeUpdatedPosition = (updatedPosition: Position) => {
+  if (!updatedPosition?.id) return
+
+  const index = positions.value.findIndex((position) => position.id === updatedPosition.id)
+  if (index !== -1) {
+    Object.assign(positions.value[index], updatedPosition)
+  }
+
+  if (selectedPosition.value?.id === updatedPosition.id) {
+    Object.assign(selectedPosition.value, updatedPosition)
+  }
+}
+
+const applyDetailTypeToPosition = async (item: Position, rawDetailTypeId: unknown) => {
+  if (guardReadOnlyAction()) return
+
+  if (!item.id) {
+    showNotification('Сначала сохраните позицию через диалог', 'warning')
+    return
+  }
+
+  const detailTypeId = rawDetailTypeId === null || rawDetailTypeId === ''
+    ? null
+    : Number(rawDetailTypeId)
+
+  if (!detailTypeId) {
+    await updatePositionField(item, 'detail_type_id', null)
+    return
+  }
+
+  if (isApplyingDetailType(item.id)) return
+
+  setApplyingDetailType(item.id, true)
+
+  try {
+    const response = await api.post(`/api/projects/${projectId}/positions/${item.id}/apply-detail-type`, {
+      detail_type_id: detailTypeId,
+      mode: 'missing_only',
+    })
+
+    const updatedPosition = response?.data?.position || response?.data?.data?.position
+    if (updatedPosition && typeof updatedPosition === 'object') {
+      mergeUpdatedPosition(updatedPosition as Position)
+    }
+
+    const applied = Array.isArray(response?.data?.applied) ? response.data.applied : []
+    showNotification(
+      applied.includes('edge_scheme')
+        ? 'Настройки типа детали применены'
+        : 'Тип детали назначен. Текущие настройки сохранены.',
+      'success'
+    )
+
+    scheduleRecalc()
+  } catch (e: any) {
+    if (showBillingLockedError(e)) return
+
+    console.error(e)
+    showNotification('Не удалось применить тип детали', 'error')
+    await fetchData()
+  } finally {
+    setApplyingDetailType(item.id, false)
+  }
+}
+
 const formatPositionSize = (item: Position) => {
   const w = Math.round(item.width || 0)
   const l = Math.round(item.length || 0)
@@ -6001,6 +6113,14 @@ const getEdgeSchemeHintClass = (dimension: 'width' | 'length') => {
     return dimension === 'length' ? 'edge-hint edge-hint-length-lr' : ''
   }
 
+  if (scheme === 'long_one') {
+    return dimension === 'width' ? 'edge-hint edge-hint-width-bottom' : ''
+  }
+
+  if (scheme === 'short_one') {
+    return dimension === 'length' ? 'edge-hint edge-hint-length-right' : ''
+  }
+
   if (scheme === 'L') {
     return dimension === 'width' ? 'edge-hint edge-hint-width-top' : 'edge-hint edge-hint-length-left'
   }
@@ -6018,6 +6138,8 @@ const isEdgeSideActive = (scheme?: string | null, side?: 'top' | 'right' | 'bott
   if (scheme === 'O') return true
   if (scheme === '=') return side === 'top' || side === 'bottom'
   if (scheme === '||') return side === 'left' || side === 'right'
+  if (scheme === 'long_one') return side === 'bottom'
+  if (scheme === 'short_one') return side === 'right'
   if (scheme === 'L') return side === 'top' || side === 'left'
   if (scheme === 'П') return side === 'top' || side === 'left' || side === 'right'
 
@@ -6027,11 +6149,42 @@ const isEdgeSideActive = (scheme?: string | null, side?: 'top' | 'right' | 'bott
 const getEdgeSchemeSummary = (scheme?: string | null) => {
   if (!scheme || scheme === 'none') return 'Кромка не применяется'
   if (scheme === 'O') return 'Кромка по периметру: верх, низ, левая и правая стороны'
-  if (scheme === '=') return 'Кромка по ширине: верх и низ'
-  if (scheme === '||') return 'Кромка по длине: левая и правая стороны'
+  if (scheme === '=') return 'Кромка по двум длинным сторонам детали'
+  if (scheme === '||') return 'Кромка по двум коротким сторонам детали'
+  if (scheme === 'long_one') return 'Кромка по одной длинной стороне детали'
+  if (scheme === 'short_one') return 'Кромка по одной короткой стороне детали'
   if (scheme === 'L') return 'Кромка по схеме L: верх и левая сторона'
   if (scheme === 'П') return 'Кромка по схеме П: верх, левая и правая стороны'
   return 'Схема не распознана'
+}
+
+const formatEdgeDimension = (value: unknown, fallback: string) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? `${Math.round(numeric)} мм` : fallback
+}
+
+const clampNumber = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+const getEdgePreviewStyle = (widthMm?: number | string | null, lengthMm?: number | string | null) => {
+  const width = Number(widthMm) > 0 ? Number(widthMm) : 500
+  const length = Number(lengthMm) > 0 ? Number(lengthMm) : 800
+  const aspect = clampNumber(length / width, 0.65, 2.6)
+  const maxWidth = 136
+  const maxHeight = 92
+  const minWidth = 68
+  const minHeight = 48
+
+  if (aspect >= 1) {
+    return {
+      width: `${maxWidth}px`,
+      height: `${clampNumber(maxWidth / aspect, minHeight, maxHeight)}px`,
+    }
+  }
+
+  return {
+    width: `${clampNumber(maxHeight * aspect, minWidth, maxWidth)}px`,
+    height: `${maxHeight}px`,
+  }
 }
 
 const openPositionDrawer = (item: Position) => {
@@ -8084,6 +8237,12 @@ const edgeData = computed(() => {
           break
         case 'П': // П-образно (три стороны)
           perimeterMeters = (2 * widthM + lengthM) * qty
+          break
+        case 'long_one': // Одна длинная сторона
+          perimeterMeters = lengthM * qty
+          break
+        case 'short_one': // Одна короткая сторона
+          perimeterMeters = widthM * qty
           break
         default:
           perimeterMeters = 0
@@ -10596,8 +10755,16 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 2px 0 rgba(var(--v-theme-primary), 1);
 }
 
+.edge-hint-width-bottom :deep(.v-field) {
+  box-shadow: inset 0 -2px 0 rgba(var(--v-theme-primary), 1);
+}
+
 .edge-hint-length-left :deep(.v-field) {
   box-shadow: inset 2px 0 0 rgba(var(--v-theme-primary), 1);
+}
+
+.edge-hint-length-right :deep(.v-field) {
+  box-shadow: inset -2px 0 0 rgba(var(--v-theme-primary), 1);
 }
 
 .quick-quantity-group-wrap {
@@ -10706,14 +10873,45 @@ onBeforeUnmount(() => {
   background: rgba(var(--v-theme-surface-container-low), 0.82);
 }
 
+.edge-preview-diagram {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-height: 126px;
+}
+
+.edge-preview-row {
+  display: grid;
+  grid-template-columns: minmax(38px, max-content) minmax(68px, 136px);
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.edge-preview-length-label,
+.edge-preview-width-label {
+  font-size: 11px;
+  line-height: 1.2;
+  color: rgba(var(--v-theme-on-surface), 0.64);
+}
+
+.edge-preview-width-label {
+  justify-self: end;
+  text-align: right;
+  max-width: 54px;
+}
+
 .edge-preview-box {
   position: relative;
-  width: 92px;
-  height: 64px;
   border-radius: var(--md-sys-shape-corner-small);
   margin: 0 auto;
   background: rgba(var(--v-theme-surface), 1);
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.68);
+  min-width: 68px;
+  min-height: 48px;
+  max-width: 136px;
+  max-height: 92px;
 }
 
 .edge-side {

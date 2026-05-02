@@ -7,6 +7,7 @@ use App\Models\MaterialPriceHistory;
 use App\Models\ParsingSession;
 use App\Models\ParsingLog;
 use App\Services\Material\EdgeMaterialNormalizer;
+use App\Services\Material\MaterialCanonicalResolver;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -17,19 +18,22 @@ class MaterialParseService
     protected DomainParseService $domainParseService;
     protected UrlNormalizer $urlNormalizer;
     protected EdgeMaterialNormalizer $edgeMaterialNormalizer;
+    protected MaterialCanonicalResolver $canonicalResolver;
 
     public function __construct(
         TrustScoreService $trustScoreService,
         MaterialDeduplicationService $dedupService,
         DomainParseService $domainParseService,
         UrlNormalizer $urlNormalizer,
-        EdgeMaterialNormalizer $edgeMaterialNormalizer
+        EdgeMaterialNormalizer $edgeMaterialNormalizer,
+        MaterialCanonicalResolver $canonicalResolver
     ) {
         $this->trustScoreService = $trustScoreService;
         $this->dedupService = $dedupService;
         $this->domainParseService = $domainParseService;
         $this->urlNormalizer = $urlNormalizer;
         $this->edgeMaterialNormalizer = $edgeMaterialNormalizer;
+        $this->canonicalResolver = $canonicalResolver;
     }
 
     /**
@@ -248,14 +252,17 @@ class MaterialParseService
             $materialData = $this->edgeMaterialNormalizer->normalize($materialData);
         }
 
-        // Create material
-        $material = Material::create(array_merge($materialData, [
+        $materialPayload = array_merge($materialData, [
             'user_id' => $userId,
             'origin' => 'user',
             'is_active' => true,
             'version' => 1,
             'visibility' => Material::VISIBILITY_PRIVATE,
-        ]));
+        ]);
+
+        $resolved = $this->canonicalResolver->findOrCreate($materialPayload);
+        $material = $resolved['material'];
+        $created = $resolved['created'];
 
         // Create first price observation
         $rawUrl = $observationData['source_url'] ?? $material->source_url;
@@ -263,7 +270,7 @@ class MaterialParseService
 
         MaterialPriceHistory::create([
             'material_id' => $material->id,
-            'version' => 1,
+            'version' => $material->version ?? 1,
             'price_per_unit' => $observationData['price_per_unit'] ?? $material->price_per_unit,
             'source_url' => $normalizedUrl,
             'raw_source_url' => $rawUrl,
@@ -280,8 +287,10 @@ class MaterialParseService
             'snapshot_path' => $observationData['snapshot_path'] ?? null,
         ]);
 
-        // Calculate initial trust score
-        $this->trustScoreService->recalculate($material);
+        if ($created) {
+            // Calculate initial trust score for newly created materials only.
+            $this->trustScoreService->recalculate($material);
+        }
 
         return $material->fresh();
     }

@@ -426,6 +426,8 @@ const showQueuedNotification = () => {
   if (flash) showNotification(flash.message, flash.color)
 }
 
+const projectEditorUrl = (item: any) => `/projects/${item.public_id || item.id}/edit`
+
 // ── Actions ─────────────────────────────────────────────────────────────────
 const createProject = async () => {
   if (projectLimitMessage.value) {
@@ -437,7 +439,7 @@ const createProject = async () => {
   creating.value = true
   try {
     const response = await api.post('/api/projects', {})
-    router.push(`/projects/${response.data.id}/edit`)
+    router.push(projectEditorUrl(response.data))
   } catch (e) {
     console.error('Ошибка создания проекта:', e)
     const message = (e as any)?.response?.data?.message
@@ -450,13 +452,13 @@ const createProject = async () => {
 const goToEditor = (item: any) => {
   if (navigatingId.value) return
   navigatingId.value = item.id
-  router.push(`/projects/${item.id}/edit`)
+  router.push(projectEditorUrl(item))
 }
 
 const editProject = (item: any) => {
   if (navigatingId.value) return
   navigatingId.value = item.id
-  router.push(`/projects/${item.id}/edit`)
+  router.push(projectEditorUrl(item))
 }
 
 const deleteProject = async (item: any) => {

@@ -503,7 +503,7 @@ import AppStateBlock from '@/components/layout/AppStateBlock.vue'
 import StatusChip from '@/components/layout/StatusChip.vue'
 import TableToolbar from '@/components/layout/TableToolbar.vue'
 
-type EdgeValue = 'none' | 'O' | '=' | '||' | 'L' | 'П'
+type EdgeValue = 'none' | 'O' | '=' | '||' | 'L' | 'П' | 'long_one' | 'short_one'
 type OriginFilter = 'all' | 'system' | 'user'
 type UsageFilter = 'all' | 'used' | 'unused'
 type BulkAction = 'set_edge' | 'delete'
@@ -550,6 +550,8 @@ const EdgePreview = defineComponent({
       if (scheme === 'O') return true
       if (scheme === '=') return side === 'top' || side === 'bottom'
       if (scheme === '||') return side === 'left' || side === 'right'
+      if (scheme === 'long_one') return side === 'bottom'
+      if (scheme === 'short_one') return side === 'right'
       if (scheme === 'L') return side === 'top' || side === 'left'
       if (scheme === 'П') return side === 'top' || side === 'left' || side === 'right'
       return false
@@ -604,6 +606,8 @@ const edgeOptions: Array<{ value: EdgeValue; title: string; summary: string }> =
   { value: 'none', title: 'Без кромления', summary: 'Кромка не применяется' },
   { value: '=', title: 'Две длинные стороны', summary: 'Кромка применяется к двум противоположным длинным торцам' },
   { value: '||', title: 'Две короткие стороны', summary: 'Кромка применяется к двум противоположным коротким торцам' },
+  { value: 'long_one', title: 'Одна длинная сторона', summary: 'Кромка применяется к одному длинному торцу' },
+  { value: 'short_one', title: 'Одна короткая сторона', summary: 'Кромка применяется к одному короткому торцу' },
   { value: 'O', title: 'По периметру', summary: 'Кромка применяется ко всем четырём сторонам детали' },
   { value: 'L', title: 'Г-образно', summary: 'Кромка применяется к двум соседним сторонам' },
   { value: 'П', title: 'П-образно', summary: 'Кромка применяется к трём сторонам детали' },

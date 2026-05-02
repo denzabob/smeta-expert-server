@@ -331,6 +331,8 @@ class OperationApplicationResolver
             '||' => 2 * $widthM * $quantity,
             'L' => ($widthM + $lengthM) * $quantity,
             'П' => (2 * $widthM + $lengthM) * $quantity,
+            'long_one' => $lengthM * $quantity,
+            'short_one' => $widthM * $quantity,
             default => 0.0,
         };
     }

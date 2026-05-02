@@ -329,6 +329,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('projects/{project}/labor-diagnostics', [\App\Http\Controllers\Api\ProjectLaborDiagnosticsController::class, 'show']);
     Route::post('projects/{project}/positions/bulk', [ProjectPositionController::class, 'bulk']);
     Route::post('projects/{project}/positions/recalculate-prices', [ProjectPositionController::class, 'recalculatePrices']);
+    Route::post('projects/{project}/positions/{position}/apply-detail-type', [ProjectPositionController::class, 'applyDetailType']);
     Route::apiResource('projects.positions', ProjectPositionController::class);
     Route::apiResource('project-positions', ProjectPositionController::class)->only(['show','update','destroy']);
 

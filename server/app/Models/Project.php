@@ -2,6 +2,7 @@
 // app/Models/Project.php
 namespace App\Models;
 
+use App\Support\ProjectPublicId;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -10,6 +11,7 @@ class Project extends Model
     use HasFactory;
 
     protected $fillable = [
+        'public_id',
         'user_id',
         'number',
         'expert_name',
@@ -57,6 +59,25 @@ class Project extends Model
         'apply_waste_to_edge' => 'boolean',
         'apply_waste_to_operations' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Project $project): void {
+            if (empty($project->public_id)) {
+                $project->public_id = ProjectPublicId::generate();
+            }
+        });
+    }
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $identifier = trim((string) $value);
+
+        return $this->newQuery()
+            ->where('public_id', $identifier)
+            ->when(ctype_digit($identifier), fn ($query) => $query->orWhere($this->getKeyName(), (int) $identifier))
+            ->first();
+    }
 
     public function user()
     {

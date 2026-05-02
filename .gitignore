@@ -53,8 +53,12 @@ server/tests/*
 server/tests/Unit/*
 !server/tests/Unit/Billing/
 !server/tests/Unit/Billing/*.php
+!server/tests/Unit/Services/
+!server/tests/Unit/Services/*.php
 !server/tests/Feature/
 server/tests/Feature/*
+!server/tests/Feature/ProjectPublicIdTest.php
+!server/tests/Feature/MaterialExactReuseTest.php
 !server/tests/Feature/Billing/
 !server/tests/Feature/Billing/*.php
 

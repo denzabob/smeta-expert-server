@@ -29,6 +29,17 @@ class ProjectPosition extends Model
         self::PRICE_METHOD_TRIMMED_MEAN,
     ];
 
+    public const EDGE_SCHEMES = [
+        'none',
+        'O',
+        '=',
+        '||',
+        'L',
+        'П',
+        'long_one',
+        'short_one',
+    ];
+
     protected $fillable = [
         'project_id',
         'kind',

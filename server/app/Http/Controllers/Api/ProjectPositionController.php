@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FinishedProductSpecification;
+use App\Models\DetailType;
 use App\Models\Material;
 use App\Models\MaterialPrice;
 use App\Models\ProjectPosition;
@@ -12,6 +13,7 @@ use App\Models\Project;
 use App\Models\PriceListVersion;
 use App\Models\ProjectPriceListVersion;
 use App\Services\FinishedProductPositionPricingSnapshotService;
+use App\Services\ProjectPositionDetailTypePresetService;
 use App\Services\ProjectPositionBulkPolicyService;
 use App\Services\PriceAggregationService;
 use Illuminate\Http\Request as HttpRequest;
@@ -43,7 +45,7 @@ class ProjectPositionController extends Controller
             'finished_product_specification_id' => 'nullable|exists:finished_product_specifications,id',
             'material_price_id' => 'nullable|exists:material_prices,id',
             'edge_material_id' => 'nullable|exists:materials,id',
-            'edge_scheme' => ['nullable', Rule::in(['none', '=', '||', 'П', 'L', 'O'])],
+            'edge_scheme' => ['nullable', Rule::in(ProjectPosition::EDGE_SCHEMES)],
             'quantity' => $prefix . 'integer|min:1',
             'width' => $prefix . 'numeric|min:0',
             'length' => $prefix . 'numeric|min:0',
@@ -251,6 +253,29 @@ class ProjectPositionController extends Controller
         return $projectPosition;
     }
 
+    public function applyDetailType(
+        Request $request,
+        Project $project,
+        ProjectPosition $position,
+        ProjectPositionDetailTypePresetService $presetService
+    ) {
+        $this->authorize('update', $project);
+
+        $validated = $request->validate([
+            'detail_type_id' => 'required|integer|exists:detail_types,id',
+            'mode' => ['nullable', Rule::in(['missing_only'])],
+        ]);
+
+        $detailType = DetailType::findOrFail($validated['detail_type_id']);
+
+        return response()->json($presetService->apply(
+            $project,
+            $position,
+            $detailType,
+            $validated['mode'] ?? 'missing_only'
+        ));
+    }
+
     public function destroy(ProjectPosition $projectPosition)
     {
         $project = $projectPosition->project;
@@ -272,7 +297,7 @@ class ProjectPositionController extends Controller
             'updates' => 'nullable|array',
             'updates.material_id' => 'nullable|exists:materials,id',
             'updates.edge_material_id' => 'nullable|exists:materials,id',
-            'updates.edge_scheme' => ['nullable', Rule::in(['none', '=', '||', 'П', 'L', 'O'])],
+            'updates.edge_scheme' => ['nullable', Rule::in(ProjectPosition::EDGE_SCHEMES)],
             'updates.custom_name' => 'nullable|string|max:255',
             'updates.facade_material_id' => 'nullable|exists:materials,id',
             'updates.finished_product_specification_id' => 'nullable|exists:finished_product_specifications,id',

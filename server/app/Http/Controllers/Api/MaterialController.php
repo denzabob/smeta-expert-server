@@ -12,13 +12,15 @@ use Illuminate\Support\Facades\Log;
 use App\Services\UrlNormalizer;
 use App\Services\MaterialDimensionParser;
 use App\Services\Material\EdgeMaterialNormalizer;
+use App\Services\Material\MaterialCanonicalResolver;
 
 class MaterialController extends Controller
 {
     public function __construct(
         private UrlNormalizer $urlNormalizer,
         private MaterialDimensionParser $dimensionParser,
-        private EdgeMaterialNormalizer $edgeMaterialNormalizer
+        private EdgeMaterialNormalizer $edgeMaterialNormalizer,
+        private MaterialCanonicalResolver $canonicalResolver
     ) {}
     /**
      * Display a listing of the resource.
@@ -168,7 +170,17 @@ class MaterialController extends Controller
                 $validated = $this->edgeMaterialNormalizer->normalize($validated);
             }
 
-            $material = Material::create($validated);
+            $resolved = $this->canonicalResolver->findOrCreate($validated);
+            $material = $resolved['material'];
+
+            if (!$resolved['created']) {
+                Log::info('materials.store reused existing material', [
+                    'material_id' => $material->id,
+                    'user_id' => $user->id,
+                ]);
+
+                return response()->json($material);
+            }
 
             // Создаем первую запись в истории
             MaterialPriceHistory::create([

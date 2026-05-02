@@ -484,7 +484,7 @@ class SmetaCalculator
      * @param float $widthMm Ширина детали (мм)
      * @param float $lengthMm Длина детали (мм)
      * @param int $quantity Количество
-     * @param string $scheme Схема кромки (O, =, ||, L, П)
+     * @param string $scheme Схема кромки (O, =, ||, L, П, long_one, short_one)
      * @return float Периметр в метрах
      */
     private function calculateEdgePerimeter(float $widthMm, float $lengthMm, int $quantity, string $scheme): float
@@ -498,6 +498,8 @@ class SmetaCalculator
             '||' => 2 * $widthM * $quantity,                           // Параллельно ширине
             'L' => ($widthM + $lengthM) * $quantity,                   // Г-образно
             'П' => (2 * $widthM + $lengthM) * $quantity,               // П-образно
+            'long_one' => $lengthM * $quantity,                        // Одна длинная сторона
+            'short_one' => $widthM * $quantity,                        // Одна короткая сторона
             default => 0,
         };
     }
