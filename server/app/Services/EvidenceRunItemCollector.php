@@ -12,7 +12,9 @@ use App\Evidence\CaptureMethod;
 use App\Models\EstimateEvidenceItem;
 use App\Models\EstimateEvidenceRun;
 use App\Models\EvidenceRecord;
+use App\Models\MaterialPriceHistory;
 use App\Models\Project;
+use App\Models\ProjectFitting;
 use App\Models\ProjectPosition;
 use App\Service\ReportService;
 use Illuminate\Support\Str;
@@ -62,6 +64,12 @@ class EvidenceRunItemCollector
             // can match by URL regardless of how the material URL was originally
             // stored (cleanUrl, parser, raw).
             $normalizedSourceUrl = $this->urlNormalizer->normalize($desc['source_url'] ?? null);
+            $materialId = isset($desc['material_id']) ? (int) $desc['material_id'] : null;
+            $diagnostics = $desc['diagnostics_json'] ?? null;
+            if ($materialId) {
+                $diagnostics = is_array($diagnostics) ? $diagnostics : [];
+                $diagnostics['material_id'] = $materialId;
+            }
 
             $evidenceRecordId = null;
             if (!$isInternal && !empty($desc['evidence_record_id'])) {
@@ -87,16 +95,20 @@ class EvidenceRunItemCollector
             }
 
             // Freshness-based auto-resolution for external types
-            if (!$isInternal && $evidenceRecordId === null && !empty($normalizedSourceUrl)) {
-                $freshRecord = $this->confirmationService->getFreshRecord(
+            if (!$isInternal && $evidenceRecordId === null) {
+                $freshEvidence = $this->resolveFreshEvidenceRecord(
                     $normalizedSourceUrl,
                     $desc['cost_component'],
                     $freshnessDays,
+                    $materialId,
+                    $userId,
                 );
-                if ($freshRecord) {
+                if ($freshEvidence) {
+                    $freshRecord = $freshEvidence['record'];
                     $status = EvidenceItemStatus::RESOLVED;
                     $resolutionType = ResolutionType::AUTO_FRESH;
                     $evidenceRecordId = $freshRecord->id;
+                    $normalizedSourceUrl = $freshEvidence['source_url'] ?? $normalizedSourceUrl;
                 }
             }
 
@@ -113,7 +125,7 @@ class EvidenceRunItemCollector
                 'source_url'         => $normalizedSourceUrl,
                 'effective_value'    => $desc['effective_value'] ?? null,
                 'currency'           => $desc['currency'] ?? null,
-                'diagnostics_json'   => $desc['diagnostics_json'] ?? null,
+                'diagnostics_json'   => $diagnostics,
             ]);
 
             if ($status === EvidenceItemStatus::RESOLVED) {
@@ -153,21 +165,26 @@ class EvidenceRunItemCollector
         $resolved = 0;
 
         foreach ($pendingItems as $item) {
-            if (empty($item->source_url)) {
+            $materialId = $this->resolveMaterialIdForItem($item);
+            if (empty($item->source_url) && !$materialId) {
                 continue;
             }
 
-            $freshRecord = $this->confirmationService->getFreshRecord(
+            $freshEvidence = $this->resolveFreshEvidenceRecord(
                 $item->source_url,       // already normalized at creation time
                 $item->cost_component,
                 $freshnessDays,
+                $materialId,
+                $run->initiated_by ? (int) $run->initiated_by : null,
             );
 
-            if ($freshRecord) {
+            if ($freshEvidence) {
+                $freshRecord = $freshEvidence['record'];
                 $item->update([
                     'status'             => EvidenceItemStatus::RESOLVED,
                     'resolution_type'    => ResolutionType::AUTO_FRESH,
                     'evidence_record_id' => $freshRecord->id,
+                    'source_url'         => $freshEvidence['source_url'] ?? $item->source_url,
                     'effective_value'    => $freshRecord->observed_price ?? $item->effective_value,
                     'currency'           => $freshRecord->currency ?? $item->currency,
                 ]);
@@ -215,6 +232,7 @@ class EvidenceRunItemCollector
                 'label'          => $plate['name'] ?? $position->material?->name ?? 'Плита #' . $materialId,
                 'subject_type'   => 'project_position',
                 'subject_id'     => $position->id,
+                'material_id'     => $materialId,
                 'source_url'     => $plate['source_url'] ?? $position->material?->source_url ?? null,
                 'effective_value' => isset($plate['price_per_m2']) ? (float) $plate['price_per_m2'] : null,
                 'currency'       => 'RUB',
@@ -234,6 +252,7 @@ class EvidenceRunItemCollector
                 'label'          => $edge['name'] ?? $position->edgeMaterial?->name ?? 'Кромка #' . $materialId,
                 'subject_type'   => 'project_position',
                 'subject_id'     => $position->id,
+                'material_id'     => $materialId,
                 'source_url'     => $edge['source_url'] ?? $position->edgeMaterial?->source_url ?? null,
                 'effective_value' => isset($edge['price_per_unit']) ? (float) $edge['price_per_unit'] : null,
                 'currency'       => 'RUB',
@@ -251,6 +270,7 @@ class EvidenceRunItemCollector
                 'label'          => $fitting->name ?: $material->name,
                 'subject_type'   => 'project_fitting',
                 'subject_id'     => $fitting->id,
+                'material_id'     => $material->id,
                 'source_url'     => $fitting->source_url ?: ($material->source_url ?? null),
                 'effective_value' => (float) $fitting->unit_price,
                 'currency'       => 'RUB',
@@ -288,6 +308,7 @@ class EvidenceRunItemCollector
                     ?? ('Фасад #' . ($snapshotFacade['reference_id'] ?? $material?->id ?? $pos->id)),
                 'subject_type'   => 'project_position',
                 'subject_id'     => $pos->id,
+                'material_id'     => $material?->id,
                 'source_url'     => $material?->source_url ?? null,
                 'effective_value' => $snapshotFacade !== null
                     ? (float) ($snapshotFacade['price_per_m2'] ?? 0)
@@ -415,5 +436,104 @@ class EvidenceRunItemCollector
         unset($item);
 
         return array_values($items);
+    }
+
+    /**
+     * Resolve fresh proof first by canonical URL, then by material-bound
+     * MaterialPriceHistory for legacy materials whose source_url predates Chrome capture.
+     *
+     * @return array{record: EvidenceRecord, source_url: string|null}|null
+     */
+    private function resolveFreshEvidenceRecord(
+        ?string $sourceUrl,
+        string $costComponent,
+        int $freshnessDays,
+        ?int $materialId = null,
+        ?int $userId = null,
+    ): ?array {
+        if (!empty($sourceUrl)) {
+            $record = $this->confirmationService->getFreshRecord(
+                $sourceUrl,
+                $costComponent,
+                $freshnessDays,
+            );
+
+            if ($record) {
+                return [
+                    'record' => $record,
+                    'source_url' => $this->urlNormalizer->normalize($record->source_url ?: $sourceUrl),
+                ];
+            }
+        }
+
+        if (!$materialId) {
+            return null;
+        }
+
+        $since = now()->subDays($freshnessDays);
+
+        $history = MaterialPriceHistory::query()
+            ->where('material_id', $materialId)
+            ->whereNotNull('evidence_record_id')
+            ->where(function ($query) use ($since) {
+                $query->where('observed_at', '>=', $since)
+                    ->orWhere(function ($fallback) use ($since) {
+                        $fallback->whereNull('observed_at')
+                            ->where('created_at', '>=', $since);
+                    });
+            })
+            ->whereHas('evidenceRecord', function ($query) use ($costComponent, $userId) {
+                $query->where('cost_component', $costComponent)
+                    ->where('verification_status', '!=', VerificationStatus::REJECTED)
+                    ->whereHas('assets', function ($assets) {
+                        $assets->whereIn('asset_type', ['screenshot', 'document']);
+                    });
+
+                if ($userId !== null) {
+                    $query->where('created_by', $userId);
+                }
+            })
+            ->with('evidenceRecord')
+            ->latest('id')
+            ->first();
+
+        $record = $history?->evidenceRecord;
+        if (!$record) {
+            return null;
+        }
+
+        if (!$this->confirmationService->isValidCandidateForItem($record, $costComponent, null, $userId)) {
+            return null;
+        }
+
+        return [
+            'record' => $record,
+            'source_url' => $this->urlNormalizer->normalize($record->source_url ?: $history->source_url),
+        ];
+    }
+
+    private function resolveMaterialIdForItem(EstimateEvidenceItem $item): ?int
+    {
+        $diagnosticMaterialId = (int) data_get($item->diagnostics_json, 'material_id', 0);
+        if ($diagnosticMaterialId > 0) {
+            return $diagnosticMaterialId;
+        }
+
+        if ($item->subject_type === 'project_position') {
+            $position = ProjectPosition::find($item->subject_id);
+
+            return match ($item->cost_component) {
+                CostComponent::PLATE => $position?->material_id,
+                CostComponent::EDGE => $position?->edge_material_id,
+                CostComponent::FACADE => $position?->facade_material_id,
+                default => null,
+            };
+        }
+
+        if ($item->subject_type === 'project_fitting') {
+            return ProjectFitting::find($item->subject_id)?->material_id;
+        }
+
+        return null;
     }
 }
