@@ -174,6 +174,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify' // ← добавьте useTheme
 import { useAuthStore } from '@/stores/auth'
 import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
+import {
+  readStoredThemeMode,
+  resolveThemeName,
+  writeStoredThemeMode,
+  type AppThemeMode,
+} from '@/plugins/appTheme'
 import GeoIpWarningBanner from '@/components/GeoIpWarningBanner.vue'
 
 const authStore = useAuthStore()
@@ -192,19 +198,14 @@ watch(lgAndUp, (val) => {
 }, { immediate: true })
 
 // Режим темы: light | dark | auto
-const legacyTheme = localStorage.getItem('app-theme')
-const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
-const themeMode = ref<'light' | 'dark' | 'auto'>(
-  savedMode || (legacyTheme === 'myThemeDark' ? 'dark' : legacyTheme === 'myTheme' ? 'light' : 'dark')
-)
+const themeMode = ref<AppThemeMode>(readStoredThemeMode())
 
 let mediaQuery: MediaQueryList | null = null
 let mediaListener: ((e: MediaQueryListEvent) => void) | null = null
 const systemPrefersDark = ref(false)
 
 const applyThemeMode = () => {
-  const shouldDark = themeMode.value === 'auto' ? systemPrefersDark.value : themeMode.value === 'dark'
-  theme.change(shouldDark ? 'saasDark' : 'saasLight')
+  theme.change(resolveThemeName(themeMode.value, systemPrefersDark.value))
 }
 
 const handleScroll = () => {
@@ -215,7 +216,7 @@ const scrollToTop = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-const setThemeMode = (mode: 'light' | 'dark' | 'auto') => {
+const setThemeMode = (mode: AppThemeMode) => {
   themeMode.value = mode
 }
 
@@ -254,7 +255,7 @@ onBeforeUnmount(() => {
 })
 
 watch(themeMode, () => {
-  localStorage.setItem('app-theme-mode', themeMode.value)
+  writeStoredThemeMode(themeMode.value)
   applyThemeMode()
 })
 

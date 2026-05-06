@@ -91,6 +91,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
+import { readStoredThemeMode, writeStoredThemeMode, type AppThemeMode } from '@/plugins/appTheme'
 
 const emit = defineEmits<{
   (e: 'toggle-drawer'): void
@@ -107,12 +108,11 @@ const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 
 // Theme mode
-const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
-const themeMode = ref<'light' | 'dark' | 'auto'>(savedMode || 'auto')
+const themeMode = ref<AppThemeMode>(readStoredThemeMode())
 
-function setThemeMode(mode: 'light' | 'dark' | 'auto') {
+function setThemeMode(mode: AppThemeMode) {
   themeMode.value = mode
-  localStorage.setItem('app-theme-mode', mode)
+  writeStoredThemeMode(mode)
   // Emit event for parent to handle theme change
   window.dispatchEvent(new CustomEvent('theme-mode-change', { detail: mode }))
 }

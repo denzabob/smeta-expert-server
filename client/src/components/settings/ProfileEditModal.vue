@@ -47,6 +47,21 @@
           <span class="pem-hint">Email изменить нельзя</span>
         </div>
 
+        <div class="pem-field-group">
+          <label class="pem-label">ID в системе</label>
+          <button
+            class="pem-copy-field"
+            type="button"
+            :disabled="!userId"
+            :title="userId ? 'Скопировать ID' : 'ID недоступен'"
+            @click="copyUserId"
+          >
+            <span>{{ userId || 'Недоступен' }}</span>
+            <v-icon icon="mdi-content-copy" size="18" />
+          </button>
+          <span class="pem-hint">Нажмите на ID, чтобы скопировать</span>
+        </div>
+
         <div v-if="message" class="pem-message" :class="messageClass">
           {{ message }}
         </div>
@@ -91,6 +106,7 @@ const open = computed({
 
 const userEmail = computed(() => authStore.user?.email ?? '')
 const userName = computed(() => authStore.user?.name ?? '')
+const userId = computed(() => authStore.user?.id ? String(authStore.user.id) : '')
 const userInitial = computed(() => {
   const n = userName.value || userEmail.value
   return n.charAt(0).toUpperCase()
@@ -127,6 +143,19 @@ async function save() {
     messageClass.value = 'pem-message--error'
   } finally {
     saving.value = false
+  }
+}
+
+async function copyUserId() {
+  if (!userId.value) return
+
+  try {
+    await navigator.clipboard.writeText(userId.value)
+    message.value = 'ID скопирован'
+    messageClass.value = 'pem-message--success'
+  } catch {
+    message.value = 'Не удалось скопировать ID'
+    messageClass.value = 'pem-message--error'
   }
 }
 </script>
@@ -244,6 +273,39 @@ async function save() {
 
 .pem-input--readonly {
   background: rgba(var(--v-theme-surface-container-high), 0.92);
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  cursor: not-allowed;
+}
+
+.pem-copy-field {
+  min-height: 48px;
+  width: 100%;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.92rem;
+  color: rgb(var(--v-theme-on-surface));
+  background: rgba(var(--v-theme-surface-container-highest), 0.94);
+  border: 1px solid rgba(var(--v-theme-outline), 0.72);
+  border-radius: var(--md-sys-shape-corner-large);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.pem-copy-field:hover:not(:disabled) {
+  border-color: rgba(var(--v-theme-primary), 0.72);
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.pem-copy-field:focus-visible {
+  outline: none;
+  border-color: rgba(var(--v-theme-primary), 0.9);
+  box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), 0.14);
+}
+
+.pem-copy-field:disabled {
   color: rgba(var(--v-theme-on-surface), 0.5);
   cursor: not-allowed;
 }

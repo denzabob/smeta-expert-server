@@ -2,6 +2,7 @@
 import 'vuetify/styles'
 import { createVuetify } from 'vuetify'
 import { ru } from 'vuetify/locale'
+import { getInitialThemeName } from './appTheme'
 import { saasDesignSystem } from './theme'
 
 export default createVuetify({
@@ -10,7 +11,7 @@ export default createVuetify({
     messages: { ru },
   },
   theme: {
-    defaultTheme: 'saasDarkWarm',
+    defaultTheme: getInitialThemeName(),
     themes: saasDesignSystem.themes,
   },
   defaults: saasDesignSystem.defaults,

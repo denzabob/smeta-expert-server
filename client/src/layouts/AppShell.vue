@@ -52,6 +52,13 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
+import {
+  isAppThemeMode,
+  readStoredThemeMode,
+  resolveThemeName,
+  writeStoredThemeMode,
+  type AppThemeMode,
+} from '@/plugins/appTheme'
 import AppSidebar from './shell/AppSidebarNew.vue'
 import AccountSettingsDialog from './shell/AccountSettingsDialog.vue'
 import ProfileEditModal from '@/components/settings/ProfileEditModal.vue'
@@ -80,31 +87,25 @@ function openProfileEdit() {
 }
 
 // Theme mode
-const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
-const themeMode = ref<'light' | 'dark' | 'auto'>(savedMode || 'dark')
+const themeMode = ref<AppThemeMode>(readStoredThemeMode())
 
 let mediaQuery: MediaQueryList | null = null
 let mediaListener: ((e: MediaQueryListEvent) => void) | null = null
 const systemPrefersDark = ref(false)
 
 function applyTheme() {
-  const shouldDark = themeMode.value === 'auto' 
-    ? systemPrefersDark.value 
-    : themeMode.value === 'dark'
-  const themeName = shouldDark ? 'saasDark' : 'saasLight'
-  if (theme.global.current.value.dark !== shouldDark) {
-    theme.global.name.value = themeName
-    return
-  }
-
+  const themeName = resolveThemeName(themeMode.value, systemPrefersDark.value)
   if (theme.global.name.value !== themeName) {
     theme.global.name.value = themeName
   }
 }
 
 function handleThemeModeChange(e: Event) {
-  const mode = (e as CustomEvent).detail as 'light' | 'dark' | 'auto'
+  const mode = (e as CustomEvent).detail
+  if (!isAppThemeMode(mode)) return
+
   themeMode.value = mode
+  writeStoredThemeMode(mode)
   applyTheme()
 }
 
@@ -169,6 +170,7 @@ onBeforeUnmount(() => {
 })
 
 watch(themeMode, () => {
+  writeStoredThemeMode(themeMode.value)
   applyTheme()
 })
 

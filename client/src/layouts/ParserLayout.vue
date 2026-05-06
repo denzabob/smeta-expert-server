@@ -191,6 +191,12 @@ import { useDisplay, useTheme } from 'vuetify'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { parserApi, type SystemStatus } from '@/api/parser'
+import {
+  readStoredThemeMode,
+  resolveThemeName,
+  writeStoredThemeMode,
+  type AppThemeMode,
+} from '@/plugins/appTheme'
 
 const theme = useTheme()
 const { mobile } = useDisplay()
@@ -202,19 +208,14 @@ const statusDialog = ref(false)
 const systemStatus = ref<SystemStatus | null>(null)
 const showScrollTop = ref(false)
 
-const legacyTheme = localStorage.getItem('theme')
-const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
-const themeMode = ref<'light' | 'dark' | 'auto'>(
-  savedMode || (legacyTheme === 'expertDark' ? 'dark' : legacyTheme === 'expertLight' ? 'light' : 'dark')
-)
+const themeMode = ref<AppThemeMode>(readStoredThemeMode())
 
 let mediaQuery: MediaQueryList | null = null
 let mediaListener: ((e: MediaQueryListEvent) => void) | null = null
 const systemPrefersDark = ref(false)
 
 const applyThemeMode = () => {
-  const shouldDark = themeMode.value === 'auto' ? systemPrefersDark.value : themeMode.value === 'dark'
-  theme.global.name.value = shouldDark ? 'saasDark' : 'saasLight'
+  theme.global.name.value = resolveThemeName(themeMode.value, systemPrefersDark.value)
 }
 
 const handleScroll = () => {
@@ -225,7 +226,7 @@ const scrollToTop = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-const setThemeMode = (mode: 'light' | 'dark' | 'auto') => {
+const setThemeMode = (mode: AppThemeMode) => {
   themeMode.value = mode
 }
 
@@ -263,7 +264,7 @@ onBeforeUnmount(() => {
 })
 
 watch(themeMode, () => {
-  localStorage.setItem('app-theme-mode', themeMode.value)
+  writeStoredThemeMode(themeMode.value)
   applyThemeMode()
 })
 

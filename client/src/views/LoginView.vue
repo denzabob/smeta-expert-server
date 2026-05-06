@@ -1,32 +1,8 @@
 <template>
   <v-container class="fill-height login-page md3-auth-page" fluid>
       <v-row class="auth-content md3-auth-shell ma-0" align="center" justify="center">
-        <v-col cols="12" md="6" class="d-none d-md-flex">
-          <section class="md3-auth-hero">
-            <div>
-              <div class="md3-auth-hero__eyebrow">Material 3 Foundation</div>
-              <h1 class="md3-auth-hero__title">СметаЭксперт для рабочих процессов.</h1>
-              <p class="md3-auth-hero__body">
-                Пилотный экран новой глобальной дизайн-системы. Основа строится на общих
-                semantic tokens, tonal surfaces и предсказуемой форме компонентов, чтобы
-                затем поэтапно перевести на неё весь сервис.
-              </p>
-            </div>
-
-            <div class="md3-auth-hero__highlights">
-              <div class="md3-auth-hero__metric">
-                <div class="md3-auth-hero__metric-label">Основа</div>
-                <div class="md3-auth-hero__metric-value">Глобальные MD3 tokens и совместимая тема Vuetify</div>
-              </div>
-              <div class="md3-auth-hero__metric">
-                <div class="md3-auth-hero__metric-label">Приоритет</div>
-                <div class="md3-auth-hero__metric-value">Безопасная миграция без поломки текущих экранов</div>
-              </div>
-            </div>
-          </section>
-        </v-col>
-
-        <v-col cols="12" md="6" lg="5" class="auth-col">
+      
+        <v-col cols="12" class="auth-col">
           <v-card class="login-card md3-auth-card">
           <v-card-title class="text-h5">{{ cardTitle }}</v-card-title>
 

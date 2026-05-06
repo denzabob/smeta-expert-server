@@ -73,6 +73,12 @@ import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { accountMenuItems, type AccountMenuItem } from './sidebarConfig'
 import { useNotificationsStore } from '@/stores/notifications'
+import {
+  isAppThemeMode,
+  readStoredThemeMode,
+  writeStoredThemeMode,
+  type AppThemeMode,
+} from '@/plugins/appTheme'
 
 const props = defineProps<{
   modelValue: boolean
@@ -101,17 +107,19 @@ const themeModes = [
   { value: 'dark'  as const, icon: 'mdi-moon-waning-crescent', title: 'Тёмная тема' },
   { value: 'auto'  as const, icon: 'mdi-theme-light-dark', title: 'Авто' },
 ]
-const savedMode = localStorage.getItem('app-theme-mode') as 'light' | 'dark' | 'auto' | null
-const themeMode = ref<'light' | 'dark' | 'auto'>(savedMode ?? 'auto')
+const themeMode = ref<AppThemeMode>(readStoredThemeMode())
 
-function setThemeMode(mode: 'light' | 'dark' | 'auto') {
+function setThemeMode(mode: AppThemeMode) {
   themeMode.value = mode
-  localStorage.setItem('app-theme-mode', mode)
+  writeStoredThemeMode(mode)
   window.dispatchEvent(new CustomEvent('theme-mode-change', { detail: mode }))
 }
 
 function handleThemeModeChange(e: Event) {
-  themeMode.value = (e as CustomEvent).detail as 'light' | 'dark' | 'auto'
+  const mode = (e as CustomEvent).detail
+  if (!isAppThemeMode(mode)) return
+
+  themeMode.value = mode
 }
 
 // ── Menu actions ────────────────────────────────────────────────────────────
