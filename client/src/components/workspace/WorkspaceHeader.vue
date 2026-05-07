@@ -40,7 +40,7 @@
             variant="outlined"
             prepend-icon="mdi-check-circle"
           >
-            Report #{{ latestRevision.number }}
+            Отчет #{{ latestRevision.number }}
           </v-chip>
         </template>
       </div>

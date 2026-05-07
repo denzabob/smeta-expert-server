@@ -1537,7 +1537,7 @@
           <div class="dense-module-hero__content">
             <div class="dense-module-hero__eyebrow">Отчеты проекта</div>
             <div class="dense-module-hero__title-row">
-              <div class="dense-module-hero__title">Documents</div>
+              <div class="dense-module-hero__title">Документы</div>
               <v-chip
                 v-if="latestRevision"
                 size="small"
@@ -1545,7 +1545,7 @@
                 color="success"
                 prepend-icon="mdi-file-pdf-box"
               >
-                PDF ready
+                PDF готов
               </v-chip>
             </div>
           </div>
@@ -1559,10 +1559,10 @@
             >
               <v-card-title class="document-action-card__title">
                 <v-icon icon="mdi-calculator-variant-outline" size="22" />
-                <span>Estimate Report</span>
+                <span>Смета и расчетная часть</span>
               </v-card-title>
               <v-card-text class="document-action-card__body">
-                <p>Generate the project estimate and calculation report.</p>
+                <p>Сформировать смету и расчетную часть проекта.</p>
                 <v-alert
                   v-if="estimateReportStale"
                   type="warning"
@@ -1570,11 +1570,11 @@
                   density="compact"
                   class="mt-3"
                 >
-                  The estimate has changed since the last generated report.
+                  Смета изменилась после последнего созданного отчета.
                 </v-alert>
                 <div v-if="latestRevision || estimateReportResult" class="document-last-generated">
-                  <div>Last generated: {{ formatRevisionDate(estimateReportResult?.created_at || latestRevision?.created_at) }}</div>
-                  <div>Report version: {{ estimateReportResult?.number || latestRevision?.number }}</div>
+                  <div>Последний отчет: {{ formatRevisionDate(estimateReportResult?.created_at || latestRevision?.created_at) }}</div>
+                  <div>Версия отчета: {{ estimateReportResult?.number || latestRevision?.number }}</div>
                 </div>
               </v-card-text>
               <v-card-actions class="document-action-card__actions">
@@ -1586,7 +1586,7 @@
                   :title="readOnlyActionTitle || undefined"
                   @click="generateEstimateReport"
                 >
-                  Generate Estimate Report
+                  Создать отчет
                 </v-btn>
                 <v-btn
                   v-if="latestRevision || estimateReportResult"
@@ -1594,7 +1594,7 @@
                   prepend-icon="mdi-open-in-new"
                   @click="openLatestEstimateReportPdf"
                 >
-                  Open PDF
+                  Открыть PDF
                 </v-btn>
                 <v-btn
                   v-if="latestRevision || estimateReportResult"
@@ -1603,7 +1603,7 @@
                   :loading="currentEstimateReportNumber ? revisionPdfLoading.has(currentEstimateReportNumber) : false"
                   @click="downloadLatestEstimateReportPdf"
                 >
-                  Download PDF
+                  Скачать PDF
                 </v-btn>
               </v-card-actions>
             </v-card>
@@ -1614,22 +1614,31 @@
             >
               <v-card-title class="document-action-card__title">
                 <v-icon icon="mdi-shield-check-outline" size="22" />
-                <span>Price Evidence Report</span>
+                <span>Подтверждение цен</span>
               </v-card-title>
               <v-card-text class="document-action-card__body">
-                <p>Generate a document confirming prices with sources, screenshots, files, and dates.</p>
+                <p>Сформировать документ с подтверждением цен, источниками, скриншотами, файлами и датами фиксации.</p>
                 <div class="document-evidence-status">
                   <v-chip size="small" variant="tonal" color="success">
-                    Confirmed: {{ priceEvidenceStatus.confirmed }} / Total: {{ priceEvidenceStatus.total }}
+                    Подтверждено: {{ priceEvidenceStatus.confirmed }} / Всего: {{ priceEvidenceStatus.total }}
                   </v-chip>
                   <v-chip
                     size="small"
                     variant="tonal"
                     :color="priceEvidenceStatus.missing > 0 ? 'warning' : 'success'"
                   >
-                    Missing: {{ priceEvidenceStatus.missing }}
+                    Не хватает: {{ priceEvidenceStatus.missing }}
                   </v-chip>
                 </div>
+                <v-alert
+                  v-if="priceEvidenceStatus.total > 0 && priceEvidenceStatus.missing === 0"
+                  type="success"
+                  variant="tonal"
+                  density="compact"
+                  class="mt-3"
+                >
+                  Все доказательства добавлены
+                </v-alert>
                 <v-alert
                   v-if="isPriceEvidenceCheckRunning"
                   type="info"
@@ -1640,7 +1649,7 @@
                 >
                   <div class="d-flex align-center ga-2">
                     <v-progress-circular indeterminate size="16" width="2" color="info" />
-                    <span>Checking price evidence…</span>
+                    <span>Проверяем доказательства цен…</span>
                   </div>
                 </v-alert>
               </v-card-text>
@@ -1653,7 +1662,7 @@
                   :title="readOnlyActionTitle || undefined"
                   @click="generatePriceEvidenceReport"
                 >
-                  Generate Price Evidence Report
+                  Создать доказательства
                 </v-btn>
                 <v-btn
                   v-if="missingEvidenceItems.length > 0"
@@ -1662,7 +1671,7 @@
                   prepend-icon="mdi-alert-outline"
                   @click="focusMissingEvidencePanel"
                 >
-                  Review missing evidence
+                  Проверить недостающие доказательства
                 </v-btn>
                 <v-btn
                   v-if="priceEvidencePdfUrl"
@@ -1670,7 +1679,7 @@
                   prepend-icon="mdi-open-in-new"
                   @click="openPdfLink(priceEvidencePdfUrl)"
                 >
-                  Open PDF
+                  Открыть PDF
                 </v-btn>
                 <v-btn
                   v-if="currentPriceEvidenceReportNumber"
@@ -1679,7 +1688,7 @@
                   :loading="revisionJustPdfLoading.has(currentPriceEvidenceReportNumber)"
                   @click="downloadLatestPriceEvidenceReportPdf"
                 >
-                  Download PDF
+                  Скачать PDF
                 </v-btn>
               </v-card-actions>
             </v-card>
@@ -1693,9 +1702,9 @@
         >
           <div class="dense-module-section-bar">
             <div class="dense-module-section-bar__content">
-              <div class="dense-module-section-bar__title">Missing price evidence</div>
+              <div class="dense-module-section-bar__title">Не хватает доказательств</div>
               <div class="dense-module-section-bar__subtitle">
-                Some estimate positions do not have price confirmation. It is recommended to add evidence before generating the court-facing price evidence report.
+                По некоторым позициям сметы отсутствует подтверждение цены. Рекомендуется добавить доказательства перед формированием документа для суда.
               </div>
             </div>
           </div>
@@ -1706,17 +1715,17 @@
               density="compact"
               class="mb-3"
             >
-              Add evidence only for the items below. Already confirmed positions are not shown here.
+              Добавьте доказательства только по указанным позициям. Уже подтвержденные позиции здесь не отображаются.
             </v-alert>
             <v-table density="compact">
               <thead>
                 <tr>
                   <th style="width:40px">№</th>
-                  <th>Item</th>
-                  <th style="width:120px">Component</th>
-                  <th style="width:130px">Estimate price</th>
-                  <th>Reason</th>
-                  <th class="text-right">Действия</th>
+                  <th>ПОЗИЦИЯ</th>
+                  <th style="width:120px">РАЗДЕЛ</th>
+                  <th style="width:130px">ЦЕНА В СМЕТЕ</th>
+                  <th>ПРИЧИНА</th>
+                  <th class="text-right">ДЕЙСТВИЯ</th>
                 </tr>
               </thead>
               <tbody>
@@ -1740,7 +1749,7 @@
                       :disabled="isProjectReadOnly"
                       @click="openMissingEvidenceAction(runItem)"
                     >
-                      Add evidence
+                      Добавить доказательство
                     </v-btn>
                   </td>
                 </tr>
@@ -1752,7 +1761,7 @@
         <section class="dense-module-surface">
           <div class="dense-module-section-bar">
             <div class="dense-module-section-bar__content">
-              <div class="dense-module-section-bar__title">Document history</div>
+              <div class="dense-module-section-bar__title">История документов</div>
             </div>
           </div>
           <v-skeleton-loader v-if="revisionsLoading" type="table" />
@@ -1760,18 +1769,18 @@
             <v-table density="compact">
               <thead>
                 <tr>
-                  <th>Document type</th>
-                  <th style="width:100px">Version</th>
-                  <th>Created</th>
-                  <th>Author</th>
-                  <th style="width:120px">Status</th>
+                  <th>ТИП ДОКУМЕНТА</th>
+                  <th style="width:100px">ВЕРСИЯ</th>
+                  <th>СОЗДАН</th>
+                  <th>АВТОР</th>
+                  <th style="width:120px">СТАТУС</th>
                   <th class="text-right">PDF</th>
                 </tr>
               </thead>
               <tbody>
                 <template v-for="rev in revisions" :key="rev.id">
                   <tr>
-                    <td>Estimate Report</td>
+                    <td>Смета и расчетная часть</td>
                     <td>{{ rev.number }}</td>
                     <td>{{ formatRevisionDate(rev.created_at) }}</td>
                     <td>{{ getRevisionAuthorName(rev) }}</td>
@@ -1785,7 +1794,7 @@
                         size="x-small"
                         variant="text"
                         icon="mdi-open-in-new"
-                        title="Open PDF"
+                        title="Открыть PDF"
                         :disabled="rev.status === 'stale'"
                         @click="openPdfLink(getEstimateReportPdfUrl(rev.number))"
                       />
@@ -1793,7 +1802,7 @@
                         size="x-small"
                         variant="text"
                         icon="mdi-download"
-                        title="Download PDF"
+                        title="Скачать PDF"
                         :loading="revisionPdfLoading.has(rev.number)"
                         :disabled="rev.status === 'stale' || revisionPdfLoading.has(rev.number)"
                         @click="downloadRevisionPdf(rev)"
@@ -1801,7 +1810,7 @@
                     </td>
                   </tr>
                   <tr>
-                    <td>Price Evidence Report</td>
+                    <td>Подтверждение цен</td>
                     <td>{{ rev.number }}</td>
                     <td>{{ formatRevisionDate(rev.created_at) }}</td>
                     <td>{{ getRevisionAuthorName(rev) }}</td>
@@ -1815,7 +1824,7 @@
                         size="x-small"
                         variant="text"
                         icon="mdi-open-in-new"
-                        title="Open PDF"
+                        title="Открыть PDF"
                         :disabled="rev.status === 'stale'"
                         @click="openPdfLink(getPriceEvidenceReportPdfUrl(rev.number))"
                       />
@@ -1823,7 +1832,7 @@
                         size="x-small"
                         variant="text"
                         icon="mdi-download"
-                        title="Download PDF"
+                        title="Скачать PDF"
                         :loading="revisionJustPdfLoading.has(rev.number)"
                         :disabled="rev.status === 'stale' || revisionJustPdfLoading.has(rev.number)"
                         @click="downloadPriceJustificationPdf(rev)"
@@ -1835,7 +1844,7 @@
             </v-table>
           </div>
           <div v-else class="text-center py-6 text-grey">
-            Document history is empty.
+            История документов пока пустая.
           </div>
 
           <div class="d-flex justify-end mt-2" v-if="revisionsPagination.lastPage > 1">
@@ -1895,10 +1904,10 @@
 
     <v-dialog v-model="manualCloseDialog" max-width="640">
       <v-card>
-        <v-card-title>Add price evidence</v-card-title>
+        <v-card-title>Добавить доказательство цены</v-card-title>
         <v-card-text>
           <div class="text-body-2 mb-3">
-            Item: <strong>{{ manualCloseItem ? getRevisionRunItemName(manualCloseItem) : '—' }}</strong>
+            Позиция: <strong>{{ manualCloseItem ? getRevisionRunItemName(manualCloseItem) : '—' }}</strong>
           </div>
           <v-alert
             v-if="manualCloseItem && isFacadeRevisionRunItem(manualCloseItem)"
@@ -1926,7 +1935,7 @@
             type="number"
             min="0.01"
             step="0.01"
-            label="Price"
+            label="Цена"
             variant="outlined"
             density="compact"
             class="mb-2"
@@ -1937,18 +1946,18 @@
             density="compact"
             class="mb-2"
           >
-            The current estimate price is prefilled. Check the source before saving the evidence.
+            Подставлена цена из текущей сметы. Проверьте источник перед сохранением доказательства.
           </v-alert>
           <v-text-field
             v-model="manualCloseForm.currency"
-            label="Currency"
+            label="Валюта"
             variant="outlined"
             density="compact"
             class="mb-2"
           />
           <v-text-field
             v-model="manualCloseForm.source_url"
-            label="Source URL (optional)"
+            label="Ссылка на источник (необязательно)"
             variant="outlined"
             density="compact"
             class="mb-2"
@@ -1967,7 +1976,7 @@
             <v-file-input
               v-model="manualCloseForm.screenshot_file"
               accept="image/*"
-              label="Screenshot (required)"
+              label="Скриншот (обязательно)"
               variant="outlined"
               density="compact"
               prepend-icon="mdi-camera"
@@ -1976,7 +1985,7 @@
               class="mb-1"
             />
             <div class="d-flex align-center justify-space-between ga-2 text-caption text-medium-emphasis">
-              <span>Drop an image here or paste it from clipboard (Ctrl+V)</span>
+              <span>Перетащите изображение сюда или вставьте из буфера (Ctrl+V)</span>
               <v-btn
                 v-if="getManualScreenshotFile()"
                 size="x-small"
@@ -1985,16 +1994,16 @@
                 prepend-icon="mdi-close"
                 @click="clearManualScreenshotFile"
               >
-                Clear
+                Очистить
               </v-btn>
             </div>
           </div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" :disabled="manualCloseLoading" @click="manualCloseDialog = false">Cancel</v-btn>
+          <v-btn variant="text" :disabled="manualCloseLoading" @click="manualCloseDialog = false">Отмена</v-btn>
           <v-btn color="primary" :loading="manualCloseLoading" @click="submitManualClose">
-            Save evidence
+            Сохранить доказательство
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -3434,6 +3443,9 @@ watch(activeModule, (val) => {
     return
   }
   localStorage.setItem('editor_active_module', val)
+  if (val === 'documents') {
+    refreshDocumentsEvidenceStatus()
+  }
   // Open settings drawer when navigating to settings module
   if (val === 'settings') {
     settingsDrawer.value = true
@@ -7006,7 +7018,7 @@ const generateEstimateReport = async () => {
       created_at: res.data.created_at,
       pdf_url: getEstimateReportPdfUrl(res.data.number),
     }
-    showNotification('Estimate report created. PDF ready.', 'success')
+    showNotification('Отчет создан. PDF готов.', 'success')
     await fetchLatestRevision()
     await fetchRevisions(1)
   } catch (error: any) {
@@ -7061,7 +7073,7 @@ const generatePriceEvidenceReport = async () => {
     await refreshRevisionRun(true)
 
     if (missingEvidenceItems.value.length > 0) {
-      showNotification('Some positions are missing price evidence.', 'warning')
+      showNotification('По части позиций не хватает доказательств цены.', 'warning')
       focusMissingEvidencePanel()
       return
     }
@@ -7072,13 +7084,13 @@ const generatePriceEvidenceReport = async () => {
     }
 
     if (isPriceEvidenceCheckRunning.value) {
-      showNotification('Checking price evidence. The report will be prepared when the check is complete.', 'info')
+      showNotification('Проверяем доказательства цен. Документ можно будет создать после завершения проверки.', 'info')
       startRevisionRunPolling()
       return
     }
 
     if (activeRevisionRun.value && !canFinalizeRevisionRun.value) {
-      showNotification('Price evidence is not ready yet. Review missing evidence before generating the report.', 'warning')
+      showNotification('Доказательства цен еще не готовы. Проверьте недостающие позиции перед созданием документа.', 'warning')
     }
   } catch (error: any) {
     if (showBillingLockedError(error)) return
@@ -7099,6 +7111,17 @@ const focusMissingEvidencePanel = () => {
   nextTick(() => {
     missingEvidencePanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   })
+}
+
+const refreshDocumentsEvidenceStatus = async () => {
+  if (!activeRevisionRun.value || revisionRunLoading.value) return
+  await refreshRevisionRun(true)
+}
+
+const onWindowFocusForDocuments = () => {
+  if (activeModule.value === 'documents') {
+    refreshDocumentsEvidenceStatus()
+  }
 }
 
 const getStoredRevisionRunId = (): number | null => {
@@ -7201,25 +7224,97 @@ const getRunItemStatusColor = (status?: string) => {
   }
 }
 
-const getRevisionRunItemName = (item: RevisionRunItem | any): string => {
+const firstText = (...values: unknown[]): string | null => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim() !== '') return value.trim()
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  }
+
+  return null
+}
+
+const appendDescriptor = (base: string, descriptors: Array<string | null>): string => {
+  const clean = descriptors.filter((value): value is string => !!value && value.trim() !== '')
+  return clean.length > 0 ? `${base}: ${clean.join(' / ')}` : base
+}
+
+const getFacadeRunItemName = (item: RevisionRunItem | any): string => {
+  const position = item?.position || {}
+  const material = item?.material || position?.facade_material || position?.facadeMaterial || {}
+  const specification = position?.finished_product_specification || position?.finishedProductSpecification || {}
+  const snapshot = position?.finished_product_pricing_snapshot || {}
+  const snapshotSpec = snapshot?.specification || {}
+
+  const name = firstText(
+    specification.name,
+    snapshotSpec.name,
+    position.custom_name,
+    position.decor_label,
+    material.name,
+  )
+  const facadeClass = firstText(specification.facade_class, snapshotSpec.facade_class)
+  const category = firstText(
+    specification.price_group_label,
+    snapshotSpec.price_group_label,
+    position.decor_label,
+  )
+  const thickness = firstText(specification.thickness_mm, snapshotSpec.thickness_mm, position.thickness_mm)
+  const thicknessLabel = thickness ? `толщина ${thickness}мм` : null
+
+  if (name) {
+    return appendDescriptor('Фасад', [name, facadeClass, category, thicknessLabel])
+  }
+
+  return `Фасад #${getFacadeSpecificationIdFromRunItem(item) || item?.material_id || item?.project_position_id || '—'}`
+}
+
+const getMaterialRunItemName = (item: RevisionRunItem | any): string | null => {
   const material = item?.material || {}
   const position = item?.position || {}
-  const fitting = item?.projectFitting || {}
-  return material.name
-    || fitting.name
-    || position.custom_name
-    || position.name
-    || `Материал #${item.material_id || item.project_fitting_id || item.project_position_id || '—'}`
+  const name = firstText(material.name, material.title, position.material?.name, position.edge_material?.name, position.edgeMaterial?.name)
+  if (!name) return null
+
+  const article = firstText(material.article, material.code, material.sku)
+  const thickness = firstText(material.thickness_mm, material.thickness, position.thickness_mm)
+  const size = firstText(material.size, material.dimensions)
+  const descriptors = [
+    article ? `арт. ${article}` : null,
+    thickness ? `${thickness}мм` : null,
+    size,
+  ]
+
+  return appendDescriptor(name, descriptors)
+}
+
+const getRevisionRunItemName = (item: RevisionRunItem | any): string => {
+  if (isFacadeRevisionRunItem(item)) {
+    return getFacadeRunItemName(item)
+  }
+
+  const fitting = item?.projectFitting || item?.project_fitting || {}
+  const subject = item?.evidence_subject || item?.evidenceSubject || {}
+  const materialName = getMaterialRunItemName(item)
+  const subjectName = firstText(subject.name, subject.title, subject.type, subject.source_title)
+  const fittingName = firstText(fitting.name, fitting.title, fitting.material?.name)
+  const positionName = firstText(item?.position?.custom_name, item?.position?.name)
+  const fallbackPrefix = formatCostDriverType(item?.cost_driver_type)
+  const fallbackId = item?.material_id || item?.project_fitting_id || item?.project_position_id || item?.evidence_subject_id || '—'
+
+  return materialName
+    || fittingName
+    || subjectName
+    || positionName
+    || `${fallbackPrefix} #${fallbackId}`
 }
 
 const costDriverLabels: Record<string, string> = {
   plate: 'Плита',
   edge: 'Кромка',
   facade: 'Фасад',
-  fitting: 'Фурн.',
-  operation: 'Опер.',
-  labor_work: 'Раб.',
-  expense: 'Расх.',
+  fitting: 'Фурнитура',
+  operation: 'Операция',
+  labor_work: 'Работа',
+  expense: 'Расход',
 }
 
 const formatCostDriverType = (type?: string | null): string => {
@@ -7313,7 +7408,12 @@ const getMaterialCatalogLink = (materialId?: number | string | null): string => 
 
 const getFacadeSpecificationIdFromRunItem = (item: RevisionRunItem | any): number | null => {
   const position = item?.position || {}
+  const snapshot = position?.finished_product_pricing_snapshot || {}
   const rawId = position.finished_product_specification_id
+    ?? position.finishedProductSpecificationId
+    ?? position.finished_product_specification?.id
+    ?? position.finishedProductSpecification?.id
+    ?? snapshot?.specification?.id
     ?? item?.finished_product_specification_id
     ?? item?.finishedProductSpecificationId
     ?? null
@@ -7371,7 +7471,7 @@ const refreshRevisionRun = async (silent = false) => {
 
     if (lastKnownRunStatus.value && lastKnownRunStatus.value !== data.run.status) {
       if (data.run.status === 'NEEDS_MANUAL') {
-        showNotification('Some positions are missing price evidence.', 'warning')
+        showNotification('По части позиций не хватает доказательств цены.', 'warning')
       }
       if (data.run.status === 'READY' && prevStatus !== 'READY') {
         // Auto-finalize when all items are OK
@@ -7536,8 +7636,8 @@ const getRevisionAuthorName = (rev: any): string => (
 )
 
 const formatDocumentStatus = (rev: any): string => {
-  if (rev?.status === 'stale') return 'Needs update'
-  return 'PDF ready'
+  if (rev?.status === 'stale') return 'Требует обновления'
+  return 'PDF готов'
 }
 
 const getDocumentStatusColor = (rev: any): string => (
@@ -7687,30 +7787,30 @@ const openMissingEvidenceAction = (item: RevisionRunItem) => {
 
 const getMissingEvidenceReason = (item: RevisionRunItem): string => {
   if (!item.source_url && !isFacadeRevisionRunItem(item)) {
-    return 'no source URL'
+    return 'нет ссылки на источник'
   }
 
   if (!item.has_evidence) {
-    return 'no screenshot or document'
+    return 'нет скриншота или документа'
   }
 
   switch (item.status) {
     case 'BLOCKED':
-      return 'source is blocked'
+      return 'источник недоступен'
     case 'TIMEOUT':
-      return 'source check timed out'
+      return 'источник не ответил вовремя'
     case 'PARSE_ERROR':
-      return item.message || 'price was not confirmed'
+      return item.message || 'цена не подтверждена'
     case 'NO_TEMPLATE':
-      return 'no source URL or parser template'
+      return 'нет ссылки или правила проверки источника'
     case 'NEEDS_MANUAL':
-      return item.message || 'manual evidence is required'
+      return item.message || 'требуется добавить доказательство вручную'
     case 'OK_NO_PRICE':
-      return 'price was not extracted'
+      return 'цена не найдена в источнике'
     case 'PENDING':
-      return 'evidence check is still in progress'
+      return 'проверка доказательства еще выполняется'
     default:
-      return item.message || 'no linked evidence record'
+      return item.message || 'нет связанного доказательства'
   }
 }
 
@@ -7888,7 +7988,7 @@ const finalizeRevisionRun = async () => {
       pdf_url: data.pdf.price_justification,
       estimate_pdf_url: data.pdf.smeta,
     }
-    showNotification('Price evidence report created. PDF ready.', 'success')
+    showNotification('Документ подтверждения цен создан. PDF готов.', 'success')
     setStoredRevisionRunId(null)
     stopRevisionRunPolling()
     activeRevisionRun.value = null
@@ -8639,7 +8739,7 @@ const sidebarModules = computed<SidebarModule[]>(() => [
   },
   {
     key: 'documents',
-    label: 'Documents',
+    label: 'Документы',
     icon: 'mdi-file-document-multiple-outline',
     count: revisions.value.length,
     warnings: activeRevisionRun.value && (activeRevisionRun.value.status === 'NEEDS_MANUAL' || activeRevisionRun.value.status === 'FAILED') ? 1 : 0
@@ -8678,7 +8778,7 @@ const healthIssues = computed<HealthIssue[]>(() => {
   }
 
   if (activeRevisionRun.value?.status === 'NEEDS_MANUAL') {
-    issues.push({ severity: 'info', message: 'Есть позиции без подтверждения цены', action: 'documents', actionLabel: 'Documents' })
+    issues.push({ severity: 'info', message: 'Есть позиции без подтверждения цены', action: 'documents', actionLabel: 'Документы' })
   }
 
   return issues
@@ -9522,6 +9622,7 @@ onMounted(async () => {
       toolbarSentinelObserver.observe(sentinel)
     }
   })
+  window.addEventListener('focus', onWindowFocusForDocuments)
 })
 
 watch(manualCloseDialog, (isOpen) => {
@@ -9550,6 +9651,7 @@ onBeforeUnmount(() => {
     if (timeout) clearTimeout(timeout)
   })
   window.removeEventListener('paste', onWindowPasteForManualClose)
+  window.removeEventListener('focus', onWindowFocusForDocuments)
   stopRevisionRunPolling()
 })
 </script>

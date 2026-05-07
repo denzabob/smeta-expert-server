@@ -9,6 +9,8 @@ use App\Http\Controllers\Controller;
 use App\Jobs\RunRevisionUpdateJob;
 use App\Models\EvidenceArtifact;
 use App\Models\EvidenceAsset;
+use App\Models\FinishedProductPriceEvidenceAsset;
+use App\Models\FinishedProductPriceSource;
 use App\Models\MaterialPriceHistory;
 use App\Models\Project;
 use App\Models\ProjectPosition;
@@ -111,21 +113,41 @@ class RevisionRunController extends Controller
     public function show(Project $project, int $runId): JsonResponse
     {
         $this->authorize('view', $project);
-        $run = RevisionRun::with([
-                'items.position',
+        $relations = [
+                'items.position.finishedProductSpecification',
+                'items.position.facadeMaterial',
+                'items.position.material',
+                'items.position.edgeMaterial',
                 'items.projectFitting.material',
                 'items.material',
                 'items.priceHistory',
+                'items.evidenceSubject',
                 'items.evidenceArtifacts:id,revision_run_item_id,capture_source,mode,extracted_price,currency,source_url_raw,source_domain,captured_at,created_at,trust_score',
                 'items.evidenceArtifacts.assets:id,evidence_artifact_id,asset_type,mime_type,original_filename,file_size',
-            ])
+            ];
+
+        $run = RevisionRun::with($relations)
             ->where('project_id', $project->id)
             ->findOrFail($runId);
 
+        if (auth()->user()?->can('update', $project) && $this->syncFacadeEvidenceItems($run)) {
+            $run = RevisionRun::with($relations)
+                ->where('project_id', $project->id)
+                ->findOrFail($runId);
+        }
+
         $run->items->each(function ($item) {
             $artifact = $item->evidenceArtifacts->first();
+            $hasFacadeEvidence = $item->cost_driver_type === CostDriverType::FACADE
+                && $item->position
+                && $this->hasFacadePriceEvidence($item->position, $item->material_id);
+
             $item->resolved_capture_source = $artifact?->capture_source;
-            $item->has_evidence = $item->evidenceArtifacts->flatMap->assets->isNotEmpty();
+            if (!$item->resolved_capture_source && $hasFacadeEvidence) {
+                $item->resolved_capture_source = CaptureSource::MANUAL;
+            }
+            $item->has_evidence = $item->evidenceArtifacts->flatMap->assets->isNotEmpty()
+                || $hasFacadeEvidence;
         });
 
         return response()->json([
@@ -265,9 +287,15 @@ class RevisionRunController extends Controller
             ], 422);
         }
 
-        $run = RevisionRun::with(['items.priceHistory', 'items.material', 'items.projectFitting', 'items.evidenceArtifacts.assets', 'items.evidenceSubject'])
+        $run = RevisionRun::with(['items.position.finishedProductSpecification', 'items.position.facadeMaterial', 'items.priceHistory', 'items.material', 'items.projectFitting', 'items.evidenceArtifacts.assets', 'items.evidenceSubject'])
             ->where('project_id', $project->id)
             ->findOrFail($runId);
+
+        if ($this->syncFacadeEvidenceItems($run)) {
+            $run = RevisionRun::with(['items.position.finishedProductSpecification', 'items.position.facadeMaterial', 'items.priceHistory', 'items.material', 'items.projectFitting', 'items.evidenceArtifacts.assets', 'items.evidenceSubject'])
+                ->where('project_id', $project->id)
+                ->findOrFail($runId);
+        }
 
         $blockers = $run->items->where('status', '!=', RevisionRunItem::STATUS_OK)->values();
         if ($blockers->isNotEmpty()) {
@@ -506,6 +534,74 @@ class RevisionRunController extends Controller
             'failed_items' => $failed,
             'finished_at' => $failed === 0 ? now() : null,
         ]);
+    }
+
+    private function syncFacadeEvidenceItems(RevisionRun $run): bool
+    {
+        if ($run->status === RevisionRun::STATUS_FINALIZED) {
+            return false;
+        }
+
+        $run->loadMissing(['items.position.finishedProductSpecification', 'items.position.facadeMaterial']);
+        $changed = false;
+
+        foreach ($run->items as $item) {
+            if ($item->cost_driver_type !== CostDriverType::FACADE || $item->status === RevisionRunItem::STATUS_OK || !$item->position) {
+                continue;
+            }
+
+            if (!$this->hasFacadePriceEvidence($item->position, $item->material_id)) {
+                continue;
+            }
+
+            $item->update([
+                'status' => RevisionRunItem::STATUS_OK,
+                'message' => 'Подтверждено доказательствами фасада',
+            ]);
+            $changed = true;
+        }
+
+        if ($changed) {
+            $this->refreshRunCounters($run);
+        }
+
+        return $changed;
+    }
+
+    private function hasFacadePriceEvidence(ProjectPosition $position, ?int $materialId = null): bool
+    {
+        $specificationId = (int) ($position->finished_product_specification_id ?? 0);
+        if ($specificationId <= 0 && $this->finishedProductSnapshotReader->supports($position)) {
+            $snapshot = $this->finishedProductSnapshotReader->read($position);
+            $specificationId = (int) ($snapshot['reference_id'] ?? 0);
+        }
+
+        $query = FinishedProductPriceSource::query()
+            ->whereNotIn('status', [
+                FinishedProductPriceSource::STATUS_INVALID,
+                FinishedProductPriceSource::STATUS_SUPERSEDED,
+            ])
+            ->whereHas('evidenceAssets', function ($assets) {
+                $assets->whereIn('asset_type', [
+                    FinishedProductPriceEvidenceAsset::TYPE_SCREENSHOT,
+                    FinishedProductPriceEvidenceAsset::TYPE_IMAGE,
+                    FinishedProductPriceEvidenceAsset::TYPE_FILE,
+                    FinishedProductPriceEvidenceAsset::TYPE_LINK,
+                ])->where(function ($proof) {
+                    $proof->whereNotNull('file_path')
+                        ->orWhereNotNull('source_url');
+                });
+            });
+
+        if ($specificationId > 0) {
+            $query->where('finished_product_specification_id', $specificationId);
+        } elseif ($materialId || $position->facade_material_id) {
+            $query->where('finished_product_material_id', $materialId ?: $position->facade_material_id);
+        } else {
+            return false;
+        }
+
+        return $query->exists();
     }
 
     private function collectReportItems(Project $project, array $report): array
