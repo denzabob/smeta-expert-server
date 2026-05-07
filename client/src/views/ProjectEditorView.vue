@@ -1515,174 +1515,212 @@
       </section>
     </div><!-- /MODULE: EXPENSES -->
 
-    <!-- ======================== MODULE: REVISIONS ======================== -->
-    <div v-show="activeModule === 'revisions'" class="module-content">
-      <!-- Revisions Summary -->
+    <!-- ======================== MODULE: DOCUMENTS ======================== -->
+    <div v-show="activeModule === 'documents'" class="module-content">
       <div class="module-summary">
-        <v-chip v-if="latestRevision" size="small" variant="tonal" :color="getRevisionStatusColor(latestRevision.status)" prepend-icon="mdi-check-circle">
-          Последняя: #{{ latestRevision.number }} — {{ formatRevisionStatus(latestRevision.status) }}
+        <v-chip v-if="latestRevision" size="small" variant="tonal" color="success" prepend-icon="mdi-file-check-outline">
+          Последний отчет: версия {{ latestRevision.number }}
         </v-chip>
-        <v-chip v-else size="small" variant="tonal" color="grey">Нет ревизий</v-chip>
-        <v-chip v-if="activeRevisionRun" size="small" variant="tonal" color="info" prepend-icon="mdi-progress-clock">
-          Сессия #{{ activeRevisionRun.id }}: {{ formatRunStatus(activeRevisionRun.status) }}
+        <v-chip v-else size="small" variant="tonal" color="grey">Документы еще не создавались</v-chip>
+        <v-chip
+          v-if="activeRevisionRun && missingEvidenceItems.length > 0"
+          size="small"
+          variant="tonal"
+          color="warning"
+          prepend-icon="mdi-alert-outline"
+        >
+          Не хватает доказательств: {{ missingEvidenceItems.length }}
         </v-chip>
       </div>
       <section class="dense-module-shell">
         <div class="dense-module-hero">
           <div class="dense-module-hero__content">
-            <div class="dense-module-hero__eyebrow">Контроль версий и публикация</div>
+            <div class="dense-module-hero__eyebrow">Отчеты проекта</div>
             <div class="dense-module-hero__title-row">
-              <div class="dense-module-hero__title">Ревизии</div>
+              <div class="dense-module-hero__title">Documents</div>
               <v-chip
                 v-if="latestRevision"
                 size="small"
                 variant="tonal"
-                :color="getRevisionStatusColor(latestRevision.status)"
-                prepend-icon="mdi-check-circle"
+                color="success"
+                prepend-icon="mdi-file-pdf-box"
               >
-                #{{ latestRevision.number }} — {{ formatRevisionStatus(latestRevision.status) }}
+                PDF ready
               </v-chip>
-              <v-chip v-else size="small" variant="tonal" color="grey">Нет ревизий</v-chip>
             </div>
           </div>
         </div>
 
-        <section v-if="activeRevisionRun" class="dense-module-surface">
-          <div class="dense-module-section-bar">
-            <div class="dense-module-section-bar__content">
-              <div class="dense-module-section-bar__title">Активная сессия ревизии</div>
-            </div>
-          </div>
-
-          <div class="dense-module-support-card revision-surface-card">
+        <section class="dense-module-surface">
+          <div class="documents-grid">
             <v-card
               variant="flat"
-              class="revision-run-card"
+              class="document-action-card"
             >
-              <v-card-title class="d-flex align-center flex-wrap ga-2">
-            <span>Сессия ревизии #{{ activeRevisionRun.id }}</span>
-            <v-chip size="small" :color="getRunStatusColor(activeRevisionRun.status)" variant="tonal">
-              <v-progress-circular
-                v-if="activeRevisionRun.status === 'IN_PROGRESS' || activeRevisionRun.status === 'PENDING'"
-                indeterminate
-                size="12"
-                width="2"
-                class="mr-1"
-              />
-              {{ formatRunStatus(activeRevisionRun.status) }}
-            </v-chip>
-            <v-chip size="small" variant="outlined">
-              OK: {{ activeRevisionRun.ok_items || 0 }} / {{ activeRevisionRun.total_items || 0 }}
-            </v-chip>
-            <v-chip v-if="(activeRevisionRun.failed_items || 0) > 0" size="small" variant="outlined" color="warning">
-              Проблемных: {{ activeRevisionRun.failed_items || 0 }}
-            </v-chip>
-            <v-chip
-              v-if="evidenceCoverage.total > 0"
-              size="small"
-              variant="tonal"
-              :color="evidenceCoverage.withEvidence === evidenceCoverage.total ? 'success' : undefined"
-              prepend-icon="mdi-camera"
-            >
-              Обоснования: {{ evidenceCoverage.withEvidence }} / {{ evidenceCoverage.total }}
-            </v-chip>
-            <v-chip
-              v-if="Object.keys(resolutionBreakdown).length > 0"
-              size="small"
-              variant="outlined"
-            >
-              <template v-for="(count, src) in resolutionBreakdown" :key="src">
-                <v-icon size="14" class="mr-1" :class="{ 'ml-2': src !== Object.keys(resolutionBreakdown)[0] }">{{ getResolutionIcon(src as string) }}</v-icon>{{ count }}
-              </template>
-            </v-chip>
-            <v-spacer />
-            <v-btn
-              v-if="activeRevisionRun.status !== 'IN_PROGRESS' && activeRevisionRun.status !== 'PENDING'"
-              size="small"
-              variant="outlined"
-              prepend-icon="mdi-refresh"
-              :loading="revisionRunLoading"
-              @click="refreshRevisionRun"
-            >
-              Обновить статус
-            </v-btn>
-            <v-btn
-              size="small"
-              color="warning"
-              variant="outlined"
-              prepend-icon="mdi-reload"
-              :loading="revisionRunRetryLoading"
-              :disabled="isProjectReadOnly || !canRetryRevisionRun"
-              @click="retryRevisionRun"
-            >
-              Повторить
-            </v-btn>
-            <v-btn
-              size="small"
-              color="success"
-              prepend-icon="mdi-check-bold"
-              :loading="revisionRunFinalizeLoading"
-              :disabled="isProjectReadOnly || !canFinalizeRevisionRun"
-              @click="finalizeRevisionRun"
-            >
-              Завершить
-            </v-btn>
-          </v-card-title>
-          <v-card-text class="pt-0">
-            <!-- Progress bar while processing -->
-            <v-progress-linear
-              v-if="activeRevisionRun.status === 'IN_PROGRESS' || activeRevisionRun.status === 'PENDING'"
-              :model-value="activeRevisionRun.total_items > 0 ? Math.round(((activeRevisionRun.ok_items || 0) + (activeRevisionRun.failed_items || 0)) / activeRevisionRun.total_items * 100) : 0"
-              color="primary"
-              height="6"
-              rounded
-              class="mb-3"
-              striped
-            >
-              <template #default="{ value }">
-                <span class="text-caption">{{ value }}%</span>
-              </template>
-            </v-progress-linear>
+              <v-card-title class="document-action-card__title">
+                <v-icon icon="mdi-calculator-variant-outline" size="22" />
+                <span>Estimate Report</span>
+              </v-card-title>
+              <v-card-text class="document-action-card__body">
+                <p>Generate the project estimate and calculation report.</p>
+                <v-alert
+                  v-if="estimateReportStale"
+                  type="warning"
+                  variant="tonal"
+                  density="compact"
+                  class="mt-3"
+                >
+                  The estimate has changed since the last generated report.
+                </v-alert>
+                <div v-if="latestRevision || estimateReportResult" class="document-last-generated">
+                  <div>Last generated: {{ formatRevisionDate(estimateReportResult?.created_at || latestRevision?.created_at) }}</div>
+                  <div>Report version: {{ estimateReportResult?.number || latestRevision?.number }}</div>
+                </div>
+              </v-card-text>
+              <v-card-actions class="document-action-card__actions">
+                <v-btn
+                  color="primary"
+                  prepend-icon="mdi-file-document-plus-outline"
+                  :loading="estimateReportLoading"
+                  :disabled="isProjectReadOnly || estimateReportLoading || estimateHardInvalid"
+                  :title="readOnlyActionTitle || undefined"
+                  @click="generateEstimateReport"
+                >
+                  Generate Estimate Report
+                </v-btn>
+                <v-btn
+                  v-if="latestRevision || estimateReportResult"
+                  variant="outlined"
+                  prepend-icon="mdi-open-in-new"
+                  @click="openLatestEstimateReportPdf"
+                >
+                  Open PDF
+                </v-btn>
+                <v-btn
+                  v-if="latestRevision || estimateReportResult"
+                  variant="text"
+                  prepend-icon="mdi-download"
+                  :loading="currentEstimateReportNumber ? revisionPdfLoading.has(currentEstimateReportNumber) : false"
+                  @click="downloadLatestEstimateReportPdf"
+                >
+                  Download PDF
+                </v-btn>
+              </v-card-actions>
+            </v-card>
 
-            <v-alert
-              v-if="activeRevisionRun.status === 'IN_PROGRESS' || activeRevisionRun.status === 'PENDING'"
-              type="info"
-              variant="tonal"
-              density="compact"
-              class="mb-3"
-              :icon="false"
+            <v-card
+              variant="flat"
+              class="document-action-card"
             >
-              <div class="d-flex align-center ga-2">
-                <v-progress-circular indeterminate size="16" width="2" color="info" />
-                <span>Идёт сбор данных: обработано {{ (activeRevisionRun.ok_items || 0) + (activeRevisionRun.failed_items || 0) }} из {{ activeRevisionRun.total_items || 0 }} позиций</span>
+              <v-card-title class="document-action-card__title">
+                <v-icon icon="mdi-shield-check-outline" size="22" />
+                <span>Price Evidence Report</span>
+              </v-card-title>
+              <v-card-text class="document-action-card__body">
+                <p>Generate a document confirming prices with sources, screenshots, files, and dates.</p>
+                <div class="document-evidence-status">
+                  <v-chip size="small" variant="tonal" color="success">
+                    Confirmed: {{ priceEvidenceStatus.confirmed }} / Total: {{ priceEvidenceStatus.total }}
+                  </v-chip>
+                  <v-chip
+                    size="small"
+                    variant="tonal"
+                    :color="priceEvidenceStatus.missing > 0 ? 'warning' : 'success'"
+                  >
+                    Missing: {{ priceEvidenceStatus.missing }}
+                  </v-chip>
+                </div>
+                <v-alert
+                  v-if="isPriceEvidenceCheckRunning"
+                  type="info"
+                  variant="tonal"
+                  density="compact"
+                  class="mt-3"
+                  :icon="false"
+                >
+                  <div class="d-flex align-center ga-2">
+                    <v-progress-circular indeterminate size="16" width="2" color="info" />
+                    <span>Checking price evidence…</span>
+                  </div>
+                </v-alert>
+              </v-card-text>
+              <v-card-actions class="document-action-card__actions">
+                <v-btn
+                  color="primary"
+                  prepend-icon="mdi-file-certificate-outline"
+                  :loading="priceEvidenceReportLoading || isPriceEvidenceCheckRunning || revisionRunFinalizeLoading"
+                  :disabled="isProjectReadOnly || priceEvidenceReportLoading || isPriceEvidenceCheckRunning || revisionRunFinalizeLoading || estimateHardInvalid"
+                  :title="readOnlyActionTitle || undefined"
+                  @click="generatePriceEvidenceReport"
+                >
+                  Generate Price Evidence Report
+                </v-btn>
+                <v-btn
+                  v-if="missingEvidenceItems.length > 0"
+                  variant="outlined"
+                  color="warning"
+                  prepend-icon="mdi-alert-outline"
+                  @click="focusMissingEvidencePanel"
+                >
+                  Review missing evidence
+                </v-btn>
+                <v-btn
+                  v-if="priceEvidencePdfUrl"
+                  variant="outlined"
+                  prepend-icon="mdi-open-in-new"
+                  @click="openPdfLink(priceEvidencePdfUrl)"
+                >
+                  Open PDF
+                </v-btn>
+                <v-btn
+                  v-if="currentPriceEvidenceReportNumber"
+                  variant="text"
+                  prepend-icon="mdi-download"
+                  :loading="revisionJustPdfLoading.has(currentPriceEvidenceReportNumber)"
+                  @click="downloadLatestPriceEvidenceReportPdf"
+                >
+                  Download PDF
+                </v-btn>
+              </v-card-actions>
+            </v-card>
+          </div>
+        </section>
+
+        <section
+          v-if="missingEvidenceItems.length > 0"
+          ref="missingEvidencePanelRef"
+          class="dense-module-surface"
+        >
+          <div class="dense-module-section-bar">
+            <div class="dense-module-section-bar__content">
+              <div class="dense-module-section-bar__title">Missing price evidence</div>
+              <div class="dense-module-section-bar__subtitle">
+                Some estimate positions do not have price confirmation. It is recommended to add evidence before generating the court-facing price evidence report.
               </div>
-            </v-alert>
-
+            </div>
+          </div>
+          <div class="dense-module-table-wrap">
             <v-alert
-              v-if="activeRevisionRun.status === 'NEEDS_MANUAL'"
               type="warning"
               variant="tonal"
               density="compact"
               class="mb-3"
             >
-              Есть позиции без подтверждения цены. Закройте их вручную или повторите проверку.
+              Add evidence only for the items below. Already confirmed positions are not shown here.
             </v-alert>
-
             <v-table density="compact">
               <thead>
                 <tr>
                   <th style="width:40px">№</th>
-                  <th>Материал</th>
-                  <th style="width:60px">Тип</th>
-                  <th>Статус</th>
-                  <th>Сообщение</th>
-                  <th>Источник</th>
-                  <th>Карточка</th>
+                  <th>Item</th>
+                  <th style="width:120px">Component</th>
+                  <th style="width:130px">Estimate price</th>
+                  <th>Reason</th>
                   <th class="text-right">Действия</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(runItem, idx) in revisionRunItems" :key="runItem.id">
+                <tr v-for="(runItem, idx) in missingEvidenceItems" :key="runItem.id">
                   <td class="text-medium-emphasis text-caption">{{ idx + 1 }}</td>
                   <td>{{ getRevisionRunItemName(runItem) }}</td>
                   <td>
@@ -1691,198 +1729,113 @@
                     </v-chip>
                     <span v-else class="text-medium-emphasis">—</span>
                   </td>
-                  <td>
-                    <div class="d-flex align-center ga-1">
-                      <template v-if="runItem.status === 'PENDING'">
-                        <v-progress-circular indeterminate size="14" width="2" color="primary" />
-                        <span class="text-caption text-medium-emphasis">обработка...</span>
-                      </template>
-                      <template v-else>
-                        <v-chip size="x-small" :color="getRunItemStatusColor(runItem.status)" variant="tonal">
-                          {{ formatRunItemStatus(runItem.status) }}
-                        </v-chip>
-                        <v-tooltip v-if="runItem.resolved_capture_source" location="top">
-                          <template #activator="{ props }">
-                            <v-icon v-bind="props" :icon="getResolutionIcon(runItem.resolved_capture_source)" size="14" />
-                          </template>
-                          {{ getResolutionLabel(runItem.resolved_capture_source) }}
-                        </v-tooltip>
-                        <v-tooltip v-if="runItem.has_evidence" location="top">
-                          <template #activator="{ props }">
-                            <v-icon
-                              v-bind="props"
-                              icon="mdi-camera"
-                              size="14"
-                              color="success"
-                              style="cursor:pointer"
-                              @click.stop="openEvidenceDetail(runItem)"
-                            />
-                          </template>
-                          Показать обоснование
-                        </v-tooltip>
-                      </template>
-                    </div>
-                  </td>
-                  <td>{{ runItem.message || '—' }}</td>
-                  <td>
-                    <a
-                      v-if="runItem.source_url"
-                      :href="runItem.source_url"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      ссылка
-                    </a>
-                    <span v-else>—</span>
-                  </td>
-                  <td>
-                    <a
-                      v-if="runItem.material_id"
-                      :href="getMaterialCatalogLink(runItem.material_id)"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      материал
-                    </a>
-                    <span v-else>—</span>
-                  </td>
+                  <td>{{ formatMoney(getSuggestedManualClosePrice(runItem)) }}</td>
+                  <td>{{ getMissingEvidenceReason(runItem) }}</td>
                   <td class="text-right">
                     <v-btn
-                      v-if="isFacadeRevisionRunItem(runItem)"
-                      size="x-small"
+                      size="small"
                       color="primary"
                       variant="tonal"
-                      prepend-icon="mdi-folder-image"
-                      class="mr-1"
-                      @click="openFacadePricingFromRunItem(runItem)"
+                      prepend-icon="mdi-plus"
+                      :disabled="isProjectReadOnly"
+                      @click="openMissingEvidenceAction(runItem)"
                     >
-                      Доказательства фасада
+                      Add evidence
                     </v-btn>
-                    <v-btn
-                      size="x-small"
-                      color="primary"
-                      variant="text"
-                      prepend-icon="mdi-pencil"
-                      :disabled="isProjectReadOnly || runItem.status === 'OK'"
-                      @click="openManualCloseDialog(runItem)"
-                    >
-                      Ручное закрытие
-                    </v-btn>
-                  </td>
-                </tr>
-                <tr v-if="revisionRunItems.length === 0">
-                  <td colspan="8" class="text-center py-4 text-medium-emphasis">
-                    Нет позиций, требующих обоснования.
                   </td>
                 </tr>
               </tbody>
             </v-table>
-
-            <div v-if="revisionRunPdfLinks" class="mt-3 d-flex align-center flex-wrap ga-2">
-              <v-chip size="small" color="success" variant="tonal">Ревизия создана</v-chip>
-              <v-btn
-                size="small"
-                variant="outlined"
-                prepend-icon="mdi-file-pdf-box"
-                @click="openPdfLink(revisionRunPdfLinks.smeta)"
-              >
-                Сметный PDF
-              </v-btn>
-              <v-btn
-                size="small"
-                variant="outlined"
-                prepend-icon="mdi-file-document-outline"
-                @click="openPdfLink(revisionRunPdfLinks.price_justification)"
-              >
-                PDF обоснований
-              </v-btn>
-            </div>
-              </v-card-text>
-            </v-card>
           </div>
         </section>
 
         <section class="dense-module-surface">
-          <div class="dense-module-actions-bar">
-            <div class="dense-module-actions-bar__actions">
-              <v-btn color="secondary" @click="generatePdf" :loading="pdfLoading" :disabled="isProjectReadOnly || pdfLoading || estimateHardInvalid">
-                Генерировать PDF
-              </v-btn>
+          <div class="dense-module-section-bar">
+            <div class="dense-module-section-bar__content">
+              <div class="dense-module-section-bar__title">Document history</div>
             </div>
           </div>
-
           <v-skeleton-loader v-if="revisionsLoading" type="table" />
-          <div v-else class="dense-module-table-wrap">
-            <v-data-table
-              :items="revisions"
-              :headers="revisionHeaders"
-              item-key="id"
-              class="dense-module-table"
-            >
-              <template v-slot:item.status="{ item }">
-                <v-chip size="small" :color="getRevisionStatusColor(item.status)" variant="outlined">
-                  {{ formatRevisionStatus(item.status) }}
-                </v-chip>
-              </template>
-              <template v-slot:item.created_at="{ item }">
-                {{ formatRevisionDate(item.created_at) }}
-              </template>
-              <template v-slot:item.created_by="{ item }">
-                <span v-if="item.created_by?.name">{{ item.created_by.name }}</span>
-                <span v-else-if="item.createdBy?.name">{{ item.createdBy.name }}</span>
-                <span v-else>—</span>
-              </template>
-              <template v-slot:item.actions="{ item }">
-                <div class="module-row-actions module-row-actions--wide">
-                  <v-btn
-                    size="x-small"
-                    variant="text"
-                    icon="mdi-eye"
-                    title="Просмотр"
-                    @click="openRevisionView(item)"
-                  />
-                  <v-btn
-                    size="x-small"
-                    variant="text"
-                    icon="mdi-file-pdf-box"
-                    title="PDF сметы"
-                    :loading="revisionPdfLoading.has(item.number)"
-                    :disabled="estimateHardInvalid || item.status === 'stale' || revisionPdfLoading.has(item.number)"
-                    @click="downloadRevisionPdf(item)"
-                  />
-                  <v-btn
-                    size="x-small"
-                    variant="text"
-                    icon="mdi-file-document-outline"
-                    title="PDF обоснований цен"
-                    :loading="revisionJustPdfLoading.has(item.number)"
-                    :disabled="estimateHardInvalid || item.status === 'stale' || revisionJustPdfLoading.has(item.number)"
-                    @click="downloadPriceJustificationPdf(item)"
-                  />
-                  <v-btn
-                    size="x-small"
-                    variant="text"
-                    icon="mdi-cloud-upload"
-                    title="Опубликовать"
-                    :disabled="!canPublishRevision(item)"
-                    @click="publishRevision(item)"
-                  />
-                  <v-btn
-                    size="x-small"
-                    variant="text"
-                    icon="mdi-cloud-off-outline"
-                    title="Снять публикацию"
-                    :disabled="!canUnpublishRevision(item)"
-                    @click="unpublishRevision(item)"
-                  />
-                </div>
-              </template>
-              <template v-slot:no-data>
-                <div class="text-center py-6 text-grey">
-                  Ревизии не найдены
-                </div>
-              </template>
-            </v-data-table>
+          <div v-else-if="revisions.length > 0" class="dense-module-table-wrap">
+            <v-table density="compact">
+              <thead>
+                <tr>
+                  <th>Document type</th>
+                  <th style="width:100px">Version</th>
+                  <th>Created</th>
+                  <th>Author</th>
+                  <th style="width:120px">Status</th>
+                  <th class="text-right">PDF</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="rev in revisions" :key="rev.id">
+                  <tr>
+                    <td>Estimate Report</td>
+                    <td>{{ rev.number }}</td>
+                    <td>{{ formatRevisionDate(rev.created_at) }}</td>
+                    <td>{{ getRevisionAuthorName(rev) }}</td>
+                    <td>
+                      <v-chip size="small" :color="getDocumentStatusColor(rev)" variant="tonal">
+                        {{ formatDocumentStatus(rev) }}
+                      </v-chip>
+                    </td>
+                    <td class="text-right">
+                      <v-btn
+                        size="x-small"
+                        variant="text"
+                        icon="mdi-open-in-new"
+                        title="Open PDF"
+                        :disabled="rev.status === 'stale'"
+                        @click="openPdfLink(getEstimateReportPdfUrl(rev.number))"
+                      />
+                      <v-btn
+                        size="x-small"
+                        variant="text"
+                        icon="mdi-download"
+                        title="Download PDF"
+                        :loading="revisionPdfLoading.has(rev.number)"
+                        :disabled="rev.status === 'stale' || revisionPdfLoading.has(rev.number)"
+                        @click="downloadRevisionPdf(rev)"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Price Evidence Report</td>
+                    <td>{{ rev.number }}</td>
+                    <td>{{ formatRevisionDate(rev.created_at) }}</td>
+                    <td>{{ getRevisionAuthorName(rev) }}</td>
+                    <td>
+                      <v-chip size="small" :color="getDocumentStatusColor(rev)" variant="tonal">
+                        {{ formatDocumentStatus(rev) }}
+                      </v-chip>
+                    </td>
+                    <td class="text-right">
+                      <v-btn
+                        size="x-small"
+                        variant="text"
+                        icon="mdi-open-in-new"
+                        title="Open PDF"
+                        :disabled="rev.status === 'stale'"
+                        @click="openPdfLink(getPriceEvidenceReportPdfUrl(rev.number))"
+                      />
+                      <v-btn
+                        size="x-small"
+                        variant="text"
+                        icon="mdi-download"
+                        title="Download PDF"
+                        :loading="revisionJustPdfLoading.has(rev.number)"
+                        :disabled="rev.status === 'stale' || revisionJustPdfLoading.has(rev.number)"
+                        @click="downloadPriceJustificationPdf(rev)"
+                      />
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </v-table>
+          </div>
+          <div v-else class="text-center py-6 text-grey">
+            Document history is empty.
           </div>
 
           <div class="d-flex justify-end mt-2" v-if="revisionsPagination.lastPage > 1">
@@ -1894,30 +1847,7 @@
           </div>
         </section>
       </section>
-    </div><!-- /MODULE: REVISIONS -->
-
-    <!-- ======================== MODULE: EVIDENCE ======================== -->
-    <div v-show="activeModule === 'evidence'" class="module-content">
-      <div class="module-summary">
-        <v-chip size="small" variant="tonal" color="primary" prepend-icon="mdi-shield-search">Контур доказательств</v-chip>
-      </div>
-      <section class="dense-module-shell">
-        <div class="dense-module-hero">
-          <div class="dense-module-hero__content">
-            <div class="dense-module-hero__eyebrow">Подтверждения и трассировка</div>
-            <div class="dense-module-hero__title-row">
-              <div class="dense-module-hero__title">Доказательства</div>
-            </div>
-          </div>
-        </div>
-
-        <section class="dense-module-surface">
-          <div class="dense-module-support-card">
-            <EvidenceRunPanel :project-id="project.id" />
-          </div>
-        </section>
-      </section>
-    </div><!-- /MODULE: EVIDENCE -->
+    </div><!-- /MODULE: DOCUMENTS -->
 
     <!-- ======================== MODULE: SETTINGS ======================== -->
     <div v-show="activeModule === 'settings'" class="module-content">
@@ -1965,10 +1895,10 @@
 
     <v-dialog v-model="manualCloseDialog" max-width="640">
       <v-card>
-        <v-card-title>Ручное закрытие позиции</v-card-title>
+        <v-card-title>Add price evidence</v-card-title>
         <v-card-text>
           <div class="text-body-2 mb-3">
-            Позиция: <strong>{{ manualCloseItem ? getRevisionRunItemName(manualCloseItem) : '—' }}</strong>
+            Item: <strong>{{ manualCloseItem ? getRevisionRunItemName(manualCloseItem) : '—' }}</strong>
           </div>
           <v-alert
             v-if="manualCloseItem && isFacadeRevisionRunItem(manualCloseItem)"
@@ -1996,7 +1926,7 @@
             type="number"
             min="0.01"
             step="0.01"
-            label="Цена за единицу"
+            label="Price"
             variant="outlined"
             density="compact"
             class="mb-2"
@@ -2007,18 +1937,18 @@
             density="compact"
             class="mb-2"
           >
-            Подставлена последняя цена из расчётов. Обязательно проверьте актуальность цены перед сохранением.
+            The current estimate price is prefilled. Check the source before saving the evidence.
           </v-alert>
           <v-text-field
             v-model="manualCloseForm.currency"
-            label="Валюта"
+            label="Currency"
             variant="outlined"
             density="compact"
             class="mb-2"
           />
           <v-text-field
             v-model="manualCloseForm.source_url"
-            label="Ссылка на источник (опционально)"
+            label="Source URL (optional)"
             variant="outlined"
             density="compact"
             class="mb-2"
@@ -2037,7 +1967,7 @@
             <v-file-input
               v-model="manualCloseForm.screenshot_file"
               accept="image/*"
-              label="Скриншот (обязательно)"
+              label="Screenshot (required)"
               variant="outlined"
               density="compact"
               prepend-icon="mdi-camera"
@@ -2046,7 +1976,7 @@
               class="mb-1"
             />
             <div class="d-flex align-center justify-space-between ga-2 text-caption text-medium-emphasis">
-              <span>Перетащите файл сюда или вставьте изображение из буфера (Ctrl+V)</span>
+              <span>Drop an image here or paste it from clipboard (Ctrl+V)</span>
               <v-btn
                 v-if="getManualScreenshotFile()"
                 size="x-small"
@@ -2055,16 +1985,16 @@
                 prepend-icon="mdi-close"
                 @click="clearManualScreenshotFile"
               >
-                Очистить
+                Clear
               </v-btn>
             </div>
           </div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" :disabled="manualCloseLoading" @click="manualCloseDialog = false">Отмена</v-btn>
+          <v-btn variant="text" :disabled="manualCloseLoading" @click="manualCloseDialog = false">Cancel</v-btn>
           <v-btn color="primary" :loading="manualCloseLoading" @click="submitManualClose">
-            Сохранить
+            Save evidence
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -3483,7 +3413,6 @@ import RowHoverActions, { type RowAction } from '@/components/RowHoverActions.vu
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceSidebar, { type SidebarModule } from '@/components/workspace/WorkspaceSidebar.vue'
 import ProjectHealthBar, { type HealthIssue } from '@/components/workspace/ProjectHealthBar.vue'
-import EvidenceRunPanel from '@/components/evidence/EvidenceRunPanel.vue'
 import ProjectLaborEvidencePanel from '@/components/project/ProjectLaborEvidencePanel.vue'
 import ProjectLaborCalculationPanel from '@/components/project/ProjectLaborCalculationPanel.vue'
 
@@ -3491,10 +3420,19 @@ const { smAndDown } = useDisplay()
 const compactLayout = computed(() => smAndDown.value)
 
 // === Workspace Module Navigation ===
+const normalizeProjectEditorModule = (value: string | null): string => {
+  if (value === 'revisions' || value === 'evidence') return 'documents'
+  return value || 'positions'
+}
 const activeModule = ref<string>(
-  localStorage.getItem('editor_active_module') || 'positions'
+  normalizeProjectEditorModule(localStorage.getItem('editor_active_module'))
 )
 watch(activeModule, (val) => {
+  const normalized = normalizeProjectEditorModule(val)
+  if (normalized !== val) {
+    activeModule.value = normalized
+    return
+  }
   localStorage.setItem('editor_active_module', val)
   // Open settings drawer when navigating to settings module
   if (val === 'settings') {
@@ -3506,7 +3444,7 @@ watch(activeModule, (val) => {
 // Vue <script setup> hoists all declarations, computed callbacks are lazy
 
 const handleHealthNavigate = (target: string) => {
-  activeModule.value = target
+  activeModule.value = normalizeProjectEditorModule(target)
 }
 
 // === Типы ===
@@ -4805,6 +4743,11 @@ const revisionRunFinalizeLoading = ref(false)
 const revisionRunPdfLinks = ref<{ smeta: string; price_justification: string } | null>(null)
 const revisionRunPollTimer = ref<number | null>(null)
 const lastKnownRunStatus = ref<string | null>(null)
+const estimateReportLoading = ref(false)
+const priceEvidenceReportLoading = ref(false)
+const missingEvidencePanelRef = ref<HTMLElement | null>(null)
+const estimateReportResult = ref<{ number: number; created_at?: string | null; pdf_url: string } | null>(null)
+const priceEvidenceReportResult = ref<{ number: number; pdf_url: string; estimate_pdf_url?: string | null } | null>(null)
 const evidenceDetailDialog = ref(false)
 const evidenceDetailItem = ref<RevisionRunItem | null>(null)
 const evidenceDetailArtifact = computed<EvidenceArtifactDetail | null>(() => {
@@ -4837,6 +4780,31 @@ const canFinalizeRevisionRun = computed(() => {
   if (!activeRevisionRun.value) return false
   return activeRevisionRun.value.status === 'READY' && !estimateHardInvalid.value
 })
+const missingEvidenceItems = computed(() =>
+  revisionRunItems.value.filter((item) => item.status !== 'OK')
+)
+const priceEvidenceStatus = computed(() => {
+  const total = activeRevisionRun.value?.total_items || revisionRunItems.value.length || 0
+  const confirmed = activeRevisionRun.value?.ok_items || revisionRunItems.value.filter((item) => item.status === 'OK').length
+  const missing = missingEvidenceItems.value.length || Math.max(total - confirmed, 0)
+
+  return { total, confirmed, missing }
+})
+const isPriceEvidenceCheckRunning = computed(() =>
+  activeRevisionRun.value?.status === 'PENDING' || activeRevisionRun.value?.status === 'IN_PROGRESS'
+)
+const currentEstimateReportNumber = computed(() =>
+  estimateReportResult.value?.number || latestRevision.value?.number || null
+)
+const currentPriceEvidenceReportNumber = computed(() =>
+  priceEvidenceReportResult.value?.number || null
+)
+const estimateReportStale = computed(() => latestRevision.value?.status === 'stale')
+const priceEvidencePdfUrl = computed(() =>
+  priceEvidenceReportResult.value?.pdf_url
+    || revisionRunPdfLinks.value?.price_justification
+    || null
+)
 const normohourSourceDialog = ref(false) // ← диалог для редактирования источника нормо-часа
 
 const editingPosition = ref(false)
@@ -7006,6 +6974,133 @@ const generatePdf = async () => {
   }
 }
 
+const getEstimateReportPdfUrl = (revisionNumber: number | string): string =>
+  `/api/projects/${projectId}/revisions/${revisionNumber}/pdf`
+
+const getPriceEvidenceReportPdfUrl = (revisionNumber: number | string): string =>
+  `/api/projects/${projectId}/revisions/${revisionNumber}/price-justification.pdf`
+
+const formatMoney = (value: number | string | null | undefined): string => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '—'
+  return `${num.toFixed(2)} ₽`
+}
+
+const generateEstimateReport = async () => {
+  if (guardReadOnlyAction()) return
+
+  if (estimateHardInvalid.value) {
+    showNotification('Смета содержит ошибки и не может быть использована', 'error')
+    return
+  }
+
+  estimateReportLoading.value = true
+  try {
+    const res = await api.post(`/api/projects/${projectId}/revisions`)
+    if (!res.data?.success) {
+      throw new Error(res.data?.message || 'Не удалось создать отчет')
+    }
+
+    estimateReportResult.value = {
+      number: res.data.number,
+      created_at: res.data.created_at,
+      pdf_url: getEstimateReportPdfUrl(res.data.number),
+    }
+    showNotification('Estimate report created. PDF ready.', 'success')
+    await fetchLatestRevision()
+    await fetchRevisions(1)
+  } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
+    showNotification(`Ошибка создания отчета: ${error.response?.data?.message || error.message}`, 'error')
+  } finally {
+    estimateReportLoading.value = false
+  }
+}
+
+const openLatestEstimateReportPdf = () => {
+  const number = currentEstimateReportNumber.value
+  if (!number) return
+  openPdfLink(getEstimateReportPdfUrl(number))
+}
+
+const downloadLatestEstimateReportPdf = async () => {
+  const number = currentEstimateReportNumber.value
+  if (!number) return
+  await downloadRevisionPdf({ number })
+}
+
+const generatePriceEvidenceReport = async () => {
+  if (guardReadOnlyAction()) return
+
+  if (estimateHardInvalid.value) {
+    showNotification('Смета содержит ошибки и не может быть использована', 'error')
+    return
+  }
+
+  priceEvidenceReportLoading.value = true
+  try {
+    revisionRunPdfLinks.value = null
+    priceEvidenceReportResult.value = null
+
+    if (!activeRevisionRun.value) {
+      const res = await revisionRunApi.start(projectId)
+      activeRevisionRun.value = {
+        id: res.run_id,
+        project_id: Number(projectId),
+        status: res.status,
+        total_items: res.total_items,
+        ok_items: 0,
+        failed_items: 0,
+      }
+      revisionRunItems.value = []
+      setStoredRevisionRunId(res.run_id)
+      lastKnownRunStatus.value = res.status
+    }
+
+    await refreshRevisionRun(true)
+
+    if (missingEvidenceItems.value.length > 0) {
+      showNotification('Some positions are missing price evidence.', 'warning')
+      focusMissingEvidencePanel()
+      return
+    }
+
+    if (activeRevisionRun.value?.status === 'READY') {
+      await finalizeRevisionRun()
+      return
+    }
+
+    if (isPriceEvidenceCheckRunning.value) {
+      showNotification('Checking price evidence. The report will be prepared when the check is complete.', 'info')
+      startRevisionRunPolling()
+      return
+    }
+
+    if (activeRevisionRun.value && !canFinalizeRevisionRun.value) {
+      showNotification('Price evidence is not ready yet. Review missing evidence before generating the report.', 'warning')
+    }
+  } catch (error: any) {
+    if (showBillingLockedError(error)) return
+
+    showNotification(`Ошибка подготовки отчета обоснований: ${error.response?.data?.message || error.message}`, 'error')
+  } finally {
+    priceEvidenceReportLoading.value = false
+  }
+}
+
+const downloadLatestPriceEvidenceReportPdf = async () => {
+  const number = currentPriceEvidenceReportNumber.value
+  if (!number) return
+  await downloadPriceJustificationPdf({ number })
+}
+
+const focusMissingEvidencePanel = () => {
+  nextTick(() => {
+    missingEvidencePanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
 const getStoredRevisionRunId = (): number | null => {
   const raw = localStorage.getItem(`project:${projectId}:activeRevisionRunId`)
   if (!raw) return null
@@ -7276,7 +7371,7 @@ const refreshRevisionRun = async (silent = false) => {
 
     if (lastKnownRunStatus.value && lastKnownRunStatus.value !== data.run.status) {
       if (data.run.status === 'NEEDS_MANUAL') {
-        showNotification('Ревизия требует ручного закрытия проблемных позиций', 'warning')
+        showNotification('Some positions are missing price evidence.', 'warning')
       }
       if (data.run.status === 'READY' && prevStatus !== 'READY') {
         // Auto-finalize when all items are OK
@@ -7316,7 +7411,7 @@ const refreshRevisionRun = async (silent = false) => {
       return
     }
     if (!silent) {
-      showNotification(`Ошибка загрузки статуса ревизии: ${error.response?.data?.message || error.message}`, 'error')
+      showNotification(`Ошибка проверки доказательств: ${error.response?.data?.message || error.message}`, 'error')
     }
   } finally {
     if (!silent) {
@@ -7348,13 +7443,13 @@ const createSnapshot = async () => {
     revisionRunItems.value = []
     setStoredRevisionRunId(res.run_id)
     lastKnownRunStatus.value = res.status
-    showNotification(`Сессия ревизии #${res.run_id} запущена`, 'success')
+    showNotification('Проверка доказательств запущена', 'success')
     await refreshRevisionRun()
   } catch (error: any) {
     if (showBillingLockedError(error)) return
 
-    console.error('❌ Revision run start error:', error)
-    showNotification(`Ошибка запуска ревизии: ${error.response?.data?.message || error.message}`, 'error')
+    console.error('❌ Price evidence check start error:', error)
+    showNotification(`Ошибка запуска проверки доказательств: ${error.response?.data?.message || error.message}`, 'error')
   } finally {
     snapshotLoading.value = false
   }
@@ -7435,6 +7530,19 @@ const formatRevisionDate = (value?: string) => {
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString('ru-RU')
 }
+
+const getRevisionAuthorName = (rev: any): string => (
+  rev?.created_by?.name || rev?.createdBy?.name || '—'
+)
+
+const formatDocumentStatus = (rev: any): string => {
+  if (rev?.status === 'stale') return 'Needs update'
+  return 'PDF ready'
+}
+
+const getDocumentStatusColor = (rev: any): string => (
+  rev?.status === 'stale' ? 'warning' : 'success'
+)
 
 const formatSnapshotHash = (hash: string) => {
   if (!hash || hash.length < 16) return hash
@@ -7566,6 +7674,44 @@ const openManualCloseDialog = (item: RevisionRunItem) => {
   manualCloseForm.screenshot_file = null
   manualScreenshotDropActive.value = false
   manualCloseDialog.value = true
+}
+
+const openMissingEvidenceAction = (item: RevisionRunItem) => {
+  if (isFacadeRevisionRunItem(item)) {
+    openFacadePricingFromRunItem(item)
+    return
+  }
+
+  openManualCloseDialog(item)
+}
+
+const getMissingEvidenceReason = (item: RevisionRunItem): string => {
+  if (!item.source_url && !isFacadeRevisionRunItem(item)) {
+    return 'no source URL'
+  }
+
+  if (!item.has_evidence) {
+    return 'no screenshot or document'
+  }
+
+  switch (item.status) {
+    case 'BLOCKED':
+      return 'source is blocked'
+    case 'TIMEOUT':
+      return 'source check timed out'
+    case 'PARSE_ERROR':
+      return item.message || 'price was not confirmed'
+    case 'NO_TEMPLATE':
+      return 'no source URL or parser template'
+    case 'NEEDS_MANUAL':
+      return item.message || 'manual evidence is required'
+    case 'OK_NO_PRICE':
+      return 'price was not extracted'
+    case 'PENDING':
+      return 'evidence check is still in progress'
+    default:
+      return item.message || 'no linked evidence record'
+  }
 }
 
 const focusManualScreenshotDropzone = () => {
@@ -7737,7 +7883,12 @@ const finalizeRevisionRun = async () => {
   try {
     const data = await revisionRunApi.finalize(projectId, activeRevisionRun.value.id)
     revisionRunPdfLinks.value = data.pdf
-    showNotification(`Ревизия #${data.revision.number} создана`, 'success')
+    priceEvidenceReportResult.value = {
+      number: data.revision.number,
+      pdf_url: data.pdf.price_justification,
+      estimate_pdf_url: data.pdf.smeta,
+    }
+    showNotification('Price evidence report created. PDF ready.', 'success')
     setStoredRevisionRunId(null)
     stopRevisionRunPolling()
     activeRevisionRun.value = null
@@ -8487,16 +8638,11 @@ const sidebarModules = computed<SidebarModule[]>(() => [
     count: expenses.value.length,
   },
   {
-    key: 'revisions',
-    label: 'Ревизии',
-    icon: 'mdi-shield-check-outline',
+    key: 'documents',
+    label: 'Documents',
+    icon: 'mdi-file-document-multiple-outline',
     count: revisions.value.length,
     warnings: activeRevisionRun.value && (activeRevisionRun.value.status === 'NEEDS_MANUAL' || activeRevisionRun.value.status === 'FAILED') ? 1 : 0
-  },
-  {
-    key: 'evidence',
-    label: 'Доказательства',
-    icon: 'mdi-shield-search',
   },
   {
     key: 'settings',
@@ -8532,7 +8678,7 @@ const healthIssues = computed<HealthIssue[]>(() => {
   }
 
   if (activeRevisionRun.value?.status === 'NEEDS_MANUAL') {
-    issues.push({ severity: 'info', message: 'Ревизия: есть позиции без подтверждения цены', action: 'revisions', actionLabel: 'Ревизии' })
+    issues.push({ severity: 'info', message: 'Есть позиции без подтверждения цены', action: 'documents', actionLabel: 'Documents' })
   }
 
   return issues
@@ -9846,6 +9992,61 @@ onBeforeUnmount(() => {
 .module-row-actions--wide {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.documents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+}
+
+.document-action-card {
+  display: flex;
+  min-height: 260px;
+  flex-direction: column;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.7);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-surface-container-lowest), 1);
+}
+
+.document-action-card__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 18px 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.document-action-card__body {
+  flex: 1;
+  padding: 0 18px 12px;
+  color: rgba(var(--v-theme-on-surface-variant), 1);
+}
+
+.document-action-card__body p {
+  margin: 0;
+}
+
+.document-action-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 18px 18px;
+}
+
+.document-last-generated,
+.document-evidence-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 14px;
+}
+
+.document-last-generated {
+  color: rgba(var(--v-theme-on-surface), 0.82);
+  font-size: 0.875rem;
 }
 
 .revision-surface-card {
