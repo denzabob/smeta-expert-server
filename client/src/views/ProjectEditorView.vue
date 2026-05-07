@@ -13,25 +13,13 @@
         <div class="toolbar-actions">
           <v-btn
             size="small"
-            color="secondary"
-            prepend-icon="mdi-file-pdf-box"
-            :loading="pdfLoading"
-            :disabled="isProjectReadOnly || pdfLoading || estimateHardInvalid"
-            :title="readOnlyActionTitle || (estimateHardInvalid ? 'Смета содержит ошибки и не может быть использована' : 'Сформировать PDF')"
-            @click="generatePdf"
-          >
-            PDF
-          </v-btn>
-          <v-btn
-            size="small"
             color="primary"
-            prepend-icon="mdi-shield-check"
-            :loading="snapshotLoading"
-            :disabled="isProjectReadOnly || snapshotLoading || estimateHardInvalid"
-            @click="createSnapshot"
-            :title="readOnlyActionTitle || 'Запустить строгую ревизию с обоснованием цен'"
+            prepend-icon="mdi-file-document-multiple-outline"
+            :disabled="estimateHardInvalid"
+            :title="estimateHardInvalid ? 'Смета содержит ошибки и не может быть использована' : 'Документы проекта'"
+            @click="activeModule = 'documents'"
           >
-            Ревизия (strict)
+            Документы
           </v-btn>
           <v-btn
             size="small"

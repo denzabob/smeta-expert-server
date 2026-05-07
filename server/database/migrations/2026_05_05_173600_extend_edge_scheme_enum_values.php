@@ -30,12 +30,15 @@ return new class extends Migration
             return;
         }
 
-        $columnInfo = DB::selectOne("SHOW COLUMNS FROM `{$table}` LIKE ?", [$column]);
+        $columnQuoted = DB::getPdo()->quote($column);
+        $columnInfo = DB::selectOne("SHOW COLUMNS FROM `{$table}` LIKE {$columnQuoted}");
+
         if (!$columnInfo) {
             return;
         }
 
         $type = (string) ($columnInfo->Type ?? '');
+
         if (!str_starts_with(strtolower($type), 'enum(')) {
             return;
         }
@@ -45,8 +48,12 @@ return new class extends Migration
         }
 
         $nullable = (($columnInfo->Null ?? '') === 'YES') ? 'NULL' : 'NOT NULL';
+
         $default = $columnInfo->Default ?? null;
-        $defaultSql = $default === null ? '' : ' DEFAULT ' . DB::getPdo()->quote((string) $default);
+        $defaultSql = $default === null
+            ? ''
+            : ' DEFAULT ' . DB::getPdo()->quote((string) $default);
+
         $enumSql = implode(',', array_map(
             static fn (string $value) => DB::getPdo()->quote($value),
             $values,
