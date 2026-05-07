@@ -9,6 +9,7 @@ use App\Http\Requests\StoreCatalogMaterialRequest;
 use App\Models\Material;
 use App\Models\MaterialPriceHistory;
 use App\Models\GenericEvidenceAsset;
+use App\Models\User;
 use App\Models\UserMaterialLibrary;
 use App\Models\UserSettings;
 use App\Services\DomainParseService;
@@ -62,17 +63,16 @@ class MaterialCatalogController extends Controller
      * GET /api/materials/catalog
      *
      * Browse catalog with mode switching:
-     *   mode=library   -> user's library (user_material_library)
-     *   mode=public    -> public catalog (visibility in [public, curated])
-     *   mode=curated   -> curated only
-     *   (default)      -> user's own materials + parser-sourced
+     *   mode=my        -> materials owned by the authenticated user
+     *   mode=public    -> public catalog enforced server-side:
+     *                     explicit public/curated, admin-owned, or system parser materials
      *
      * Filters: type, region_id, trust_level, recent_days, search
      */
     public function catalog(Request $request): JsonResponse
     {
         $user = auth()->user();
-        $mode = $request->input('mode', 'own');
+        $mode = $this->normalizeCatalogMode((string) $request->input('mode', 'my'));
         $type = $request->input('type');
         $regionId = $request->input('region_id');
         $trustLevel = $request->input('trust_level');
@@ -91,29 +91,13 @@ class MaterialCatalogController extends Controller
         $query = Material::where('is_active', true);
 
         switch ($mode) {
-            case 'library':
-                // User's personal library
-                $libraryIds = UserMaterialLibrary::where('user_id', $user->id)
-                    ->pluck('material_id');
-                $query->whereIn('id', $libraryIds);
-                break;
-
             case 'public':
-                $query->whereIn('visibility', [Material::VISIBILITY_PUBLIC, Material::VISIBILITY_CURATED]);
+                $this->applyPublicCatalogVisibility($query);
                 break;
 
-            case 'curated':
-                $query->where('visibility', Material::VISIBILITY_CURATED);
-                break;
-
-            default: // 'own'
-                $query->where(function ($q) use ($user) {
-                    // Include:
-                    // 1. User's own materials
-                    // 2. All parser materials (system catalog, regardless of user_id)
-                    $q->where('user_id', $user->id)
-                      ->orWhere('origin', 'parser');
-                });
+            case 'my':
+            default:
+                $query->where('user_id', $user->id);
                 break;
         }
 
@@ -364,9 +348,9 @@ class MaterialCatalogController extends Controller
         $material = Material::findOrFail($id);
         $user = auth()->user();
 
-        // Access check: own, public, curated, or in library
+        // Access check: own, public catalog visible, or in library.
         $isAccessible = $material->user_id === $user->id
-            || in_array($material->visibility, [Material::VISIBILITY_PUBLIC, Material::VISIBILITY_CURATED])
+            || $this->isPublicCatalogMaterial($material)
             || UserMaterialLibrary::where('user_id', $user->id)->where('material_id', $id)->exists();
 
         if (!$isAccessible) {
@@ -972,8 +956,10 @@ class MaterialCatalogController extends Controller
         $material = Material::findOrFail($id);
         $user = auth()->user();
 
-        // Check visibility access
-        if ($material->visibility === Material::VISIBILITY_PRIVATE && $material->user_id !== $user->id) {
+        // Check visibility access.
+        if ($material->visibility === Material::VISIBILITY_PRIVATE
+            && $material->user_id !== $user->id
+            && !$this->isPublicCatalogMaterial($material)) {
             return response()->json(['error' => 'Материал недоступен'], 403);
         }
 
@@ -1126,5 +1112,47 @@ class MaterialCatalogController extends Controller
         }
 
         return $result;
+    }
+
+    private function normalizeCatalogMode(string $mode): string
+    {
+        // Backward compatibility for older clients; frontend sends only my/public.
+        if ($mode === 'own') {
+            return 'my';
+        }
+
+        return in_array($mode, ['my', 'public'], true) ? $mode : 'my';
+    }
+
+    private function applyPublicCatalogVisibility($query): void
+    {
+        $query->where(function ($public) {
+            $public
+                // Explicitly published user/admin materials. Curated remains public, but no longer has a separate tab.
+                ->whereIn('visibility', [Material::VISIBILITY_PUBLIC, Material::VISIBILITY_CURATED])
+                // Legacy system parser catalog entries.
+                ->orWhere(function ($system) {
+                    $system->whereNull('user_id')
+                        ->where('origin', 'parser');
+                })
+                // Materials owned by administrators are treated as system/public catalog content.
+                ->orWhereHas('user', function ($owner) {
+                    $owner->where('users.id', 1)
+                        ->orWhereIn('role', ['admin', 'superadmin']);
+                });
+        });
+    }
+
+    private function isPublicCatalogMaterial(Material $material): bool
+    {
+        if (in_array($material->visibility, [Material::VISIBILITY_PUBLIC, Material::VISIBILITY_CURATED], true)) {
+            return true;
+        }
+
+        if ($material->user_id === null && $material->origin === 'parser') {
+            return true;
+        }
+
+        return $material->user instanceof User && $material->user->isAdmin();
     }
 }

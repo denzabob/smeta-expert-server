@@ -2406,6 +2406,22 @@
                 <div class="position-form-section__title">Размеры и количество</div>
                 <div class="position-form-section__text">Геометрия детали, быстрый выбор количества и контроль площади.</div>
               </div>
+              <div
+                v-if="!editingPosition && positionFormModel.kind === 'facade'"
+                class="facade-allowance-row"
+              >
+                <v-switch
+                  v-model="applyFacadeAllowance"
+                  color="primary"
+                  density="compact"
+                  hide-details
+                  label="Учитывать припуск"
+                  :disabled="!hasFacadeAllowance"
+                />
+                <div class="text-caption text-medium-emphasis">
+                  {{ hasFacadeAllowance ? facadeAllowanceHint : 'Припуски не заданы в настройках проекта.' }}
+                </div>
+              </div>
             <v-row class="position-dimensions-row">
               <v-col cols="12" sm="6" class="position-dimensions-field">
                 <div class="dimension-field-stack">
@@ -2417,7 +2433,7 @@
                   placeholder="Например: 600 или 600-32"
                   :rules="[v => !!v || 'Обязательно', v => (v >= 10 || typeof v === 'string') || 'Должно быть >= 10']"
                   density="comfortable"
-                  @input="sanitizeDimensionExpressionInput"
+                  @input="handleDialogDimensionTyped('width', $event)"
                   @keyup.enter="handleDialogDimensionInput('width', ($event.target as HTMLInputElement).value)"
                   @blur="handleDialogDimensionInput('width', ($event.target as HTMLInputElement).value)"
                 />
@@ -2444,7 +2460,7 @@
                   placeholder="Например: 2400 или 2400/2"
                   :rules="[v => !!v || 'Обязательно', v => (v >=10 || typeof v === 'string') || 'Должно быть >= 10']"
                   density="comfortable"
-                  @input="sanitizeDimensionExpressionInput"
+                  @input="handleDialogDimensionTyped('length', $event)"
                   @keyup.enter="handleDialogDimensionInput('length', ($event.target as HTMLInputElement).value)"
                   @blur="handleDialogDimensionInput('length', ($event.target as HTMLInputElement).value)"
                 />
@@ -3524,6 +3540,8 @@ interface Project {
   apply_waste_to_operations?: boolean
   default_plate_material_id?: number | null
   default_edge_material_id?: number | null
+  facade_width_allowance_mm?: number | null
+  facade_height_allowance_mm?: number | null
   text_blocks?: TextBlock[]
   waste_plate_description?: CoefficientDescription | null
   show_waste_plate_description?: boolean
@@ -3694,6 +3712,8 @@ const project = ref<Project>({
   region_id: null,
   waste_coefficient: 1.0,
   repair_coefficient: 1.0,
+  facade_width_allowance_mm: 0,
+  facade_height_allowance_mm: 0,
   text_blocks: [],
   normohour_rate: null,
   normohour_region: null,
@@ -3708,6 +3728,10 @@ const project = ref<Project>({
     limit: null,
     message: null,
   },
+})
+const userDefaultFacadeAllowances = ref({
+  width: 0,
+  height: 0,
 })
 
 const billingWorkspace = computed(() => project.value.billing_workspace)
@@ -3898,6 +3922,11 @@ const emptyDimensionCalcState = (): DimensionCalcState => ({ expr: '', result: n
 const dialogDimensionCalc = ref<{ width: DimensionCalcState; length: DimensionCalcState }>({
   width: emptyDimensionCalcState(),
   length: emptyDimensionCalcState(),
+})
+const applyFacadeAllowance = ref(false)
+const dialogDimensionInputDirty = ref<{ width: boolean; length: boolean }>({
+  width: false,
+  length: false,
 })
 const drawerDimensionCalc = ref<{ width: DimensionCalcState; length: DimensionCalcState }>({
   width: emptyDimensionCalcState(),
@@ -4253,6 +4282,36 @@ const sanitizeDimensionExpressionInput = (event: Event) => {
   }
 }
 
+const handleDialogDimensionTyped = (field: 'width' | 'length', event: Event) => {
+  dialogDimensionInputDirty.value[field] = true
+  sanitizeDimensionExpressionInput(event)
+}
+
+const getFacadeAllowanceForField = (field: 'width' | 'length'): number => {
+  const raw = field === 'width'
+    ? project.value?.facade_width_allowance_mm
+    : project.value?.facade_height_allowance_mm
+  const numeric = Number(raw)
+
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return Math.round(numeric)
+  }
+
+  const fallback = field === 'width'
+    ? userDefaultFacadeAllowances.value.width
+    : userDefaultFacadeAllowances.value.height
+
+  return Number.isFinite(fallback) && fallback > 0 ? Math.round(fallback) : 0
+}
+
+const hasFacadeAllowance = computed(() => (
+  getFacadeAllowanceForField('width') > 0 || getFacadeAllowanceForField('length') > 0
+))
+
+const facadeAllowanceHint = computed(() => (
+  `Ширина: ${getFacadeAllowanceForField('width')} мм, высота: ${getFacadeAllowanceForField('length')} мм`
+))
+
 const handleDimensionInput = (item: Position, field: 'width' | 'length', inputValue: string) => {
   const trimmed = inputValue.trim()
   drawerDimensionCalc.value[field] = { expr: trimmed, result: null, error: null }
@@ -4305,6 +4364,7 @@ const handleDialogDimensionInput = (field: 'width' | 'length', inputValue: any) 
   if (!strValue) {
     dialogDimensionCalc.value[field] = { expr: '', result: null, error: null }
     positionFormModel.value[field] = 0
+    dialogDimensionInputDirty.value[field] = false
     return
   }
   
@@ -4314,6 +4374,7 @@ const handleDialogDimensionInput = (field: 'width' | 'length', inputValue: any) 
   if (result === null) {
     // Если не удалось вычислить, оставляем как было
     dialogDimensionCalc.value[field] = { expr: strValue, result: null, error: 'Ошибка выражения' }
+    dialogDimensionInputDirty.value[field] = false
     showNotification(`Ошибка в выражении: "${strValue}". Используйте числа и операции (+, -, *, /), без начального 0`, 'warning')
     return
   }
@@ -4323,11 +4384,24 @@ const handleDialogDimensionInput = (field: 'width' | 'length', inputValue: any) 
     dialogDimensionCalc.value[field] = { expr: strValue, result: 0, error: 'Отрицательное значение' }
     showNotification(`Результат выражения "${strValue}" = ${result}. Установлено значение 0`, 'warning')
     positionFormModel.value[field] = 0
+    dialogDimensionInputDirty.value[field] = false
     return
   }
   
-  // Округляем до целого
-  const roundedResult = Math.round(result)
+  let roundedResult = Math.round(result)
+  const allowance = (
+    !editingPosition.value
+    && positionFormModel.value.kind === 'facade'
+    && applyFacadeAllowance.value
+    && dialogDimensionInputDirty.value[field]
+  )
+    ? getFacadeAllowanceForField(field)
+    : 0
+
+  if (allowance > 0) {
+    roundedResult = Math.max(0, roundedResult - allowance)
+  }
+  dialogDimensionInputDirty.value[field] = false
   
   // Если результат изменился, показываем сообщение
   if (strValue !== roundedResult.toString()) {
@@ -4811,6 +4885,13 @@ const positionFormModel = ref<Position>({
   custom_name: null,
 })
 
+watch(() => positionFormModel.value.kind, (kind) => {
+  dialogDimensionInputDirty.value = { width: false, length: false }
+  if (editingPosition.value || kind !== 'facade') {
+    applyFacadeAllowance.value = false
+  }
+})
+
 const fittingForm = ref<Fitting>({
   id: 0, project_id: projectId,
   material_id: null, name: '', article: '', unit: 'шт', quantity: 1, unit_price: 0, source_url: null, note: ''
@@ -4835,7 +4916,7 @@ const mergedHardwareMaterials = computed(() => {
 })
 
 const fetchHardwareModeMaterials = async (
-  mode: 'own' | 'public' | 'curated',
+  mode: 'my' | 'public',
   search: string
 ): Promise<any[]> => {
   const rows: any[] = []
@@ -4872,7 +4953,7 @@ const refreshHardwareMaterials = async (searchRaw = '') => {
 
   try {
     const byId = new Map<number, Material>()
-    const modes: Array<'own' | 'public' | 'curated'> = ['own', 'public', 'curated']
+    const modes: Array<'my' | 'public'> = ['my', 'public']
 
     for (const mode of modes) {
       try {
@@ -5357,7 +5438,7 @@ const mergeMaterialsIntoState = (rows: any[]) => {
   materials.value = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru'))
 }
 
-type CatalogMaterialMode = 'own' | 'library' | 'public' | 'curated'
+type CatalogMaterialMode = 'my' | 'public'
 
 const fetchCatalogModeMaterials = async (
   mode: CatalogMaterialMode,
@@ -5405,14 +5486,16 @@ const loadSelectableMaterials = async (force = false): Promise<Material[]> => {
 
   const byId = new Map<number, Material>()
   const preloadTypes: Array<'plate' | 'edge' | 'hardware'> = ['plate', 'edge', 'hardware']
-  const preloadRequests = preloadTypes.map(async (type) => {
-    try {
-      const rows = await fetchCatalogModeMaterials('library', { type })
-      mergeMaterialOptions(byId, rows)
-    } catch (error) {
-      console.warn(`Failed to load material library for type: ${type}`, error)
-    }
-  })
+  const preloadRequests = preloadTypes.flatMap((type) =>
+    (['my', 'public'] as CatalogMaterialMode[]).map(async (mode) => {
+      try {
+        const rows = await fetchCatalogModeMaterials(mode, { type })
+        mergeMaterialOptions(byId, rows)
+      } catch (error) {
+        console.warn(`Failed to load catalog materials mode: ${mode}, type: ${type}`, error)
+      }
+    })
+  )
 
   await Promise.all(preloadRequests)
 
@@ -5472,7 +5555,7 @@ const searchMaterialOptions = async (type: 'plate' | 'edge', searchRaw: string) 
   materialSearchLoading[type] = true
 
   try {
-    const modes: CatalogMaterialMode[] = ['own', 'library', 'public']
+    const modes: CatalogMaterialMode[] = ['my', 'public']
     const results = await Promise.all(
       modes.map(async (mode) => {
         try {
@@ -5507,6 +5590,18 @@ const onMaterialSearch = (type: 'plate' | 'edge', value: string) => {
   materialSearchTimeouts[type] = setTimeout(() => {
     searchMaterialOptions(type, value)
   }, MATERIAL_SEARCH_DEBOUNCE_MS)
+}
+
+const loadUserDefaultFacadeAllowances = async () => {
+  try {
+    const settings = await api.get('/api/user/settings').then(r => r.data || {})
+    userDefaultFacadeAllowances.value = {
+      width: Number(settings.facade_width_allowance_mm) || 0,
+      height: Number(settings.facade_height_allowance_mm) || 0,
+    }
+  } catch (error) {
+    console.warn('Failed to load user facade allowances', error)
+  }
 }
 
 // === Загрузка данных ===
@@ -5547,6 +5642,7 @@ const fetchData = async (): Promise<boolean> => {
     
     const prefetchedProject = consumePrefetchedProject(projectRouteIdentifier)
     project.value = prefetchedProject || (await api.get(`/api/projects/${encodeURIComponent(projectRouteIdentifier)}`)).data
+    await loadUserDefaultFacadeAllowances()
     projectId = String(project.value.id || projectRouteIdentifier)
     projectApiId.value = projectId
 
@@ -5703,9 +5799,12 @@ const openPositionDialog = async () => {
   if (guardReadOnlyAction()) return
 
   positionDialogOpening.value = true
+  await loadUserDefaultFacadeAllowances()
 
   editingPosition.value = false
   dialogDimensionCalc.value = { width: emptyDimensionCalcState(), length: emptyDimensionCalcState() }
+  dialogDimensionInputDirty.value = { width: false, length: false }
+  applyFacadeAllowance.value = false
   positionFormModel.value = {
     id: null, project_id: projectId,
     kind: 'panel',
@@ -5737,6 +5836,8 @@ const editPosition = (item: Position) => {
 
   editingPosition.value = true
   dialogDimensionCalc.value = { width: emptyDimensionCalcState(), length: emptyDimensionCalcState() }
+  dialogDimensionInputDirty.value = { width: false, length: false }
+  applyFacadeAllowance.value = false
   positionFormModel.value = { ...item }
   // if position has a detail type and no explicit edge_scheme, inherit from detail type
   if (!positionFormModel.value.edge_scheme && positionFormModel.value.detail_type_id) {
@@ -9956,6 +10057,18 @@ onBeforeUnmount(() => {
   font-size: 0.8125rem;
   line-height: 1.45;
   color: rgba(var(--v-theme-on-surface-variant), 1);
+}
+
+.facade-allowance-row {
+  display: flex;
+  align-items: center;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.58);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: rgba(var(--v-theme-surface-container-low), 0.78);
 }
 
 .position-support-card {

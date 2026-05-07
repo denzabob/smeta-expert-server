@@ -1299,7 +1299,7 @@ export function getDevVisualApiMock(method?: string, url?: string): unknown | un
   if (path === '/api/materials/catalog') {
     return {
       data: demoCatalogMaterials,
-      meta: { current_page: 1, last_page: 1, per_page: 25, total: demoCatalogMaterials.length, mode: 'own', region_id: 1 },
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: demoCatalogMaterials.length, mode: 'my', region_id: 1 },
     }
   }
   if (path === '/api/ideas') {

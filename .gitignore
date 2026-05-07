@@ -59,6 +59,8 @@ server/tests/Unit/*
 server/tests/Feature/*
 !server/tests/Feature/ProjectPublicIdTest.php
 !server/tests/Feature/MaterialExactReuseTest.php
+!server/tests/Feature/MaterialCatalogVisibilityTest.php
+!server/tests/Feature/ProjectRegionUpdateTest.php
 !server/tests/Feature/Billing/
 !server/tests/Feature/Billing/*.php
 

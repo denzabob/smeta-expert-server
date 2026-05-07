@@ -57,6 +57,8 @@ class UserSettingsController extends Controller
             'use_area_calc_mode' => ['boolean'],
             'default_plate_material_id' => ['nullable', Rule::exists('materials', 'id')],
             'default_edge_material_id' => ['nullable', Rule::exists('materials', 'id')],
+            'facade_width_allowance_mm' => ['integer', 'min:0', 'max:1000'],
+            'facade_height_allowance_mm' => ['integer', 'min:0', 'max:1000'],
             // Эти поля хранятся в JSON-колонках, но в API принимаем их как объекты/массивы.
             'text_blocks' => ['nullable', 'array'],
             'waste_plate_description' => ['nullable', 'array'],

@@ -22,6 +22,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool $use_area_calc_mode
  * @property int|null $default_plate_material_id
  * @property int|null $default_edge_material_id
+ * @property int $facade_width_allowance_mm
+ * @property int $facade_height_allowance_mm
  * @property array|null $text_blocks
  * @property array|null $waste_plate_description
  * @property array|null $waste_edge_description
@@ -60,6 +62,8 @@ class UserSettings extends Model
         'use_area_calc_mode',
         'default_plate_material_id',
         'default_edge_material_id',
+        'facade_width_allowance_mm',
+        'facade_height_allowance_mm',
         'text_blocks',
         'waste_plate_description',
         'waste_edge_description',
@@ -96,6 +100,8 @@ class UserSettings extends Model
         'labor_aggregation_strategy' => 'string',
         'labor_salary_range_strategy' => 'string',
         'labor_rate_rounding_scale' => 'integer',
+        'facade_width_allowance_mm' => 'integer',
+        'facade_height_allowance_mm' => 'integer',
         'text_blocks' => 'array',
         'waste_plate_description' => 'array',
         'waste_edge_description' => 'array',
@@ -119,6 +125,8 @@ class UserSettings extends Model
             'use_area_calc_mode' => false,
             'default_plate_material_id' => null,
             'default_edge_material_id' => null,
+            'facade_width_allowance_mm' => 0,
+            'facade_height_allowance_mm' => 0,
             'text_blocks' => null,
             'waste_plate_description' => null,
             'waste_edge_description' => null,

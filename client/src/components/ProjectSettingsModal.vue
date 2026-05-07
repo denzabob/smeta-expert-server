@@ -244,6 +244,39 @@
                     />
                   </v-card-text>
                 </v-card>
+
+                <v-card variant="outlined" class="psm-content-card mt-4">
+                  <v-card-text>
+                    <div class="psm-section-title mb-1">Припуски фасадов</div>
+                    <div class="psm-section-hint mb-3">Применяются в форме новой фасадной позиции при включённом вычитании припуска</div>
+                    <v-row dense>
+                      <v-col cols="12" md="6">
+                        <v-text-field
+                          v-model.number="projectData.facade_width_allowance_mm"
+                          label="Припуск по ширине"
+                          type="number"
+                          min="0"
+                          max="1000"
+                          step="1"
+                          suffix="мм"
+                          density="compact"
+                        />
+                      </v-col>
+                      <v-col cols="12" md="6">
+                        <v-text-field
+                          v-model.number="projectData.facade_height_allowance_mm"
+                          label="Припуск по высоте"
+                          type="number"
+                          min="0"
+                          max="1000"
+                          step="1"
+                          suffix="мм"
+                          density="compact"
+                        />
+                      </v-col>
+                    </v-row>
+                  </v-card-text>
+                </v-card>
               </div>
 
               <!-- Section 3: Отходы -->
@@ -453,6 +486,8 @@ interface Project {
   use_area_calc_mode?: boolean
   default_plate_material_id?: number | null
   default_edge_material_id?: number | null
+  facade_width_allowance_mm?: number | null
+  facade_height_allowance_mm?: number | null
   waste_plate_coefficient?: number | null
   waste_edge_coefficient?: number | null
   waste_operations_coefficient?: number | null
@@ -601,6 +636,8 @@ const saveSettings = async () => {
   if (isSaving.value) return
   isSaving.value = true
   try {
+    projectData.value.facade_width_allowance_mm = Number(projectData.value.facade_width_allowance_mm) || 0
+    projectData.value.facade_height_allowance_mm = Number(projectData.value.facade_height_allowance_mm) || 0
     emit('saved', projectData.value)
     isDirty.value = false
   } catch (err: any) {
@@ -619,6 +656,8 @@ const DEFAULTS_WHITELIST: string[] = [
   'repair_coefficient',
   'default_plate_material_id',
   'default_edge_material_id',
+  'facade_width_allowance_mm',
+  'facade_height_allowance_mm',
   'default_expert_name',
   'default_number',
   'waste_plate_coefficient',

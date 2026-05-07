@@ -28,6 +28,8 @@ class Project extends Model
         'use_area_calc_mode',
         'default_plate_material_id',
         'default_edge_material_id',
+        'facade_width_allowance_mm',
+        'facade_height_allowance_mm',
         'text_blocks',
         'waste_plate_description',
         'show_waste_plate_description',
@@ -58,6 +60,8 @@ class Project extends Model
         'apply_waste_to_plate' => 'boolean',
         'apply_waste_to_edge' => 'boolean',
         'apply_waste_to_operations' => 'boolean',
+        'facade_width_allowance_mm' => 'integer',
+        'facade_height_allowance_mm' => 'integer',
     ];
 
     protected static function booted(): void

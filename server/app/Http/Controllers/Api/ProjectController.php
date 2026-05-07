@@ -59,6 +59,8 @@ class ProjectController extends Controller
             'use_area_calc_mode' => 'nullable|boolean',
             'default_plate_material_id' => 'nullable|exists:materials,id',
             'default_edge_material_id' => 'nullable|exists:materials,id',
+            'facade_width_allowance_mm' => 'nullable|integer|min:0|max:1000',
+            'facade_height_allowance_mm' => 'nullable|integer|min:0|max:1000',
             'text_blocks' => 'nullable|array',
             'text_blocks.*.title' => 'nullable|string|max:255',
             'text_blocks.*.text' => 'nullable|string|max:10000',
@@ -84,7 +86,10 @@ class ProjectController extends Controller
         ], $this->projectValidationMessages());
 
         // Получить пользовательские настройки (или создать если нет)
-        $userSettings = Auth::user()->settings()->firstOrCreate(['user_id' => Auth::id()]);
+        $userSettings = Auth::user()->settings()->firstOrCreate(
+            ['user_id' => Auth::id()],
+            UserSettings::defaultAttributes(),
+        );
 
         // Применить дефолты из user_settings если они не переданы явно
         $defaults = [
@@ -103,6 +108,8 @@ class ProjectController extends Controller
             'use_area_calc_mode' => $request->input('use_area_calc_mode') ?? $userSettings->use_area_calc_mode ?? false,
             'default_plate_material_id' => $request->input('default_plate_material_id') ?? $userSettings->default_plate_material_id,
             'default_edge_material_id' => $request->input('default_edge_material_id') ?? $userSettings->default_edge_material_id,
+            'facade_width_allowance_mm' => $request->input('facade_width_allowance_mm') ?? $userSettings->facade_width_allowance_mm ?? 0,
+            'facade_height_allowance_mm' => $request->input('facade_height_allowance_mm') ?? $userSettings->facade_height_allowance_mm ?? 0,
             'text_blocks' => $request->input('text_blocks') ?? $userSettings->text_blocks,
             'waste_plate_description' => $request->input('waste_plate_description') ?? $userSettings->waste_plate_description,
             'waste_edge_description' => $request->input('waste_edge_description') ?? $userSettings->waste_edge_description,
@@ -186,6 +193,7 @@ class ProjectController extends Controller
             'number' => 'sometimes|required|string|max:255',
             'expert_name' => 'sometimes|required|string|max:255',
             'address' => 'sometimes|required|string|max:255',
+            'region_id' => 'nullable|exists:regions,id',
             'waste_coefficient' => 'sometimes|required|numeric|min:1',
             'repair_coefficient' => 'sometimes|required|numeric|min:1',
             'waste_plate_coefficient' => 'nullable|numeric|min:1',
@@ -197,6 +205,8 @@ class ProjectController extends Controller
             'use_area_calc_mode' => 'sometimes|required|boolean',
             'default_plate_material_id' => 'nullable|exists:materials,id',
             'default_edge_material_id' => 'nullable|exists:materials,id',
+            'facade_width_allowance_mm' => 'nullable|integer|min:0|max:1000',
+            'facade_height_allowance_mm' => 'nullable|integer|min:0|max:1000',
             'text_blocks' => 'nullable|array',
             'text_blocks.*.title' => 'nullable|string|max:255',
             'text_blocks.*.text' => 'nullable|string|max:10000',

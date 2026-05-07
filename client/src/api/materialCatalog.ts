@@ -9,7 +9,7 @@ export type MaterialVisibility = 'private' | 'public' | 'curated'
 export type TrustLevel = 'unverified' | 'partial' | 'verified'
 export type DataOrigin = 'manual' | 'url_parse' | 'price_list' | 'chrome_ext'
 export type SourceType = 'web' | 'manual' | 'price_list' | 'chrome_ext'
-export type CatalogMode = 'own' | 'library' | 'public' | 'curated'
+export type CatalogMode = 'my' | 'public'
 
 export interface LatestPrice {
   price_per_unit: number

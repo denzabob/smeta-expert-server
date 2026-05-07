@@ -34,7 +34,7 @@ export const useMaterialCatalogStore = defineStore('materialCatalog', () => {
   const error = ref<string | null>(null)
 
   // Filters
-  const mode = ref<CatalogMode>('own')
+  const mode = ref<CatalogMode>('my')
   const typeFilter = ref<MaterialType | null>(null)
   const regionId = ref<number | null>(null)
   const trustLevelFilter = ref<TrustLevel | null>(null)

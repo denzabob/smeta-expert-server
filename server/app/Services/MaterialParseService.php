@@ -252,12 +252,15 @@ class MaterialParseService
             $materialData = $this->edgeMaterialNormalizer->normalize($materialData);
         }
 
+        $visibility = $materialData['visibility'] ?? Material::VISIBILITY_PRIVATE;
+        unset($materialData['visibility']);
+
         $materialPayload = array_merge($materialData, [
             'user_id' => $userId,
             'origin' => 'user',
             'is_active' => true,
             'version' => 1,
-            'visibility' => Material::VISIBILITY_PRIVATE,
+            'visibility' => $visibility,
         ]);
 
         $resolved = $this->canonicalResolver->findOrCreate($materialPayload);

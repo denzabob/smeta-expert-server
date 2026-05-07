@@ -538,10 +538,8 @@ const regionOptions = computed(() => {
 })
 
 const modeOptions: Array<{ value: CatalogMode; label: string; icon: string }> = [
-  { value: 'own', label: 'Мои', icon: 'mdi-account' },
-  { value: 'library', label: 'Библиотека', icon: 'mdi-bookmark' },
-  { value: 'public', label: 'Общий каталог', icon: 'mdi-earth' },
-  { value: 'curated', label: 'Кураторский', icon: 'mdi-star' },
+  { value: 'my', label: 'Мои', icon: 'mdi-account' },
+  { value: 'public', label: 'Публичные', icon: 'mdi-earth' },
 ]
 
 // ===== Table config =====
@@ -560,10 +558,8 @@ const tableHeaders = [
 // ===== Computed =====
 const modeSubtitle = computed(() => {
   const map: Record<string, string> = {
-    own: 'Ваши материалы и парсерные',
-    library: 'Ваша персональная библиотека',
-    public: 'Публичные материалы всех пользователей',
-    curated: 'Проверенные кураторами',
+    my: 'Материалы, созданные вами',
+    public: 'Материалы, доступные всем пользователям',
   }
   const count = store.totalItems
   return `${map[store.mode] || ''} (${count})`
@@ -571,10 +567,8 @@ const modeSubtitle = computed(() => {
 
 const noDataText = computed(() => {
   const map: Record<string, string> = {
-    own: 'У вас пока нет материалов',
-    library: 'Ваша библиотека пуста. Добавьте материалы из каталога.',
+    my: 'У вас пока нет материалов',
     public: 'В каталоге пока нет публичных материалов',
-    curated: 'Кураторские материалы скоро появятся',
   }
   return map[store.mode] || 'Нет данных'
 })
@@ -787,7 +781,7 @@ function formatDate(d: string | null): string {
 
 function priceAgeLabel(d: string | null): string {
   if (!d) return ''
-  const days = Math.floor((Date.now() - new Date(d).getTime()) / (1000 * 60 * 60 * 24))
+  const days = daysSinceLocalDate(d)
   if (days === 0) return 'сегодня'
   if (days === 1) return 'вчера'
   if (days < 7) return `${days} дн. назад`
@@ -798,11 +792,22 @@ function priceAgeLabel(d: string | null): string {
 
 function priceAgeClass(d: string | null): string {
   if (!d) return ''
-  const days = Math.floor((Date.now() - new Date(d).getTime()) / (1000 * 60 * 60 * 24))
+  const days = daysSinceLocalDate(d)
   if (days <= 7) return 'text-success font-weight-medium'
   if (days <= 30) return 'font-weight-medium'
   if (days <= 90) return 'text-warning'
   return 'text-error'
+}
+
+function daysSinceLocalDate(value: string): number {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 0
+
+  const today = new Date()
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  const valueStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+
+  return Math.max(0, Math.floor((todayStart - valueStart) / (1000 * 60 * 60 * 24)))
 }
 
 function typeLabel(t: string): string {
@@ -941,7 +946,7 @@ watch(
 
 .catalog-mode-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
 }

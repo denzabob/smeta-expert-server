@@ -104,6 +104,43 @@
                 </v-row>
               </div>
 
+              <!-- 6. Припуски фасадов -->
+              <div v-else-if="activeSection === 6" class="section-content usd-section-content">
+                <div class="section-title">Припуски фасадов</div>
+                <div class="section-hint">Используются в новых проектах при создании фасадной позиции с включённым вычитанием припуска.</div>
+
+                <v-row dense>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model.number="form.facade_width_allowance_mm"
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="1000"
+                      label="Припуск по ширине"
+                      suffix="мм"
+                      hint="Например: 4. Ввод 600 станет 596."
+                      persistent-hint
+                      :error-messages="fieldErrors.facade_width_allowance_mm"
+                    />
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model.number="form.facade_height_allowance_mm"
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="1000"
+                      label="Припуск по высоте"
+                      suffix="мм"
+                      hint="Для фасадов высота хранится в поле длины позиции."
+                      persistent-hint
+                      :error-messages="fieldErrors.facade_height_allowance_mm"
+                    />
+                  </v-col>
+                </v-row>
+              </div>
+
               <!-- 3. Отходы -->
               <div v-else-if="activeSection === 3" class="section-content usd-section-content">
                 <div class="section-title">Коэффициенты отходов</div>
@@ -517,6 +554,8 @@ interface UserSettings {
 
   default_plate_material_id: number | null
   default_edge_material_id: number | null
+  facade_width_allowance_mm: number
+  facade_height_allowance_mm: number
 
   waste_plate_coefficient: number | null
   waste_edge_coefficient: number | null
@@ -549,6 +588,7 @@ const sections = [
   { id: 0, title: 'Регион и режим расчёта', icon: 'mdi-map-marker' },
   { id: 1, title: 'Общие коэффициенты', icon: 'mdi-tune' },
   { id: 2, title: 'Материалы по умолчанию', icon: 'mdi-package-variant' },
+  { id: 6, title: 'Припуски фасадов', icon: 'mdi-ruler-square' },
   { id: 3, title: 'Отходы', icon: 'mdi-recycle' },
   { id: 4, title: 'Нормо-час', icon: 'mdi-calculator' },
   { id: 5, title: 'Справочные блоки', icon: 'mdi-text-box-outline' },
@@ -586,6 +626,8 @@ const form = ref<UserSettings>({
   repair_coefficient: 1.0,
   default_plate_material_id: null,
   default_edge_material_id: null,
+  facade_width_allowance_mm: 0,
+  facade_height_allowance_mm: 0,
   waste_plate_coefficient: 1.0,
   waste_edge_coefficient: 1.0,
   waste_operations_coefficient: 1.0,
@@ -761,6 +803,26 @@ const validateLaborSettings = (): boolean => {
   return Object.keys(errors).length === 0
 }
 
+const validateFacadeAllowanceSettings = (): boolean => {
+  const errors: Record<string, string[]> = { ...fieldErrors.value }
+
+  const validateAllowance = (key: 'facade_width_allowance_mm' | 'facade_height_allowance_mm', label: string) => {
+    const value = Number(form.value[key])
+    if (!Number.isInteger(value) || value < 0 || value > 1000) {
+      errors[key] = [`${label}: введите целое значение от 0 до 1000 мм.`]
+      return
+    }
+
+    delete errors[key]
+  }
+
+  validateAllowance('facade_width_allowance_mm', 'Припуск по ширине')
+  validateAllowance('facade_height_allowance_mm', 'Припуск по высоте')
+
+  fieldErrors.value = errors
+  return !errors.facade_width_allowance_mm && !errors.facade_height_allowance_mm
+}
+
 const buildPayload = (): Record<string, any> => {
   const descOrNull = (d: CoefficientDescription): CoefficientDescription | null => {
     const title = (d.title || '').trim()
@@ -776,6 +838,8 @@ const buildPayload = (): Record<string, any> => {
 
   return {
     ...otherForm,
+    facade_width_allowance_mm: Number(form.value.facade_width_allowance_mm) || 0,
+    facade_height_allowance_mm: Number(form.value.facade_height_allowance_mm) || 0,
     labor_employer_insurance_rate: percentToFraction(labor_employer_insurance_rate_percent),
     labor_planned_profitability_rate: percentToFraction(labor_planned_profitability_rate_percent),
     waste_plate_description: descOrNull(plateDesc.value),
@@ -817,6 +881,10 @@ const onSave = async () => {
   if (saving.value) return
   if (!validateLaborSettings()) {
     showNotification('Проверьте значения в настройках расчёта нормо-часа', 'error')
+    return
+  }
+  if (!validateFacadeAllowanceSettings()) {
+    showNotification('Проверьте значения припусков фасадов', 'error')
     return
   }
 
