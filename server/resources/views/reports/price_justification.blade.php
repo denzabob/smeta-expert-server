@@ -3,6 +3,165 @@
 <head>
   <meta charset="UTF-8" />
   <title>Обоснование цен</title>
+  @php
+    $isMeaningful = static function (mixed $value): bool {
+      if ($value === null) return false;
+      if (is_string($value)) {
+        $trimmed = trim($value);
+        return $trimmed !== '' && $trimmed !== '—' && $trimmed !== '-';
+      }
+      return true;
+    };
+
+    $formatMoney = static function (mixed $value, ?string $unit = null): ?string {
+      if ($value === null || $value === '') return null;
+      $suffix = $unit ? '/' . $unit : '';
+      return number_format((float) $value, 2, ',', ' ') . ' ₽' . $suffix;
+    };
+
+    $formatDate = static function (mixed $value): ?string {
+      if (!$value) return null;
+      try {
+        return \Carbon\Carbon::parse($value)->format('d.m.Y');
+      } catch (\Throwable) {
+        return is_string($value) ? $value : null;
+      }
+    };
+
+    $cleanUrl = static function (?string $url): ?string {
+      if (!$url) return null;
+      $url = trim($url);
+      if ($url === '' || $url === '—') return null;
+
+      $parts = parse_url($url);
+      if (!is_array($parts) || empty($parts['host'])) return $url;
+
+      $blocked = array_flip(['utm_source','utm_medium','utm_campaign','utm_content','utm_term','yclid','gclid','fbclid','at','ref','referrer','from']);
+      $query = [];
+      if (!empty($parts['query'])) {
+        parse_str($parts['query'], $query);
+        $query = array_filter(
+          $query,
+          static fn ($value, $key) => !isset($blocked[mb_strtolower((string) $key)]),
+          ARRAY_FILTER_USE_BOTH
+        );
+      }
+
+      $scheme = $parts['scheme'] ?? 'https';
+      $host = $parts['host'];
+      $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+      $path = $parts['path'] ?? '';
+      $normalized = $scheme . '://' . $host . $port . $path;
+      if ($query !== []) {
+        $normalized .= '?' . http_build_query($query);
+      }
+      if (!empty($parts['fragment'])) {
+        $normalized .= '#' . $parts['fragment'];
+      }
+
+      return $normalized;
+    };
+
+    $displayUrl = static function (?string $url) use ($cleanUrl): ?string {
+      $clean = $cleanUrl($url);
+      if (!$clean) return null;
+
+      $parts = parse_url($clean);
+      if (!is_array($parts) || empty($parts['host'])) return $clean;
+
+      $host = $parts['host'];
+      $path = $parts['path'] ?? '';
+      if (mb_strlen($host . $path) > 72) {
+        $segments = array_values(array_filter(explode('/', trim($path, '/'))));
+        $first = $segments[0] ?? '';
+        $last = end($segments) ?: '';
+        if (preg_match('/(\d{6,})$/u', $last, $match)) {
+          $last = '...' . $match[1];
+        } elseif (mb_strlen($last) > 34) {
+          $last = mb_substr($last, 0, 18) . '...' . mb_substr($last, -10);
+        }
+
+        return $host . ($first ? '/' . $first : '') . ($last ? '/...' . $last : '');
+      }
+
+      return $host . $path;
+    };
+
+    $assetOpenUrl = static function (array $asset): ?string {
+      if (empty($asset['asset_id'])) return null;
+
+      return url('/api/finished-product-price-evidence-assets/' . (int) $asset['asset_id'] . '/open');
+    };
+
+    $assetStoragePath = static function (array $asset): ?string {
+      $path = $asset['file_path'] ?? data_get($asset, 'storage_reference.path');
+      if (!$path || !is_string($path)) return null;
+
+      $absolutePath = storage_path('app/public/' . ltrim($path, '/'));
+
+      return file_exists($absolutePath) ? $absolutePath : null;
+    };
+
+    $moneyForPdf = static fn (?string $value): ?string => $value
+      ? str_replace([' руб./м²', ' руб.'], [' ₽/м²', ' ₽'], $value)
+      : null;
+
+    $driverLabels = [
+      'plate' => 'Плита',
+      'edge' => 'Кромка',
+      'facade' => 'Фасад',
+      'fitting' => 'Фурнитура',
+      'operation' => 'Операция',
+      'labor_work' => 'Работа',
+      'expense' => 'Расход',
+    ];
+
+    $reasonLabels = [
+      'no_source_url' => 'нет ссылки на источник цены',
+      'no_screenshot_or_document' => 'нет скриншота или документа',
+      'outdated_price' => 'подтверждение цены устарело',
+      'outdated_screenshot' => 'скриншот устарел',
+      'price_mismatch' => 'цена в подтверждении отличается от цены в смете',
+      'no_linked_material' => 'позиция не связана с материалом каталога',
+      'no_evidence_record' => 'нет связанного подтверждения цены',
+      'parse_failed' => 'ошибка обновления цены',
+      'source_unavailable' => 'источник цены недоступен',
+    ];
+
+    $formatReason = static function (mixed $value) use ($reasonLabels): string {
+      $items = is_array($value) ? $value : [$value];
+      $labels = collect($items)
+        ->filter()
+        ->map(fn ($reason) => $reasonLabels[(string) $reason] ?? (string) $reason)
+        ->filter()
+        ->values();
+
+      return $labels->isNotEmpty() ? $labels->implode('; ') : 'не указана';
+    };
+
+    $internalTypes = ['operation', 'labor_work', 'expense'];
+    $internalRows = collect($rows)->filter(fn ($row) => in_array($row['cost_driver_type'] ?? null, $internalTypes, true))->values();
+    $evidenceRows = collect($rows)->reject(fn ($row) => in_array($row['cost_driver_type'] ?? null, $internalTypes, true))->values();
+    $missingCount = max(0, (int) ($evidenceSummary['total_items'] ?? count($rows)) - (int) ($evidenceSummary['with_evidence'] ?? count($rows)));
+    $missingRows = collect(data_get($evidenceSummary, 'missing_items') ?? data_get($evidenceSummary, 'missing') ?? [])->values();
+
+    $dates = collect($rows)
+      ->pluck('observed_at')
+      ->filter()
+      ->map(function ($value) {
+        try { return \Carbon\Carbon::parse($value); } catch (\Throwable) { return null; }
+      })
+      ->filter()
+      ->values();
+    $periodText = null;
+    if ($dates->isNotEmpty()) {
+      $minDate = $dates->min();
+      $maxDate = $dates->max();
+      $periodText = $minDate->isSameDay($maxDate)
+        ? $minDate->format('d.m.Y')
+        : $minDate->format('d.m.Y') . ' — ' . $maxDate->format('d.m.Y');
+    }
+  @endphp
 
   <style>
     @page {
@@ -12,8 +171,8 @@
 
     body {
       font-family: "DejaVu Sans", sans-serif;
-      font-size: 8.8pt;
-      line-height: 1.24;
+      font-size: 8pt;
+      line-height: 1.18;
       color: #111;
       background: #fff;
       margin: 0;
@@ -39,8 +198,8 @@
     .mono { font-family: "DejaVu Sans Mono","Courier New",monospace; }
 
     .header {
-      margin: 0 0 4.2mm 0;
-      padding: 0 0 3mm 0;
+      margin: 0 0 3mm 0;
+      padding: 0 0 2mm 0;
       border-bottom: 1px solid #ddd;
       page-break-after: avoid;
       page-break-inside: avoid;
@@ -89,53 +248,59 @@
       page-break-after: avoid;
     }
 
+    .cards {
+      font-size: 0;
+    }
+
     .item {
-      margin: 0 0 3mm 0;
+      display: inline-block;
+      width: 49%;
+      margin: 0 1% 3mm 0;
       border: 1px solid #d7d7d7;
-      border-left: 3px solid #9a9a9a;
+      border-left: 2px solid #9a9a9a;
       background: #fff;
       page-break-inside: avoid;
       break-inside: avoid;
+      vertical-align: top;
+      font-size: 8pt;
     }
 
     .item-head {
-      padding: 2.2mm 3mm 1.8mm 3mm;
+      padding: 1.5mm 2mm 1.1mm 2mm;
       background: #fafafa;
       border-bottom: 1px solid #e4e4e4;
     }
 
     .item-title {
       margin: 0;
-      font-size: 8.9pt;
-      line-height: 1.15;
+      font-size: 8.1pt;
+      line-height: 1.12;
       font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.2px;
       color: #111;
       word-break: break-word;
     }
 
     .item-body {
-      padding: 2.2mm 3mm 2.5mm 3mm;
+      padding: 1.4mm 2mm 1.8mm 2mm;
     }
 
     .meta-table {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
-      margin: 0 0 1.8mm 0;
-      font-size: 7.9pt;
+      margin: 0 0 1mm 0;
+      font-size: 7.3pt;
     }
 
     .meta-table td {
       border: none;
-      padding: 0 0 0.8mm 0;
+      padding: 0 0 0.45mm 0;
       vertical-align: top;
-      line-height: 1.14;
+      line-height: 1.1;
     }
 
     .meta-label {
-      width: 16%;
+      width: 24%;
       font-weight: 700;
       color: #333;
       padding-right: 2mm;
@@ -143,24 +308,24 @@
     }
 
     .meta-value {
-      width: 84%;
+      width: 76%;
       color: #111;
       word-break: break-word;
       overflow-wrap: anywhere;
     }
 
     .compact-source {
-      font-size: 7.6pt;
-      line-height: 1.12;
+      font-size: 7pt;
+      line-height: 1.08;
     }
 
     .price-badge {
       display: inline-block;
-      padding: 0.7mm 2mm;
+      padding: 0.35mm 1.2mm;
       border: 1px solid #cfcfcf;
       background: #f5f5f5;
       font-weight: 700;
-      font-size: 7.8pt;
+      font-size: 7.3pt;
       line-height: 1.1;
       white-space: nowrap;
     }
@@ -168,22 +333,22 @@
     .shot-wrap {
       border: 1px solid #dcdcdc;
       background: #fcfcfc;
-      padding: 1.2mm;
+      padding: 0.8mm;
       text-align: center;
     }
 
     .shot-wrap img {
       display: block;
       max-width: 100%;
-      max-height: 88mm;
+      max-height: 50mm;
       width: auto;
       height: auto;
       margin: 0 auto;
     }
 
     .shot-empty {
-      min-height: 28mm;
-      padding: 10mm 0;
+      min-height: 12mm;
+      padding: 4mm 0;
       text-align: center;
       color: #7a7a7a;
       font-size: 8pt;
@@ -202,8 +367,8 @@
     .evidence-summary {
       border: 1px solid #d7d7d7;
       background: #f9f9f9;
-      padding: 2.5mm 3mm;
-      margin: 0 0 4mm 0;
+      padding: 1.8mm 2.2mm;
+      margin: 0 0 3mm 0;
       page-break-inside: avoid;
     }
 
@@ -248,32 +413,85 @@
       white-space: nowrap;
     }
 
-    .score-indicator {
-      display: inline-block;
-      padding: 0.3mm 1.5mm;
-      border: 1px solid #cfcfcf;
-      background: #f5f5f5;
-      font-size: 7pt;
-      line-height: 1.1;
-      white-space: nowrap;
-    }
-
     .snapshot-summary {
       border: 1px solid #dcdcdc;
       background: #fafafa;
-      padding: 2mm 2.4mm;
-      font-size: 7.8pt;
-      line-height: 1.18;
+      padding: 1.2mm 1.6mm;
+      font-size: 7pt;
+      line-height: 1.12;
     }
-    .snapshot-summary div { margin: 0 0 0.8mm 0; }
+    .snapshot-summary div { margin: 0 0 0.45mm 0; }
     .snapshot-summary div:last-child { margin-bottom: 0; }
+
+    .file-list {
+      margin-top: 0.8mm;
+      font-size: 7pt;
+      line-height: 1.12;
+    }
+
+    .file-line {
+      margin: 0 0 0.35mm 0;
+      word-break: break-word;
+    }
+
+    .internal-table,
+    .missing-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 7.5pt;
+      margin: 0 0 3mm 0;
+    }
+
+    .internal-table th,
+    .internal-table td,
+    .missing-table th,
+    .missing-table td {
+      border: 1px solid #ddd;
+      padding: 0.9mm 1.2mm;
+      vertical-align: top;
+      line-height: 1.12;
+    }
+
+    .internal-table th,
+    .missing-table th {
+      background: #f4f4f4;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    .confirmation-note {
+      border: 1px solid #d8e3d8;
+      background: #f5faf5;
+      padding: 1mm 1.3mm;
+      font-size: 7.2pt;
+      color: #223f22;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="section-title">Материалы и ценовые подтверждения</div>
-    <div class="section-note">
-      Источники и скриншоты, подтверждающие стоимость материалов, включенных в ревизию сметы.
+    <div class="header">
+      <h1 class="header-title">Документ подтверждения цен</h1>
+      <div class="section-note" style="text-align:center;margin-bottom:2mm;">
+        Источники, скриншоты и файлы, подтверждающие стоимость позиций сметы.
+      </div>
+      <table class="header-meta">
+        <tr>
+          <td class="left">Проект: <span class="bold">{{ $project->name ?? $project->number ?? '—' }}</span></td>
+          <td class="center">Версия отчета: <span class="bold">{{ $revision->number ?? '—' }}</span></td>
+          <td class="right">Дата формирования отчета: <span class="bold">{{ now()->format('d.m.Y') }}</span></td>
+        </tr>
+        <tr>
+          <td class="left">Всего позиций: {{ $evidenceSummary['total_items'] ?? count($rows) }}</td>
+          <td class="center">Подтверждено: {{ $evidenceSummary['with_evidence'] ?? count($rows) }}</td>
+          <td class="right">Без подтверждения: {{ $missingCount }}</td>
+        </tr>
+        @if($periodText)
+          <tr>
+            <td colspan="3" class="center">Период фиксации цен: {{ $periodText }}</td>
+          </tr>
+        @endif
+      </table>
     </div>
 
     @if(isset($evidenceSummary) && is_array($evidenceSummary))
@@ -306,139 +524,123 @@
       </div>
     @endif
 
-    @forelse($rows as $row)
+    @if($missingCount > 0)
+      <div class="section-title">Позиции без подтверждения цены</div>
+      <table class="missing-table">
+        <thead>
+          <tr>
+            <th>Наименование</th>
+            <th style="width:18%;">Раздел</th>
+            <th style="width:18%;">Цена</th>
+            <th style="width:25%;">Причина</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if($missingRows->isNotEmpty())
+            @foreach($missingRows as $missing)
+              @php
+                $missingName = $missing['name'] ?? $missing['item_name'] ?? $missing['title'] ?? 'Позиция';
+                $missingType = $driverLabels[$missing['cost_driver_type'] ?? $missing['component'] ?? ''] ?? ($missing['component'] ?? '—');
+                $missingPrice = $formatMoney($missing['price_per_unit'] ?? $missing['estimate_price'] ?? $missing['price'] ?? null, $missing['unit'] ?? null);
+                $missingReason = $formatReason($missing['reasons'] ?? $missing['reason'] ?? null);
+              @endphp
+              <tr>
+                <td>{{ $missingName }}</td>
+                <td>{{ $missingType }}</td>
+                <td>{{ $missingPrice ?? '—' }}</td>
+                <td>{{ $missingReason }}</td>
+              </tr>
+            @endforeach
+          @else
+            <tr>
+              <td colspan="4" class="muted">Детализированный список отсутствующих подтверждений хранится в разделе «Документы» проекта. В данном PDF сохранены подтвержденные позиции.</td>
+            </tr>
+          @endif
+        </tbody>
+      </table>
+    @endif
+
+    @if($internalRows->isNotEmpty())
+      <div class="section-title">Позиции, рассчитанные внутренним способом</div>
+      <table class="internal-table">
+        <thead>
+          <tr>
+            <th>Наименование</th>
+            <th style="width:16%;">Раздел</th>
+            <th style="width:10%;">Ед.</th>
+            <th style="width:18%;">Цена</th>
+            <th style="width:24%;">Основание</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach($internalRows as $row)
+            <tr>
+              <td>{{ $row['name'] ?? 'Позиция' }}</td>
+              <td>{{ $driverLabels[$row['cost_driver_type'] ?? ''] ?? 'Внутренний расчет' }}</td>
+              <td>{{ $row['unit'] ?? (($row['cost_driver_type'] ?? null) === 'labor_work' ? 'н/ч' : '—') }}</td>
+              <td>{{ $formatMoney($row['price_per_unit'] ?? null, $row['unit'] ?? null) ?? '—' }}</td>
+              <td>внутренний расчет; скриншот не требуется</td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    @endif
+
+    <div class="section-title">Материалы и ценовые подтверждения</div>
+
+    <div class="cards">
+    @forelse($evidenceRows as $row)
+      @php
+        $sourceUrl = $cleanUrl($row['source_url'] ?? null);
+        $sourceDisplay = $displayUrl($row['source_url'] ?? null);
+        $unit = $row['unit'] ?? null;
+        $priceText = $formatMoney($row['price_per_unit'] ?? null, $unit);
+        $article = $isMeaningful($row['article'] ?? null) ? trim((string) $row['article']) : null;
+        $driverText = $driverLabels[$row['cost_driver_type'] ?? ''] ?? ($row['cost_driver_type'] ?? null);
+      @endphp
       <div class="item">
         <div class="item-head">
           <div class="item-title">
             {{ $row['name'] ?? ('Позиция #' . ($row['project_position_id'] ?? $row['project_fitting_id'] ?? '—')) }}
-            @if(!empty($row['capture_source']))
-              @php
-                $capLabels = ['auto' => 'Авто', 'manual' => 'Вручную', 'chrome_ext' => 'Chrome', 'internal' => 'Внутр.'];
-              @endphp
-              <span class="source-badge">{{ $capLabels[$row['capture_source']] ?? $row['capture_source'] }}</span>
-            @endif
           </div>
         </div>
 
         <div class="item-body">
           <table class="meta-table">
-            @if(!empty($row['article']) || !empty($row['unit']))
+            @if($article || $isMeaningful($unit))
               <tr>
-                <td class="meta-label">Артикул</td>
+                <td class="meta-label">Арт. / Ед.</td>
                 <td class="meta-value">
-                  {{ $row['article'] ?? '—' }}@if(!empty($row['unit'])), {{ $row['unit'] }}@endif
+                  @if($article) Арт.: {{ $article }}@endif
+                  @if($article && $isMeaningful($unit)) · @endif
+                  @if($isMeaningful($unit)) Ед.: {{ $unit }}@endif
                 </td>
               </tr>
             @endif
 
-            @if(!empty($row['cost_driver_type']))
-              @php
-                $driverLabels = [
-                  'plate' => 'Плита', 'edge' => 'Кромка', 'facade' => 'Фасад',
-                  'fitting' => 'Фурнитура', 'operation' => 'Операция',
-                  'labor_work' => 'Работа', 'expense' => 'Расход',
-                ];
-              @endphp
+            @if($isMeaningful($driverText))
               <tr>
-                <td class="meta-label">Тип</td>
+                <td class="meta-label">Раздел</td>
                 <td class="meta-value">
-                  <span class="type-badge">{{ $driverLabels[$row['cost_driver_type']] ?? $row['cost_driver_type'] }}</span>
+                  <span class="type-badge">{{ $driverText }}</span>
                 </td>
               </tr>
             @endif
 
-            @if(!empty($row['source_url']))
+            @if($sourceUrl && $sourceDisplay)
               <tr>
                 <td class="meta-label">Источник</td>
                 <td class="meta-value compact-source">
-                  <a href="{{ $row['source_url'] }}">{{ $row['source_domain'] ?? $row['source_url'] }}</a>
+                  <a href="{{ $sourceUrl }}">{{ $sourceDisplay }}</a>
                 </td>
               </tr>
             @endif
 
-            @if(!empty($row['price_per_unit']) && !empty($row['currency']))
+            @if($priceText)
               <tr>
                 <td class="meta-label">Цена</td>
                 <td class="meta-value">
-                  <span class="price-badge">{{ $row['price_per_unit'] }} {{ $row['currency'] }}</span>
-                </td>
-              </tr>
-            @endif
-
-            @if(!empty($row['observed_at']))
-              <tr>
-                <td class="meta-label">Дата</td>
-                <td class="meta-value">{{ date('d.m.Y H:i', strtotime($row['observed_at'])) }}</td>
-              </tr>
-            @endif
-
-            @if($row['true_score'] !== null)
-              <tr>
-                <td class="meta-label">Оценка</td>
-                <td class="meta-value">
-                  <span class="score-indicator">{{ $row['true_score'] }} / 100</span>
-                </td>
-              </tr>
-            @endif
-
-            @if(!empty($row['cost_driver_type']) && $row['cost_driver_type'] === 'labor_work')
-              @if(isset($row['labor_work_hours']))
-                <tr>
-                  <td class="meta-label">Трудозатраты</td>
-                  <td class="meta-value">
-                    {{ $row['labor_work_hours'] }} н/ч
-                    @if(!empty($row['price_per_unit']) && isset($row['labor_work_total_cost']))
-                      &times; {{ $row['price_per_unit'] }} ₽/н/ч = <span class="bold">{{ $row['labor_work_total_cost'] }} ₽</span>
-                    @endif
-                  </td>
-                </tr>
-              @endif
-              @if(!empty($row['labor_work_basis']))
-                <tr>
-                  <td class="meta-label">Основание</td>
-                  <td class="meta-value">{{ $row['labor_work_basis'] }}</td>
-                </tr>
-              @endif
-              @if(!empty($row['labor_work_note']))
-                <tr>
-                  <td class="meta-label">Примечание</td>
-                  <td class="meta-value">{{ $row['labor_work_note'] }}</td>
-                </tr>
-              @endif
-              @if(!empty($row['labor_work_steps']))
-                <tr>
-                  <td class="meta-label" style="vertical-align:top;">Подоперации</td>
-                  <td class="meta-value">
-                    <table style="width:100%;border-collapse:collapse;font-size:7.8pt;">
-                      <thead>
-                        <tr style="border-bottom:1px solid #ddd;">
-                          <th style="text-align:left;padding:0.5mm 1mm;font-weight:600;">Наименование</th>
-                          <th style="text-align:right;padding:0.5mm 1mm;font-weight:600;white-space:nowrap;">н/ч</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        @foreach($row['labor_work_steps'] as $step)
-                          <tr>
-                            <td style="padding:0.5mm 1mm;">{{ $step['title'] ?? '—' }}</td>
-                            <td style="text-align:right;padding:0.5mm 1mm;white-space:nowrap;">{{ $step['hours'] ?? 0 }}</td>
-                          </tr>
-                        @endforeach
-                      </tbody>
-                    </table>
-                  </td>
-                </tr>
-              @endif
-            @endif
-
-            @if(!empty($row['cost_driver_type']) && $row['cost_driver_type'] === 'expense' && !empty($row['expense_document_path']))
-              <tr>
-                <td class="meta-label">Документ</td>
-                <td class="meta-value">
-                  @if(str_starts_with($row['expense_document_mime'] ?? '', 'image/') && file_exists(storage_path('app/public/' . $row['expense_document_path'])))
-                    <img src="{{ storage_path('app/public/' . $row['expense_document_path']) }}" alt="document" style="max-width:100%;max-height:120mm;" />
-                  @else
-                    Приложен ({{ basename($row['expense_document_path']) }})
-                  @endif
+                  <span class="price-badge">{{ $priceText }}</span>
                 </td>
               </tr>
             @endif
@@ -451,16 +653,11 @@
                 $position = $presentation['position_summary'] ?? [];
                 $sources = $presentation['sources'] ?? [];
               @endphp
-              <tr>
-                <td class="meta-label">Контракт</td>
-                <td class="meta-value">Snapshot summary фасадной позиции</td>
-              </tr>
               @if(!empty($row['finished_product_specification_id']))
                 <tr>
                   <td class="meta-label">Спецификация</td>
                   <td class="meta-value">
                     {{ $identity['display_name'] ?? $row['specification_name'] ?? $row['name'] ?? 'Фасад' }}
-                    <span class="muted">#{{ $row['finished_product_specification_id'] }}</span>
                   </td>
                 </tr>
               @endif
@@ -471,31 +668,11 @@
                 </tr>
               @endif
               <tr>
-                <td class="meta-label">Основание цены</td>
+                <td class="meta-label">Прайс</td>
                 <td class="meta-value">
-                  {{ $presentation['compact_summary_text'] ?? '—' }}
+                  {{ $moneyForPdf($presentation['compact_summary_text'] ?? null) ?? 'агрегированные источники поставщика' }}
                 </td>
               </tr>
-              @if(!empty($position))
-                <tr>
-                  <td class="meta-label">Позиция</td>
-                  <td class="meta-value">
-                    {{ $position['detail_name'] ?? 'Фасад' }},
-                    {{ $position['quantity'] ?? '—' }} шт.,
-                    {{ $position['width_mm'] ?? '—' }}×{{ $position['height_mm'] ?? '—' }} мм,
-                    {{ $position['area_m2_display'] ?? '—' }} м²,
-                    {{ $position['total_cost_display'] ?? '—' }}
-                  </td>
-                </tr>
-              @endif
-              @if(!empty($sources))
-                <tr>
-                  <td class="meta-label">Источники</td>
-                  <td class="meta-value">
-                    Зафиксировано {{ count($sources) }} источников на момент capture.
-                  </td>
-                </tr>
-              @endif
             @endif
           </table>
 
@@ -504,55 +681,75 @@
               $presentation = $row['facade_snapshot_presentation'] ?? [];
               $pricing = $presentation['pricing_summary'] ?? [];
               $sources = $presentation['sources'] ?? [];
+              $facadeAssets = collect($sources)
+                ->flatMap(fn ($source) => (array) ($source['evidence_assets'] ?? []))
+                ->values();
+              $previewAsset = $facadeAssets->first(function (array $asset) use ($assetStoragePath): bool {
+                $mime = (string) ($asset['mime_type'] ?? '');
+                return str_starts_with($mime, 'image/') && $assetStoragePath($asset) !== null;
+              });
             @endphp
             <div class="snapshot-summary">
-              <div><strong>Snapshot-derived pricing basis</strong></div>
-              <div>Цена за м² принята из immutable pricing snapshot, сохранённого вместе с позицией/ревизией.</div>
-              @if(!empty($pricing['captured_at_display']) || !empty($pricing['computed_at_display']))
-                <div>
-                  Дата фиксации:
-                  {{ $pricing['captured_at_display'] ?? $pricing['computed_at_display'] }}
-                </div>
-              @endif
-              <div>{{ $presentation['basis_note'] ?? $row['basis_note'] ?? 'Источник построен по summary-level snapshot contract без legacy screenshot/price history полей.' }}</div>
+              <div><strong>Подтверждение фасадной цены</strong></div>
+              <div>Цена за м² подтверждена сохраненными прайсами и файлами поставщика.</div>
               @if(!empty($sources))
-                <div style="margin-top:1mm;"><strong>Зафиксированные source-level данные:</strong></div>
                 @foreach($sources as $source)
-                  <div>
-                    {{ $source['supplier_name'] ?? '—' }}:
-                    {{ $source['normalized_price_per_m2_display'] ?? '—' }}
-                    @if(!empty($source['source_kind_label'])) · {{ $source['source_kind_label'] }} @endif
-                    @if(!empty($source['effective_date_display'])) · {{ $source['effective_date_display'] }} @endif
-                    @if(!empty($source['evidence_assets_count'])) · вложений: {{ $source['evidence_assets_count'] }} @endif
-                  </div>
                   @if(!empty($source['evidence_assets']))
                     @foreach($source['evidence_assets'] as $asset)
-                      <div class="muted" style="margin-left:3mm;">
-                        {{ $asset['asset_type_label'] ?? $asset['asset_type'] ?? 'asset' }}:
-                        {{ $asset['display_label'] ?? '—' }}
-                        @if(!empty($asset['mime_type'])) ({{ $asset['mime_type'] }}) @endif
+                      @php
+                        $assetLabel = $asset['display_label'] ?? $asset['original_name'] ?? $asset['source_url'] ?? null;
+                        $assetUrl = $cleanUrl($asset['source_url'] ?? null) ?: $assetOpenUrl($asset);
+                        $extension = mb_strtolower(pathinfo((string) ($asset['original_name'] ?? $assetLabel ?? ''), PATHINFO_EXTENSION));
+                        $assetType = $asset['asset_type'] ?? null;
+                        $assetKind = match (true) {
+                          $assetType === 'link' => 'Источник',
+                          in_array($assetType, ['screenshot', 'image'], true) => 'Скриншот',
+                          in_array($extension, ['xls', 'xlsx', 'csv', 'ods'], true) => 'Прайс',
+                          default => 'Файл',
+                        };
+                      @endphp
+                      @if($isMeaningful($assetLabel))
+                      <div class="file-line">
+                        {{ $assetKind }}:
+                        @if($assetUrl)
+                          <a href="{{ $assetUrl }}">{{ $assetLabel }}</a>
+                        @else
+                          {{ $assetLabel }}
+                        @endif
                       </div>
+                      @endif
                     @endforeach
                   @endif
                 @endforeach
               @endif
             </div>
+            @if($previewAsset)
+              <div class="shot-wrap" style="margin-top:1mm;">
+                <img src="{{ $assetStoragePath($previewAsset) }}" alt="evidence" />
+              </div>
+            @endif
           @else
-            <div class="shot-wrap">
-              @if(!empty($row['screenshot_path']) && file_exists(storage_path('app/public/' . $row['screenshot_path'])))
+            @php
+              $screenshotPath = !empty($row['screenshot_path']) && file_exists(storage_path('app/public/' . $row['screenshot_path']))
+                ? storage_path('app/public/' . $row['screenshot_path'])
+                : null;
+            @endphp
+            @if($screenshotPath)
+              <div class="shot-wrap">
                 <img src="{{ storage_path('app/public/' . $row['screenshot_path']) }}" alt="screenshot" />
-              @else
-                <div class="shot-empty">Скриншот отсутствует</div>
-              @endif
-            </div>
+              </div>
+            @elseif($sourceUrl)
+              <div class="confirmation-note">Подтверждение: источник цены указан.</div>
+            @endif
           @endif
         </div>
       </div>
     @empty
       <div class="empty">
-        Нет данных обоснования цен в snapshot ревизии.
+        Нет данных подтверждения цен в сохраненной версии отчета.
       </div>
     @endforelse
+    </div>
   </div>
 </body>
 </html>

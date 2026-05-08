@@ -208,6 +208,7 @@ class FinishedProductFacadeSnapshotPresenter
         $assetType = $asset['asset_type'] ?? null;
 
         return [
+            'asset_id' => data_get($asset, 'asset_ref.id'),
             'asset_type' => $assetType,
             'asset_type_label' => self::ASSET_TYPE_LABELS[$assetType] ?? ($assetType ?? 'Вложение'),
             'display_label' => $asset['display_label'] ?? $asset['original_name'] ?? $asset['source_url'] ?? '—',
@@ -215,6 +216,9 @@ class FinishedProductFacadeSnapshotPresenter
             'mime_type' => $asset['mime_type'] ?? null,
             'file_size' => $asset['file_size'] ?? null,
             'source_url' => $asset['source_url'] ?? null,
+            'file_path' => $asset['file_path'] ?? data_get($asset, 'storage_reference.path'),
+            'storage_reference' => $asset['storage_reference'] ?? null,
+            'content_hash' => $asset['content_hash'] ?? null,
             'captured_at' => $asset['captured_at'] ?? null,
             'captured_at_display' => $this->formatDateTime($asset['captured_at'] ?? null),
             'access_kind' => $asset['access_kind'] ?? null,

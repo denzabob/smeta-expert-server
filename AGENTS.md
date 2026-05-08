@@ -1,4 +1,60 @@
-\# Agent operating rules
+\# Skill routing
+
+
+
+Use the most specific applicable skill.
+
+
+
+Priority order:
+
+
+
+1\. `material-3`
+
+2\. `laravel-expert`
+
+3\. `database-architect`
+
+4\. `performance-optimizer`
+
+5\. `code-reviewer`
+
+6\. `backend-architect`
+
+
+
+Use `material-3` for material, evidence, pricing, screenshot, document coverage, catalog evidence, revision runs, price history, source URL and evidence validation.
+
+
+
+Use `laravel-expert` for ordinary Laravel implementation, controllers, services, models, validation, policies, API responses, jobs, commands, middleware, Laravel-specific bugs, and Laravel + Inertia/Vue backend contracts.
+
+
+
+Use `database-architect` for schema design, migrations, indexes, constraints, enum changes, rollback planning, data integrity, destructive data risks, and MySQL/Laravel migration safety.
+
+
+
+Use `performance-optimizer` only when the task is primarily about confirmed or suspected performance bottlenecks.
+
+
+
+Use `code-reviewer` only when the user asks to review, audit, inspect, or check code rather than implement changes.
+
+
+
+Use `backend-architect` only for higher-level backend architecture: service boundaries, API contracts, integration between systems, resilience, observability, and rollout strategy.
+
+
+
+Do not use broad architecture skills for local implementation tasks.
+
+
+
+If multiple skills apply, prefer the most specific one and apply only the relevant rules from the others.
+
+# Agent operating rules
 
 
 
