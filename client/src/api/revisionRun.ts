@@ -13,6 +13,7 @@ export interface RevisionRun {
   started_at?: string | null
   finished_at?: string | null
   last_error?: string | null
+  project_revision_id?: string | null
 }
 
 export type CostDriverType = 'plate' | 'edge' | 'facade' | 'fitting' | 'operation' | 'labor_work' | 'expense'

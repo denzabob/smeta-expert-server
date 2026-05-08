@@ -69,12 +69,14 @@ class DetailTypeController extends Controller
         }
 
         return DB::transaction(function () use ($detailType, $validated) {
+            $previousEdgeProcessing = $detailType->edge_processing;
             $components = array_key_exists('components', $validated)
                 ? ($validated['components'] ?? [])
                 : ($detailType->components ?? []);
 
             $detailType->update($validated);
             $this->syncDetailTypeOperations($detailType, $components);
+            $this->clearAssignedPositionEdgesIfTemplateWasCleared($detailType, $previousEdgeProcessing);
 
             return $detailType->fresh();
         });
@@ -121,5 +123,24 @@ class DetailTypeController extends Controller
                 'quantity_formula' => (string) ($component['quantity'] ?? '1'),
             ]);
         }
+    }
+
+    private function clearAssignedPositionEdgesIfTemplateWasCleared(DetailType $detailType, ?string $previousEdgeProcessing): void
+    {
+        if ($previousEdgeProcessing === 'none' || $detailType->edge_processing !== 'none') {
+            return;
+        }
+
+        ProjectPosition::query()
+            ->where('detail_type_id', $detailType->id)
+            ->where(function ($query) {
+                $query->whereNull('edge_scheme')
+                    ->orWhere('edge_scheme', '!=', 'none')
+                    ->orWhereNotNull('edge_material_id');
+            })
+            ->update([
+                'edge_scheme' => 'none',
+                'edge_material_id' => null,
+            ]);
     }
 }

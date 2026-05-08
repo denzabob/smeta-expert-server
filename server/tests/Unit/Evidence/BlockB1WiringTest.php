@@ -11,6 +11,7 @@ use App\Models\MaterialPriceHistory;
 use App\Models\Project;
 use App\Models\ProjectFitting;
 use App\Models\ProjectPosition;
+use App\Models\ProjectRevision;
 use App\Models\RevisionRun;
 use App\Models\RevisionRunItem;
 use App\Models\User;
@@ -563,6 +564,50 @@ class BlockB1WiringTest extends TestCase
         $this->assertSame('Закрыто вручную', $freshItem->message);
         $this->assertSame($history->id, $freshItem->price_history_id);
         $this->assertTrue($freshItem->isCompleted());
+    }
+
+    public function test_finalize_returns_existing_revision_for_already_finalized_run(): void
+    {
+        $user = User::factory()->create();
+        $project = $this->makeProject($user);
+
+        $revision = ProjectRevision::create([
+            'project_id' => $project->id,
+            'created_by_user_id' => $user->id,
+            'number' => 1,
+            'status' => 'locked',
+            'snapshot_json' => '{"revision_run_id":1}',
+            'snapshot_hash' => hash('sha256', '{"revision_run_id":1}'),
+            'locked_at' => now(),
+        ]);
+
+        $run = RevisionRun::create([
+            'project_id' => $project->id,
+            'initiator_user_id' => $user->id,
+            'status' => RevisionRun::STATUS_FINALIZED,
+            'total_items' => 0,
+            'ok_items' => 0,
+            'failed_items' => 0,
+            'project_revision_id' => $revision->id,
+        ]);
+
+        $beforeCount = ProjectRevision::query()
+            ->where('project_id', $project->id)
+            ->count();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/projects/{$project->id}/revisions/run/{$run->id}/finalize");
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('revision.id', $revision->id)
+            ->assertJsonPath('revision.number', $revision->number);
+
+        $this->assertSame(
+            $beforeCount,
+            ProjectRevision::query()->where('project_id', $project->id)->count()
+        );
+        $this->assertSame($revision->id, $run->fresh()->project_revision_id);
     }
 
     // ── Helpers ──────────────────────────────────────────────────

@@ -25,6 +25,7 @@ class RevisionRun extends Model
         'started_at',
         'finished_at',
         'last_error',
+        'project_revision_id',
     ];
 
     protected $casts = [
@@ -43,6 +44,11 @@ class RevisionRun extends Model
     public function initiator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'initiator_user_id');
+    }
+
+    public function projectRevision(): BelongsTo
+    {
+        return $this->belongsTo(ProjectRevision::class, 'project_revision_id');
     }
 
     public function items(): HasMany

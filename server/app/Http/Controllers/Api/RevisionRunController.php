@@ -15,6 +15,7 @@ use App\Models\GenericEvidenceAsset;
 use App\Models\MaterialPriceHistory;
 use App\Models\Project;
 use App\Models\ProjectPosition;
+use App\Models\ProjectRevision;
 use App\Models\RevisionRun;
 use App\Models\RevisionRunItem;
 use App\Service\ReportService;
@@ -25,6 +26,7 @@ use App\Services\SnapshotService;
 use App\Services\UrlNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -280,6 +282,23 @@ class RevisionRunController extends Controller
     {
         $this->authorize('update', $project);
 
+        $existingRun = RevisionRun::with('projectRevision')
+            ->where('project_id', $project->id)
+            ->findOrFail($runId);
+
+        if ($existingRun->projectRevision) {
+            return $this->finalizedRevisionResponse($project, $existingRun->projectRevision);
+        }
+
+        if ($existingRun->status === RevisionRun::STATUS_FINALIZED) {
+            $existingRevision = $this->findRevisionForRun($project, $runId);
+            if ($existingRevision) {
+                $existingRun->update(['project_revision_id' => $existingRevision->id]);
+
+                return $this->finalizedRevisionResponse($project, $existingRevision);
+            }
+        }
+
         $report = $this->reportService->buildReport($project)->toArray();
         if (($report['totals']['total_is_valid'] ?? true) === false) {
             return response()->json([
@@ -421,22 +440,79 @@ class RevisionRunController extends Controller
         $evidenceSummary = [
             'total_items' => $totalItems,
             'with_evidence' => $withEvidence,
-            'coverage_pct' => $totalItems > 0 ? round(($withEvidence / $totalItems) * 100, 1) : 0,
-            'by_capture_source' => $bySource,
-        ];
+                'coverage_pct' => $totalItems > 0 ? round(($withEvidence / $totalItems) * 100, 1) : 0,
+                'by_capture_source' => $bySource,
+            ];
 
-        $revision = $this->snapshotService->createSnapshot(
-            $project,
-            auth()->id(),
-            [
-                'price_justifications' => $justifications,
-                'evidence_summary' => $evidenceSummary,
-                'revision_run_id' => $run->id,
-            ]
-        );
+        try {
+            $revision = DB::transaction(function () use ($project, $run, $runId, $justifications, $evidenceSummary) {
+                Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
 
-        $run->update(['status' => RevisionRun::STATUS_FINALIZED]);
+                $lockedRun = RevisionRun::query()
+                    ->where('project_id', $project->id)
+                    ->lockForUpdate()
+                    ->findOrFail($runId);
 
+                if ($lockedRun->project_revision_id) {
+                    return ProjectRevision::query()->findOrFail($lockedRun->project_revision_id);
+                }
+
+                if ($lockedRun->status === RevisionRun::STATUS_FINALIZED) {
+                    $existingRevision = $this->findRevisionForRun($project, $runId);
+                    if ($existingRevision) {
+                        $lockedRun->update(['project_revision_id' => $existingRevision->id]);
+
+                        return $existingRevision;
+                    }
+                }
+
+                $revision = $this->snapshotService->createSnapshot(
+                    $project,
+                    auth()->id(),
+                    [
+                        'price_justifications' => $justifications,
+                        'evidence_summary' => $evidenceSummary,
+                        'revision_run_id' => $run->id,
+                    ]
+                );
+
+                $lockedRun->update([
+                    'status' => RevisionRun::STATUS_FINALIZED,
+                    'project_revision_id' => $revision->id,
+                    'finished_at' => now(),
+                ]);
+
+                return $revision;
+            }, 3);
+        } catch (QueryException $exception) {
+            if ($this->isDuplicateRevisionNumberException($exception)) {
+                $existingRun = RevisionRun::with('projectRevision')
+                    ->where('project_id', $project->id)
+                    ->find($runId);
+                $existingRevision = $existingRun?->projectRevision ?: $this->findRevisionForRun($project, $runId);
+
+                if ($existingRevision) {
+                    if ($existingRun && !$existingRun->project_revision_id) {
+                        $existingRun->update(['project_revision_id' => $existingRevision->id]);
+                    }
+
+                    return $this->finalizedRevisionResponse($project, $existingRevision);
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Документ уже формируется. Обновите страницу и повторите попытку.',
+                ], 409);
+            }
+
+            throw $exception;
+        }
+
+        return $this->finalizedRevisionResponse($project, $revision);
+    }
+
+    private function finalizedRevisionResponse(Project $project, ProjectRevision $revision): JsonResponse
+    {
         return response()->json([
             'success' => true,
             'revision' => [
@@ -448,6 +524,21 @@ class RevisionRunController extends Controller
                 'price_justification' => url("/api/projects/{$project->id}/revisions/{$revision->number}/price-justification.pdf"),
             ],
         ]);
+    }
+
+    private function findRevisionForRun(Project $project, int $runId): ?ProjectRevision
+    {
+        return ProjectRevision::query()
+            ->where('project_id', $project->id)
+            ->where('snapshot_json', 'like', '%"revision_run_id":' . $runId . '%')
+            ->orderByDesc('number')
+            ->first();
+    }
+
+    private function isDuplicateRevisionNumberException(QueryException $exception): bool
+    {
+        return ($exception->errorInfo[0] ?? null) === '23000'
+            && str_contains((string) ($exception->errorInfo[2] ?? $exception->getMessage()), 'project_revisions_project_id_number_unique');
     }
 
     /**

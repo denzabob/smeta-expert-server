@@ -76,6 +76,7 @@ class ProjectPositionController extends Controller
 
         $validated['project_id'] = $project->id;
         $validated['kind'] = $validated['kind'] ?? ProjectPosition::KIND_PANEL;
+        $validated = $this->normalizeClearedEdge($validated, $validated['kind']);
 
         $priceMethod = $validated['price_method'] ?? ProjectPosition::PRICE_METHOD_SINGLE;
         $quoteIds = $validated['quote_material_price_ids'] ?? [];
@@ -206,6 +207,7 @@ class ProjectPositionController extends Controller
         } else {
             unset($validated['price_method']);
         }
+        $validated = $this->normalizeClearedEdge($validated, $newKind);
         $projectPosition->update($validated);
 
         if (!empty($projectPosition->finished_product_specification_id)) {
@@ -623,6 +625,20 @@ class ProjectPositionController extends Controller
             } elseif ($material->price_per_unit) {
                 $validated['price_per_m2'] = $material->price_per_unit;
             }
+        }
+
+        return $validated;
+    }
+
+    private function normalizeClearedEdge(array $validated, ?string $kind): array
+    {
+        if (
+            $kind === ProjectPosition::KIND_PANEL
+            && array_key_exists('edge_scheme', $validated)
+            && ($validated['edge_scheme'] === null || $validated['edge_scheme'] === '' || $validated['edge_scheme'] === 'none')
+        ) {
+            $validated['edge_scheme'] = 'none';
+            $validated['edge_material_id'] = null;
         }
 
         return $validated;

@@ -569,9 +569,7 @@ class SmetaCalculator
                 }
                 
                 $detailType = $position->detailType;
-                $dtOperations = $detailType->detailTypeOperations()->with('operation')->get();
-                
-                foreach ($dtOperations as $dto) {
+                foreach ($this->resolveDetailTypeOperationRows($detailType) as $dto) {
                     $operation = $dto->operation;
                     if (!$operation) {
                         continue;
@@ -724,11 +722,60 @@ class SmetaCalculator
             if (is_numeric($formula)) {
                 return (float) $formula;
             }
-            // Для других формул возвращаем 1
-            return 1.0;
+            return match (trim($formula)) {
+                'perimeter_m' => (($position->width + $position->length) * 2) / 1000.0,
+                'area_m2' => (($position->width ?? 0) * ($position->length ?? 0)) / 1_000_000.0,
+                default => 1.0,
+            };
         } catch (\Exception $e) {
             return 1.0;
         }
+    }
+
+    private function resolveDetailTypeOperationRows($detailType): array
+    {
+        $rows = $detailType->detailTypeOperations()
+            ->with('operation')
+            ->get()
+            ->filter(fn ($row) => $row->operation !== null)
+            ->values()
+            ->all();
+
+        if (!empty($rows)) {
+            return $rows;
+        }
+
+        $components = is_array($detailType->components) ? $detailType->components : [];
+        if (empty($components)) {
+            return [];
+        }
+
+        $operationIds = array_values(array_unique(array_filter(array_map(
+            fn ($component) => (int) ($component['operation_id'] ?? $component['id'] ?? 0),
+            $components
+        ))));
+        if (empty($operationIds)) {
+            return [];
+        }
+
+        $operations = Operation::whereIn('id', $operationIds)->get()->keyBy('id');
+        $fallbackRows = [];
+        $seen = [];
+
+        foreach ($components as $component) {
+            $operationId = (int) ($component['operation_id'] ?? $component['id'] ?? 0);
+            if ($operationId <= 0 || isset($seen[$operationId]) || !isset($operations[$operationId])) {
+                continue;
+            }
+
+            $seen[$operationId] = true;
+            $fallbackRows[] = (object) [
+                'operation' => $operations[$operationId],
+                'quantity_formula' => (string) ($component['quantity'] ?? '1'),
+            ];
+        }
+
+        return $fallbackRows;
     }
 
     private function resolveApplicationRows(Project $project, Collection $positions, Collection $rules): array

@@ -5,6 +5,57 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Смета {{ $report['project']['number'] ?? 'Без номера' }}</title>
 
+  @php
+    $compactReportUrl = static function (?string $url): array {
+      $url = trim((string) $url);
+      if ($url === '') {
+        return ['href' => '', 'label' => ''];
+      }
+
+      $parts = parse_url($url);
+      if ($parts === false || empty($parts['host'])) {
+        return ['href' => $url, 'label' => \Illuminate\Support\Str::limit($url, 64)];
+      }
+
+      $blockedParams = [
+        'hhtmfrom', 'query', 'context',
+        'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+        'yclid', 'gclid', 'fbclid', 'at', 'ref', 'referrer', 'from',
+      ];
+      $query = [];
+      if (!empty($parts['query'])) {
+        parse_str($parts['query'], $query);
+        foreach (array_keys($query) as $key) {
+          if (in_array(mb_strtolower((string) $key), $blockedParams, true)) {
+            unset($query[$key]);
+          }
+        }
+      }
+
+      $scheme = $parts['scheme'] ?? 'https';
+      $host = $parts['host'];
+      $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+      $path = $parts['path'] ?? '';
+      $fragment = isset($parts['fragment']) ? '#' . $parts['fragment'] : '';
+      $cleanQuery = !empty($query) ? '?' . http_build_query($query) : '';
+      $href = "{$scheme}://{$host}{$port}{$path}{$cleanQuery}{$fragment}";
+
+      $displayHost = preg_replace('/^www\./i', '', $host);
+      $displayPath = $path;
+      if (preg_match('#^/vacancy/\d+#', $path, $matches)) {
+        $displayPath = $matches[0];
+      } elseif (mb_strlen($path) > 46) {
+        $segments = array_values(array_filter(explode('/', trim($path, '/'))));
+        $lastSegment = $segments ? end($segments) : '';
+        $displayPath = $lastSegment ? '/.../' . $lastSegment : '';
+      }
+
+      $label = \Illuminate\Support\Str::limit($displayHost . $displayPath, 72);
+
+      return ['href' => $href, 'label' => $label];
+    };
+  @endphp
+
   <style>
     /* =========================
        DOMPDF • A4 • STABLE PAGE BREAKS
@@ -1205,7 +1256,8 @@
                   </td>
                   <td style="max-width: 120px; word-break: break-all; font-size: 8pt;">
                     @if(!empty($q['source_url']))
-                      <a href="{{ $q['source_url'] }}">{{ \Illuminate\Support\Str::limit($q['source_url'], 40) }}</a>
+                      @php $sourceLink = $compactReportUrl($q['source_url']); @endphp
+                      <a href="{{ $sourceLink['href'] }}">{{ $sourceLink['label'] }}</a>
                     @elseif(!empty($q['original_filename']))
                     @if(!empty($q['price_list_version_id']) && ($q['source_type'] ?? '') === 'file' && !empty($documentToken))
                         <a href="{{ $publicVerifyBaseUrl . '/public/price-file/' . $q['price_list_version_id'] . '/' . $documentToken }}">{{ $q['original_filename'] }}</a>
@@ -1753,7 +1805,8 @@
                 <strong>Ссылки на источники:</strong>
                 @php $linkIndex = 1; @endphp
                 @foreach($justification['source_links'] as $link)
-                  <div>{{ $linkIndex }}) <a href="{{ $link }}" style="text-decoration: underline; word-break: break-all;">{{ $link }}</a></div>
+                  @php $sourceLink = $compactReportUrl($link); @endphp
+                  <div>{{ $linkIndex }}) <a href="{{ $sourceLink['href'] }}" style="text-decoration: underline; overflow-wrap: anywhere;">{{ $sourceLink['label'] }}</a></div>
                   @php $linkIndex++; @endphp
                 @endforeach
               </div>
@@ -1865,7 +1918,8 @@
                 </td>
                 <td style="max-width: 120px; word-break: break-all; font-size: 8pt;">
                   @if(!empty($q['source_url']))
-                    <a href="{{ $q['source_url'] }}">{{ \Illuminate\Support\Str::limit($q['source_url'], 40) }}</a>
+                    @php $sourceLink = $compactReportUrl($q['source_url']); @endphp
+                    <a href="{{ $sourceLink['href'] }}">{{ $sourceLink['label'] }}</a>
                   @elseif(!empty($q['original_filename']))
                     @if(!empty($q['price_list_version_id']) && ($q['source_type'] ?? '') === 'file' && !empty($documentToken))
                       <a href="{{ $publicVerifyBaseUrl . '/public/price-file/' . $q['price_list_version_id'] . '/' . $documentToken }}">{{ $q['original_filename'] }}</a>

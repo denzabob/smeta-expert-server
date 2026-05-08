@@ -30,22 +30,27 @@ class SnapshotService
      */
     public function createSnapshot(Project $project, int $userId, array $extraSnapshot = []): ProjectRevision
     {
-        return DB::transaction(function () use ($project, $userId, $extraSnapshot) {
-            // 1. Получить полный отчёт через единый источник истины
-            $reportDto = $this->reportService->buildReport($project);
-            $snapshot = $reportDto->toArray();
-            if (!empty($extraSnapshot)) {
-                $snapshot = array_replace_recursive($snapshot, $extraSnapshot);
-            }
+        // 1. Получить полный отчёт через единый источник истины
+        $reportDto = $this->reportService->buildReport($project);
+        $snapshot = $reportDto->toArray();
+        if (!empty($extraSnapshot)) {
+            $snapshot = array_replace_recursive($snapshot, $extraSnapshot);
+        }
 
-            // 2. Канонизировать JSON (рекурсивная сортировка ключей)
-            $canonicalJson = $this->canonicalizeJson($snapshot);
+        // 2. Канонизировать JSON (рекурсивная сортировка ключей)
+        $canonicalJson = $this->canonicalizeJson($snapshot);
 
-            // 3. Вычислить SHA256 хеш
-            $snapshotHash = hash('sha256', $canonicalJson);
+        // 3. Вычислить SHA256 хеш
+        $snapshotHash = hash('sha256', $canonicalJson);
 
+        return DB::transaction(function () use ($project, $userId, $canonicalJson, $snapshotHash) {
             // 4. Получить следующий номер ревизии для проекта
-            $nextNumber = ProjectRevision::nextNumberForProject($project->id);
+            Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
+            $latestNumber = ProjectRevision::query()
+                ->where('project_id', $project->id)
+                ->lockForUpdate()
+                ->max('number');
+            $nextNumber = ((int) ($latestNumber ?? 0)) + 1;
 
             // 5. Создать запись ревизии
             $revision = ProjectRevision::create([

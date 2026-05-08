@@ -265,11 +265,7 @@ function getVisibleItems(section: MenuSection): MenuItem[] {
   return section.items.filter(item => !item.visibleIf || item.visibleIf(me.value))
 }
 
-function shouldShowItem(item: MenuItem): boolean {
-  // В rail режиме показываем только пункты с showInRail
-  if (isRail.value && !item.showInRail) {
-    return false
-  }
+function shouldShowItem(_item: MenuItem): boolean {
   return true
 }
 

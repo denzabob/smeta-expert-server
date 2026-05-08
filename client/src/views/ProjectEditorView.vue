@@ -491,9 +491,20 @@
                 class="mb-2"
               />
 
+              <v-btn-toggle
+                v-model="plateMaterialMode"
+                mandatory
+                density="compact"
+                variant="outlined"
+                divided
+                class="mb-2"
+              >
+                <v-btn value="user" size="small">Мои</v-btn>
+                <v-btn value="system" size="small">Системные</v-btn>
+              </v-btn-toggle>
               <v-autocomplete
                 v-model="selectedPosition.material_id"
-                :items="materialsPlate"
+                :items="positionMaterialsPlate"
                 item-title="name"
                 item-value="id"
                 label="Материал"
@@ -2235,9 +2246,20 @@
               </v-autocomplete>
 
               <!-- Плитный материал -->
+              <v-btn-toggle
+                v-model="plateMaterialMode"
+                mandatory
+                density="compact"
+                variant="outlined"
+                divided
+                class="mb-2"
+              >
+                <v-btn value="user" size="small">Мои</v-btn>
+                <v-btn value="system" size="small">Системные</v-btn>
+              </v-btn-toggle>
               <v-autocomplete
                 v-model="positionFormModel.material_id"
-                :items="materialsPlate"
+                :items="positionMaterialsPlate"
                 item-title="name"
                 item-value="id"
                 label="Плитный материал"
@@ -3622,7 +3644,12 @@ interface Fitting {
   source_url?: string | null
   note?: string | null
 }
-interface DetailType { id: number; name: string; edge_processing: string }
+interface DetailType {
+  id: number
+  name: string
+  edge_processing: string
+  components?: Array<{ type?: string; id?: number | null; operation_id?: number | null; quantity?: number | string | null }> | string | null
+}
 interface Material {
   id: number
   name: string
@@ -4472,7 +4499,25 @@ const MATERIAL_SEARCH_MIN_LENGTH = 2
 const MATERIAL_SEARCH_DEBOUNCE_MS = 350
 const selectableMaterialsCache = ref<{ expiresAt: number; data: Material[] } | null>(null)
 
+const plateMaterialMode = ref<'user' | 'system'>('user')
+const isUserMaterial = (material: Material): boolean => material.origin === 'user' || material.origin === 'import'
+const isSystemMaterial = (material: Material): boolean => !isUserMaterial(material)
+const isMaterialVisibleInPlateMode = (material: Material): boolean => (
+  plateMaterialMode.value === 'user' ? isUserMaterial(material) : isSystemMaterial(material)
+)
 const materialsPlate = computed(() => materials.value.filter(m => m.type === 'plate'))
+const positionMaterialsPlate = computed(() => {
+  const selectedIds = new Set(
+    [positionFormModel.value.material_id, selectedPosition.value?.material_id]
+      .map((value) => Number(value || 0))
+      .filter((value) => Number.isFinite(value) && value > 0)
+  )
+
+  return materials.value.filter((material) => (
+    material.type === 'plate'
+    && (isMaterialVisibleInPlateMode(material) || selectedIds.has(material.id))
+  ))
+})
 const materialsEdge = computed(() => materials.value.filter(m => m.type === 'edge'))
 const materialSearchLoading = reactive<Record<'plate' | 'edge', boolean>>({
   plate: false,
@@ -5160,11 +5205,15 @@ const getEdgeDetailsForMaterial = (edgeMaterialId: number) => {
 const onDetailTypeChange = (val: number | null) => {
   if (!val) {
     positionFormModel.value.edge_scheme = 'none'
+    positionFormModel.value.edge_material_id = null
     return
   }
   const dt = detailTypes.value.find(d => d.id === val)
   if (dt && dt.edge_processing) {
     positionFormModel.value.edge_scheme = dt.edge_processing
+    if (dt.edge_processing === 'none') {
+      positionFormModel.value.edge_material_id = null
+    }
   }
   scheduleRecalc()
 }
@@ -5269,21 +5318,32 @@ const getSawingOperationDetails = (operation: any) => {
   }
 }
 
+const getDetailTypeOperationQuantity = (detailType: DetailType, operationId: number | null): number => {
+  if (!operationId) return 0
+
+  let components = detailType.components
+  if (typeof components === 'string') {
+    try {
+      components = JSON.parse(components)
+    } catch {
+      components = []
+    }
+  }
+  if (!Array.isArray(components)) return 0
+
+  return components.reduce((sum, component) => {
+    const componentOperationId = Number(component.operation_id ?? component.id ?? 0)
+    if (componentOperationId !== operationId) return sum
+
+    const quantity = Number(String(component.quantity ?? 1).replace(',', '.'))
+    return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1)
+  }, 0)
+}
+
 const getDrillingOperationDetails = (operation: any) => {
-  console.log('getDrillingOperationDetails called:', { 
-    name: operation.name, 
-    type: operation.type,
-    quantity_from_api: operation.quantity,
-    source: operation.source,
-    operation_id: operation.operation_id,
-    positions: positions.value.length,
-    detail_types: detailTypes.value.length
-  })
-  
   // Для ручных операций просто сообщение
   // Проверяем тип операции: если type === 'manual'
   if (operation.type === 'manual') {
-    console.log('  -> operation is manual, returning manual message')
     return {
       type: 'drilling',
       is_manual: true,
@@ -5293,28 +5353,26 @@ const getDrillingOperationDetails = (operation: any) => {
   
   // Для автоматических операций группируем по типам деталей
   const detailTypeMap = new Map<number, any>()
+  const operationId = Number(operation.operation_id || operation.id || 0) || null
   
   positions.value.forEach(pos => {
     // Получаем материал для проверки что это плитный материал
     const material = materials.value.find(m => m.id === pos.material_id)
-    
-    console.log('  checking position:', { 
-      material_id: pos.material_id,
-      material_type: material?.type,
-      detail_type_id: pos.detail_type_id,
-      quantity: pos.quantity 
-    })
-    
+
     // Проверяем что это плитный материал И есть тип детали
     if (material?.type === 'plate' && pos.detail_type_id) {
       const detailType = detailTypes.value.find(dt => dt.id === pos.detail_type_id)
       if (detailType) {
-        console.log('    -> found detailType:', detailType.name)
+        const holesPerPiece = getDetailTypeOperationQuantity(detailType, operationId)
+        if (!(holesPerPiece > 0)) {
+          return
+        }
+
         if (!detailTypeMap.has(pos.detail_type_id)) {
           detailTypeMap.set(pos.detail_type_id, {
             detail_type_name: detailType.name,
             total_quantity: 0,
-            holes_per_piece: 8
+            holes_per_piece: holesPerPiece
           })
         }
         const entry = detailTypeMap.get(pos.detail_type_id)!
@@ -5330,18 +5388,9 @@ const getDrillingOperationDetails = (operation: any) => {
     total_holes: item.holes_per_piece * item.total_quantity
   }))
   
-  console.log('  drilling details:', details)
-  
   let totalHoles = 0
   details.forEach(d => {
     totalHoles += d.total_holes
-  })
-  
-  console.log('  SUMMARY:', {
-    calculated_total: totalHoles,
-    api_quantity: operation.quantity,
-    difference: operation.quantity - totalHoles,
-    details_count: details.length
   })
   
   return {
@@ -5921,6 +5970,10 @@ const savePosition = async () => {
     if (payload.edge_material_id && typeof payload.edge_material_id === 'object') {
       payload.edge_material_id = (payload.edge_material_id as any).id
     }
+    if (payload.kind === 'panel' && (!payload.edge_scheme || payload.edge_scheme === 'none')) {
+      payload.edge_scheme = 'none'
+      payload.edge_material_id = null
+    }
     // Ensure numeric types for dimensions
     if (payload.thickness_mm != null) payload.thickness_mm = Number(payload.thickness_mm) || null
 
@@ -6061,6 +6114,12 @@ const updatePositionField = async (item: Position, field: string, value: any) =>
     payload[field] = value
     ;(item as any)[field] = value
   }
+  if (field === 'edge_scheme' && (!value || value === 'none')) {
+    payload.edge_scheme = 'none'
+    payload.edge_material_id = null
+    item.edge_scheme = 'none'
+    item.edge_material_id = null
+  }
 
   try {
     const response = await api.put(`/api/project-positions/${item.id}`, payload)
@@ -6099,7 +6158,10 @@ const mergeUpdatedPosition = (updatedPosition: Position) => {
 
   const index = positions.value.findIndex((position) => position.id === updatedPosition.id)
   if (index !== -1) {
-    Object.assign(positions.value[index], updatedPosition)
+    const target = positions.value[index]
+    if (target) {
+      Object.assign(target, updatedPosition)
+    }
   }
 
   if (selectedPosition.value?.id === updatedPosition.id) {
@@ -8050,6 +8112,7 @@ const submitManualClose = async () => {
 
 const finalizeRevisionRun = async () => {
   if (!activeRevisionRun.value) return
+  if (revisionRunFinalizeLoading.value) return
   if (guardReadOnlyAction()) return
 
   if (estimateHardInvalid.value) {
@@ -8066,7 +8129,7 @@ const finalizeRevisionRun = async () => {
       pdf_url: data.pdf.price_justification,
       estimate_pdf_url: data.pdf.smeta,
     }
-    showNotification('Документ подтверждения цен создан. PDF готов.', 'success')
+    showNotification('Документ подтверждения цен готов. PDF готов.', 'success')
     setStoredRevisionRunId(null)
     stopRevisionRunPolling()
     activeRevisionRun.value = null
@@ -8087,9 +8150,46 @@ const finalizeRevisionRun = async () => {
   }
 }
 
-const openPdfLink = (url?: string) => {
+const isInternalApiPdfUrl = (url: string): boolean => {
+  if (url.startsWith('/api/')) return true
+
+  try {
+    const parsed = new URL(url, window.location.origin)
+    return parsed.origin === window.location.origin && parsed.pathname.startsWith('/api/')
+  } catch {
+    return false
+  }
+}
+
+const toApiRequestUrl = (url: string): string => {
+  if (url.startsWith('/api/')) return url
+  const parsed = new URL(url, window.location.origin)
+  return `${parsed.pathname}${parsed.search}`
+}
+
+const openPdfLink = async (url?: string) => {
   if (!url) return
-  window.open(url, '_blank', 'noopener,noreferrer')
+
+  if (!isInternalApiPdfUrl(url)) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return
+  }
+
+  const pdfWindow = window.open('about:blank', '_blank')
+  try {
+    const res = await api.get(toApiRequestUrl(url), { responseType: 'blob' })
+    const objectUrl = URL.createObjectURL(res.data)
+    if (pdfWindow) {
+      pdfWindow.location.href = objectUrl
+    } else {
+      window.open(objectUrl, '_blank', 'noopener,noreferrer')
+    }
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+  } catch (error: any) {
+    pdfWindow?.close()
+    console.error('❌ PDF open error:', error)
+    showNotification(`Не удалось открыть PDF: ${error.response?.data?.message || error.message}`, 'error')
+  }
 }
 
 
@@ -8173,7 +8273,7 @@ const operations = computed(() => {
     let finalQuantity = o.quantity
     if (isDrilling && isAutomatic && o.source === 'detail_type') {
       const details = getDrillingOperationDetails(o)
-      if (details.total_holes !== undefined) {
+      if (Array.isArray(details.details) && details.details.length > 0 && details.total_holes !== undefined) {
         finalQuantity = details.total_holes
       }
     }
