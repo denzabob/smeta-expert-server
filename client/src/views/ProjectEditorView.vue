@@ -2174,428 +2174,428 @@
     </v-dialog>
 
     <!-- Диалог позиции -->
-    <v-dialog v-model="positionDialog" max-width="700" class="position-editor-dialog">
+    <v-dialog v-model="positionDialog" max-width="980" class="position-editor-dialog">
       <v-card class="position-sheet position-sheet--editor">
-        <v-card-title class="position-sheet-title">{{ editingPosition ? 'Редактировать позицию' : 'Новая позиция' }}</v-card-title>
+        <div class="position-dialog-header">
+          <div class="position-dialog-title">{{ editingPosition ? 'Редактировать позицию' : 'Новая позиция' }}</div>
+          <v-btn-toggle
+            v-model="positionFormModel.kind"
+            mandatory
+            density="compact"
+            color="primary"
+            variant="text"
+            class="position-segmented-control position-kind-toggle position-kind-toggle--compact"
+          >
+            <v-btn value="panel" size="small">Панель</v-btn>
+            <v-btn value="facade" size="small">Фасад</v-btn>
+          </v-btn-toggle>
+        </div>
         <v-progress-linear
           v-if="positionDialogOpening"
           color="primary"
           indeterminate
           height="3"
         />
-        <v-card-text class="position-sheet-content">
-          <v-form ref="positionForm" class="position-form-stack">
-            <!-- Переключатель типа позиции -->
-            <section class="position-form-section position-form-section--hero">
-              <div class="position-form-section__header">
-                <div class="position-form-section__title">Тип позиции</div>
-                <div class="position-form-section__text">Выберите контур редактирования: панель или фасад.</div>
-              </div>
-            <v-btn-toggle
-              v-model="positionFormModel.kind"
-              mandatory
-              density="comfortable"
-              color="primary"
-              class="mb-4 position-kind-toggle"
-            >
-              <v-btn value="panel">
-                <v-icon start>mdi-texture-box</v-icon>
-                Панель
-              </v-btn>
-              <v-btn value="facade">
-                <v-icon start>mdi-door</v-icon>
-                Фасад
-              </v-btn>
-            </v-btn-toggle>
-            </section>
-
-            <!-- === PANEL MODE === -->
-            <template v-if="positionFormModel.kind === 'panel'">
-              <section class="position-form-section">
-                <div class="position-form-section__header">
-                  <div class="position-form-section__title">Материал панели</div>
-                  <div class="position-form-section__text">Тип детали и основной плитный материал.</div>
-                </div>
-              <!-- Тип детали -->
-              <v-autocomplete
-                v-model="positionFormModel.detail_type_id"
-                :items="detailTypes"
-                item-title="name"
-                item-value="id"
-                label="Тип детали"
-                clearable
-                density="comfortable"
-                @update:model-value="onDetailTypeChange"
-                class="mb-3"
-              >
-                <template #append-inner>
-                  <v-btn
-                    icon="mdi-plus"
-                    size="x-small"
-                    variant="tonal"
-                    color="primary"
-                    @click.stop="openDetailTypesInNewTab"
-                    title="Создать новый тип детали"
-                  />
-                </template>
-                <template #append-item>
-                  <v-list-item @click="$router.push('/detail-types')">
-                    <v-list-item-title>Управление типами</v-list-item-title>
-                  </v-list-item>
-                </template>
-              </v-autocomplete>
-
-              <!-- Плитный материал -->
-              <v-btn-toggle
-                v-model="plateMaterialMode"
-                mandatory
-                density="compact"
-                variant="outlined"
-                divided
-                class="mb-2"
-              >
-                <v-btn value="user" size="small">Мои</v-btn>
-                <v-btn value="system" size="small">Системные</v-btn>
-              </v-btn-toggle>
-              <v-autocomplete
-                v-model="positionFormModel.material_id"
-                :items="positionMaterialsPlate"
-                item-title="name"
-                item-value="id"
-                label="Плитный материал"
-                :rules="[v => !!v || 'Обязательно']"
-                density="comfortable"
-                class="mb-3"
-                :loading="positionDialogOpening || materialSearchLoading.plate"
-                no-filter
-                no-data-text="Введите минимум 2 символа для поиска"
-                @update:search="onMaterialSearch('plate', $event)"
-                @update:model-value="onPositionMaterialChange"
-              >
-                <template #item="{ props, item }">
-                  <v-list-item v-bind="props">
-                    <v-list-item-subtitle v-if="item.raw.origin === 'parser'" class="text-blue">
-                      Системный (спарсено)
-                    </v-list-item-subtitle>
-                    <v-list-item-subtitle v-else class="text-grey">
-                      Пользовательский
-                    </v-list-item-subtitle>
-                  </v-list-item>
-                </template>
-              </v-autocomplete>
-              </section>
-            </template>
-
-            <!-- === FACADE MODE === -->
-            <template v-if="positionFormModel.kind === 'facade'">
-              <section class="position-form-section">
-                <div class="position-form-section__header">
-                  <div class="position-form-section__title">Материал фасада</div>
-                  <div class="position-form-section__text">Выбор спецификации фасада и фиксация текущей расчетной цены.</div>
-                </div>
-              <!-- Facade specification selector -->
-              <v-autocomplete
-                v-model="positionFormModel.finished_product_specification_id"
-                :items="facadeSpecifications"
-                item-title="name"
-                item-value="id"
-                label="Спецификация фасада"
-                :rules="[v => !!v || 'Выберите фасад']"
-                density="comfortable"
-                class="mb-3"
-                :loading="loadingFacades"
-                @update:search="onFacadeSearch"
-                @update:model-value="onFacadeSpecificationChange"
-                no-filter
-              >
-                <template #item="{ props, item }">
-                  <v-list-item v-bind="props">
-                    <v-list-item-subtitle>
-                      {{ item.raw.thickness_mm }}мм | {{ item.raw.finish_name || '—' }} |
-                      <span v-if="item.raw.price_per_m2" class="text-green">{{ formatNumber(item.raw.price_per_m2, 2) }} ₽/м²</span>
-                      <span v-else class="text-red">Нет цены</span>
-                    </v-list-item-subtitle>
-                  </v-list-item>
-                </template>
-              </v-autocomplete>
-
-              <!-- Auto-filled facade info (read-only) -->
-              <div v-if="positionFormModel.finished_product_specification_id" class="position-support-card mb-3">
-              <v-row class="mb-0">
-                <v-col cols="4">
-                  <v-text-field
-                    :model-value="positionFormModel.base_material_label || '—'"
-                    label="Основа"
-                    readonly
-                    density="comfortable"
-                    variant="outlined"
-                  />
-                </v-col>
-                <v-col cols="4">
-                  <v-text-field
-                    :model-value="positionFormModel.thickness_mm ? `${positionFormModel.thickness_mm} мм` : '—'"
-                    label="Толщина"
-                    readonly
-                    density="comfortable"
-                    variant="outlined"
-                  />
-                </v-col>
-                <v-col cols="4">
-                  <v-text-field
-                    :model-value="positionFormModel.price_per_m2 ? `${formatNumber(positionFormModel.price_per_m2, 2)} ₽/м²` : '—'"
-                    label="Цена за м²"
-                    readonly
-                    density="comfortable"
-                    variant="outlined"
-                  />
-                </v-col>
-              </v-row>
-              <v-text-field
-                v-if="positionFormModel.finished_product_specification_id"
-                :model-value="positionFormModel.decor_label || '—'"
-                label="Декор"
-                readonly
-                density="comfortable"
-                variant="outlined"
-                class="mb-3"
-              />
-              <div class="text-caption text-medium-emphasis">
-                Текущая расчетная цена:
-                {{ formatFacadePriceMethodLabel(positionFormModel.price_method) }}
-                <span v-if="positionFormModel.price_sources_count != null">
-                  · источников: {{ positionFormModel.price_sources_count }}
-                </span>
-                <span v-if="positionFormModel.price_min != null && positionFormModel.price_max != null">
-                  · диапазон: {{ formatNumber(positionFormModel.price_min, 2) }} — {{ formatNumber(positionFormModel.price_max, 2) }} ₽/м²
-                </span>
-              </div>
-              </div>
-              </section>
-            </template>
-
-            <!-- Размеры (common for both types) -->
-            <section class="position-form-section">
-              <div class="position-form-section__header">
-                <div class="position-form-section__title">Размеры и количество</div>
-                <div class="position-form-section__text">Геометрия детали, быстрый выбор количества и контроль площади.</div>
-              </div>
-              <div
-                v-if="!editingPosition && positionFormModel.kind === 'facade'"
-                class="facade-allowance-row"
-              >
-                <v-switch
-                  v-model="applyFacadeAllowance"
-                  color="primary"
-                  density="compact"
-                  hide-details
-                  label="Учитывать припуск"
-                  :disabled="!hasFacadeAllowance"
-                />
-                <div class="text-caption text-medium-emphasis">
-                  {{ hasFacadeAllowance ? facadeAllowanceHint : 'Припуски не заданы в настройках проекта.' }}
-                </div>
-              </div>
-            <v-row class="position-dimensions-row">
-              <v-col cols="12" sm="6" class="position-dimensions-field">
-                <div class="dimension-field-stack">
-                <v-text-field
-                  :model-value="Math.round(positionFormModel.width || 0)"
-                  :label="positionFormModel.kind === 'facade' ? 'Ширина, мм' : 'Ширина, мм'"
-                  type="text"
-                  :class="getEdgeSchemeHintClass('width')"
-                  placeholder="Например: 600 или 600-32"
-                  :rules="[v => !!v || 'Обязательно', v => (v >= 10 || typeof v === 'string') || 'Должно быть >= 10']"
-                  density="comfortable"
-                  @input="handleDialogDimensionTyped('width', $event)"
-                  @keyup.enter="handleDialogDimensionInput('width', ($event.target as HTMLInputElement).value)"
-                  @blur="handleDialogDimensionInput('width', ($event.target as HTMLInputElement).value)"
-                />
-                <div class="dimension-feedback-slot">
-                  <div class="dimension-help text-caption text-medium-emphasis">
-                    Допустимо: 600, 600-32, 2400/2
-                  </div>
-                  <div v-if="dialogDimensionCalc.width.expr" class="dimension-calc-line text-caption">
-                    <span class="text-medium-emphasis">Введено:</span>
-                    <span class="font-weight-medium">{{ dialogDimensionCalc.width.expr }}</span>
-                    <span v-if="dialogDimensionCalc.width.error" class="text-error">→ {{ dialogDimensionCalc.width.error }}</span>
-                    <span v-else class="text-primary">→ {{ dialogDimensionCalc.width.result }} мм</span>
-                  </div>
-                </div>
-                </div>
-              </v-col>
-              <v-col cols="12" sm="6" class="position-dimensions-field">
-                <div class="dimension-field-stack">
-                <v-text-field
-                  :model-value="Math.round(positionFormModel.length || 0)"
-                  :label="positionFormModel.kind === 'facade' ? 'Высота, мм' : 'Длина, мм'"
-                  type="text"
-                  :class="getEdgeSchemeHintClass('length')"
-                  placeholder="Например: 2400 или 2400/2"
-                  :rules="[v => !!v || 'Обязательно', v => (v >=10 || typeof v === 'string') || 'Должно быть >= 10']"
-                  density="comfortable"
-                  @input="handleDialogDimensionTyped('length', $event)"
-                  @keyup.enter="handleDialogDimensionInput('length', ($event.target as HTMLInputElement).value)"
-                  @blur="handleDialogDimensionInput('length', ($event.target as HTMLInputElement).value)"
-                />
-                <div class="dimension-feedback-slot">
-                  <div class="dimension-help text-caption text-medium-emphasis">
-                    Допустимо: 600, 600-32, 2400/2
-                  </div>
-                  <div v-if="dialogDimensionCalc.length.expr" class="dimension-calc-line text-caption">
-                    <span class="text-medium-emphasis">Введено:</span>
-                    <span class="font-weight-medium">{{ dialogDimensionCalc.length.expr }}</span>
-                    <span v-if="dialogDimensionCalc.length.error" class="text-error">→ {{ dialogDimensionCalc.length.error }}</span>
-                    <span v-else class="text-primary">→ {{ dialogDimensionCalc.length.result }} мм</span>
-                  </div>
-                </div>
-                </div>
-              </v-col>
-            </v-row>
-
-            <v-row class="mb-3 align-center">
-              <v-col cols="12" sm="3">
-                <v-text-field
-                  v-model.number="positionFormModel.quantity"
-                  label="Количество"
-                  type="number"
-                  :min="1"
-                  :rules="[v => v >= 1 || 'Минимум 1']"
-                  density="comfortable"
-                  hide-details="auto"
-                />
-              </v-col>
-              <v-col cols="12" sm="9">
-                <div class="quick-quantity-group-wrap">
-                  <v-btn-group color="primary" variant="outlined">
-                    <v-btn
-                      v-for="qty in quickQuantityValues"
-                      :key="qty"
-                      :variant="Number(positionFormModel.quantity) === qty ? 'flat' : 'outlined'"
-                      @click="setQuickQuantity(qty)"
+        <v-card-text class="position-sheet-content position-sheet-content--editor">
+          <v-form ref="positionForm" class="position-form-stack position-form-stack--editor">
+            <div class="position-dialog-grid">
+              <div class="position-dialog-column">
+                <template v-if="positionFormModel.kind === 'panel'">
+                  <section class="position-form-section position-form-section--compact">
+                    <div class="position-form-section__header">
+                      <div class="position-form-section__title">Материал панели</div>
+                    </div>
+                    <div class="position-field">
+                      <div class="position-field__label">Тип детали</div>
+                      <v-autocomplete
+                        v-model="positionFormModel.detail_type_id"
+                        :items="detailTypes"
+                        item-title="name"
+                        item-value="id"
+                        aria-label="Тип детали"
+                        clearable
+                        density="compact"
+                        hide-details="auto"
+                        @update:model-value="onDetailTypeChange"
+                      >
+                        <template #append-inner>
+                          <v-btn
+                            icon="mdi-plus"
+                            size="x-small"
+                            variant="text"
+                            color="primary"
+                            @click.stop="openDetailTypesInNewTab"
+                            title="Создать новый тип детали"
+                          />
+                        </template>
+                        <template #append-item>
+                          <v-list-item @click="$router.push('/detail-types')">
+                            <v-list-item-title>Управление типами</v-list-item-title>
+                          </v-list-item>
+                        </template>
+                      </v-autocomplete>
+                    </div>
+                    <v-btn-toggle
+                      v-model="plateMaterialMode"
+                      mandatory
+                      density="compact"
+                      variant="text"
+                      class="position-segmented-control position-segmented-switch mb-2"
                     >
-                      {{ qty }}
-                    </v-btn>
-                  </v-btn-group>
-                </div>
-              </v-col>
-            </v-row>
-
-            <!-- Facade area preview -->
-            <v-alert
-              v-if="positionFormModel.kind === 'facade' && positionFormModel.width > 0 && positionFormModel.length > 0"
-              type="info"
-              variant="tonal"
-              density="compact"
-              class="mb-3"
-            >
-              Площадь: {{ formatNumber(((positionFormModel.width || 0) / 1000) * ((positionFormModel.length || 0) / 1000) * (positionFormModel.quantity || 0), 4) }} м²
-              <template v-if="positionFormModel.price_per_m2">
-                | Сумма: {{ formatNumber(((positionFormModel.width || 0) / 1000) * ((positionFormModel.length || 0) / 1000) * (positionFormModel.quantity || 0) * (positionFormModel.price_per_m2 || 0), 2) }} ₽
-              </template>
-            </v-alert>
-            </section>
-
-            <!-- Edge processing: only for panels -->
-            <template v-if="positionFormModel.kind === 'panel'">
-              <section class="position-form-section">
-                <div class="position-form-section__header">
-                  <div class="position-form-section__title">Кромка и схема торцов</div>
-                  <div class="position-form-section__text">Назначение обработки торцов и материала кромки.</div>
-                </div>
-              <!-- Обработка торцов: отключена, если выбран тип -->
-              <v-autocomplete
-                v-model="positionFormModel.edge_scheme"
-                :items="edgeSchemeOptions"
-                item-title="label"
-                item-value="value"
-                label="Обработка торцов"
-                :disabled="!!positionFormModel.detail_type_id"
-                density="comfortable"
-                class="mb-3"
-                @update:model-value="onPositionEdgeSchemeChange"
-              >
-                <template #selection="{ item }">
-                  <v-chip size="small">
-                    <v-icon start size="16">{{ item.raw.icon }}</v-icon>
-                    {{ item.raw.label }}
-                  </v-chip>
+                      <v-btn value="user" size="small">Мои</v-btn>
+                      <v-btn value="system" size="small">Системные</v-btn>
+                    </v-btn-toggle>
+                    <div class="position-field">
+                      <div class="position-field__label">Плитный материал</div>
+                      <v-autocomplete
+                        v-model="positionFormModel.material_id"
+                        :items="positionMaterialsPlate"
+                        item-title="name"
+                        item-value="id"
+                        aria-label="Плитный материал"
+                        :rules="[v => !!v || 'Обязательно']"
+                        density="compact"
+                        hide-details="auto"
+                        :loading="positionDialogOpening || materialSearchLoading.plate"
+                        no-filter
+                        no-data-text="Введите минимум 2 символа для поиска"
+                        @update:search="onMaterialSearch('plate', $event)"
+                        @update:model-value="onPositionMaterialChange"
+                      >
+                        <template #item="{ props, item }">
+                          <v-list-item v-bind="props">
+                            <v-list-item-subtitle v-if="item.raw.origin === 'parser'" class="text-blue">
+                              Системный (спарсено)
+                            </v-list-item-subtitle>
+                            <v-list-item-subtitle v-else class="text-grey">
+                              Пользовательский
+                            </v-list-item-subtitle>
+                          </v-list-item>
+                        </template>
+                      </v-autocomplete>
+                    </div>
+                  </section>
                 </template>
-                <template #item="{ props, item }">
-                  <v-list-item v-bind="props">
-                    <template #prepend>
-                      <v-icon>{{ item.raw.icon }}</v-icon>
-                    </template>
-                  </v-list-item>
+
+                <template v-if="positionFormModel.kind === 'facade'">
+                  <section class="position-form-section position-form-section--compact">
+                    <div class="position-form-section__header">
+                      <div class="position-form-section__title">Фасад</div>
+                    </div>
+                    <div class="position-field">
+                      <div class="position-field__label">Спецификация фасада</div>
+                      <v-autocomplete
+                        v-model="positionFormModel.finished_product_specification_id"
+                        :items="facadeSpecifications"
+                        item-title="name"
+                        item-value="id"
+                        aria-label="Спецификация фасада"
+                        :rules="[v => !!v || 'Выберите фасад']"
+                        density="compact"
+                        hide-details="auto"
+                        :loading="loadingFacades"
+                        @update:search="onFacadeSearch"
+                        @update:model-value="onFacadeSpecificationChange"
+                        no-filter
+                      >
+                        <template #item="{ props, item }">
+                          <v-list-item v-bind="props">
+                            <v-list-item-subtitle>
+                              {{ item.raw.thickness_mm }}мм | {{ item.raw.finish_name || '—' }} |
+                              <span v-if="item.raw.price_per_m2" class="text-green">{{ formatNumber(item.raw.price_per_m2, 2) }} ₽/м²</span>
+                              <span v-else class="text-red">Нет цены</span>
+                            </v-list-item-subtitle>
+                          </v-list-item>
+                        </template>
+                      </v-autocomplete>
+                    </div>
+                  </section>
                 </template>
-              </v-autocomplete>
-              <div class="edge-preview-block mb-2">
-                <div class="text-caption text-medium-emphasis mb-1">Визуализация кромки</div>
-                <div class="edge-preview-diagram">
-                  <div class="edge-preview-length-label">{{ formatEdgeDimension(positionFormModel.length, 'Длина') }}</div>
-                  <div class="edge-preview-row">
-                    <div class="edge-preview-width-label">{{ formatEdgeDimension(positionFormModel.width, 'Ширина') }}</div>
-                    <div class="edge-preview-box" :style="getEdgePreviewStyle(positionFormModel.width, positionFormModel.length)">
-                  <div class="edge-side top" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'top') }"></div>
-                  <div class="edge-side right" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'right') }"></div>
-                  <div class="edge-side bottom" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'bottom') }"></div>
-                  <div class="edge-side left" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'left') }"></div>
-                  <div class="edge-center-label">Деталь</div>
+
+                <section class="position-form-section position-form-section--compact">
+                    <div class="position-form-section__header position-form-section__header--inline">
+                      <div class="position-form-section__title">Размеры</div>
+                    <div class="dimension-help text-caption">Поддерживаются выражения: 600-32, 2400/2</div>
+                  </div>
+                  <div
+                    v-if="!editingPosition && positionFormModel.kind === 'facade'"
+                    class="facade-allowance-row facade-allowance-row--compact"
+                  >
+                    <v-switch
+                      v-model="applyFacadeAllowance"
+                      color="primary"
+                      density="compact"
+                      hide-details
+                      aria-label="Учитывать припуск"
+                      :disabled="!hasFacadeAllowance"
+                    />
+                    <div class="facade-allowance-row__content">
+                      <div class="facade-allowance-row__title">Учитывать припуск</div>
+                      <div class="text-caption text-medium-emphasis">
+                        {{ hasFacadeAllowance ? facadeAllowanceHint : 'Припуски не заданы.' }}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div class="text-caption mt-1">{{ getEdgeSchemeSummary(positionFormModel.edge_scheme) }}</div>
+                  <div class="position-dimensions-grid">
+                    <div class="position-dimensions-field">
+                      <div class="dimension-field-stack position-field">
+                        <div class="position-field__label">Ширина, мм</div>
+                        <v-text-field
+                          :model-value="Math.round(positionFormModel.width || 0)"
+                          aria-label="Ширина, мм"
+                          type="text"
+                          :class="getEdgeSchemeHintClass('width')"
+                          placeholder="600-32"
+                          :rules="[v => !!v || 'Обязательно', v => (v >= 10 || typeof v === 'string') || 'Должно быть >= 10']"
+                          density="compact"
+                          hide-details="auto"
+                          @input="handleDialogDimensionTyped('width', $event)"
+                          @keyup.enter="handleDialogDimensionInput('width', ($event.target as HTMLInputElement).value)"
+                          @blur="handleDialogDimensionInput('width', ($event.target as HTMLInputElement).value)"
+                        />
+                        <div class="dimension-feedback-slot dimension-feedback-slot--compact">
+                          <div v-if="dialogDimensionCalc.width.expr" class="dimension-calc-line dimension-calc-line--compact text-caption">
+                            <span class="text-medium-emphasis">Введено:</span>
+                            <span class="font-weight-medium">{{ dialogDimensionCalc.width.expr }}</span>
+                            <span v-if="dialogDimensionCalc.width.error" class="text-error">→ {{ dialogDimensionCalc.width.error }}</span>
+                            <span v-else class="dimension-result">→ {{ dialogDimensionCalc.width.result }} мм</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="position-dimensions-field">
+                      <div class="dimension-field-stack position-field">
+                        <div class="position-field__label">{{ positionFormModel.kind === 'facade' ? 'Высота, мм' : 'Длина, мм' }}</div>
+                        <v-text-field
+                          :model-value="Math.round(positionFormModel.length || 0)"
+                          :aria-label="positionFormModel.kind === 'facade' ? 'Высота, мм' : 'Длина, мм'"
+                          type="text"
+                          :class="getEdgeSchemeHintClass('length')"
+                          placeholder="2400/2"
+                          :rules="[v => !!v || 'Обязательно', v => (v >=10 || typeof v === 'string') || 'Должно быть >= 10']"
+                          density="compact"
+                          hide-details="auto"
+                          @input="handleDialogDimensionTyped('length', $event)"
+                          @keyup.enter="handleDialogDimensionInput('length', ($event.target as HTMLInputElement).value)"
+                          @blur="handleDialogDimensionInput('length', ($event.target as HTMLInputElement).value)"
+                        />
+                        <div class="dimension-feedback-slot dimension-feedback-slot--compact">
+                          <div v-if="dialogDimensionCalc.length.expr" class="dimension-calc-line dimension-calc-line--compact text-caption">
+                            <span class="text-medium-emphasis">Введено:</span>
+                            <span class="font-weight-medium">{{ dialogDimensionCalc.length.expr }}</span>
+                            <span v-if="dialogDimensionCalc.length.error" class="text-error">→ {{ dialogDimensionCalc.length.error }}</span>
+                            <span v-else class="dimension-result">→ {{ dialogDimensionCalc.length.result }} мм</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="position-dimensions-field position-dimensions-field--quantity">
+                      <div class="quantity-field-stack position-field">
+                        <div class="position-field__label">Кол-во</div>
+                        <v-text-field
+                          v-model.number="positionFormModel.quantity"
+                          aria-label="Кол-во"
+                          type="number"
+                          :min="1"
+                          :rules="[v => v >= 1 || 'Минимум 1']"
+                          density="compact"
+                          hide-details="auto"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="quick-quantity-group-wrap quick-quantity-group-wrap--compact">
+                    <span class="quick-quantity-label">Быстро:</span>
+                    <div class="quick-quantity-picks">
+                      <v-btn
+                        v-for="qty in quickQuantityValues"
+                        :key="qty"
+                        size="x-small"
+                        :variant="Number(positionFormModel.quantity) === qty ? 'flat' : 'tonal'"
+                        :color="Number(positionFormModel.quantity) === qty ? 'primary' : undefined"
+                        @click="setQuickQuantity(qty)"
+                      >
+                        {{ qty }}
+                      </v-btn>
+                    </div>
+                  </div>
+                  <v-alert
+                    v-if="positionFormModel.kind === 'facade' && positionFormModel.width > 0 && positionFormModel.length > 0"
+                    type="info"
+                    variant="tonal"
+                    density="compact"
+                    class="mt-2 mb-0"
+                  >
+                    Площадь: {{ formatNumber(((positionFormModel.width || 0) / 1000) * ((positionFormModel.length || 0) / 1000) * (positionFormModel.quantity || 0), 4) }} м²
+                    <template v-if="positionFormModel.price_per_m2">
+                      · Сумма: {{ formatNumber(((positionFormModel.width || 0) / 1000) * ((positionFormModel.length || 0) / 1000) * (positionFormModel.quantity || 0) * (positionFormModel.price_per_m2 || 0), 2) }} ₽
+                    </template>
+                  </v-alert>
+                </section>
               </div>
-              <v-alert
-                v-if="positionFormModel.edge_scheme && positionFormModel.edge_scheme !== 'none' && !positionFormModel.edge_material_id"
-                type="warning"
-                variant="tonal"
-                density="compact"
-                class="mb-3"
-              >
-                Для выбранной схемы назначьте материал кромки.
-              </v-alert>
 
-              <!-- Материал кромки (только если схема ≠ none) -->
-              <v-autocomplete
-                v-if="positionFormModel.edge_scheme && positionFormModel.edge_scheme !== 'none'"
-                v-model="positionFormModel.edge_material_id"
-                :items="materialsEdge"
-                item-title="name"
-                item-value="id"
-                label="Материал кромки"
-                :rules="[v => !!v || 'Обязательно']"
-                density="comfortable"
-                class="mb-3"
-                :loading="positionDialogOpening || materialSearchLoading.edge"
-                no-filter
-                no-data-text="Введите минимум 2 символа для поиска"
-                @update:search="onMaterialSearch('edge', $event)"
-                @update:model-value="onPositionEdgeMaterialChange"
-              />
-              </section>
-            </template>
+              <div class="position-dialog-column">
+                <template v-if="positionFormModel.kind === 'panel'">
+                  <section class="position-form-section position-form-section--compact">
+                    <div class="position-form-section__header">
+                      <div class="position-form-section__title">Кромка</div>
+                    </div>
+                    <div class="position-field">
+                      <div class="position-field__label">Обработка торцов</div>
+                      <v-autocomplete
+                        v-model="positionFormModel.edge_scheme"
+                        :items="edgeSchemeOptions"
+                        item-title="label"
+                        item-value="value"
+                        aria-label="Обработка торцов"
+                        :disabled="!!positionFormModel.detail_type_id"
+                        density="compact"
+                        hide-details="auto"
+                        class="mb-2"
+                        @update:model-value="onPositionEdgeSchemeChange"
+                      >
+                        <template #selection="{ item }">
+                          <v-chip size="small">
+                            <v-icon start size="16">{{ item.raw.icon }}</v-icon>
+                            {{ item.raw.label }}
+                          </v-chip>
+                        </template>
+                        <template #item="{ props, item }">
+                          <v-list-item v-bind="props">
+                            <template #prepend>
+                              <v-icon>{{ item.raw.icon }}</v-icon>
+                            </template>
+                          </v-list-item>
+                        </template>
+                      </v-autocomplete>
+                    </div>
+                    <div class="edge-preview-block edge-preview-block--compact">
+                      <div class="edge-preview-row edge-preview-row--compact">
+                        <div class="edge-preview-box" :style="getEdgePreviewStyle(positionFormModel.width, positionFormModel.length)">
+                          <div class="edge-side top" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'top') }"></div>
+                          <div class="edge-side right" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'right') }"></div>
+                          <div class="edge-side bottom" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'bottom') }"></div>
+                          <div class="edge-side left" :class="{ active: isEdgeSideActive(positionFormModel.edge_scheme, 'left') }"></div>
+                          <div class="edge-center-label">Деталь</div>
+                        </div>
+                        <div class="edge-preview-meta">
+                          <div class="edge-preview-size">
+                            {{ formatEdgeDimension(positionFormModel.width, 'Ширина') }} × {{ formatEdgeDimension(positionFormModel.length, 'Длина') }}
+                          </div>
+                          <div class="text-caption text-medium-emphasis">{{ getEdgeSchemeSummary(positionFormModel.edge_scheme) }}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <v-alert
+                      v-if="positionFormModel.edge_scheme && positionFormModel.edge_scheme !== 'none' && !positionFormModel.edge_material_id"
+                      type="warning"
+                      variant="tonal"
+                      density="compact"
+                      class="mt-2 mb-2"
+                    >
+                      Для выбранной схемы назначьте материал кромки.
+                    </v-alert>
+                    <div
+                      v-if="positionFormModel.edge_scheme && positionFormModel.edge_scheme !== 'none'"
+                      class="position-field"
+                    >
+                      <div class="position-field__label">Материал кромки</div>
+                      <v-autocomplete
+                        v-model="positionFormModel.edge_material_id"
+                        :items="materialsEdge"
+                        item-title="name"
+                        item-value="id"
+                        aria-label="Материал кромки"
+                        :rules="[v => !!v || 'Обязательно']"
+                        density="compact"
+                        hide-details="auto"
+                        :loading="positionDialogOpening || materialSearchLoading.edge"
+                        no-filter
+                        no-data-text="Введите минимум 2 символа для поиска"
+                        @update:search="onMaterialSearch('edge', $event)"
+                        @update:model-value="onPositionEdgeMaterialChange"
+                      />
+                    </div>
+                  </section>
+                </template>
 
-            <!-- Название (опционально) -->
-            <section class="position-form-section position-form-section--muted">
-              <div class="position-form-section__header">
-                <div class="position-form-section__title">Идентификация</div>
-                <div class="position-form-section__text">Необязательное имя для удобства в таблице и деталях.</div>
+                <template v-if="positionFormModel.kind === 'facade'">
+                  <section class="position-form-section position-form-section--compact">
+                    <div class="position-form-section__header">
+                      <div class="position-form-section__title">Параметры цены</div>
+                    </div>
+                    <div v-if="positionFormModel.finished_product_specification_id" class="facade-preview-compact">
+                      <div class="facade-preview-compact__row">
+                        <span>Основа</span>
+                        <strong>{{ getFacadePreviewBaseLabel() }}</strong>
+                      </div>
+                      <div class="facade-preview-compact__row">
+                        <span>Толщина</span>
+                        <strong>{{ positionFormModel.thickness_mm ? `${positionFormModel.thickness_mm} мм` : '—' }}</strong>
+                      </div>
+                      <div class="facade-preview-compact__row">
+                        <span>Цена</span>
+                        <strong>{{ formatFacadePricePerM2(positionFormModel.price_per_m2) }}</strong>
+                      </div>
+                      <div class="facade-preview-compact__row">
+                        <span>Декор</span>
+                        <strong>{{ getFacadePreviewDecorLabel() }}</strong>
+                      </div>
+                      <div class="facade-preview-compact__note">
+                        {{ getFacadePreviewCalculationLabel() }}
+                      </div>
+                    </div>
+                    <div v-else class="text-caption text-medium-emphasis">
+                      Выберите спецификацию фасада, чтобы увидеть цену и параметры.
+                    </div>
+                  </section>
+                </template>
+
+                <section class="position-form-section position-form-section--compact position-form-section--muted">
+                  <div class="position-form-section__header">
+                    <div class="position-form-section__title">Дополнительно</div>
+                  </div>
+                  <div class="position-field">
+                    <div class="position-field__label">Название детали</div>
+                    <v-text-field
+                      v-model="positionFormModel.custom_name"
+                      aria-label="Название детали"
+                      placeholder="Например: Полка левая"
+                      density="compact"
+                      hide-details="auto"
+                      @focus="detailNameSuggestionsFocused = true"
+                      @blur="detailNameSuggestionsFocused = false"
+                    />
+                    <div
+                      v-if="showRecentDetailNameSuggestions"
+                      class="recent-detail-name-suggestions"
+                    >
+                      <span class="recent-detail-name-suggestions__label">Недавние:</span>
+                      <div class="recent-detail-name-suggestions__chips">
+                        <v-chip
+                          v-for="name in filteredRecentDetailNames"
+                          :key="name"
+                          size="small"
+                          variant="tonal"
+                          color="primary"
+                          @mousedown.prevent="applyRecentDetailName(name)"
+                        >
+                          {{ name }}
+                        </v-chip>
+                      </div>
+                    </div>
+                  </div>
+                </section>
               </div>
-            <v-text-field
-              v-model="positionFormModel.custom_name"
-              label="Название детали (опционально)"
-              hint="Например: «Полка левая»"
-              persistent-hint
-              density="comfortable"
-            />
-            </section>
+            </div>
           </v-form>
         </v-card-text>
         <v-card-actions class="position-sheet-actions">
           <v-spacer />
-          <v-btn @click="positionDialog = false" :disabled="positionSaving">Отмена</v-btn>
+          <v-btn variant="text" @click="positionDialog = false" :disabled="positionSaving">Отмена</v-btn>
           <v-btn
             color="primary"
+            variant="flat"
             @click="savePosition"
             :loading="positionSaving"
             :disabled="isProjectReadOnly || positionSaving || (positionFormModel.kind === 'facade' && (!positionFormModel.finished_product_specification_id || !(Number(positionFormModel.price_per_m2) > 0)))"
@@ -4222,6 +4222,16 @@ const formatNumber = (num: number, decimals: number = 2): string => {
   return rounded.toString()
 }
 
+const formatNumberRu = (value: number | string | null | undefined, decimals = 0): string => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '—'
+
+  return new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(num)
+}
+
 const evaluateExpression = (expr: string): number | null => {
   if (!expr || typeof expr !== 'string') return null
   
@@ -4298,7 +4308,7 @@ const hasFacadeAllowance = computed(() => (
 ))
 
 const facadeAllowanceHint = computed(() => (
-  `Ширина: ${getFacadeAllowanceForField('width')} мм, высота: ${getFacadeAllowanceForField('length')} мм`
+  `Ширина: ${getFacadeAllowanceForField('width')} мм · Высота: ${getFacadeAllowanceForField('length')} мм`
 ))
 
 const handleDimensionInput = (item: Position, field: 'width' | 'length', inputValue: string) => {
@@ -4547,6 +4557,67 @@ function formatFacadePriceMethodLabel(method?: string | null): string {
   if (method === 'trimmed_mean') return 'Усечённая средняя'
   if (method === 'single') return 'Один источник'
   return '—'
+}
+
+function formatFacadeDisplayValue(value?: string | null): string {
+  const raw = String(value || '').trim()
+  if (!raw || raw === '—') return '—'
+
+  const normalized = raw.toLowerCase()
+  const map: Record<string, string> = {
+    mdf: 'МДФ',
+    'мдф': 'МДФ',
+    pvc: 'ПВХ',
+    'пвх': 'ПВХ',
+    matte: 'матовый',
+    gloss: 'глянец',
+    glossy: 'глянец',
+  }
+
+  return map[normalized] || raw
+}
+
+function formatFacadePricePerM2(value?: number | string | null): string {
+  const num = Number(value)
+  return Number.isFinite(num) && num > 0 ? `${formatNumberRu(num, 0)} ₽/м²` : '—'
+}
+
+function getFacadePreviewBaseLabel(): string {
+  return formatFacadeDisplayValue(positionFormModel.value.base_material_label)
+}
+
+function getFacadePreviewDecorLabel(): string {
+  return formatFacadeDisplayValue(positionFormModel.value.decor_label || positionFormModel.value.finish_name)
+}
+
+function getFacadeSourcesLabel(count?: number | string | null): string | null {
+  const value = Number(count)
+  if (!Number.isFinite(value) || value <= 0) return null
+
+  const rounded = Math.round(value)
+  const mod10 = rounded % 10
+  const mod100 = rounded % 100
+  const suffix = mod10 === 1 && mod100 !== 11
+    ? 'источник'
+    : (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'источника' : 'источников')
+
+  return `${rounded} ${suffix}`
+}
+
+function getFacadePreviewCalculationLabel(): string {
+  const method = formatFacadePriceMethodLabel(positionFormModel.value.price_method).toLowerCase()
+  const parts = [`Расчет: ${method}`]
+  const sourcesLabel = getFacadeSourcesLabel(positionFormModel.value.price_sources_count)
+
+  if (sourcesLabel) {
+    parts.push(sourcesLabel)
+  }
+
+  if (positionFormModel.value.price_min != null && positionFormModel.value.price_max != null) {
+    parts.push(`диапазон ${formatNumberRu(positionFormModel.value.price_min, 0)}—${formatNumberRu(positionFormModel.value.price_max, 0)} ₽/м²`)
+  }
+
+  return parts.join(', ')
 }
 
 function buildFacadeSpecificationLabel(specification: Partial<FinishedProductSpecification>): string {
@@ -5084,6 +5155,64 @@ const expenseForm = ref<any>({
 const quickQuantityValues = [2, 4, 6, 8, 10]
 const setQuickQuantity = (qty: number) => {
   positionFormModel.value.quantity = qty
+}
+
+const RECENT_DETAIL_NAMES_LIMIT = 15
+const recentDetailNames = ref<string[]>([])
+const detailNameSuggestionsFocused = ref(false)
+
+const normalizeRecentDetailName = (value?: string | null): string => String(value || '').trim().replace(/\s+/g, ' ')
+const getRecentDetailNamesStorageKey = (): string => {
+  const keyProjectId = String(projectId || projectRouteIdentifier || 'global').trim() || 'global'
+  return `prism.project.${keyProjectId}.recentDetailNames`
+}
+
+const loadRecentDetailNames = () => {
+  try {
+    const raw = localStorage.getItem(getRecentDetailNamesStorageKey())
+    const parsed = raw ? JSON.parse(raw) : []
+    recentDetailNames.value = Array.isArray(parsed)
+      ? parsed.map(item => normalizeRecentDetailName(item)).filter(Boolean).slice(0, RECENT_DETAIL_NAMES_LIMIT)
+      : []
+  } catch (error) {
+    console.warn('Failed to load recent detail names', error)
+    recentDetailNames.value = []
+  }
+}
+
+const rememberRecentDetailName = (value?: string | null) => {
+  const normalized = normalizeRecentDetailName(value)
+  if (!normalized) return
+
+  const lower = normalized.toLocaleLowerCase('ru-RU')
+  const next = [
+    normalized,
+    ...recentDetailNames.value.filter(name => name.toLocaleLowerCase('ru-RU') !== lower),
+  ].slice(0, RECENT_DETAIL_NAMES_LIMIT)
+
+  recentDetailNames.value = next
+
+  try {
+    localStorage.setItem(getRecentDetailNamesStorageKey(), JSON.stringify(next))
+  } catch (error) {
+    console.warn('Failed to save recent detail names', error)
+  }
+}
+
+const filteredRecentDetailNames = computed(() => {
+  const query = normalizeRecentDetailName(positionFormModel.value.custom_name).toLocaleLowerCase('ru-RU')
+  if (!query) return recentDetailNames.value
+
+  return recentDetailNames.value.filter(name => name.toLocaleLowerCase('ru-RU').includes(query))
+})
+
+const showRecentDetailNameSuggestions = computed(() => (
+  detailNameSuggestionsFocused.value && filteredRecentDetailNames.value.length > 0
+))
+
+const applyRecentDetailName = (name: string) => {
+  positionFormModel.value.custom_name = name
+  detailNameSuggestionsFocused.value = true
 }
 
 // === Вспомогательные функции ===
@@ -5844,9 +5973,11 @@ const openPositionDialog = async () => {
   if (guardReadOnlyAction()) return
 
   positionDialogOpening.value = true
+  loadRecentDetailNames()
   await loadUserDefaultFacadeAllowances()
 
   editingPosition.value = false
+  detailNameSuggestionsFocused.value = false
   dialogDimensionCalc.value = { width: emptyDimensionCalcState(), length: emptyDimensionCalcState() }
   dialogDimensionInputDirty.value = { width: false, length: false }
   applyFacadeAllowance.value = false
@@ -5879,7 +6010,9 @@ const openPositionDialog = async () => {
 const editPosition = (item: Position) => {
   if (guardReadOnlyAction()) return
 
+  loadRecentDetailNames()
   editingPosition.value = true
+  detailNameSuggestionsFocused.value = false
   dialogDimensionCalc.value = { width: emptyDimensionCalcState(), length: emptyDimensionCalcState() }
   dialogDimensionInputDirty.value = { width: false, length: false }
   applyFacadeAllowance.value = false
@@ -6004,6 +6137,7 @@ const savePosition = async () => {
     } else {
       await api.post(`/api/projects/${projectId}/positions`, payload)
     }
+    rememberRecentDetailName(payload.custom_name)
     positionDialog.value = false
     await fetchData()
   } catch (e: any) {
@@ -10454,10 +10588,54 @@ onBeforeUnmount(() => {
   padding: 20px !important;
 }
 
+.position-sheet-content--editor {
+  max-height: min(72vh, 680px);
+  overflow-y: auto;
+  padding: 14px 16px 10px !important;
+}
+
 .position-sheet-actions {
   padding: 14px 20px 18px !important;
   border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
   background: rgba(var(--v-theme-surface-container-low), 0.9);
+}
+
+.position-sheet--editor .position-sheet-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  gap: 8px;
+  padding: 10px 16px !important;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-surface-container-low), 0.82), rgba(var(--v-theme-surface-container-low), 1));
+}
+
+.position-sheet--editor .position-sheet-actions :deep(.v-btn) {
+  border-radius: var(--md-sys-shape-corner-full) !important;
+  min-height: 40px;
+  padding-inline: 18px;
+}
+
+.position-sheet--editor .position-sheet-actions :deep(.v-btn.bg-primary) {
+  min-width: 124px;
+  font-weight: 700;
+}
+
+.position-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.34);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.92);
+}
+
+.position-dialog-title {
+  min-width: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 1);
 }
 
 .labor-calculation-dialog-card {
@@ -10492,6 +10670,24 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
+.position-form-stack--editor {
+  gap: 0;
+}
+
+.position-dialog-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(310px, 0.92fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.position-dialog-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .position-form-section {
   padding: 16px;
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.66);
@@ -10509,11 +10705,118 @@ onBeforeUnmount(() => {
   background: rgba(var(--v-theme-surface-container-low), 0.88);
 }
 
+.position-sheet--editor .position-form-section {
+  padding: 12px;
+  border-color: rgba(var(--v-theme-outline-variant), 0.34);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.9);
+}
+
+.position-sheet--editor .position-form-section :deep(.v-field) {
+  min-height: 44px;
+  border-radius: var(--md-sys-shape-corner-medium);
+}
+
+.position-sheet--editor .position-form-section :deep(.v-field__input) {
+  min-height: 44px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  line-height: 1.25;
+}
+
+.position-sheet--editor .position-form-section :deep(.v-field__append-inner),
+.position-sheet--editor .position-form-section :deep(.v-field__clearable) {
+  align-items: center;
+  padding-top: 0;
+}
+
+.position-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.position-field + .position-field {
+  margin-top: 10px;
+}
+
+.position-field__label {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.position-field :deep(.v-field-label) {
+  display: none;
+}
+
+.position-field :deep(.v-field__input),
+.position-field :deep(.v-select__selection-text),
+.position-field :deep(input) {
+  font-size: 0.875rem;
+}
+
+.position-field :deep(.v-select__selection) {
+  min-height: 24px;
+  align-items: center;
+}
+
+.position-field :deep(.v-chip) {
+  max-width: 100%;
+}
+
+.recent-detail-name-suggestions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.recent-detail-name-suggestions__label {
+  flex: 0 0 auto;
+  color: rgba(var(--v-theme-on-surface-variant), 0.78);
+  font-size: 0.72rem;
+}
+
+.recent-detail-name-suggestions__chips {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.recent-detail-name-suggestions__chips :deep(.v-chip) {
+  height: 24px;
+  cursor: pointer;
+  font-size: 0.72rem;
+}
+
+.position-form-section--compact {
+  min-width: 0;
+}
+
 .position-form-section__header {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-bottom: 12px;
+}
+
+.position-sheet--editor .position-form-section__header {
+  margin-bottom: 8px;
+}
+
+.position-form-section__header--inline {
+  flex-flow: row wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: 10px;
+  row-gap: 2px;
 }
 
 .position-form-section__title {
@@ -10538,6 +10841,58 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.58);
   border-radius: var(--md-sys-shape-corner-medium);
   background: rgba(var(--v-theme-surface-container-low), 0.78);
+}
+
+.facade-allowance-row--compact {
+  gap: 6px 10px;
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border-color: rgba(var(--v-theme-outline-variant), 0.34);
+  background: rgba(var(--v-theme-surface-container-low), 0.72);
+}
+
+.facade-allowance-row__content {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 180px;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.facade-allowance-row__title {
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: rgba(var(--v-theme-on-surface), 0.92);
+}
+
+.facade-preview-compact {
+  display: grid;
+  gap: 7px;
+}
+
+.facade-preview-compact__row {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  font-size: 0.82rem;
+}
+
+.facade-preview-compact__row span,
+.facade-preview-compact__note {
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
+}
+
+.facade-preview-compact__row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
+
+.facade-preview-compact__note {
+  margin-top: 2px;
+  font-size: 0.77rem;
+  line-height: 1.35;
 }
 
 .position-support-card {
@@ -11293,8 +11648,26 @@ onBeforeUnmount(() => {
   align-items: start;
 }
 
+.position-dimensions-row--compact {
+  margin-top: -6px !important;
+  margin-bottom: -6px !important;
+}
+
+.position-dimensions-row--compact > :deep(.v-col) {
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+
+.position-dimensions-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(112px, 124px);
+  gap: 10px;
+  align-items: start;
+}
+
 .position-dimensions-field {
   display: flex;
+  min-width: 0;
 }
 
 .dimension-field-stack {
@@ -11305,6 +11678,14 @@ onBeforeUnmount(() => {
 
 .dimension-feedback-slot {
   min-height: 74px;
+}
+
+.position-sheet--editor .dimension-feedback-slot {
+  min-height: 0;
+}
+
+.dimension-feedback-slot--compact {
+  min-height: 18px;
 }
 
 .dimension-swap-col--details {
@@ -11352,6 +11733,42 @@ onBeforeUnmount(() => {
 .quick-quantity-group-wrap {
   overflow-x: auto;
   padding-bottom: 2px;
+}
+
+.quick-quantity-group-wrap--compact {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+  padding-bottom: 0;
+}
+
+.quantity-field-stack {
+  width: 100%;
+}
+
+.quick-quantity-label {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  color: rgba(var(--v-theme-on-surface-variant), 0.88);
+}
+
+.quick-quantity-picks {
+  display: flex;
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 1px;
+}
+
+.quick-quantity-picks :deep(.v-btn) {
+  min-width: 30px;
+  height: 26px;
+  padding-inline: 8px;
+  border-radius: var(--md-sys-shape-corner-full) !important;
+  box-shadow: none !important;
 }
 
 .position-drawer-fixed :deep(.v-navigation-drawer__content) {
@@ -11430,10 +11847,58 @@ onBeforeUnmount(() => {
   border-inline-end-width: 1px !important;
 }
 
+.position-segmented-control {
+  height: 36px !important;
+  overflow: hidden !important;
+  padding: 2px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.62);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: rgba(var(--v-theme-surface-container), 0.58);
+}
+
+.position-segmented-control :deep(.v-btn) {
+  min-height: 30px;
+  min-width: 82px;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: var(--md-sys-shape-corner-full) !important;
+  background: transparent !important;
+  color: rgba(var(--v-theme-on-surface-variant), 0.96) !important;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  box-shadow: none !important;
+}
+
+.position-segmented-control :deep(.v-btn.v-btn--active) {
+  background: rgba(var(--v-theme-primary-container), 0.9) !important;
+  color: rgb(var(--v-theme-on-primary-container)) !important;
+}
+
+.position-kind-toggle--compact :deep(.v-btn:first-child),
+.position-segmented-switch :deep(.v-btn:first-child) {
+  border-radius: var(--md-sys-shape-corner-full) !important;
+}
+
+.position-kind-toggle--compact :deep(.v-btn:last-child),
+.position-segmented-switch :deep(.v-btn:last-child) {
+  border-radius: var(--md-sys-shape-corner-full) !important;
+}
+
+.position-segmented-switch {
+  height: auto !important;
+  overflow: visible !important;
+  margin-top: 5px;
+}
+
 .dimension-help {
   margin-top: -2px;
   margin-bottom: 6px;
   color: rgba(var(--v-theme-on-surface-variant), 0.92);
+}
+
+.position-sheet--editor .dimension-help {
+  margin: 0;
+  font-size: 0.75rem;
 }
 
 .dimension-calc-line {
@@ -11448,11 +11913,33 @@ onBeforeUnmount(() => {
   gap: 4px;
 }
 
+.dimension-calc-line--compact {
+  margin-top: 2px;
+  margin-bottom: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface-variant), 0.76);
+  font-size: 0.71rem;
+}
+
+.dimension-result {
+  color: rgba(var(--v-theme-on-surface), 0.82);
+  font-weight: 650;
+}
+
 .edge-preview-block {
   padding: 12px;
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.62);
   border-radius: var(--md-sys-shape-corner-large);
   background: rgba(var(--v-theme-surface-container-low), 0.82);
+}
+
+.edge-preview-block--compact {
+  padding: 8px;
+  border-color: rgba(var(--v-theme-outline-variant), 0.34);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: rgba(var(--v-theme-surface-container-low), 0.66);
 }
 
 .edge-preview-diagram {
@@ -11469,6 +11956,24 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 8px;
   width: 100%;
+}
+
+.edge-preview-row--compact {
+  grid-template-columns: minmax(68px, 136px) minmax(0, 1fr);
+  justify-content: start;
+  gap: 10px;
+}
+
+.edge-preview-meta {
+  min-width: 0;
+  align-self: center;
+}
+
+.edge-preview-size {
+  margin-bottom: 2px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: rgba(var(--v-theme-on-surface), 0.8);
 }
 
 .edge-preview-length-label,
@@ -11579,6 +12084,30 @@ onBeforeUnmount(() => {
   .position-drawer-fixed--compact {
     width: 100vw !important;
     max-width: 100vw !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .position-dialog-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .position-dialog-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .position-dimensions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-quantity-group-wrap--compact {
+    justify-content: flex-start;
+  }
+
+  .position-sheet-content--editor {
+    max-height: 74vh;
   }
 }
 </style>
