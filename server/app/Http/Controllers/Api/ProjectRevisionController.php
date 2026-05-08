@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\ProjectRevision;
 use App\Models\RevisionPublication;
+use App\Models\RevisionRun;
+use App\Models\RevisionRunItem;
 use App\Service\ReportService;
 use App\Services\Billing\BillingCodes;
 use App\Services\FinishedProductFacadeRevisionRowAssembler;
@@ -539,6 +541,9 @@ class ProjectRevisionController extends Controller
         $evidenceSummary = is_array($snapshot['evidence_summary'] ?? null)
             ? $snapshot['evidence_summary']
             : null;
+        if (is_array($evidenceSummary)) {
+            $evidenceSummary['missing_items'] = $this->resolveMissingEvidenceItemsForPdf($project, $snapshot, $evidenceSummary);
+        }
 
         $pdf = Pdf::loadView('reports.price_justification', [
             'project' => $project,
@@ -571,6 +576,121 @@ class ProjectRevisionController extends Controller
         ]);
 
         return $pdf->download($filename);
+    }
+
+    /**
+     * @param  array<string, mixed>  $snapshot
+     * @param  array<string, mixed>  $evidenceSummary
+     * @return array<int, array<string, mixed>>
+     */
+    private function resolveMissingEvidenceItemsForPdf(Project $project, array $snapshot, array $evidenceSummary): array
+    {
+        $snapshotMissing = $evidenceSummary['missing_items'] ?? $evidenceSummary['missing'] ?? null;
+        if (is_array($snapshotMissing) && $snapshotMissing !== []) {
+            return array_values($snapshotMissing);
+        }
+
+        $runId = (int) ($snapshot['revision_run_id'] ?? 0);
+        if ($runId <= 0) {
+            return [];
+        }
+
+        $run = RevisionRun::query()
+            ->with([
+                'items.position.material',
+                'items.position.edgeMaterial',
+                'items.position.facadeMaterial',
+                'items.projectFitting.material',
+                'items.material',
+                'items.priceHistory',
+                'items.evidenceSubject',
+            ])
+            ->where('project_id', $project->id)
+            ->find($runId);
+
+        if (!$run) {
+            return [];
+        }
+
+        return $run->items
+            ->reject(fn (RevisionRunItem $item) => $item->isCompleted())
+            ->map(fn (RevisionRunItem $item) => [
+                'name' => $this->missingEvidenceItemName($item),
+                'component' => $item->cost_driver_type,
+                'unit' => $this->missingEvidenceItemUnit($item),
+                'estimate_price' => $this->missingEvidenceItemPrice($item),
+                'reasons' => $this->missingEvidenceReasons($item),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function missingEvidenceItemName(RevisionRunItem $item): string
+    {
+        $subject = $item->evidenceSubject;
+
+        return $subject?->name
+            ?? $subject?->title
+            ?? $item->material?->name
+            ?? $item->projectFitting?->name
+            ?? $item->projectFitting?->material?->name
+            ?? $item->position?->facadeMaterial?->name
+            ?? $item->position?->material?->name
+            ?? $item->position?->edgeMaterial?->name
+            ?? ('Позиция #' . ($item->project_position_id ?: $item->project_fitting_id ?: $item->id));
+    }
+
+    private function missingEvidenceItemUnit(RevisionRunItem $item): ?string
+    {
+        $subject = $item->evidenceSubject;
+
+        return $subject?->unit
+            ?? $item->material?->unit
+            ?? $item->projectFitting?->unit
+            ?? $item->projectFitting?->material?->unit
+            ?? $item->position?->facadeMaterial?->unit
+            ?? $item->position?->material?->unit
+            ?? $item->position?->edgeMaterial?->unit;
+    }
+
+    private function missingEvidenceItemPrice(RevisionRunItem $item): mixed
+    {
+        $subject = $item->evidenceSubject;
+
+        return $item->priceHistory?->price_per_unit
+            ?? $subject?->price
+            ?? $subject?->cost
+            ?? $item->material?->price
+            ?? $item->projectFitting?->price
+            ?? $item->projectFitting?->material?->price
+            ?? $item->position?->facadeMaterial?->price
+            ?? $item->position?->material?->price
+            ?? $item->position?->edgeMaterial?->price;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function missingEvidenceReasons(RevisionRunItem $item): array
+    {
+        $diagnosticReasons = data_get($item->diagnostics_json, 'evidence_coverage.reasons');
+        if (is_array($diagnosticReasons) && $diagnosticReasons !== []) {
+            return array_values($diagnosticReasons);
+        }
+
+        if (!$item->source_url && !in_array($item->cost_driver_type, ['operation', 'labor_work', 'expense'], true)) {
+            return ['no_source_url'];
+        }
+
+        return match ($item->status) {
+            RevisionRunItem::STATUS_PARSE_ERROR => ['parse_failed'],
+            RevisionRunItem::STATUS_TIMEOUT => ['source_unavailable'],
+            RevisionRunItem::STATUS_NO_TEMPLATE,
+            RevisionRunItem::STATUS_BLOCKED,
+            RevisionRunItem::STATUS_NEEDS_MANUAL,
+            RevisionRunItem::STATUS_PENDING => ['no_evidence_record'],
+            default => ['no_evidence_record'],
+        };
     }
 
     private function generatePublicId(): string

@@ -69,9 +69,9 @@
       $parts = parse_url($clean);
       if (!is_array($parts) || empty($parts['host'])) return $clean;
 
-      $host = $parts['host'];
+      $host = preg_replace('/^www\./', '', $parts['host']);
       $path = $parts['path'] ?? '';
-      if (mb_strlen($host . $path) > 72) {
+      if (mb_strlen($host . $path) > 56) {
         $segments = array_values(array_filter(explode('/', trim($path, '/'))));
         $first = $segments[0] ?? '';
         $last = end($segments) ?: '';
@@ -105,6 +105,24 @@
     $moneyForPdf = static fn (?string $value): ?string => $value
       ? str_replace([' руб./м²', ' руб.'], [' ₽/м²', ' ₽'], $value)
       : null;
+
+    $compactFacadeParameters = static function (array $identity): ?string {
+      $characteristics = (array) ($identity['characteristics'] ?? []);
+      $parts = [];
+
+      foreach (['base_type', 'covering', 'cover_type', 'collection', 'decor_label'] as $key) {
+        if (!empty($characteristics[$key])) {
+          $parts[] = (string) $characteristics[$key];
+        }
+      }
+      if (!empty($characteristics['thickness_mm'])) {
+        $parts[] = $characteristics['thickness_mm'] . ' мм';
+      }
+
+      $parts = array_values(array_unique(array_filter($parts)));
+
+      return $parts === [] ? null : implode(', ', $parts);
+    };
 
     $driverLabels = [
       'plate' => 'Плита',
@@ -142,8 +160,8 @@
     $internalTypes = ['operation', 'labor_work', 'expense'];
     $internalRows = collect($rows)->filter(fn ($row) => in_array($row['cost_driver_type'] ?? null, $internalTypes, true))->values();
     $evidenceRows = collect($rows)->reject(fn ($row) => in_array($row['cost_driver_type'] ?? null, $internalTypes, true))->values();
-    $missingCount = max(0, (int) ($evidenceSummary['total_items'] ?? count($rows)) - (int) ($evidenceSummary['with_evidence'] ?? count($rows)));
     $missingRows = collect(data_get($evidenceSummary, 'missing_items') ?? data_get($evidenceSummary, 'missing') ?? [])->values();
+    $missingCount = $missingRows->count();
 
     $dates = collect($rows)
       ->pluck('observed_at')
@@ -248,32 +266,27 @@
       page-break-after: avoid;
     }
 
-    .cards {
-      font-size: 0;
-    }
-
     .item {
-      display: inline-block;
-      width: 49%;
-      margin: 0 1% 3mm 0;
+      display: block;
+      width: 100%;
+      margin: 0 0 3.2mm 0;
       border: 1px solid #d7d7d7;
       border-left: 2px solid #9a9a9a;
       background: #fff;
       page-break-inside: avoid;
       break-inside: avoid;
-      vertical-align: top;
       font-size: 8pt;
     }
 
     .item-head {
-      padding: 1.5mm 2mm 1.1mm 2mm;
+      padding: 1.35mm 2mm 0.9mm 2mm;
       background: #fafafa;
       border-bottom: 1px solid #e4e4e4;
     }
 
     .item-title {
       margin: 0;
-      font-size: 8.1pt;
+      font-size: 8.4pt;
       line-height: 1.12;
       font-weight: 800;
       color: #111;
@@ -281,41 +294,27 @@
     }
 
     .item-body {
-      padding: 1.4mm 2mm 1.8mm 2mm;
+      padding: 1.2mm 2mm 1.8mm 2mm;
     }
 
-    .meta-table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-      margin: 0 0 1mm 0;
-      font-size: 7.3pt;
-    }
-
-    .meta-table td {
-      border: none;
-      padding: 0 0 0.45mm 0;
-      vertical-align: top;
-      line-height: 1.1;
-    }
-
-    .meta-label {
-      width: 24%;
-      font-weight: 700;
-      color: #333;
-      padding-right: 2mm;
-      white-space: nowrap;
-    }
-
-    .meta-value {
-      width: 76%;
+    .card-meta {
+      margin: 0 0 1.1mm 0;
+      font-size: 7.6pt;
+      line-height: 1.14;
       color: #111;
       word-break: break-word;
       overflow-wrap: anywhere;
     }
 
+    .meta-line { margin: 0 0 0.35mm 0; }
+    .meta-line:last-child { margin-bottom: 0; }
+    .meta-key {
+      font-weight: 700;
+      color: #333;
+    }
+
     .compact-source {
-      font-size: 7pt;
+      font-size: 7.2pt;
       line-height: 1.08;
     }
 
@@ -340,7 +339,7 @@
     .shot-wrap img {
       display: block;
       max-width: 100%;
-      max-height: 50mm;
+      max-height: 95mm;
       width: auto;
       height: auto;
       margin: 0 auto;
@@ -364,44 +363,6 @@
       margin-top: 6mm;
     }
 
-    .evidence-summary {
-      border: 1px solid #d7d7d7;
-      background: #f9f9f9;
-      padding: 1.8mm 2.2mm;
-      margin: 0 0 3mm 0;
-      page-break-inside: avoid;
-    }
-
-    .evidence-summary-title {
-      font-size: 8.6pt;
-      font-weight: 700;
-      margin: 0 0 1.5mm 0;
-      color: #333;
-    }
-
-    .evidence-summary-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 7.9pt;
-    }
-
-    .evidence-summary-table td {
-      padding: 0.4mm 2mm 0.4mm 0;
-      vertical-align: top;
-      line-height: 1.2;
-    }
-
-    .source-badge {
-      display: inline-block;
-      padding: 0.3mm 1.5mm;
-      border: 1px solid #cfcfcf;
-      background: #f0f0f0;
-      font-size: 7pt;
-      line-height: 1.1;
-      color: #555;
-      white-space: nowrap;
-    }
-
     .type-badge {
       display: inline-block;
       padding: 0.3mm 1.5mm;
@@ -416,8 +377,8 @@
     .snapshot-summary {
       border: 1px solid #dcdcdc;
       background: #fafafa;
-      padding: 1.2mm 1.6mm;
-      font-size: 7pt;
+      padding: 0.9mm 1.2mm;
+      font-size: 7.2pt;
       line-height: 1.12;
     }
     .snapshot-summary div { margin: 0 0 0.45mm 0; }
@@ -494,36 +455,6 @@
       </table>
     </div>
 
-    @if(isset($evidenceSummary) && is_array($evidenceSummary))
-      @php
-        $sourceLabels = [
-          'auto' => 'Автоматически',
-          'manual' => 'Вручную',
-          'chrome_ext' => 'Chrome расширение',
-          'internal' => 'Внутренний',
-        ];
-      @endphp
-      <div class="evidence-summary">
-        <div class="evidence-summary-title">Покрытие обоснованиями</div>
-        <table class="evidence-summary-table">
-          <tr>
-            <td class="bold">Позиций с обоснованием:</td>
-            <td>{{ $evidenceSummary['with_evidence'] ?? 0 }} / {{ $evidenceSummary['total_items'] ?? 0 }} ({{ $evidenceSummary['coverage_pct'] ?? 0 }}%)</td>
-          </tr>
-          @if(!empty($evidenceSummary['by_capture_source']))
-            <tr>
-              <td class="bold">По источнику:</td>
-              <td>
-                @foreach($evidenceSummary['by_capture_source'] as $src => $cnt)
-                  {{ $sourceLabels[$src] ?? $src }}: {{ $cnt }}@if(!$loop->last), @endif
-                @endforeach
-              </td>
-            </tr>
-          @endif
-        </table>
-      </div>
-    @endif
-
     @if($missingCount > 0)
       <div class="section-title">Позиции без подтверждения цены</div>
       <table class="missing-table">
@@ -551,10 +482,6 @@
                 <td>{{ $missingReason }}</td>
               </tr>
             @endforeach
-          @else
-            <tr>
-              <td colspan="4" class="muted">Детализированный список отсутствующих подтверждений хранится в разделе «Документы» проекта. В данном PDF сохранены подтвержденные позиции.</td>
-            </tr>
           @endif
         </tbody>
       </table>
@@ -597,6 +524,14 @@
         $priceText = $formatMoney($row['price_per_unit'] ?? null, $unit);
         $article = $isMeaningful($row['article'] ?? null) ? trim((string) $row['article']) : null;
         $driverText = $driverLabels[$row['cost_driver_type'] ?? ''] ?? ($row['cost_driver_type'] ?? null);
+        $isFacadeSnapshot = ($row['reference_type'] ?? null) === 'snapshot_summary' && ($row['cost_driver_type'] ?? null) === 'facade';
+        $presentation = $isFacadeSnapshot ? ($row['facade_snapshot_presentation'] ?? []) : [];
+        $identity = $presentation['facade_identity'] ?? [];
+        $sources = $presentation['sources'] ?? [];
+        $facadeSourceName = collect($sources)
+          ->pluck('supplier_name')
+          ->first(fn ($value) => $isMeaningful($value));
+        $facadeParams = $isFacadeSnapshot ? $compactFacadeParameters($identity) : null;
       @endphp
       <div class="item">
         <div class="item-head">
@@ -606,81 +541,38 @@
         </div>
 
         <div class="item-body">
-          <table class="meta-table">
+          <div class="card-meta">
             @if($article || $isMeaningful($unit))
-              <tr>
-                <td class="meta-label">Арт. / Ед.</td>
-                <td class="meta-value">
-                  @if($article) Арт.: {{ $article }}@endif
-                  @if($article && $isMeaningful($unit)) · @endif
-                  @if($isMeaningful($unit)) Ед.: {{ $unit }}@endif
-                </td>
-              </tr>
+              <div class="meta-line">
+                @if($article) <span class="meta-key">Арт.:</span> {{ $article }}@endif
+                @if($article && $isMeaningful($unit)) · @endif
+                @if($isMeaningful($unit)) <span class="meta-key">Ед.:</span> {{ $unit }}@endif
+              </div>
+            @elseif($isFacadeSnapshot)
+              <div class="meta-line"><span class="meta-key">Ед.:</span> м²</div>
             @endif
 
             @if($isMeaningful($driverText))
-              <tr>
-                <td class="meta-label">Раздел</td>
-                <td class="meta-value">
-                  <span class="type-badge">{{ $driverText }}</span>
-                </td>
-              </tr>
+              <div class="meta-line"><span class="meta-key">Раздел:</span> {{ $driverText }}</div>
             @endif
 
             @if($sourceUrl && $sourceDisplay)
-              <tr>
-                <td class="meta-label">Источник</td>
-                <td class="meta-value compact-source">
-                  <a href="{{ $sourceUrl }}">{{ $sourceDisplay }}</a>
-                </td>
-              </tr>
+              <div class="meta-line compact-source"><span class="meta-key">Источник:</span> <a href="{{ $sourceUrl }}">{{ $sourceDisplay }}</a></div>
+            @elseif($isMeaningful($facadeSourceName))
+              <div class="meta-line"><span class="meta-key">Источник:</span> {{ $facadeSourceName }}</div>
             @endif
 
             @if($priceText)
-              <tr>
-                <td class="meta-label">Цена</td>
-                <td class="meta-value">
-                  <span class="price-badge">{{ $priceText }}</span>
-                </td>
-              </tr>
+              <div class="meta-line"><span class="meta-key">Цена:</span> <span class="price-badge">{{ $priceText }}</span></div>
             @endif
 
-            @if(($row['reference_type'] ?? null) === 'snapshot_summary' && ($row['cost_driver_type'] ?? null) === 'facade')
-              @php
-                $presentation = $row['facade_snapshot_presentation'] ?? [];
-                $identity = $presentation['facade_identity'] ?? [];
-                $pricing = $presentation['pricing_summary'] ?? [];
-                $position = $presentation['position_summary'] ?? [];
-                $sources = $presentation['sources'] ?? [];
-              @endphp
-              @if(!empty($row['finished_product_specification_id']))
-                <tr>
-                  <td class="meta-label">Спецификация</td>
-                  <td class="meta-value">
-                    {{ $identity['display_name'] ?? $row['specification_name'] ?? $row['name'] ?? 'Фасад' }}
-                  </td>
-                </tr>
-              @endif
-              @if(!empty($identity['characteristics_text']))
-                <tr>
-                  <td class="meta-label">Параметры</td>
-                  <td class="meta-value">{{ $identity['characteristics_text'] }}</td>
-                </tr>
-              @endif
-              <tr>
-                <td class="meta-label">Прайс</td>
-                <td class="meta-value">
-                  {{ $moneyForPdf($presentation['compact_summary_text'] ?? null) ?? 'агрегированные источники поставщика' }}
-                </td>
-              </tr>
+            @if($isMeaningful($facadeParams))
+              <div class="meta-line"><span class="meta-key">Параметры:</span> {{ $facadeParams }}</div>
             @endif
-          </table>
+          </div>
 
-          @if(($row['reference_type'] ?? null) === 'snapshot_summary' && ($row['cost_driver_type'] ?? null) === 'facade')
+          @if($isFacadeSnapshot)
             @php
-              $presentation = $row['facade_snapshot_presentation'] ?? [];
-              $pricing = $presentation['pricing_summary'] ?? [];
-              $sources = $presentation['sources'] ?? [];
               $facadeAssets = collect($sources)
                 ->flatMap(fn ($source) => (array) ($source['evidence_assets'] ?? []))
                 ->values();
@@ -689,40 +581,34 @@
                 return str_starts_with($mime, 'image/') && $assetStoragePath($asset) !== null;
               });
             @endphp
+            @if($facadeAssets->isNotEmpty())
             <div class="snapshot-summary">
-              <div><strong>Подтверждение фасадной цены</strong></div>
-              <div>Цена за м² подтверждена сохраненными прайсами и файлами поставщика.</div>
-              @if(!empty($sources))
-                @foreach($sources as $source)
-                  @if(!empty($source['evidence_assets']))
-                    @foreach($source['evidence_assets'] as $asset)
-                      @php
-                        $assetLabel = $asset['display_label'] ?? $asset['original_name'] ?? $asset['source_url'] ?? null;
-                        $assetUrl = $cleanUrl($asset['source_url'] ?? null) ?: $assetOpenUrl($asset);
-                        $extension = mb_strtolower(pathinfo((string) ($asset['original_name'] ?? $assetLabel ?? ''), PATHINFO_EXTENSION));
-                        $assetType = $asset['asset_type'] ?? null;
-                        $assetKind = match (true) {
-                          $assetType === 'link' => 'Источник',
-                          in_array($assetType, ['screenshot', 'image'], true) => 'Скриншот',
-                          in_array($extension, ['xls', 'xlsx', 'csv', 'ods'], true) => 'Прайс',
-                          default => 'Файл',
-                        };
-                      @endphp
-                      @if($isMeaningful($assetLabel))
-                      <div class="file-line">
-                        {{ $assetKind }}:
-                        @if($assetUrl)
-                          <a href="{{ $assetUrl }}">{{ $assetLabel }}</a>
-                        @else
-                          {{ $assetLabel }}
-                        @endif
-                      </div>
+                @foreach($facadeAssets as $asset)
+                  @php
+                    $assetLabel = $asset['display_label'] ?? $asset['original_name'] ?? $asset['source_url'] ?? null;
+                    $assetUrl = $cleanUrl($asset['source_url'] ?? null) ?: $assetOpenUrl($asset);
+                    $extension = mb_strtolower(pathinfo((string) ($asset['original_name'] ?? $assetLabel ?? ''), PATHINFO_EXTENSION));
+                    $assetType = $asset['asset_type'] ?? null;
+                    $assetKind = match (true) {
+                      $assetType === 'link' => 'Источник',
+                      in_array($assetType, ['screenshot', 'image'], true) => 'Скриншот',
+                      in_array($extension, ['xls', 'xlsx', 'csv', 'ods'], true) => 'Прайс',
+                      default => 'Файл',
+                    };
+                  @endphp
+                  @if($isMeaningful($assetLabel))
+                    <div class="file-line">
+                      <span class="meta-key">{{ $assetKind }}:</span>
+                      @if($assetUrl)
+                        <a href="{{ $assetUrl }}">{{ $assetLabel }}</a>
+                      @else
+                        {{ $assetLabel }}
                       @endif
-                    @endforeach
+                    </div>
                   @endif
                 @endforeach
-              @endif
             </div>
+            @endif
             @if($previewAsset)
               <div class="shot-wrap" style="margin-top:1mm;">
                 <img src="{{ $assetStoragePath($previewAsset) }}" alt="evidence" />
