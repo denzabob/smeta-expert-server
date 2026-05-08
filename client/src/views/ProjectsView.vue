@@ -180,6 +180,231 @@
       {{ snackbar.message }}
     </v-snackbar>
 
+    <!-- Project summary dialog ───────────────────────────────────────────── -->
+    <v-dialog v-model="summaryDialog" max-width="880" scrollable>
+      <v-card class="project-summary-dialog">
+        <div class="project-summary-header">
+          <div class="project-summary-title-block">
+            <v-card-title class="project-summary-title">Сводка проекта</v-card-title>
+            <div class="project-summary-subtitle">
+              <span>{{ summaryProjectLine }}</span>
+              <span v-if="summaryAddressLine">{{ summaryAddressLine }}</span>
+            </div>
+          </div>
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            size="small"
+            aria-label="Закрыть"
+            @click="summaryDialog = false"
+          />
+        </div>
+
+        <v-card-text class="project-summary-body">
+          <div v-if="summaryLoading" class="project-summary-loading">
+            <v-progress-circular indeterminate color="primary" />
+            <span>Загружаем сводку проекта…</span>
+          </div>
+
+          <v-alert
+            v-else-if="summaryError"
+            type="warning"
+            variant="tonal"
+            density="comfortable"
+          >
+            {{ summaryError }}
+          </v-alert>
+
+          <template v-else-if="projectSummary">
+            <section class="project-summary-section project-summary-identity">
+              <div class="project-summary-field">
+                <span>№ дела</span>
+                <strong>{{ projectSummary.project.number || '—' }}</strong>
+              </div>
+              <div class="project-summary-field project-summary-field--wide">
+                <span>Адрес</span>
+                <strong>{{ projectSummary.project.address || '—' }}</strong>
+              </div>
+              <div class="project-summary-field">
+                <span>Эксперт</span>
+                <strong>{{ projectSummary.project.expert_name || '—' }}</strong>
+              </div>
+              <div class="project-summary-field">
+                <span>Изменено</span>
+                <strong>{{ formatDateOnly(projectSummary.project.updated_at) }}</strong>
+              </div>
+              <div class="project-summary-field">
+                <span>Последняя ревизия</span>
+                <strong>{{ projectSummary.latest_revision ? `Версия ${projectSummary.latest_revision.number}` : 'Нет' }}</strong>
+              </div>
+              <div class="project-summary-field">
+                <span>Статус</span>
+                <StatusChip
+                  :status="projectSummary.latest_revision?.status || 'none'"
+                  :label="getRevisionStatusLabel(projectSummary.latest_revision?.status)"
+                  :color="getRevisionStatusColor(projectSummary.latest_revision?.status)"
+                  size="x-small"
+                />
+              </div>
+            </section>
+
+            <section class="project-summary-section">
+              <div class="project-summary-section-title">Финансы</div>
+              <div class="project-summary-money-grid">
+                <div class="project-summary-money-card project-summary-money-card--primary">
+                  <span>Итого по смете</span>
+                  <strong>{{ formatCurrency(projectSummary.totals.grand_total) }}</strong>
+                </div>
+                <div class="project-summary-money-card">
+                  <span>Материалы</span>
+                  <strong>{{ formatCurrency(projectSummary.totals.materials_cost) }}</strong>
+                </div>
+                <div class="project-summary-money-card">
+                  <span>Операции</span>
+                  <strong>{{ formatCurrency(projectSummary.totals.operations_cost) }}</strong>
+                </div>
+                <div class="project-summary-money-card">
+                  <span>Работы</span>
+                  <strong>{{ formatCurrency(projectSummary.totals.labor_works_cost) }}</strong>
+                </div>
+                <div class="project-summary-money-card">
+                  <span>Фурнитура</span>
+                  <strong>{{ formatCurrency(projectSummary.totals.fittings_cost) }}</strong>
+                </div>
+                <div class="project-summary-money-card">
+                  <span>Расходы</span>
+                  <strong>{{ formatCurrency(projectSummary.totals.expenses_cost) }}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="project-summary-section">
+              <div class="project-summary-section-title">Документы</div>
+              <div v-if="!projectSummary.latest_revision" class="project-summary-empty">
+                Документы еще не сформированы.
+              </div>
+              <div v-else class="project-summary-doc-grid">
+                <div class="project-summary-doc-card">
+                  <div class="project-summary-doc-text">
+                    <strong>Смета и расчетная часть</strong>
+                    <span>Версия {{ projectSummary.latest_revision.number }} · {{ formatDateOnly(projectSummary.latest_revision.created_at) }}</span>
+                  </div>
+                  <div class="project-summary-doc-actions">
+                    <v-btn
+                      size="small"
+                      variant="tonal"
+                      color="primary"
+                      :loading="summaryPdfLoading === 'estimate-open'"
+                      @click="openSummaryPdf(projectSummary.latest_revision.pdf_url, 'estimate-open')"
+                    >
+                      Открыть
+                    </v-btn>
+                    <v-btn
+                      size="small"
+                      variant="text"
+                      :loading="summaryPdfLoading === 'estimate-download'"
+                      @click="downloadSummaryPdf(projectSummary.latest_revision.pdf_url, `smeta_${projectSummary.project.number || projectSummary.project.id}_rev_${projectSummary.latest_revision.number}.pdf`, 'estimate-download')"
+                    >
+                      Скачать
+                    </v-btn>
+                  </div>
+                </div>
+                <div class="project-summary-doc-card">
+                  <div class="project-summary-doc-text">
+                    <strong>Подтверждение цен</strong>
+                    <span>
+                      {{ priceEvidenceReadyLabel }}
+                    </span>
+                  </div>
+                  <div class="project-summary-doc-actions">
+                    <v-btn
+                      size="small"
+                      variant="tonal"
+                      color="primary"
+                      :disabled="!projectSummary.latest_revision.price_justification_pdf_url"
+                      :loading="summaryPdfLoading === 'evidence-open'"
+                      @click="openSummaryPdf(projectSummary.latest_revision.price_justification_pdf_url, 'evidence-open')"
+                    >
+                      Открыть
+                    </v-btn>
+                    <v-btn
+                      size="small"
+                      variant="text"
+                      :disabled="!projectSummary.latest_revision.price_justification_pdf_url"
+                      :loading="summaryPdfLoading === 'evidence-download'"
+                      @click="downloadSummaryPdf(projectSummary.latest_revision.price_justification_pdf_url, `price_justification_${projectSummary.project.number || projectSummary.project.id}_rev_${projectSummary.latest_revision.number}.pdf`, 'evidence-download')"
+                    >
+                      Скачать
+                    </v-btn>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="project-summary-section">
+              <div class="project-summary-section-title">Доказательства цен</div>
+              <div class="project-summary-evidence-row">
+                <StatusChip
+                  v-if="projectSummary.evidence.missing_items === 0"
+                  label="Все позиции подтверждены"
+                  color="success"
+                  size="x-small"
+                />
+                <StatusChip
+                  :label="`Подтверждено: ${projectSummary.evidence.confirmed_items} / ${projectSummary.evidence.total_items}`"
+                  color="success"
+                  size="x-small"
+                />
+                <StatusChip
+                  :label="`Покрытие: ${formatPercent(projectSummary.evidence.coverage_pct)}`"
+                  color="primary"
+                  size="x-small"
+                />
+                <StatusChip
+                  v-if="projectSummary.evidence.missing_items > 0"
+                  :label="`Без подтверждения: ${projectSummary.evidence.missing_items}`"
+                  color="warning"
+                  size="x-small"
+                />
+              </div>
+              <div class="project-summary-period">
+                Период фиксации цен: {{ formatDateRange(projectSummary.evidence.period_from, projectSummary.evidence.period_to) }}
+              </div>
+              <div
+                v-if="projectSummary.evidence.missing.length > 0"
+                class="project-summary-missing-list"
+              >
+                <div
+                  v-for="item in projectSummary.evidence.missing"
+                  :key="`${item.name}-${item.section}-${item.reason}`"
+                  class="project-summary-missing-item"
+                >
+                  <div>
+                    <strong>{{ item.name }}</strong>
+                    <span>{{ item.section }} · {{ formatCurrency(item.price) }}{{ item.unit ? `/${item.unit}` : '' }}</span>
+                  </div>
+                  <span>{{ item.reason || 'нет связанного подтверждения цены' }}</span>
+                </div>
+              </div>
+            </section>
+          </template>
+        </v-card-text>
+
+        <v-card-actions class="project-summary-actions">
+          <v-spacer />
+          <v-btn variant="text" @click="summaryDialog = false">Закрыть</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :disabled="!summarySourceProject"
+            @click="openSummaryProject"
+          >
+            Открыть проект
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Delete confirmation dialog ───────────────────────────────────────── -->
       <v-dialog v-model="deleteConfirmDialog" max-width="480">
       <v-card class="projects-confirm-dialog">
@@ -239,6 +464,12 @@ const loading = ref(false)
 const creating = ref(false)
 const deleting = ref(false)
 const navigatingId = ref<number | null>(null)
+const summaryDialog = ref(false)
+const summaryLoading = ref(false)
+const summaryError = ref('')
+const summarySourceProject = ref<any | null>(null)
+const projectSummary = ref<ProjectSummary | null>(null)
+const summaryPdfLoading = ref<string | null>(null)
 const deleteConfirmDialog = ref(false)
 const deleteConfirmText = ref('')
 const deleteTarget = ref<any | null>(null)
@@ -284,8 +515,52 @@ const headers = [
   { title: 'Ревизия',  key: 'latest_revision_at',     width: '108px' },
   { title: 'Изменено', key: 'updated_at',             width: '108px' },
   { title: 'Эксперт',  key: 'expert_name',           minWidth: '140px' },
-  { title: '',         key: 'actions', sortable: false, width: '76px', align: 'end' as const },
+  { title: '',         key: 'actions', sortable: false, width: '112px', align: 'end' as const },
 ]
+
+interface ProjectSummary {
+  project: {
+    id: number
+    public_id?: string | null
+    number?: string | null
+    address?: string | null
+    expert_name?: string | null
+    updated_at?: string | null
+    status?: string | null
+  }
+  latest_revision: {
+    id: string
+    number: number
+    status?: string | null
+    created_at?: string | null
+    author?: string | null
+    pdf_url?: string | null
+    price_justification_pdf_url?: string | null
+  } | null
+  totals: {
+    grand_total: number | null
+    materials_cost: number | null
+    operations_cost: number | null
+    fittings_cost: number | null
+    labor_works_cost: number | null
+    expenses_cost: number | null
+  }
+  evidence: {
+    total_items: number
+    confirmed_items: number
+    missing_items: number
+    coverage_pct: number | null
+    period_from?: string | null
+    period_to?: string | null
+    missing: Array<{
+      name: string
+      section: string
+      price: number | null
+      unit?: string | null
+      reason?: string | null
+    }>
+  }
+}
 
 // ── Status filter options ───────────────────────────────────────────────────
 const statusFilterOptions = [
@@ -341,6 +616,32 @@ const formatDateOnly = (value?: string | null) => {
   return `${d}.${m}.${date.getFullYear()}`
 }
 
+const formatCurrency = (value?: number | string | null) => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '—'
+  return `${new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num)} ₽`
+}
+
+const formatPercent = (value?: number | string | null) => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '—'
+  return `${new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: Number.isInteger(num) ? 0 : 1,
+    maximumFractionDigits: 1,
+  }).format(num)} %`
+}
+
+const formatDateRange = (from?: string | null, to?: string | null) => {
+  const left = formatDateOnly(from)
+  const right = formatDateOnly(to)
+  if (left === '—' && right === '—') return '—'
+  if (left === right) return left
+  return `${left} — ${right}`
+}
+
 const getRevisionStatusLabel = (status?: string | null) => {
   if (!status) return 'Нет'
   if (status === 'published') return 'Опубликована'
@@ -358,6 +659,12 @@ const getRevisionStatusColor = (status?: string | null) => {
 
 const getProjectRowActions = (item: any): AppRowAction[] => [
   {
+    key: 'summary',
+    label: 'Сводка проекта',
+    icon: 'mdi-information-outline',
+    disabled: Boolean(navigatingId.value),
+  },
+  {
     key: 'edit',
     label: 'Изменить проект',
     icon: 'mdi-pencil',
@@ -373,6 +680,11 @@ const getProjectRowActions = (item: any): AppRowAction[] => [
 ]
 
 const handleProjectRowAction = (item: any, action: string) => {
+  if (action === 'summary') {
+    openProjectSummary(item)
+    return
+  }
+
   if (action === 'edit') {
     editProject(item)
     return
@@ -427,6 +739,120 @@ const showQueuedNotification = () => {
 }
 
 const projectEditorUrl = (item: any) => `/projects/${item.public_id || item.id}/edit`
+
+const summaryProjectLine = computed(() => {
+  const project = projectSummary.value?.project || summarySourceProject.value
+  return `Проект №${project?.number || '—'}`
+})
+
+const summaryAddressLine = computed(() => (
+  projectSummary.value?.project?.address || summarySourceProject.value?.address || ''
+))
+
+const priceEvidenceReadyLabel = computed(() => {
+  const revision = projectSummary.value?.latest_revision
+  if (!revision?.price_justification_pdf_url) return 'PDF не сформирован'
+  return `Версия ${revision.number} · покрытие ${formatPercent(projectSummary.value?.evidence.coverage_pct)}`
+})
+
+const isInternalApiPdfUrl = (url: string): boolean => {
+  if (url.startsWith('/api/')) return true
+
+  try {
+    const parsed = new URL(url, window.location.origin)
+    return parsed.origin === window.location.origin && parsed.pathname.startsWith('/api/')
+  } catch {
+    return false
+  }
+}
+
+const toApiRequestUrl = (url: string): string => {
+  if (url.startsWith('/api/')) return url
+  const parsed = new URL(url, window.location.origin)
+  return `${parsed.pathname}${parsed.search}`
+}
+
+const openProjectSummary = async (item: any) => {
+  summarySourceProject.value = item
+  projectSummary.value = null
+  summaryError.value = ''
+  summaryDialog.value = true
+  summaryLoading.value = true
+
+  try {
+    const res = await api.get<ProjectSummary>(`/api/projects/${item.public_id || item.id}/summary`)
+    projectSummary.value = res.data
+  } catch (error: any) {
+    console.error('Ошибка загрузки сводки проекта:', error)
+    summaryError.value = error.response?.data?.message || 'Не удалось загрузить сводку проекта'
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+const openSummaryProject = () => {
+  const project = summarySourceProject.value || projectSummary.value?.project
+  if (!project) return
+  summaryDialog.value = false
+  goToEditor(project)
+}
+
+const openSummaryPdf = async (url?: string | null, loadingKey = 'open') => {
+  if (!url || summaryPdfLoading.value) return
+
+  if (!isInternalApiPdfUrl(url)) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return
+  }
+
+  summaryPdfLoading.value = loadingKey
+  const pdfWindow = window.open('about:blank', '_blank')
+  try {
+    const res = await api.get(toApiRequestUrl(url), { responseType: 'blob' })
+    const objectUrl = URL.createObjectURL(res.data)
+    if (pdfWindow) {
+      pdfWindow.location.href = objectUrl
+    } else {
+      window.open(objectUrl, '_blank', 'noopener,noreferrer')
+    }
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+  } catch (error: any) {
+    pdfWindow?.close()
+    console.error('Ошибка открытия PDF:', error)
+    showNotification(`Не удалось открыть PDF: ${error.response?.data?.message || error.message}`, 'warning')
+  } finally {
+    summaryPdfLoading.value = null
+  }
+}
+
+const downloadSummaryPdf = async (url?: string | null, filename = 'document.pdf', loadingKey = 'download') => {
+  if (!url || summaryPdfLoading.value) return
+
+  if (!isInternalApiPdfUrl(url)) {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename.replace(/[\\/:*?"<>|]/g, '_')
+    a.rel = 'noopener noreferrer'
+    a.click()
+    return
+  }
+
+  summaryPdfLoading.value = loadingKey
+  try {
+    const res = await api.get(toApiRequestUrl(url), { responseType: 'blob' })
+    const objectUrl = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = filename.replace(/[\\/:*?"<>|]/g, '_')
+    a.click()
+    URL.revokeObjectURL(objectUrl)
+  } catch (error: any) {
+    console.error('Ошибка скачивания PDF:', error)
+    showNotification(`Не удалось скачать PDF: ${error.response?.data?.message || error.message}`, 'warning')
+  } finally {
+    summaryPdfLoading.value = null
+  }
+}
 
 // ── Actions ─────────────────────────────────────────────────────────────────
 const createProject = async () => {
@@ -599,10 +1025,224 @@ onMounted(async () => {
   color: rgb(var(--v-theme-on-surface));
 }
 
+.project-summary-dialog {
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background: rgb(var(--v-theme-surface));
+}
+
+.project-summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.42);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.94);
+}
+
+.project-summary-title {
+  padding: 0 !important;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.project-summary-subtitle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.project-summary-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 18px !important;
+}
+
+.project-summary-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 180px;
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
+}
+
+.project-summary-section {
+  padding: 12px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.38);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.92);
+}
+
+.project-summary-section-title {
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.project-summary-identity {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.project-summary-field,
+.project-summary-money-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.project-summary-field :deep(.v-chip) {
+  align-self: flex-start;
+  width: auto;
+  max-width: max-content;
+}
+
+.project-summary-field--wide {
+  grid-column: span 2;
+}
+
+.project-summary-field span,
+.project-summary-money-card span,
+.project-summary-doc-card span,
+.project-summary-period,
+.project-summary-missing-item span {
+  color: rgba(var(--v-theme-on-surface-variant), 0.9);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.project-summary-field strong,
+.project-summary-money-card strong,
+.project-summary-doc-card strong,
+.project-summary-missing-item strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.project-summary-money-grid,
+.project-summary-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.project-summary-money-card,
+.project-summary-doc-card {
+  padding: 10px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: rgba(var(--v-theme-surface-container-low), 0.72);
+}
+
+.project-summary-money-card--primary {
+  background: rgba(var(--v-theme-primary-container), 0.72);
+}
+
+.project-summary-money-card--primary strong {
+  color: rgb(var(--v-theme-on-primary-container));
+  font-size: 1.05rem;
+}
+
+.project-summary-doc-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.project-summary-doc-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.project-summary-doc-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.project-summary-doc-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.project-summary-empty {
+  color: rgba(var(--v-theme-on-surface-variant), 0.92);
+  font-size: 0.875rem;
+}
+
+.project-summary-evidence-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.project-summary-missing-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.project-summary-missing-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: rgba(var(--v-theme-warning), 0.08);
+}
+
+.project-summary-missing-item > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.project-summary-actions {
+  padding: 10px 18px 14px !important;
+  border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.38);
+  background: rgba(var(--v-theme-surface-container-low), 0.82);
+}
+
 @media (max-width: 600px) {
   .projects-status-filter {
     flex-basis: 100%;
     max-width: none;
+  }
+
+  .project-summary-identity,
+  .project-summary-money-grid,
+  .project-summary-doc-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .project-summary-field--wide {
+    grid-column: auto;
+  }
+
+  .project-summary-doc-card,
+  .project-summary-missing-item {
+    flex-direction: column;
+  }
+
+  .project-summary-doc-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 </style>

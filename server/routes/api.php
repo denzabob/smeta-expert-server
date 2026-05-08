@@ -321,6 +321,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('sources/{id}/assets/{assetId}', [\App\Http\Controllers\Api\Pricing\Labor\LaborEvidenceAssetController::class, 'destroy']);
     });
 
+    Route::get('projects/{project}/summary', [ProjectController::class, 'summary']);
     Route::apiResource('projects', ProjectController::class);
     Route::get('projects/{project}/labor-sources', [\App\Http\Controllers\Api\ProjectLaborEvidenceSourceController::class, 'index']);
     Route::post('projects/{project}/labor-sources/attach', [\App\Http\Controllers\Api\ProjectLaborEvidenceSourceController::class, 'attach']);
