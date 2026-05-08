@@ -1724,6 +1724,8 @@
                   <th>ПОЗИЦИЯ</th>
                   <th style="width:120px">РАЗДЕЛ</th>
                   <th style="width:130px">ЦЕНА В СМЕТЕ</th>
+                  <th style="width:150px">ДАТА ПОДТВЕРЖДЕНИЯ</th>
+                  <th style="width:110px">ИСТОЧНИК</th>
                   <th>ПРИЧИНА</th>
                   <th class="text-right">ДЕЙСТВИЯ</th>
                 </tr>
@@ -1739,6 +1741,19 @@
                     <span v-else class="text-medium-emphasis">—</span>
                   </td>
                   <td>{{ formatMoney(getSuggestedManualClosePrice(runItem)) }}</td>
+                  <td>{{ formatEvidenceCoverageDate(runItem) }}</td>
+                  <td>
+                    <v-btn
+                      v-if="getEvidenceCoverageSourceUrl(runItem)"
+                      size="x-small"
+                      variant="text"
+                      prepend-icon="mdi-open-in-new"
+                      @click="openPdfLink(getEvidenceCoverageSourceUrl(runItem)!)"
+                    >
+                      Открыть
+                    </v-btn>
+                    <span v-else class="text-medium-emphasis">—</span>
+                  </td>
                   <td>{{ getMissingEvidenceReason(runItem) }}</td>
                   <td class="text-right">
                     <v-btn
@@ -1750,6 +1765,15 @@
                       @click="openMissingEvidenceAction(runItem)"
                     >
                       Добавить доказательство
+                    </v-btn>
+                    <v-btn
+                      v-if="getEvidenceCoverageMaterialId(runItem)"
+                      size="small"
+                      variant="text"
+                      prepend-icon="mdi-database-search-outline"
+                      @click="openMaterialCatalogFromRunItem(runItem)"
+                    >
+                      Открыть материал
                     </v-btn>
                   </td>
                 </tr>
@@ -4792,12 +4816,16 @@ const canFinalizeRevisionRun = computed(() => {
   if (!activeRevisionRun.value) return false
   return activeRevisionRun.value.status === 'READY' && !estimateHardInvalid.value
 })
+const isRevisionRunItemEvidenceConfirmed = (item: RevisionRunItem): boolean => {
+  if (item.evidence_coverage) return item.evidence_coverage.confirmed
+  return item.status === 'OK'
+}
 const missingEvidenceItems = computed(() =>
-  revisionRunItems.value.filter((item) => item.status !== 'OK')
+  revisionRunItems.value.filter((item) => !isRevisionRunItemEvidenceConfirmed(item))
 )
 const priceEvidenceStatus = computed(() => {
   const total = activeRevisionRun.value?.total_items || revisionRunItems.value.length || 0
-  const confirmed = activeRevisionRun.value?.ok_items || revisionRunItems.value.filter((item) => item.status === 'OK').length
+  const confirmed = revisionRunItems.value.filter(isRevisionRunItemEvidenceConfirmed).length || activeRevisionRun.value?.ok_items || 0
   const missing = missingEvidenceItems.value.length || Math.max(total - confirmed, 0)
 
   return { total, confirmed, missing }
@@ -7785,7 +7813,31 @@ const openMissingEvidenceAction = (item: RevisionRunItem) => {
   openManualCloseDialog(item)
 }
 
+const evidenceReasonLabels: Record<string, string> = {
+  no_source_url: 'нет ссылки на источник цены',
+  no_screenshot_or_document: 'нет скриншота или документа',
+  outdated_price: 'подтверждение цены устарело',
+  outdated_screenshot: 'скриншот устарел',
+  price_mismatch: 'цена в подтверждении отличается от цены в смете',
+  no_linked_material: 'позиция не связана с материалом каталога',
+  no_evidence_record: 'нет связанного подтверждения цены',
+  parse_failed: 'ошибка обновления цены',
+  source_unavailable: 'источник цены недоступен',
+}
+
+const getEvidenceCoverageReasons = (item: RevisionRunItem): string[] => {
+  const reasons = item.evidence_coverage?.reasons
+  return Array.isArray(reasons) ? reasons.filter(Boolean) : []
+}
+
 const getMissingEvidenceReason = (item: RevisionRunItem): string => {
+  const coverageReasons = getEvidenceCoverageReasons(item)
+  if (coverageReasons.length > 0) {
+    return coverageReasons
+      .map((reason) => evidenceReasonLabels[reason] || reason)
+      .join('; ')
+  }
+
   if (!item.source_url && !isFacadeRevisionRunItem(item)) {
     return 'нет ссылки на источник'
   }
@@ -7812,6 +7864,32 @@ const getMissingEvidenceReason = (item: RevisionRunItem): string => {
     default:
       return item.message || 'нет связанного доказательства'
   }
+}
+
+const getEvidenceCoverageSourceUrl = (item: RevisionRunItem): string | null => (
+  item.evidence_coverage?.source_url || item.source_url || null
+)
+
+const getEvidenceCoverageMaterialId = (item: RevisionRunItem): number | null => {
+  const rawId = item.evidence_coverage?.material_id
+    || item.material_id
+    || (item.projectFitting as any)?.material_id
+    || null
+  const id = Number(rawId)
+
+  return Number.isFinite(id) && id > 0 ? id : null
+}
+
+const formatEvidenceCoverageDate = (item: RevisionRunItem): string => (
+  item.evidence_coverage?.evidence_date
+    ? formatRevisionDate(item.evidence_coverage.evidence_date)
+    : '—'
+)
+
+const openMaterialCatalogFromRunItem = (item: RevisionRunItem) => {
+  const materialId = getEvidenceCoverageMaterialId(item)
+  if (!materialId) return
+  window.open(getMaterialCatalogLink(materialId), '_blank', 'noopener,noreferrer')
 }
 
 const focusManualScreenshotDropzone = () => {

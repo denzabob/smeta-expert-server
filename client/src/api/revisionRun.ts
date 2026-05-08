@@ -42,6 +42,18 @@ export interface EvidenceArtifactDetail {
   assets: EvidenceAssetDetail[]
 }
 
+export interface EvidenceCoverage {
+  confirmed: boolean
+  reasons: string[]
+  source_url: string | null
+  material_id: number | null
+  price_history_id?: number | null
+  evidence_date: string | null
+  has_screenshot: boolean
+  has_document: boolean
+  is_outdated: boolean
+}
+
 export interface RevisionRunItem {
   id: number
   revision_run_id: number
@@ -60,6 +72,7 @@ export interface RevisionRunItem {
   cost_driver_type?: CostDriverType | null
   resolved_capture_source?: CaptureSourceType | null
   has_evidence?: boolean
+  evidence_coverage?: EvidenceCoverage
   evidence_artifacts?: EvidenceArtifactDetail[]
 }
 

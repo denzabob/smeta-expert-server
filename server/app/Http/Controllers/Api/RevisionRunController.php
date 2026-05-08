@@ -11,6 +11,7 @@ use App\Models\EvidenceArtifact;
 use App\Models\EvidenceAsset;
 use App\Models\FinishedProductPriceEvidenceAsset;
 use App\Models\FinishedProductPriceSource;
+use App\Models\GenericEvidenceAsset;
 use App\Models\MaterialPriceHistory;
 use App\Models\Project;
 use App\Models\ProjectPosition;
@@ -19,6 +20,7 @@ use App\Models\RevisionRunItem;
 use App\Service\ReportService;
 use App\Services\FinishedProductFacadeRevisionRowAssembler;
 use App\Services\FinishedProductPositionSnapshotReader;
+use App\Services\MaterialConfirmationService;
 use App\Services\SnapshotService;
 use App\Services\UrlNormalizer;
 use Illuminate\Http\JsonResponse;
@@ -34,6 +36,7 @@ class RevisionRunController extends Controller
         private ReportService $reportService,
         private FinishedProductPositionSnapshotReader $finishedProductSnapshotReader,
         private FinishedProductFacadeRevisionRowAssembler $finishedProductFacadeRevisionRowAssembler,
+        private MaterialConfirmationService $materialConfirmationService,
     ) {}
 
     public function start(Project $project): JsonResponse
@@ -130,24 +133,23 @@ class RevisionRunController extends Controller
             ->where('project_id', $project->id)
             ->findOrFail($runId);
 
-        if (auth()->user()?->can('update', $project) && $this->syncFacadeEvidenceItems($run)) {
+        if (auth()->user()?->can('update', $project) && $this->syncEvidenceItems($run)) {
             $run = RevisionRun::with($relations)
                 ->where('project_id', $project->id)
                 ->findOrFail($runId);
         }
 
-        $run->items->each(function ($item) {
+        $freshnessDays = $this->resolveFreshnessDays($project);
+        $run->items->each(function ($item) use ($freshnessDays) {
             $artifact = $item->evidenceArtifacts->first();
-            $hasFacadeEvidence = $item->cost_driver_type === CostDriverType::FACADE
-                && $item->position
-                && $this->hasFacadePriceEvidence($item->position, $item->material_id);
+            $coverage = $this->resolveEvidenceCoverage($item, $freshnessDays);
 
             $item->resolved_capture_source = $artifact?->capture_source;
-            if (!$item->resolved_capture_source && $hasFacadeEvidence) {
+            if (!$item->resolved_capture_source && $coverage['confirmed']) {
                 $item->resolved_capture_source = CaptureSource::MANUAL;
             }
-            $item->has_evidence = $item->evidenceArtifacts->flatMap->assets->isNotEmpty()
-                || $hasFacadeEvidence;
+            $item->has_evidence = $coverage['has_screenshot'] || $coverage['has_document'];
+            $item->evidence_coverage = $coverage;
         });
 
         return response()->json([
@@ -291,7 +293,7 @@ class RevisionRunController extends Controller
             ->where('project_id', $project->id)
             ->findOrFail($runId);
 
-        if ($this->syncFacadeEvidenceItems($run)) {
+        if ($this->syncEvidenceItems($run)) {
             $run = RevisionRun::with(['items.position.finishedProductSpecification', 'items.position.facadeMaterial', 'items.priceHistory', 'items.material', 'items.projectFitting', 'items.evidenceArtifacts.assets', 'items.evidenceSubject'])
                 ->where('project_id', $project->id)
                 ->findOrFail($runId);
@@ -536,29 +538,45 @@ class RevisionRunController extends Controller
         ]);
     }
 
-    private function syncFacadeEvidenceItems(RevisionRun $run): bool
+    private function syncEvidenceItems(RevisionRun $run): bool
     {
         if ($run->status === RevisionRun::STATUS_FINALIZED) {
             return false;
         }
 
-        $run->loadMissing(['items.position.finishedProductSpecification', 'items.position.facadeMaterial']);
+        $run->loadMissing([
+            'project',
+            'items.position.finishedProductSpecification',
+            'items.position.facadeMaterial',
+            'items.position.material',
+            'items.position.edgeMaterial',
+            'items.projectFitting.material',
+            'items.material',
+            'items.evidenceArtifacts.assets',
+        ]);
+        $freshnessDays = $this->resolveFreshnessDays($run->project);
         $changed = false;
 
         foreach ($run->items as $item) {
-            if ($item->cost_driver_type !== CostDriverType::FACADE || $item->status === RevisionRunItem::STATUS_OK || !$item->position) {
+            $coverage = $this->resolveEvidenceCoverage($item, $freshnessDays);
+            if ($coverage['confirmed'] && $item->status !== RevisionRunItem::STATUS_OK) {
+                $item->update([
+                    'status' => RevisionRunItem::STATUS_OK,
+                    'message' => 'Подтверждено существующими доказательствами цены',
+                    'source_url' => $coverage['source_url'] ?: $item->source_url,
+                    'price_history_id' => $coverage['price_history_id'] ?: $item->price_history_id,
+                ]);
+                $changed = true;
                 continue;
             }
 
-            if (!$this->hasFacadePriceEvidence($item->position, $item->material_id)) {
-                continue;
+            if (!$coverage['confirmed'] && $item->status === RevisionRunItem::STATUS_OK) {
+                $item->update([
+                    'status' => RevisionRunItem::STATUS_NEEDS_MANUAL,
+                    'message' => 'Требуется обновить подтверждение цены',
+                ]);
+                $changed = true;
             }
-
-            $item->update([
-                'status' => RevisionRunItem::STATUS_OK,
-                'message' => 'Подтверждено доказательствами фасада',
-            ]);
-            $changed = true;
         }
 
         if ($changed) {
@@ -568,7 +586,207 @@ class RevisionRunController extends Controller
         return $changed;
     }
 
-    private function hasFacadePriceEvidence(ProjectPosition $position, ?int $materialId = null): bool
+    private function resolveEvidenceCoverage(RevisionRunItem $item, int $freshnessDays): array
+    {
+        if (in_array($item->cost_driver_type, CostDriverType::internalOnlyTypes(), true)) {
+            $artifact = $item->evidenceArtifacts->first();
+
+            return [
+                'confirmed' => true,
+                'reasons' => [],
+                'source_url' => null,
+                'material_id' => null,
+                'price_history_id' => null,
+                'evidence_date' => $artifact?->captured_at?->toIso8601String(),
+                'has_screenshot' => false,
+                'has_document' => false,
+                'is_outdated' => false,
+            ];
+        }
+
+        if ($item->cost_driver_type === CostDriverType::FACADE && $item->position) {
+            return $this->resolveFacadeCoverage($item, $freshnessDays);
+        }
+
+        return $this->resolveMaterialCoverage($item, $freshnessDays);
+    }
+
+    private function resolveMaterialCoverage(RevisionRunItem $item, int $freshnessDays): array
+    {
+        $material = $item->material
+            ?: $item->projectFitting?->material
+            ?: match ($item->cost_driver_type) {
+                CostDriverType::PLATE => $item->position?->material,
+                CostDriverType::EDGE => $item->position?->edgeMaterial,
+                CostDriverType::FACADE => $item->position?->facadeMaterial,
+                default => null,
+            };
+
+        if (!$material) {
+            return $this->coverageResult(false, ['no_linked_material'], $item->source_url);
+        }
+
+        $latest = MaterialPriceHistory::query()
+            ->where('material_id', $material->id)
+            ->orderByDesc('observed_at')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
+
+        $sourceUrl = $this->urlNormalizer->normalize($item->source_url ?: $material->source_url ?: $latest?->source_url);
+        $proof = $this->resolveMaterialProof($latest);
+        $evidenceDate = $latest?->observed_at ?? $latest?->created_at;
+        $isOutdated = $evidenceDate ? $evidenceDate->lt(now()->subDays($freshnessDays)) : true;
+        $reasons = [];
+
+        if (!$sourceUrl) {
+            $reasons[] = 'no_source_url';
+        }
+
+        if (!$latest) {
+            $reasons[] = 'no_evidence_record';
+        } elseif ($isOutdated) {
+            $reasons[] = 'outdated_price';
+        }
+
+        if (!$proof['has_screenshot'] && !$proof['has_document']) {
+            $reasons[] = 'no_screenshot_or_document';
+        }
+
+        if (in_array($material->last_parse_status, ['failed', 'blocked'], true)) {
+            $reasons[] = $material->last_parse_status === 'blocked'
+                ? 'source_unavailable'
+                : 'parse_failed';
+        }
+
+        $costComponent = $item->cost_driver_type ?: $this->costComponentForMaterialType($material->type);
+        if ($sourceUrl && $costComponent && $this->materialConfirmationService->isFresh($sourceUrl, $costComponent, $freshnessDays)) {
+            $freshRecord = $this->materialConfirmationService->getFreshRecord($sourceUrl, $costComponent, $freshnessDays);
+            $recordProof = $freshRecord ? $this->resolveEvidenceRecordProof($freshRecord->id) : ['has_screenshot' => false, 'has_document' => false];
+            $proof['has_screenshot'] = $proof['has_screenshot'] || $recordProof['has_screenshot'];
+            $proof['has_document'] = $proof['has_document'] || $recordProof['has_document'];
+            $evidenceDate = $freshRecord?->observed_at ?? $freshRecord?->created_at ?? $evidenceDate;
+            $isOutdated = false;
+            $reasons = array_values(array_diff($reasons, ['no_evidence_record', 'outdated_price', 'no_screenshot_or_document']));
+        }
+
+        $confirmed = $sourceUrl && ($proof['has_screenshot'] || $proof['has_document']) && !$isOutdated;
+
+        return $this->coverageResult(
+            $confirmed,
+            $confirmed ? [] : array_values(array_unique($reasons ?: ['no_evidence_record'])),
+            $sourceUrl,
+            (int) $material->id,
+            $latest?->id,
+            $evidenceDate?->toIso8601String(),
+            $proof['has_screenshot'],
+            $proof['has_document'],
+            $isOutdated,
+        );
+    }
+
+    private function resolveFacadeCoverage(RevisionRunItem $item, int $freshnessDays): array
+    {
+        if (!$item->position) {
+            return $this->coverageResult(false, ['no_linked_material'], $item->source_url);
+        }
+
+        $facade = $this->resolveFacadePriceEvidence($item->position, $item->material_id, $freshnessDays);
+
+        return $this->coverageResult(
+            $facade['confirmed'],
+            $facade['confirmed'] ? [] : $facade['reasons'],
+            $facade['source_url'],
+            $item->material_id ?: $item->position->facade_material_id,
+            null,
+            $facade['evidence_date'],
+            $facade['has_screenshot'],
+            $facade['has_document'],
+            $facade['is_outdated'],
+        );
+    }
+
+    private function coverageResult(
+        bool $confirmed,
+        array $reasons,
+        ?string $sourceUrl = null,
+        ?int $materialId = null,
+        ?int $priceHistoryId = null,
+        ?string $evidenceDate = null,
+        bool $hasScreenshot = false,
+        bool $hasDocument = false,
+        bool $isOutdated = false,
+    ): array {
+        return [
+            'confirmed' => $confirmed,
+            'reasons' => array_values(array_unique($reasons)),
+            'source_url' => $sourceUrl,
+            'material_id' => $materialId,
+            'price_history_id' => $priceHistoryId,
+            'evidence_date' => $evidenceDate,
+            'has_screenshot' => $hasScreenshot,
+            'has_document' => $hasDocument,
+            'is_outdated' => $isOutdated,
+        ];
+    }
+
+    private function resolveMaterialProof(?MaterialPriceHistory $history): array
+    {
+        if (!$history) {
+            return ['has_screenshot' => false, 'has_document' => false];
+        }
+
+        $hasScreenshot = !empty($history->screenshot_path) || !empty($history->snapshot_path);
+        $hasDocument = false;
+
+        if (!$hasScreenshot && $history->evidence_record_id) {
+            $recordProof = $this->resolveEvidenceRecordProof((int) $history->evidence_record_id);
+            $hasScreenshot = $recordProof['has_screenshot'];
+            $hasDocument = $recordProof['has_document'];
+        }
+
+        if ($history->evidence_artifact_id) {
+            $artifactProof = EvidenceAsset::query()
+                ->where('evidence_artifact_id', $history->evidence_artifact_id)
+                ->selectRaw("MAX(CASE WHEN asset_type = 'screenshot' THEN 1 ELSE 0 END) as has_screenshot")
+                ->selectRaw("MAX(CASE WHEN asset_type = 'document' THEN 1 ELSE 0 END) as has_document")
+                ->first();
+            $hasScreenshot = $hasScreenshot || (bool) ($artifactProof?->has_screenshot ?? false);
+            $hasDocument = $hasDocument || (bool) ($artifactProof?->has_document ?? false);
+        }
+
+        return ['has_screenshot' => $hasScreenshot, 'has_document' => $hasDocument];
+    }
+
+    private function resolveEvidenceRecordProof(int $recordId): array
+    {
+        $assets = GenericEvidenceAsset::query()
+            ->where('evidence_record_id', $recordId)
+            ->pluck('asset_type');
+
+        return [
+            'has_screenshot' => $assets->contains('screenshot'),
+            'has_document' => $assets->contains(fn ($type) => in_array($type, ['document', 'file'], true)),
+        ];
+    }
+
+    private function costComponentForMaterialType(?string $materialType): ?string
+    {
+        return match ($materialType) {
+            'plate' => CostDriverType::PLATE,
+            'edge' => CostDriverType::EDGE,
+            'facade' => CostDriverType::FACADE,
+            'hardware' => CostDriverType::FITTING,
+            default => null,
+        };
+    }
+
+    private function resolveFreshnessDays(Project $project): int
+    {
+        return (int) ($project->price_confirmation_freshness_days ?: MaterialConfirmationService::DEFAULT_FRESHNESS_DAYS);
+    }
+
+    private function resolveFacadePriceEvidence(ProjectPosition $position, ?int $materialId, int $freshnessDays): array
     {
         $specificationId = (int) ($position->finished_product_specification_id ?? 0);
         if ($specificationId <= 0 && $this->finishedProductSnapshotReader->supports($position)) {
@@ -577,31 +795,89 @@ class RevisionRunController extends Controller
         }
 
         $query = FinishedProductPriceSource::query()
+            ->with(['evidenceAssets' => function ($assets) {
+                $assets->orderByDesc('captured_at')->orderByDesc('id');
+            }])
             ->whereNotIn('status', [
                 FinishedProductPriceSource::STATUS_INVALID,
                 FinishedProductPriceSource::STATUS_SUPERSEDED,
-            ])
-            ->whereHas('evidenceAssets', function ($assets) {
-                $assets->whereIn('asset_type', [
-                    FinishedProductPriceEvidenceAsset::TYPE_SCREENSHOT,
-                    FinishedProductPriceEvidenceAsset::TYPE_IMAGE,
-                    FinishedProductPriceEvidenceAsset::TYPE_FILE,
-                    FinishedProductPriceEvidenceAsset::TYPE_LINK,
-                ])->where(function ($proof) {
-                    $proof->whereNotNull('file_path')
-                        ->orWhereNotNull('source_url');
-                });
-            });
+            ]);
 
         if ($specificationId > 0) {
             $query->where('finished_product_specification_id', $specificationId);
         } elseif ($materialId || $position->facade_material_id) {
             $query->where('finished_product_material_id', $materialId ?: $position->facade_material_id);
         } else {
-            return false;
+            return [
+                'confirmed' => false,
+                'reasons' => ['no_linked_material'],
+                'source_url' => null,
+                'evidence_date' => null,
+                'has_screenshot' => false,
+                'has_document' => false,
+                'is_outdated' => false,
+            ];
         }
 
-        return $query->exists();
+        $source = $query->orderByDesc('effective_date')
+            ->orderByDesc('captured_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$source) {
+            return [
+                'confirmed' => false,
+                'reasons' => ['no_evidence_record'],
+                'source_url' => null,
+                'evidence_date' => null,
+                'has_screenshot' => false,
+                'has_document' => false,
+                'is_outdated' => false,
+            ];
+        }
+
+        $asset = $source->evidenceAssets
+            ->first(fn (FinishedProductPriceEvidenceAsset $candidate) => in_array($candidate->asset_type, [
+                FinishedProductPriceEvidenceAsset::TYPE_SCREENSHOT,
+                FinishedProductPriceEvidenceAsset::TYPE_IMAGE,
+                FinishedProductPriceEvidenceAsset::TYPE_FILE,
+                FinishedProductPriceEvidenceAsset::TYPE_LINK,
+            ], true) && ($candidate->file_path || $candidate->source_url));
+        $assetType = $asset?->asset_type;
+        $hasScreenshot = in_array($assetType, [
+            FinishedProductPriceEvidenceAsset::TYPE_SCREENSHOT,
+            FinishedProductPriceEvidenceAsset::TYPE_IMAGE,
+        ], true);
+        $hasDocument = in_array($assetType, [
+            FinishedProductPriceEvidenceAsset::TYPE_FILE,
+            FinishedProductPriceEvidenceAsset::TYPE_LINK,
+        ], true);
+        $evidenceDate = $asset?->captured_at ?? $source->captured_at ?? $source->effective_date ?? $source->created_at;
+        $isOutdated = $evidenceDate ? $evidenceDate->lt(now()->subDays($freshnessDays)) : true;
+        $sourceUrl = $this->urlNormalizer->normalize($asset?->source_url ?: data_get($source->metadata, 'source_url'));
+        $reasons = [];
+
+        if (!$sourceUrl && !$asset?->file_path) {
+            $reasons[] = 'no_source_url';
+        }
+
+        if (!$hasScreenshot && !$hasDocument) {
+            $reasons[] = 'no_screenshot_or_document';
+        }
+
+        if ($isOutdated) {
+            $reasons[] = $hasScreenshot ? 'outdated_screenshot' : 'outdated_price';
+        }
+
+        return [
+            'confirmed' => ($hasScreenshot || $hasDocument) && !$isOutdated,
+            'reasons' => array_values(array_unique($reasons)),
+            'source_url' => $sourceUrl,
+            'evidence_date' => $evidenceDate?->toIso8601String(),
+            'has_screenshot' => $hasScreenshot,
+            'has_document' => $hasDocument,
+            'is_outdated' => $isOutdated,
+        ];
     }
 
     private function collectReportItems(Project $project, array $report): array
