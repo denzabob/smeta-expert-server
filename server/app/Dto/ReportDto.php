@@ -18,6 +18,7 @@ class ReportDto
         public ?TotalsDto $totals = null,
         public array $profile_rate_justifications = [],  // Обоснования расчётов ставок по профилям
         public array $price_sources = [],                  // Источники ценовых данных (price_list_versions)
+        public array $report_settings = [],
     ) {
         // Инициализация пустых объектов по умолчанию
         if (!$this->materials) {
@@ -44,6 +45,7 @@ class ReportDto
             'totals' => $this->totals->toArray(),
             'profile_rate_justifications' => $this->profile_rate_justifications,
             'price_sources' => $this->price_sources,
+            'report_settings' => $this->report_settings,
         ];
     }
 }

@@ -1738,7 +1738,7 @@
                   <th style="width:150px">ДАТА ПОДТВЕРЖДЕНИЯ</th>
                   <th style="width:110px">ИСТОЧНИК</th>
                   <th>ПРИЧИНА</th>
-                  <th class="text-right">ДЕЙСТВИЯ</th>
+                  <th class="text-right" style="width:210px">ДЕЙСТВИЯ</th>
                 </tr>
               </thead>
               <tbody>
@@ -1767,25 +1767,40 @@
                   </td>
                   <td>{{ getMissingEvidenceReason(runItem) }}</td>
                   <td class="text-right">
-                    <v-btn
-                      size="small"
-                      color="primary"
-                      variant="tonal"
-                      prepend-icon="mdi-plus"
-                      :disabled="isProjectReadOnly"
-                      @click="openMissingEvidenceAction(runItem)"
-                    >
-                      Добавить доказательство
-                    </v-btn>
-                    <v-btn
-                      v-if="getEvidenceCoverageMaterialId(runItem)"
-                      size="small"
-                      variant="text"
-                      prepend-icon="mdi-database-search-outline"
-                      @click="openMaterialCatalogFromRunItem(runItem)"
-                    >
-                      Открыть материал
-                    </v-btn>
+                    <div class="missing-evidence-actions">
+                      <v-btn
+                        size="small"
+                        density="compact"
+                        color="primary"
+                        variant="tonal"
+                        prepend-icon="mdi-plus"
+                        class="missing-evidence-primary-action"
+                        :disabled="isProjectReadOnly"
+                        @click="openMissingEvidenceAction(runItem)"
+                      >
+                        Добавить доказательство
+                      </v-btn>
+                      <v-tooltip
+                        v-if="getEvidenceCoverageMaterialId(runItem)"
+                        text="Открыть материал"
+                        location="top"
+                      >
+                        <template v-slot:activator="{ props }">
+                          <v-btn
+                            v-bind="props"
+                            icon
+                            size="small"
+                            density="compact"
+                            variant="text"
+                            class="missing-evidence-icon-action"
+                            aria-label="Открыть материал"
+                            @click="openMaterialCatalogFromRunItem(runItem)"
+                          >
+                            <v-icon size="18">mdi-database-search-outline</v-icon>
+                          </v-btn>
+                        </template>
+                      </v-tooltip>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -10665,6 +10680,30 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 8px 12px;
   margin-top: 14px;
+}
+
+.missing-evidence-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: max-content;
+}
+
+.missing-evidence-primary-action {
+  min-width: 0;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.missing-evidence-primary-action :deep(.v-btn__content) {
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.missing-evidence-icon-action {
+  flex: 0 0 auto;
+  color: rgba(var(--v-theme-on-surface-variant), 0.88);
 }
 
 .document-last-generated {

@@ -147,7 +147,7 @@ export const adminNotificationsApi = {
   },
 
   /** POST /api/admin/notifications/{id}/send */
-  async send(id: number): Promise<{ message: string; status: string }> {
+  async send(id: number): Promise<{ message: string; status: AdminNotification['status']; notification?: AdminNotification }> {
     const { data } = await api.post(`/api/admin/notifications/${id}/send`)
     return data
   },

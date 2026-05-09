@@ -13,6 +13,7 @@ use App\Service\ReportService;
 use App\Services\Billing\BillingCodes;
 use App\Services\FinishedProductFacadeRevisionRowAssembler;
 use App\Services\FinishedProductFacadeSnapshotPresenter;
+use App\Services\Reports\ReportSettingsResolver;
 use App\Services\SnapshotService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use chillerlan\QRCode\QRCode;
@@ -30,6 +31,7 @@ class ProjectRevisionController extends Controller
         private ReportService $reportService,
         private FinishedProductFacadeRevisionRowAssembler $finishedProductFacadeRevisionRowAssembler,
         private FinishedProductFacadeSnapshotPresenter $finishedProductFacadeSnapshotPresenter,
+        private ReportSettingsResolver $reportSettingsResolver,
     ) {}
 
     /**
@@ -420,8 +422,11 @@ class ProjectRevisionController extends Controller
             ], 422);
         }
 
+        $reportSettings = $this->reportSettingsResolver->forSnapshot($snapshot, $project);
+
         $pdf = Pdf::loadView('reports.smeta', [
             'report' => $snapshot,
+            'reportSettings' => $reportSettings,
             'qrSvg' => $this->makeQrSvg($this->getPublicUrlForRevision($revision)),
             'revisionNumber' => $revision->number,
             'revisionDate' => $revision->created_at?->format('d.m.Y'),
@@ -486,6 +491,7 @@ class ProjectRevisionController extends Controller
         $snapshot = is_string($snapshotRaw)
             ? (json_decode($snapshotRaw, true) ?: [])
             : (is_array($snapshotRaw) ? $snapshotRaw : []);
+        $reportSettings = $this->reportSettingsResolver->forSnapshot($snapshot, $project);
 
         if (($snapshot['totals']['total_is_valid'] ?? true) === false) {
             return response()->json([
@@ -550,6 +556,7 @@ class ProjectRevisionController extends Controller
             'revision' => $revision,
             'rows' => $rows,
             'evidenceSummary' => $evidenceSummary,
+            'reportSettings' => $reportSettings,
         ])
             ->setPaper('a4')
             ->setOption('isHtml5ParserEnabled', true)

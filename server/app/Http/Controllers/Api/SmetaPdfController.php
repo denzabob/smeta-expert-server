@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\RevisionPublication;
 use App\Service\ReportService;
 use App\Services\Billing\BillingCodes;
+use App\Services\Reports\ReportSettingsResolver;
 use Barryvdh\DomPDF\Facade\Pdf;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
@@ -17,7 +18,8 @@ class SmetaPdfController extends Controller
     use RecordsUsageEvents;
 
     public function __construct(
-        private ReportService $reportService
+        private ReportService $reportService,
+        private ReportSettingsResolver $reportSettingsResolver,
     ) {}
 
     /**
@@ -39,6 +41,9 @@ class SmetaPdfController extends Controller
             // Get report using existing ReportService (no duplication!)
             $report = $this->reportService->buildReport($project);
             $reportArray = $report->toArray();
+            $reportSettings = is_array($reportArray['report_settings'] ?? null)
+                ? $this->reportSettingsResolver->normalize($reportArray['report_settings'])
+                : $this->reportSettingsResolver->forProject($project);
 
             if (($reportArray['totals']['total_is_valid'] ?? true) === false) {
                 return response()->json([
@@ -57,6 +62,7 @@ class SmetaPdfController extends Controller
 
             $pdf = Pdf::loadView('reports.smeta', [
                 'report' => $reportArray,
+                'reportSettings' => $reportSettings,
                 'qrSvg' => $qrSvg,
                 'revisionNumber' => $publication?->revision?->number,
                 'revisionDate' => $publication?->revision?->created_at?->format('d.m.Y') ?? date('d.m.Y'),

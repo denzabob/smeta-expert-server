@@ -667,6 +667,11 @@
     $verificationCode = !empty($documentToken) ? (string)$documentToken : null;
     $publicVerifyBaseUrl = rtrim((string) config('app.public_verify_base_url'), '/');
     $verificationUrl = $verificationCode ? ($publicVerifyBaseUrl . '/v/' . $verificationCode) : null;
+    $reportSettings = is_array($reportSettings ?? null)
+      ? $reportSettings
+      : (is_array($report['report_settings'] ?? null) ? $report['report_settings'] : []);
+    $label = static fn (string $path, string $default): string => (string) data_get($reportSettings, $path, $default);
+    $showMethodologySection = (bool) data_get($reportSettings, 'estimate_report.show_methodology_section', true);
   @endphp
 
   <div class="topbar-brand">
@@ -706,18 +711,18 @@
   <div class="title-area">
     <div class="left">
       <div class="appendix">
-        <span class="muted">Приложение № 1</span><br />
-        к экспертному заключению
+        <span class="muted">{{ $label('estimate_report.appendix_label', 'Приложение № 1') }}</span><br />
+        {{ $label('estimate_report.document_context_label', 'к экспертному заключению') }}
       </div>
     </div>
 
     <div class="center">
-      <h1>Расчёт стоимости материалов и работ</h1>
+      <h1>{{ $label('estimate_report.title', 'Расчёт стоимости материалов и работ') }}</h1>
     </div>
 
     <div class="right" style="text-align:right;">
       <div class="appendix">
-        <span class="muted">Дата расчёта:</span><br />
+        <span class="muted">{{ $label('estimate_report.calculation_date_label', 'Дата расчёта') }}:</span><br />
         <span class="bold nowrap">{{ $revisionDate ?? date('d.m.Y') }}</span>
       </div>
     </div>
@@ -728,18 +733,18 @@
     <div class="grid">
       <div class="col">
         <div class="info-row">
-          <span class="info-label">Проект (дело):</span>
+          <span class="info-label">{{ $label('common.project_label', 'Проект (дело)') }}:</span>
           <span class="info-value">{{ $report['project']['number'] ?? '—' }}</span>
         </div>
         <div class="info-row">
-          <span class="info-label">Объект:</span>
+          <span class="info-label">{{ $label('common.object_label', 'Объект') }}:</span>
           <span class="info-value">{{ $report['project']['address'] ?? '—' }}</span>
         </div>
       </div>
 
       <div class="col">
         <div class="info-row">
-          <span class="info-label">Эксперт:</span>
+          <span class="info-label">{{ $label('common.executor_label', 'Эксперт') }}:</span>
           <span class="info-value">{{ $report['project']['expert_name'] ?? '—' }}</span>
         </div>
       </div>
@@ -778,35 +783,35 @@
 
     <!-- === 1A. СВОДНАЯ ТАБЛИЦА ИТОГОВ === -->
     <div class="summary-wrap{{ $summaryCompact ? ' compact' : '' }}">
-      <div class="summary-title">Сводные итоги</div>
+      <div class="summary-title">{{ $label('estimate_report.summary_title', 'Сводные итоги') }}</div>
 
       <table class="summary-table table-nobreak">
         <tbody>
           <tr>
-            <td class="label">Материалы (плиты + кромки)</td>
+            <td class="label">{{ $label('estimate_report.materials_summary_label', 'Материалы (плиты + кромки)') }}</td>
             <td class="value">{{ number_format($report['totals']['materials_cost'] ?? 0, 2, ',', ' ') }}</td>
           </tr>
           <tr>
-            <td class="label">Операции</td>
+            <td class="label">{{ $label('estimate_report.operations_summary_label', 'Операции') }}</td>
             <td class="value">{{ number_format($report['totals']['operations_cost'] ?? 0, 2, ',', ' ') }}</td>
           </tr>
           <tr>
-            <td class="label">Фурнитура/комплектующие</td>
+            <td class="label">{{ $label('estimate_report.fittings_summary_label', 'Фурнитура/комплектующие') }}</td>
             <td class="value">{{ number_format($report['totals']['fittings_cost'] ?? 0, 2, ',', ' ') }}</td>
           </tr>
           <tr>
-            <td class="label">Монтажно-демонтажные работы</td>
+            <td class="label">{{ $label('estimate_report.labor_summary_label', 'Монтажно-демонтажные работы') }}</td>
             <td class="value">{{ number_format($report['totals']['labor_works_cost'] ?? 0, 2, ',', ' ') }}</td>
           </tr>
           <tr>
-            <td class="label">Накладные расходы</td>
+            <td class="label">{{ $label('estimate_report.expenses_summary_label', 'Накладные расходы') }}</td>
             <td class="value">{{ number_format($report['totals']['expenses_cost'] ?? 0, 2, ',', ' ') }}</td>
           </tr>
         </tbody>
       </table>
 
       <div class="summary-grand">
-        <div class="grand-label">ИТОГО</div>
+        <div class="grand-label">{{ $label('estimate_report.final_total_label', 'ИТОГО') }}</div>
         <div class="grand-value">
           @if($totalIsValid && ($report['totals']['grand_total'] ?? null) !== null)
             {{ number_format($report['totals']['grand_total'], 2, ',', ' ') }} руб.
@@ -835,7 +840,7 @@
     @endphp
 
     @if(!empty($report['positions']))
-      <div class="section-title keep-with-next">Перечень деталей, принятых к расчёту</div>
+      <div class="section-title keep-with-next">{{ $label('estimate_report.details_section_title', 'Перечень деталей, принятых к расчёту') }}</div>
       <table class="positions-table">
         <thead>
           <tr>
@@ -882,7 +887,7 @@
 
     <!-- === 3. ПЛИТЫ === -->
     @if(!empty($report['plates']))
-      <div class="section-title keep-with-next">Расчёт плитных материалов</div>
+      <div class="section-title keep-with-next">{{ $label('estimate_report.plate_materials_section_title', 'Расчёт плитных материалов') }}</div>
       <table>
         <thead>
           <tr>
@@ -930,7 +935,7 @@
 
     <!-- === 4. КРОМКИ === -->
     @if(!empty($report['edges']))
-      <div class="section-title keep-with-next">Расчёт кромочного материала</div>
+      <div class="section-title keep-with-next">{{ $label('estimate_report.edge_materials_section_title', 'Расчёт кромочного материала') }}</div>
       <table>
         <thead>
           <tr>
@@ -1584,7 +1589,7 @@
     <!-- === 8. ИТОГИ === -->
     <div class="totals-section{{ $totalsCompact ? ' compact' : '' }}">
       <div class="totals-head">
-        <div class="title">Итоговая стоимость</div>
+        <div class="title">{{ $label('estimate_report.final_cost_section_title', 'Итоговая стоимость') }}</div>
         <div class="meta">Валюта: руб.</div>
       </div>
 
@@ -1617,7 +1622,7 @@
       </div>
 
       <div class="total-final">
-        <div class="label">ИТОГО:</div>
+        <div class="label">{{ $label('estimate_report.final_total_label', 'ИТОГО') }}:</div>
         <div class="value">
           @if($totalIsValid && ($report['totals']['grand_total'] ?? null) !== null)
             {{ number_format($report['totals']['grand_total'], 2, ',', ' ') }} руб.
@@ -1629,13 +1634,13 @@
 
       @if($totalIsValid && !empty($report['totals']['grand_total']))
         <div class="total-words" style="margin-top: 4mm; font-size: 10pt; line-height: 1.6; color: #222;">
-          <strong>Прописью:</strong> {{ ucfirst(\App\Helpers\NumberToWords::convert($report['totals']['grand_total'])) }}.
+          <strong>{{ $label('estimate_report.amount_in_words_label', 'Прописью') }}:</strong> {{ ucfirst(\App\Helpers\NumberToWords::convert($report['totals']['grand_total'])) }}.
         </div>
       @endif
     </div>
 
     <!-- === PAGE BREAK BEFORE JUSTIFICATIONS (stabilize layout) === -->
-    @if(!empty($report['profile_rate_justifications']) && is_array($report['profile_rate_justifications']))
+    @if($showMethodologySection && !empty($report['profile_rate_justifications']) && is_array($report['profile_rate_justifications']))
       <div class="page-break"></div>
 
       @foreach($report['profile_rate_justifications'] as $justification)

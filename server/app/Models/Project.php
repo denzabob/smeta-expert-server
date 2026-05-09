@@ -31,6 +31,7 @@ class Project extends Model
         'facade_width_allowance_mm',
         'facade_height_allowance_mm',
         'text_blocks',
+        'report_settings',
         'waste_plate_description',
         'show_waste_plate_description',
         'waste_edge_description',
@@ -50,6 +51,7 @@ class Project extends Model
 
     protected $casts = [
         'text_blocks' => 'json',
+        'report_settings' => 'array',
         'waste_plate_description' => 'json',
         'waste_edge_description' => 'json',
         'waste_operations_description' => 'json',

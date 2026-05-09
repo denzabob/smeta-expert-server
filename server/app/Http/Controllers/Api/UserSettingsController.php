@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\UserSettings;
+use App\Services\Reports\ReportSettingsResolver;
 use App\Services\UserLaborSettingsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +13,7 @@ class UserSettingsController extends Controller
 {
     public function __construct(
         private readonly UserLaborSettingsResolver $laborSettingsResolver,
+        private readonly ReportSettingsResolver $reportSettingsResolver,
     ) {
     }
 
@@ -27,6 +28,9 @@ class UserSettingsController extends Controller
         $user = $request->user();
 
         $settings = $this->laborSettingsResolver->getOrCreateSettings($user);
+        $settings->report_settings = $this->reportSettingsResolver->normalize(
+            is_array($settings->report_settings ?? null) ? $settings->report_settings : null,
+        );
 
         return response()->json($settings);
     }
@@ -61,6 +65,7 @@ class UserSettingsController extends Controller
             'facade_height_allowance_mm' => ['integer', 'min:0', 'max:1000'],
             // Эти поля хранятся в JSON-колонках, но в API принимаем их как объекты/массивы.
             'text_blocks' => ['nullable', 'array'],
+            ...$this->reportSettingsResolver->validationRules(),
             'waste_plate_description' => ['nullable', 'array'],
             'waste_edge_description' => ['nullable', 'array'],
             'waste_operations_description' => ['nullable', 'array'],
@@ -78,8 +83,22 @@ class UserSettingsController extends Controller
 
         $settings = $this->laborSettingsResolver->getOrCreateSettings($user);
 
+        if (array_key_exists('report_settings', $validated)) {
+            $currentReportSettings = is_array($settings->report_settings ?? null)
+                ? $settings->report_settings
+                : [];
+            $validated['report_settings'] = $this->reportSettingsResolver->merge(
+                $currentReportSettings,
+                $validated['report_settings'],
+            );
+        }
+
         // Обновить только переданные поля
         $settings->update($validated);
+        $settings->refresh();
+        $settings->report_settings = $this->reportSettingsResolver->normalize(
+            is_array($settings->report_settings ?? null) ? $settings->report_settings : null,
+        );
 
         return response()->json($settings);
     }

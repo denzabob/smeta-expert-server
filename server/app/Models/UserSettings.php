@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Reports\ReportSettingsResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -65,6 +66,7 @@ class UserSettings extends Model
         'facade_width_allowance_mm',
         'facade_height_allowance_mm',
         'text_blocks',
+        'report_settings',
         'waste_plate_description',
         'waste_edge_description',
         'waste_operations_description',
@@ -103,6 +105,7 @@ class UserSettings extends Model
         'facade_width_allowance_mm' => 'integer',
         'facade_height_allowance_mm' => 'integer',
         'text_blocks' => 'array',
+        'report_settings' => 'array',
         'waste_plate_description' => 'array',
         'waste_edge_description' => 'array',
         'waste_operations_description' => 'array',
@@ -128,6 +131,7 @@ class UserSettings extends Model
             'facade_width_allowance_mm' => 0,
             'facade_height_allowance_mm' => 0,
             'text_blocks' => null,
+            'report_settings' => ReportSettingsResolver::defaults(),
             'waste_plate_description' => null,
             'waste_edge_description' => null,
             'waste_operations_description' => null,

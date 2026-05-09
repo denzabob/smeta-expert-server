@@ -20,6 +20,7 @@ use App\Models\ProjectPosition;
 use App\Services\LaborCostCalculationService;
 use App\Services\ProjectProfileRateResolver;
 use App\Services\RateModelCalculator;
+use App\Services\Reports\ReportSettingsResolver;
 use App\Services\Smeta\SmetaCalculator;
 
 class ReportService
@@ -27,9 +28,11 @@ class ReportService
     public function __construct(
         private SmetaCalculator $calculator,
         private ProjectProfileRateResolver $rateResolver,
+        private ?ReportSettingsResolver $reportSettingsResolver = null,
         private ?RateModelCalculator $rateModelCalculator = null,
     ) {
         $this->rateModelCalculator = $rateModelCalculator ?? new RateModelCalculator();
+        $this->reportSettingsResolver = $reportSettingsResolver ?? new ReportSettingsResolver();
     }
 
     /**
@@ -91,6 +94,9 @@ class ReportService
         // 9. Собрать источники ценовых данных (из project_price_list_versions)
         $priceSources = $this->buildPriceSources($project);
 
+        // 10. Зафиксировать пользовательские формулировки отчётов для PDF и revision snapshot.
+        $reportSettings = $this->reportSettingsResolver->forProject($project);
+
         return new ReportDto(
             project: $projectMeta,
             positions: $positionDtos,
@@ -105,6 +111,7 @@ class ReportService
             totals: $totals,
             profile_rate_justifications: $profileRateJustifications,
             price_sources: $priceSources,
+            report_settings: $reportSettings,
         );
     }
 

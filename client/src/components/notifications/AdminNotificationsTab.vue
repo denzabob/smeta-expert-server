@@ -317,7 +317,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import {
   adminNotificationsApi,
   type AdminNotification,
@@ -360,6 +360,44 @@ const headers = [
 ]
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
+const statusRefreshTimers = new Map<number, ReturnType<typeof setTimeout>>()
+
+function patchNotificationRow(id: number, patch: Partial<AdminNotification>) {
+  items.value = items.value.map((item) => (
+    item.id === id
+      ? { ...item, ...patch, stats: patch.stats ?? item.stats }
+      : item
+  ))
+}
+
+async function refreshNotificationRow(id: number) {
+  const fresh = await adminNotificationsApi.get(id)
+  patchNotificationRow(id, fresh)
+  return fresh
+}
+
+function scheduleStatusRefresh(id: number, attempt = 0) {
+  if (attempt >= 10) return
+
+  const existingTimer = statusRefreshTimers.get(id)
+  if (existingTimer) clearTimeout(existingTimer)
+
+  const timer = setTimeout(async () => {
+    statusRefreshTimers.delete(id)
+    try {
+      const fresh = await refreshNotificationRow(id)
+      if (fresh.status === 'sending') {
+        scheduleStatusRefresh(id, attempt + 1)
+      }
+    } catch (e) {
+      console.warn('Notification status refresh failed:', e)
+      if (attempt < 3) scheduleStatusRefresh(id, attempt + 1)
+    }
+  }, attempt === 0 ? 1000 : 1500)
+
+  statusRefreshTimers.set(id, timer)
+}
+
 function debouncedLoad() {
   if (searchTimeout) clearTimeout(searchTimeout)
   searchTimeout = setTimeout(() => { loadList() }, 400)
@@ -510,11 +548,14 @@ function confirmCancel(item: AdminNotification) {
 
 async function doSend() {
   if (!actionTarget.value) return
+  const targetId = actionTarget.value.id
   sending.value = true
   try {
-    await adminNotificationsApi.send(actionTarget.value.id)
+    const result = await adminNotificationsApi.send(targetId)
+    patchNotificationRow(targetId, result.notification ?? { status: result.status })
     sendDialog.value = false
-    loadList()
+    await loadList()
+    scheduleStatusRefresh(targetId)
   } finally {
     sending.value = false
   }
@@ -603,5 +644,11 @@ function formatDate(d: string) {
 
 onMounted(() => {
   loadList()
+})
+
+onBeforeUnmount(() => {
+  if (searchTimeout) clearTimeout(searchTimeout)
+  statusRefreshTimers.forEach((timer) => clearTimeout(timer))
+  statusRefreshTimers.clear()
 })
 </script>

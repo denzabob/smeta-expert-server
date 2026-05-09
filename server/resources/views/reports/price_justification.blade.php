@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <title>Обоснование цен</title>
   @php
+    $reportSettings = is_array($reportSettings ?? null) ? $reportSettings : [];
+    $label = static fn (string $path, string $default): string => (string) data_get($reportSettings, $path, $default);
+
     $isMeaningful = static function (mixed $value): bool {
       if ($value === null) return false;
       if (is_string($value)) {
@@ -135,13 +138,14 @@
     ];
 
     $reasonLabels = [
-      'no_source_url' => 'нет ссылки на источник цены',
-      'no_screenshot_or_document' => 'нет скриншота или документа',
-      'outdated_price' => 'подтверждение цены устарело',
+      'no_source_url' => $label('evidence_reasons.no_source_url', 'нет ссылки на источник цены'),
+      'no_screenshot_or_document' => $label('evidence_reasons.no_screenshot_or_document', 'нет скриншота или документа'),
+      'outdated_price' => $label('evidence_reasons.outdated_price_confirmation', 'подтверждение цены устарело'),
+      'outdated_price_confirmation' => $label('evidence_reasons.outdated_price_confirmation', 'подтверждение цены устарело'),
       'outdated_screenshot' => 'скриншот устарел',
       'price_mismatch' => 'цена в подтверждении отличается от цены в смете',
       'no_linked_material' => 'позиция не связана с материалом каталога',
-      'no_evidence_record' => 'нет связанного подтверждения цены',
+      'no_evidence_record' => $label('evidence_reasons.no_linked_evidence', 'нет связанного подтверждения цены'),
       'parse_failed' => 'ошибка обновления цены',
       'source_unavailable' => 'источник цены недоступен',
     ];
@@ -432,31 +436,31 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1 class="header-title">Документ подтверждения цен</h1>
+      <h1 class="header-title">{{ $label('price_evidence_report.title', 'Документ подтверждения цен') }}</h1>
       <div class="section-note" style="text-align:center;margin-bottom:2mm;">
-        Источники, скриншоты и файлы, подтверждающие стоимость позиций сметы.
+        {{ $label('price_evidence_report.subtitle', 'Источники, скриншоты и файлы, подтверждающие стоимость позиций сметы.') }}
       </div>
       <table class="header-meta">
         <tr>
-          <td class="left">Проект: <span class="bold">{{ $project->name ?? $project->number ?? '—' }}</span></td>
-          <td class="center">Версия отчета: <span class="bold">{{ $revision->number ?? '—' }}</span></td>
-          <td class="right">Дата формирования отчета: <span class="bold">{{ now()->format('d.m.Y') }}</span></td>
+          <td class="left">{{ $label('price_evidence_report.project_label', 'Проект') }}: <span class="bold">{{ $project->name ?? $project->number ?? '—' }}</span></td>
+          <td class="center">{{ $label('price_evidence_report.report_version_label', 'Версия отчета') }}: <span class="bold">{{ $revision->number ?? '—' }}</span></td>
+          <td class="right">{{ $label('price_evidence_report.report_created_at_label', 'Дата формирования отчета') }}: <span class="bold">{{ now()->format('d.m.Y') }}</span></td>
         </tr>
         <tr>
-          <td class="left">Всего позиций: {{ $evidenceSummary['total_items'] ?? count($rows) }}</td>
-          <td class="center">Подтверждено: {{ $evidenceSummary['with_evidence'] ?? count($rows) }}</td>
-          <td class="right">Без подтверждения: {{ $missingCount }}</td>
+          <td class="left">{{ $label('price_evidence_report.total_items_label', 'Всего позиций') }}: {{ $evidenceSummary['total_items'] ?? count($rows) }}</td>
+          <td class="center">{{ $label('price_evidence_report.confirmed_items_label', 'Подтверждено') }}: {{ $evidenceSummary['with_evidence'] ?? count($rows) }}</td>
+          <td class="right">{{ $label('price_evidence_report.missing_items_label', 'Без подтверждения') }}: {{ $missingCount }}</td>
         </tr>
         @if($periodText)
           <tr>
-            <td colspan="3" class="center">Период фиксации цен: {{ $periodText }}</td>
+            <td colspan="3" class="center">{{ $label('price_evidence_report.fixation_period_label', 'Период фиксации цен') }}: {{ $periodText }}</td>
           </tr>
         @endif
       </table>
     </div>
 
     @if($missingCount > 0)
-      <div class="section-title">Позиции без подтверждения цены</div>
+      <div class="section-title">{{ $label('price_evidence_report.missing_evidence_section_title', 'Позиции без подтверждения цены') }}</div>
       <table class="missing-table">
         <thead>
           <tr>
@@ -488,7 +492,7 @@
     @endif
 
     @if($internalRows->isNotEmpty())
-      <div class="section-title">Позиции, рассчитанные внутренним способом</div>
+      <div class="section-title">{{ $label('price_evidence_report.internal_calculation_section_title', 'Позиции, рассчитанные внутренним способом') }}</div>
       <table class="internal-table">
         <thead>
           <tr>
@@ -506,14 +510,14 @@
               <td>{{ $driverLabels[$row['cost_driver_type'] ?? ''] ?? 'Внутренний расчет' }}</td>
               <td>{{ $row['unit'] ?? (($row['cost_driver_type'] ?? null) === 'labor_work' ? 'н/ч' : '—') }}</td>
               <td>{{ $formatMoney($row['price_per_unit'] ?? null, $row['unit'] ?? null) ?? '—' }}</td>
-              <td>внутренний расчет; скриншот не требуется</td>
+              <td>{{ $label('price_evidence_report.internal_calculation_basis_text', 'внутренний расчет; скриншот не требуется') }}</td>
             </tr>
           @endforeach
         </tbody>
       </table>
     @endif
 
-    <div class="section-title">Материалы и ценовые подтверждения</div>
+    <div class="section-title">{{ $label('price_evidence_report.materials_evidence_section_title', 'Материалы и ценовые подтверждения') }}</div>
 
     <div class="cards">
     @forelse($evidenceRows as $row)

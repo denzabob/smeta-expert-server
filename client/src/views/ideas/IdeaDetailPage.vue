@@ -168,7 +168,8 @@ const isAdmin = computed(() => Number(authStore.user?.id) === 1)
 const canDelete = computed(() => {
   if (!idea.value) return false
   const myId = Number(authStore.user?.id)
-  return myId === 1 || myId === Number(idea.value.user_id)
+  if (myId === 1) return true
+  return myId === Number(idea.value.user_id) && idea.value.status === 'NEW'
 })
 
 async function loadIdea() {

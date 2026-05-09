@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\RevisionPublication;
 use App\Models\RevisionPublicationView;
 use App\Services\FinishedProductFacadeSnapshotPresenter;
+use App\Services\Reports\ReportSettingsResolver;
 use Barryvdh\DomPDF\Facade\Pdf;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
@@ -15,6 +16,7 @@ class PublicVerificationController extends Controller
 {
     public function __construct(
         private FinishedProductFacadeSnapshotPresenter $finishedProductFacadeSnapshotPresenter,
+        private ReportSettingsResolver $reportSettingsResolver,
     ) {}
 
     public function show(string $publicId, Request $request)
@@ -126,7 +128,7 @@ class PublicVerificationController extends Controller
 
     public function pdf(string $publicId, Request $request)
     {
-        $publication = RevisionPublication::with(['revision'])
+        $publication = RevisionPublication::with(['revision.project.user.settings'])
             ->where('public_id', $publicId)
             ->firstOrFail();
 
@@ -148,6 +150,7 @@ class PublicVerificationController extends Controller
         }
 
         $snapshot = $this->decodeSnapshot($revision->getRawOriginal('snapshot_json'));
+        $reportSettings = $this->reportSettingsResolver->forSnapshot($snapshot, $revision->project);
 
         // Generate QR code with public verification URL
         $qrUrl = $this->makePublicVerificationUrl($publicId);
@@ -155,6 +158,7 @@ class PublicVerificationController extends Controller
 
         $pdf = Pdf::loadView('reports.smeta', [
             'report' => $snapshot,
+            'reportSettings' => $reportSettings,
             'qrSvg' => $qrSvg,
             'documentToken' => $publicId,
         ])

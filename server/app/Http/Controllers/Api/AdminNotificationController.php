@@ -187,9 +187,15 @@ class AdminNotificationController extends Controller
             ], 422);
         }
 
-        DispatchNotificationJob::dispatch($notification);
+        $notification->update(['status' => 'sending']);
 
-        return response()->json(['message' => 'Отправка запущена', 'status' => 'sending']);
+        DispatchNotificationJob::dispatch($notification->fresh());
+
+        return response()->json([
+            'message' => 'Отправка запущена',
+            'status' => 'sending',
+            'notification' => $notification->fresh(),
+        ]);
     }
 
     /**

@@ -11,6 +11,7 @@ use App\Models\RevisionRunItem;
 use App\Models\UserSettings;
 use App\Services\Billing\BillingCodes;
 use App\Services\Billing\ProjectWorkspaceAccessService;
+use App\Services\Reports\ReportSettingsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,6 +19,11 @@ use Illuminate\Support\Facades\Auth;
 class ProjectController extends Controller
 {
     use RecordsUsageEvents;
+
+    public function __construct(
+        private readonly ReportSettingsResolver $reportSettingsResolver,
+    ) {
+    }
 
     public function index()
     {
@@ -69,6 +75,7 @@ class ProjectController extends Controller
             'text_blocks.*.title' => 'nullable|string|max:255',
             'text_blocks.*.text' => 'nullable|string|max:10000',
             'text_blocks.*.enabled' => 'nullable|boolean',
+            ...$this->reportSettingsResolver->validationRules(),
             'waste_plate_description' => 'nullable|array',
             'waste_plate_description.title' => 'nullable|string|max:255',
             'waste_plate_description.text' => 'nullable|string|max:3000',
@@ -115,6 +122,10 @@ class ProjectController extends Controller
             'facade_width_allowance_mm' => $request->input('facade_width_allowance_mm') ?? $userSettings->facade_width_allowance_mm ?? 0,
             'facade_height_allowance_mm' => $request->input('facade_height_allowance_mm') ?? $userSettings->facade_height_allowance_mm ?? 0,
             'text_blocks' => $request->input('text_blocks') ?? $userSettings->text_blocks,
+            'report_settings' => $this->reportSettingsResolver->merge(
+                is_array($userSettings->report_settings ?? null) ? $userSettings->report_settings : null,
+                $request->input('report_settings'),
+            ),
             'waste_plate_description' => $request->input('waste_plate_description') ?? $userSettings->waste_plate_description,
             'waste_edge_description' => $request->input('waste_edge_description') ?? $userSettings->waste_edge_description,
             'waste_operations_description' => $request->input('waste_operations_description') ?? $userSettings->waste_operations_description,
@@ -123,8 +134,12 @@ class ProjectController extends Controller
             'show_waste_operations_description' => $request->input('show_waste_operations_description') ?? $userSettings->show_waste_operations_description ?? false,
         ];
 
-        // Объединить валидированные и дефолтные данные
-        $validated = array_merge($defaults, array_filter($validated, fn($value) => $value !== null));
+        // Объединить валидированные и дефолтные данные.
+        // report_settings уже собраны выше как user defaults + явный override,
+        // поэтому не даём сырому partial-массиву перезаписать нормализованный результат.
+        $validatedForMerge = array_filter($validated, fn($value) => $value !== null);
+        unset($validatedForMerge['report_settings']);
+        $validated = array_merge($defaults, $validatedForMerge);
         $validated['user_id'] = Auth::id();
 
         $billingStatus = app(ProjectWorkspaceAccessService::class)->createStatus($request->user());
@@ -253,6 +268,7 @@ class ProjectController extends Controller
             'text_blocks.*.title' => 'nullable|string|max:255',
             'text_blocks.*.text' => 'nullable|string|max:10000',
             'text_blocks.*.enabled' => 'nullable|boolean',
+            ...$this->reportSettingsResolver->validationRules(),
             'waste_plate_description' => 'nullable|array',
             'waste_plate_description.title' => 'nullable|string|max:255',
             'waste_plate_description.text' => 'nullable|string|max:3000',
@@ -272,6 +288,16 @@ class ProjectController extends Controller
             'normohour_justification' => 'nullable|string|max:5000',
             'price_confirmation_freshness_days' => 'nullable|integer|min:1|max:365',
         ], $this->projectValidationMessages());
+
+        if (array_key_exists('report_settings', $validated)) {
+            $currentReportSettings = is_array($project->report_settings ?? null)
+                ? $project->report_settings
+                : [];
+            $validated['report_settings'] = $this->reportSettingsResolver->merge(
+                $currentReportSettings,
+                $validated['report_settings'],
+            );
+        }
 
         $project->update($validated);
         return $project;

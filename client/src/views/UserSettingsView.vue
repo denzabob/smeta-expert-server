@@ -493,6 +493,247 @@
                     </div>
               </div>
 
+              <!-- 7. Настройки отчетов -->
+              <div v-else-if="activeSection === 7" class="section-content usd-section-content">
+                <div class="d-flex align-start justify-space-between mb-4 usd-report-header">
+                  <div>
+                    <div class="section-title">Настройки отчетов</div>
+                    <div class="section-hint">
+                      Эти настройки применяются к новым проектам. Уже созданные проекты не изменяются автоматически.
+                      Для существующего проекта используйте настройки самого проекта или загрузку значений по умолчанию.
+                    </div>
+                  </div>
+                  <v-btn
+                    variant="tonal"
+                    color="secondary"
+                    prepend-icon="mdi-restore"
+                    @click="resetReportSettings"
+                  >
+                    Сбросить настройки отчетов
+                  </v-btn>
+                </div>
+
+                <div class="usd-report-grid">
+                  <v-card variant="outlined" class="usd-report-card">
+                    <v-card-text>
+                      <div class="usd-report-card-title">Общие подписи</div>
+                      <v-row dense>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.common.project_label"
+                            label="Название поля проекта"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.common.object_label"
+                            label="Название поля объекта"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.common.executor_label"
+                            label="Название поля исполнителя"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.common.signature_label"
+                            label="Название поля подписи"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.common.date_label"
+                            label="Название поля даты"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                      </v-row>
+                    </v-card-text>
+                  </v-card>
+
+                  <v-card variant="outlined" class="usd-report-card">
+                    <v-card-text>
+                      <div class="usd-report-card-title">Смета и расчетная часть</div>
+                      <v-row dense>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.estimate_report.appendix_label"
+                            label="Надпись приложения"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.estimate_report.document_context_label"
+                            label="Назначение приложения"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12">
+                          <v-text-field
+                            v-model="form.report_settings.estimate_report.title"
+                            label="Название документа"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.estimate_report.calculation_date_label"
+                            label="Название даты расчета"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.estimate_report.summary_title"
+                            label="Заголовок сводных итогов"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.estimate_report.final_total_label"
+                            label="Итоговая строка"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.estimate_report.amount_in_words_label"
+                            label="Сумма прописью"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12">
+                          <v-switch
+                            v-model="form.report_settings.estimate_report.show_methodology_section"
+                            color="primary"
+                            label="Показывать методический раздел"
+                            hide-details
+                          />
+                        </v-col>
+                      </v-row>
+                    </v-card-text>
+                  </v-card>
+
+                  <v-card variant="outlined" class="usd-report-card">
+                    <v-card-text>
+                      <div class="usd-report-card-title">Подтверждение цен</div>
+                      <v-row dense>
+                        <v-col cols="12">
+                          <v-text-field
+                            v-model="form.report_settings.price_evidence_report.title"
+                            label="Название документа"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12">
+                          <v-textarea
+                            v-model="form.report_settings.price_evidence_report.subtitle"
+                            label="Подзаголовок"
+                            rows="3"
+                            maxlength="2000"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.price_evidence_report.missing_evidence_section_title"
+                            label="Раздел неподтвержденных позиций"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.price_evidence_report.internal_calculation_section_title"
+                            label="Раздел внутренних расчетов"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.price_evidence_report.materials_evidence_section_title"
+                            label="Раздел материалов и подтверждений"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-textarea
+                            v-model="form.report_settings.price_evidence_report.internal_calculation_basis_text"
+                            label="Текст основания внутренних расчетов"
+                            rows="2"
+                            maxlength="2000"
+                            counter
+                          />
+                        </v-col>
+                      </v-row>
+                    </v-card-text>
+                  </v-card>
+
+                  <v-card variant="outlined" class="usd-report-card">
+                    <v-card-text>
+                      <div class="usd-report-card-title">Причины отсутствия доказательств</div>
+                      <v-row dense>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.evidence_reasons.no_linked_evidence"
+                            label="Нет связанного подтверждения"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.evidence_reasons.no_screenshot_or_document"
+                            label="Нет скриншота или документа"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.evidence_reasons.outdated_price_confirmation"
+                            label="Подтверждение устарело"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            v-model="form.report_settings.evidence_reasons.no_source_url"
+                            label="Нет ссылки на источник"
+                            maxlength="255"
+                            counter
+                          />
+                        </v-col>
+                      </v-row>
+                    </v-card-text>
+                  </v-card>
+                </div>
+              </div>
+
             </template>
 
           <template #footer>
@@ -545,6 +786,65 @@ interface TextBlock {
   enabled?: boolean
 }
 
+interface ReportCommonSettings {
+  project_label: string
+  object_label: string
+  executor_label: string
+  signature_label: string
+  date_label: string
+}
+
+interface ReportEstimateSettings {
+  appendix_label: string
+  document_context_label: string
+  title: string
+  calculation_date_label: string
+  summary_title: string
+  materials_summary_label: string
+  operations_summary_label: string
+  fittings_summary_label: string
+  labor_summary_label: string
+  expenses_summary_label: string
+  final_total_label: string
+  amount_in_words_label: string
+  details_section_title: string
+  plate_materials_section_title: string
+  edge_materials_section_title: string
+  final_cost_section_title: string
+  show_methodology_section: boolean
+}
+
+interface ReportPriceEvidenceSettings {
+  title: string
+  subtitle: string
+  project_label: string
+  report_version_label: string
+  report_created_at_label: string
+  total_items_label: string
+  confirmed_items_label: string
+  missing_items_label: string
+  fixation_period_label: string
+  missing_evidence_section_title: string
+  internal_calculation_section_title: string
+  materials_evidence_section_title: string
+  internal_calculation_basis_text: string
+}
+
+interface ReportEvidenceReasonSettings {
+  no_linked_evidence: string
+  no_screenshot_or_document: string
+  outdated_price_confirmation: string
+  no_source_url: string
+  internal_calculation_no_screenshot_required: string
+}
+
+interface ReportSettings {
+  common: ReportCommonSettings
+  estimate_report: ReportEstimateSettings
+  price_evidence_report: ReportPriceEvidenceSettings
+  evidence_reasons: ReportEvidenceReasonSettings
+}
+
 interface UserSettings {
   region_id: number | null
   use_area_calc_mode: boolean
@@ -582,6 +882,7 @@ interface UserSettings {
   labor_rate_rounding_scale: number
 
   text_blocks: TextBlock[]
+  report_settings: ReportSettings
 }
 
 const sections = [
@@ -592,6 +893,7 @@ const sections = [
   { id: 3, title: 'Отходы', icon: 'mdi-recycle' },
   { id: 4, title: 'Нормо-час', icon: 'mdi-calculator' },
   { id: 5, title: 'Справочные блоки', icon: 'mdi-text-box-outline' },
+  { id: 7, title: 'Настройки отчетов', icon: 'mdi-file-document-edit-outline' },
 ]
 
 const aggregationStrategyOptions = [
@@ -607,6 +909,125 @@ const salaryRangeStrategyOptions = [
   { title: 'Минимум', value: 'min' },
   { title: 'Максимум', value: 'max' },
 ] as const
+
+const defaultReportSettings: ReportSettings = {
+  common: {
+    project_label: 'Проект (дело)',
+    object_label: 'Объект',
+    executor_label: 'Эксперт',
+    signature_label: 'Подпись',
+    date_label: 'Дата',
+  },
+  estimate_report: {
+    appendix_label: 'Приложение № 1',
+    document_context_label: 'к экспертному заключению',
+    title: 'Расчёт стоимости материалов и работ',
+    calculation_date_label: 'Дата расчёта',
+    summary_title: 'СВОДНЫЕ ИТОГИ',
+    materials_summary_label: 'Материалы (плиты + кромки)',
+    operations_summary_label: 'Операции',
+    fittings_summary_label: 'Фурнитура/комплектующие',
+    labor_summary_label: 'Монтажно-демонтажные работы',
+    expenses_summary_label: 'Накладные расходы',
+    final_total_label: 'ИТОГО',
+    amount_in_words_label: 'Прописью',
+    details_section_title: 'Перечень деталей, принятых к расчёту',
+    plate_materials_section_title: 'Расчёт плитных материалов',
+    edge_materials_section_title: 'Расчёт кромочного материала',
+    final_cost_section_title: 'Итоговая стоимость',
+    show_methodology_section: true,
+  },
+  price_evidence_report: {
+    title: 'Документ подтверждения цен',
+    subtitle: 'Источники, скриншоты и файлы, подтверждающие стоимость позиций сметы.',
+    project_label: 'Проект',
+    report_version_label: 'Версия отчета',
+    report_created_at_label: 'Дата формирования отчета',
+    total_items_label: 'Всего позиций',
+    confirmed_items_label: 'Подтверждено',
+    missing_items_label: 'Без подтверждения',
+    fixation_period_label: 'Период фиксации цен',
+    missing_evidence_section_title: 'Позиции без подтверждения цены',
+    internal_calculation_section_title: 'Позиции, рассчитанные внутренним способом',
+    materials_evidence_section_title: 'Материалы и ценовые подтверждения',
+    internal_calculation_basis_text: 'внутренний расчет; скриншот не требуется',
+  },
+  evidence_reasons: {
+    no_linked_evidence: 'нет связанного подтверждения цены',
+    no_screenshot_or_document: 'нет скриншота или документа',
+    outdated_price_confirmation: 'подтверждение цены устарело',
+    no_source_url: 'нет ссылки на источник цены',
+    internal_calculation_no_screenshot_required: 'внутренний расчет; скриншот не требуется',
+  },
+}
+
+const cloneReportSettings = (settings: ReportSettings = defaultReportSettings): ReportSettings => {
+  return JSON.parse(JSON.stringify(settings)) as ReportSettings
+}
+
+const trimOrDefault = (value: unknown, fallback: string, maxLength = 255): string => {
+  const trimmed = String(value ?? '').trim()
+  return (trimmed || fallback).slice(0, maxLength)
+}
+
+const normalizeReportSettings = (value: any = {}): ReportSettings => {
+  const source = value && typeof value === 'object' ? value : {}
+  const defaults = defaultReportSettings
+
+  return {
+    common: {
+      project_label: trimOrDefault(source.common?.project_label, defaults.common.project_label),
+      object_label: trimOrDefault(source.common?.object_label, defaults.common.object_label),
+      executor_label: trimOrDefault(source.common?.executor_label, defaults.common.executor_label),
+      signature_label: trimOrDefault(source.common?.signature_label, defaults.common.signature_label),
+      date_label: trimOrDefault(source.common?.date_label, defaults.common.date_label),
+    },
+    estimate_report: {
+      appendix_label: trimOrDefault(source.estimate_report?.appendix_label, defaults.estimate_report.appendix_label),
+      document_context_label: trimOrDefault(source.estimate_report?.document_context_label, defaults.estimate_report.document_context_label),
+      title: trimOrDefault(source.estimate_report?.title, defaults.estimate_report.title),
+      calculation_date_label: trimOrDefault(source.estimate_report?.calculation_date_label, defaults.estimate_report.calculation_date_label),
+      summary_title: trimOrDefault(source.estimate_report?.summary_title, defaults.estimate_report.summary_title),
+      materials_summary_label: trimOrDefault(source.estimate_report?.materials_summary_label, defaults.estimate_report.materials_summary_label),
+      operations_summary_label: trimOrDefault(source.estimate_report?.operations_summary_label, defaults.estimate_report.operations_summary_label),
+      fittings_summary_label: trimOrDefault(source.estimate_report?.fittings_summary_label, defaults.estimate_report.fittings_summary_label),
+      labor_summary_label: trimOrDefault(source.estimate_report?.labor_summary_label, defaults.estimate_report.labor_summary_label),
+      expenses_summary_label: trimOrDefault(source.estimate_report?.expenses_summary_label, defaults.estimate_report.expenses_summary_label),
+      final_total_label: trimOrDefault(source.estimate_report?.final_total_label, defaults.estimate_report.final_total_label),
+      amount_in_words_label: trimOrDefault(source.estimate_report?.amount_in_words_label, defaults.estimate_report.amount_in_words_label),
+      details_section_title: trimOrDefault(source.estimate_report?.details_section_title, defaults.estimate_report.details_section_title),
+      plate_materials_section_title: trimOrDefault(source.estimate_report?.plate_materials_section_title, defaults.estimate_report.plate_materials_section_title),
+      edge_materials_section_title: trimOrDefault(source.estimate_report?.edge_materials_section_title, defaults.estimate_report.edge_materials_section_title),
+      final_cost_section_title: trimOrDefault(source.estimate_report?.final_cost_section_title, defaults.estimate_report.final_cost_section_title),
+      show_methodology_section: source.estimate_report?.show_methodology_section !== false,
+    },
+    price_evidence_report: {
+      title: trimOrDefault(source.price_evidence_report?.title, defaults.price_evidence_report.title),
+      subtitle: trimOrDefault(source.price_evidence_report?.subtitle, defaults.price_evidence_report.subtitle, 2000),
+      project_label: trimOrDefault(source.price_evidence_report?.project_label, defaults.price_evidence_report.project_label),
+      report_version_label: trimOrDefault(source.price_evidence_report?.report_version_label, defaults.price_evidence_report.report_version_label),
+      report_created_at_label: trimOrDefault(source.price_evidence_report?.report_created_at_label, defaults.price_evidence_report.report_created_at_label),
+      total_items_label: trimOrDefault(source.price_evidence_report?.total_items_label, defaults.price_evidence_report.total_items_label),
+      confirmed_items_label: trimOrDefault(source.price_evidence_report?.confirmed_items_label, defaults.price_evidence_report.confirmed_items_label),
+      missing_items_label: trimOrDefault(source.price_evidence_report?.missing_items_label, defaults.price_evidence_report.missing_items_label),
+      fixation_period_label: trimOrDefault(source.price_evidence_report?.fixation_period_label, defaults.price_evidence_report.fixation_period_label),
+      missing_evidence_section_title: trimOrDefault(source.price_evidence_report?.missing_evidence_section_title, defaults.price_evidence_report.missing_evidence_section_title),
+      internal_calculation_section_title: trimOrDefault(source.price_evidence_report?.internal_calculation_section_title, defaults.price_evidence_report.internal_calculation_section_title),
+      materials_evidence_section_title: trimOrDefault(source.price_evidence_report?.materials_evidence_section_title, defaults.price_evidence_report.materials_evidence_section_title),
+      internal_calculation_basis_text: trimOrDefault(source.price_evidence_report?.internal_calculation_basis_text, defaults.price_evidence_report.internal_calculation_basis_text, 2000),
+    },
+    evidence_reasons: {
+      no_linked_evidence: trimOrDefault(source.evidence_reasons?.no_linked_evidence, defaults.evidence_reasons.no_linked_evidence),
+      no_screenshot_or_document: trimOrDefault(source.evidence_reasons?.no_screenshot_or_document, defaults.evidence_reasons.no_screenshot_or_document),
+      outdated_price_confirmation: trimOrDefault(source.evidence_reasons?.outdated_price_confirmation, defaults.evidence_reasons.outdated_price_confirmation),
+      no_source_url: trimOrDefault(source.evidence_reasons?.no_source_url, defaults.evidence_reasons.no_source_url),
+      internal_calculation_no_screenshot_required: trimOrDefault(
+        source.evidence_reasons?.internal_calculation_no_screenshot_required,
+        defaults.evidence_reasons.internal_calculation_no_screenshot_required,
+      ),
+    },
+  }
+}
 
 const activeSection = ref(0)
 const loading = ref(true)
@@ -647,7 +1068,8 @@ const form = ref<UserSettings>({
   labor_aggregation_strategy: 'auto',
   labor_salary_range_strategy: 'avg',
   labor_rate_rounding_scale: 2,
-  text_blocks: [] as TextBlock[]
+  text_blocks: [] as TextBlock[],
+  report_settings: cloneReportSettings(),
 })
 
 const original = ref<string>('')
@@ -734,6 +1156,7 @@ const fractionToPercent = (value: number | null | undefined): number => {
 const applySettingsToForm = (settingsRes: Record<string, any> = {}) => {
   const {
     text_blocks,
+    report_settings,
     labor_employer_insurance_rate,
     labor_planned_profitability_rate,
     labor_load_factor_calendar_hours,
@@ -755,6 +1178,7 @@ const applySettingsToForm = (settingsRes: Record<string, any> = {}) => {
     labor_salary_range_strategy: labor_salary_range_strategy ?? form.value.labor_salary_range_strategy,
     labor_rate_rounding_scale: Number(labor_rate_rounding_scale ?? form.value.labor_rate_rounding_scale),
     text_blocks: text_blocks ?? [],
+    report_settings: normalizeReportSettings(report_settings),
   }
 }
 
@@ -845,7 +1269,8 @@ const buildPayload = (): Record<string, any> => {
     waste_plate_description: descOrNull(plateDesc.value),
     waste_edge_description: descOrNull(edgeDesc.value),
     waste_operations_description: descOrNull(opsDesc.value),
-    text_blocks: form.value.text_blocks && form.value.text_blocks.length > 0 ? form.value.text_blocks : []
+    text_blocks: form.value.text_blocks && form.value.text_blocks.length > 0 ? form.value.text_blocks : [],
+    report_settings: normalizeReportSettings(form.value.report_settings),
   }
 }
 
@@ -916,6 +1341,14 @@ const onCancel = async () => {
   if (!ok) return
   await loadAll()
   showNotification('Изменения отменены', 'info')
+}
+
+const resetReportSettings = () => {
+  const ok = window.confirm('Сбросить только настройки отчетов к значениям по умолчанию?')
+  if (!ok) return
+
+  form.value.report_settings = cloneReportSettings()
+  showNotification('Настройки отчетов сброшены. Нажмите «Сохранить», чтобы применить изменения.', 'info', 5000)
 }
 
 // Text blocks (UI как в проекте)
@@ -1062,6 +1495,27 @@ onBeforeUnmount(() => {
   color: rgb(var(--v-theme-primary));
 }
 
+.usd-report-header {
+  gap: 16px;
+}
+
+.usd-report-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.usd-report-card {
+  border-color: rgba(var(--v-theme-outline-variant), 0.82);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.72);
+}
+
+.usd-report-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
 .usd-waste-list {
   display: flex;
   flex-direction: column;
@@ -1126,6 +1580,15 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 960px) {
+  .usd-report-header {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+
+  .usd-report-header :deep(.v-btn) {
+    align-self: flex-start;
+  }
+
   .usd-waste-row {
     align-items: stretch;
   }

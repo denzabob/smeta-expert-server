@@ -14,7 +14,12 @@ class IdeaPolicy
 
     public function delete(User $user, Idea $idea): bool
     {
-        return $this->isAdmin($user) || (int) $idea->user_id === (int) $user->id;
+        if ($this->isAdmin($user)) {
+            return true;
+        }
+
+        return (int) $idea->user_id === (int) $user->id
+            && $idea->status === Idea::STATUS_NEW;
     }
 
     public function moderateComments(User $user, Idea $idea): bool
