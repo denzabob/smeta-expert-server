@@ -2948,10 +2948,11 @@
 
 <!-- Улучшенная модалка для подопераций (Детализация) -->
 <v-dialog
-  v-model="stepsDialog"
+  :model-value="stepsDialog"
   max-width="1000"
   scrollable
   transition="dialog-bottom-transition"
+  @update:model-value="handleStepsDialogModelUpdate"
 >
   <v-card class="steps-dialog-card">
     <!-- Header -->
@@ -3279,6 +3280,20 @@
             {{ editingStepId ? 'mdi-pencil' : 'mdi-plus-circle' }}
           </v-icon>
           <span>{{ editingStepId ? 'Редактирование' : 'Новый этап' }}</span>
+          <span
+            v-if="editingStepId"
+            class="step-autosave-status"
+            :class="`step-autosave-status--${stepAutosaveStatus}`"
+          >
+            <v-progress-circular
+              v-if="stepAutosaveStatus === 'saving'"
+              indeterminate
+              size="14"
+              width="2"
+            />
+            <v-icon v-else size="15">{{ stepAutosaveStatusIcon }}</v-icon>
+            {{ stepAutosaveStatusText }}
+          </span>
           <v-spacer />
           <v-btn
             v-if="editingStepId"
@@ -3391,13 +3406,14 @@
             </v-btn>
 
             <v-btn
+              v-if="!editingStepId || stepAutosaveCanSaveNow"
               type="submit"
               :color="editingStepId ? 'warning' : 'success'"
-              :prepend-icon="editingStepId ? 'mdi-check' : 'mdi-plus'"
-              :loading="savingStep"
+              :prepend-icon="editingStepId ? 'mdi-content-save-outline' : 'mdi-plus'"
+              :loading="savingStep || stepAutosaveStatus === 'saving'"
               variant="flat"
             >
-              {{ editingStepId ? 'Сохранить' : 'Добавить' }}
+              {{ editingStepId ? 'Сохранить сейчас' : 'Добавить' }}
             </v-btn>
           </div>
         </v-form>
@@ -8477,6 +8493,14 @@ const stepForm = ref({
   hours: 0,
   note: ''
 })
+type StepAutosaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
+const STEP_AUTOSAVE_DEBOUNCE_MS = 650
+const stepAutosaveStatus = ref<StepAutosaveStatus>('idle')
+const stepAutosaveMessage = ref('')
+const stepAutosaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const stepAutosavePaused = ref(false)
+const stepAutosaveRequestSeq = ref(0)
+const stepAutosaveLastSavedSignature = ref('')
 
 // Steps modal state
 const stepsModal = ref(false)
@@ -8557,6 +8581,25 @@ const filteredSteps = computed(() => {
     step.basis?.toLowerCase().includes(query) ||
     step.note?.toLowerCase().includes(query)
   )
+})
+
+const stepAutosaveStatusText = computed(() => {
+  if (!editingStepId.value) return ''
+
+  if (stepAutosaveStatus.value === 'saving') return 'Сохранение...'
+  if (stepAutosaveStatus.value === 'dirty') return 'Есть несохраненные изменения'
+  if (stepAutosaveStatus.value === 'error') return stepAutosaveMessage.value || 'Не сохранено'
+  return 'Сохранено'
+})
+
+const stepAutosaveStatusIcon = computed(() => {
+  if (stepAutosaveStatus.value === 'error') return 'mdi-alert-circle-outline'
+  if (stepAutosaveStatus.value === 'dirty') return 'mdi-pencil-circle-outline'
+  return 'mdi-check-circle-outline'
+})
+
+const stepAutosaveCanSaveNow = computed(() => {
+  return Boolean(editingStepId.value) && ['dirty', 'error'].includes(stepAutosaveStatus.value)
 })
 
 const hoveredLaborWorkId = ref<number | null>(null)
@@ -9373,6 +9416,163 @@ const deleteLaborWork = async (item: LaborWork) => {
 
 // === Функции для работы с подоперациями ===
 
+const setStepFormPaused = (callback: () => void) => {
+  stepAutosavePaused.value = true
+  callback()
+  nextTick(() => {
+    stepAutosavePaused.value = false
+  })
+}
+
+const clearStepAutosaveTimer = () => {
+  if (!stepAutosaveTimer.value) return
+  clearTimeout(stepAutosaveTimer.value)
+  stepAutosaveTimer.value = null
+}
+
+const resetStepAutosaveState = () => {
+  clearStepAutosaveTimer()
+  stepAutosaveStatus.value = 'idle'
+  stepAutosaveMessage.value = ''
+  stepAutosaveLastSavedSignature.value = ''
+}
+
+const getStepSortOrder = (stepId: number | null = editingStepId.value) => {
+  if (!stepId) return laborWorkSteps.value.length
+  const existingStep = laborWorkSteps.value.find((s: any) => s.id === stepId)
+  return existingStep?.sort_order ?? laborWorkSteps.value.length
+}
+
+const buildStepPayload = (sortOrder = getStepSortOrder()) => ({
+  title: stepForm.value.title.trim(),
+  basis: stepForm.value.basis?.trim() || null,
+  input_data: stepForm.value.input_data?.trim() || null,
+  hours: parseFloat(String(stepForm.value.hours)) || 0,
+  note: stepForm.value.note?.trim() || null,
+  sort_order: sortOrder
+})
+
+const getStepPayloadSignature = (payload = buildStepPayload()) => JSON.stringify(payload)
+
+const getStepValidationMessage = () => {
+  if (!stepForm.value.title.trim()) return 'Заполните наименование этапа'
+  if ((parseFloat(String(stepForm.value.hours)) || 0) <= 0) return 'Время должно быть больше 0'
+  return ''
+}
+
+const syncEditingStepFromForm = () => {
+  if (!editingStepId.value) return
+
+  const payload = buildStepPayload()
+  laborWorkSteps.value = laborWorkSteps.value.map((step: any) => {
+    if (step.id !== editingStepId.value) return step
+
+    return {
+      ...step,
+      title: payload.title || stepForm.value.title,
+      basis: payload.basis,
+      input_data: payload.input_data,
+      hours: payload.hours,
+      note: payload.note,
+      sort_order: payload.sort_order
+    }
+  })
+}
+
+const scheduleStepAutosave = () => {
+  if (!editingStepId.value || isProjectReadOnly.value) return
+
+  clearStepAutosaveTimer()
+  stepAutosaveStatus.value = 'dirty'
+  stepAutosaveMessage.value = ''
+  stepAutosaveTimer.value = setTimeout(() => {
+    flushStepAutosave()
+  }, STEP_AUTOSAVE_DEBOUNCE_MS)
+}
+
+const flushStepAutosave = async (options: { notify?: boolean } = {}) => {
+  if (!editingStepId.value || !selectedLaborWork.value?.id) return true
+
+  clearStepAutosaveTimer()
+
+  const validationMessage = getStepValidationMessage()
+  if (validationMessage) {
+    stepAutosaveStatus.value = 'error'
+    stepAutosaveMessage.value = 'Не сохранено: проверьте поля'
+    if (options.notify) showNotification(validationMessage, 'error')
+    return false
+  }
+
+  const stepId = editingStepId.value
+  const workId = selectedLaborWork.value.id
+  const payload = buildStepPayload(getStepSortOrder(stepId))
+  const payloadSignature = getStepPayloadSignature(payload)
+
+  if (payloadSignature === stepAutosaveLastSavedSignature.value && stepAutosaveStatus.value !== 'error') {
+    stepAutosaveStatus.value = 'saved'
+    stepAutosaveMessage.value = ''
+    return true
+  }
+
+  const requestSeq = stepAutosaveRequestSeq.value + 1
+  stepAutosaveRequestSeq.value = requestSeq
+  stepAutosaveStatus.value = 'saving'
+  stepAutosaveMessage.value = ''
+
+  try {
+    await api.put(
+      `/api/projects/${projectId}/labor-works/${workId}/steps/${stepId}`,
+      payload,
+      { timeout: 60000 }
+    )
+
+    const currentSignature = getStepPayloadSignature(buildStepPayload(getStepSortOrder(stepId)))
+    if (requestSeq === stepAutosaveRequestSeq.value && currentSignature === payloadSignature) {
+      stepAutosaveLastSavedSignature.value = payloadSignature
+      stepAutosaveStatus.value = 'saved'
+      stepAutosaveMessage.value = ''
+    }
+
+    loadLaborWorks().catch((e: any) => {
+      console.warn('Background labor works reload failed:', e)
+    })
+
+    return true
+  } catch (err: any) {
+    if (showBillingLockedError(err)) {
+      stepAutosaveStatus.value = 'error'
+      stepAutosaveMessage.value = 'Не сохранено'
+      return false
+    }
+
+    const currentSignature = getStepPayloadSignature(buildStepPayload(getStepSortOrder(stepId)))
+    if (requestSeq === stepAutosaveRequestSeq.value && currentSignature === payloadSignature) {
+      stepAutosaveStatus.value = 'error'
+      stepAutosaveMessage.value = 'Ошибка сохранения'
+      console.error('Step autosave error:', err)
+      showNotification(err.response?.data?.message || 'Не удалось сохранить этап. Проверьте поля.', 'error')
+    }
+
+    return false
+  }
+}
+
+watch(stepForm, () => {
+  if (stepAutosavePaused.value || !stepsDialog.value || !editingStepId.value) return
+
+  syncEditingStepFromForm()
+
+  const signature = getStepPayloadSignature()
+  if (signature === stepAutosaveLastSavedSignature.value) {
+    clearStepAutosaveTimer()
+    stepAutosaveStatus.value = 'saved'
+    stepAutosaveMessage.value = ''
+    return
+  }
+
+  scheduleStepAutosave()
+}, { deep: true })
+
 const toggleSortMode = () => {
   sortMode.value = sortMode.value === 'sort' ? 'drag' : 'sort'
 }
@@ -9380,25 +9580,13 @@ const toggleSortMode = () => {
 const openCreateStep = () => {
   if (guardReadOnlyAction()) return
 
-  stepForm.value = {
-    title: '',
-    basis: '',
-    input_data: '',
-    hours: 0,
-    note: ''
-  }
+  resetStepForm()
 }
 
 const openStepsModal = async (laborWork: LaborWork) => {
   selectedLaborWork.value = laborWork
   laborWorkSteps.value = []
-  stepForm.value = {
-    title: '',
-    basis: '',
-    input_data: '',
-    hours: 0,
-    note: ''
-  }
+  resetStepForm()
   laborStepsLoadingId.value = laborWork.id ?? null
   
   // Reset AI state
@@ -9497,6 +9685,11 @@ const toggleAiSelectAll = () => {
 const applyAiSteps = async (mode: 'replace' | 'append') => {
   if (!aiSuggestion.value || !selectedLaborWork.value) return
   if (guardReadOnlyAction()) return
+
+  if (editingStepId.value) {
+    const saved = await flushStepAutosave({ notify: true })
+    if (!saved) return
+  }
 
   if (aiSelectedSteps.value.size === 0) {
     showNotification('Выберите хотя бы один этап', 'warning')
@@ -9604,23 +9797,40 @@ const sendFeedbackOnClose = async () => {
   }
 }
 
-const closeStepsDialog = () => {
+const handleStepsDialogModelUpdate = (value: boolean) => {
+  if (value) {
+    stepsDialog.value = true
+    return
+  }
+
+  closeStepsDialog()
+}
+
+const closeStepsDialog = async () => {
+  if (editingStepId.value) {
+    const saved = await flushStepAutosave({ notify: true })
+    if (!saved) return
+  }
+
   // Send feedback in background (non-blocking)
   sendFeedbackOnClose()
   stepsDialog.value = false
 }
 
 const resetStepForm = () => {
+  resetStepAutosaveState()
   stepFormRef.value?.resetValidation?.()
   editingStepId.value = null
   showNoteField.value = false
-  stepForm.value = {
-    title: '',
-    basis: '',
-    input_data: '',
-    hours: 0,
-    note: ''
-  }
+  setStepFormPaused(() => {
+    stepForm.value = {
+      title: '',
+      basis: '',
+      input_data: '',
+      hours: 0,
+      note: ''
+    }
+  })
 }
 
 const loadSteps = async (laborWorkId: number) => {
@@ -9638,61 +9848,42 @@ const loadSteps = async (laborWorkId: number) => {
 const saveStep = async () => {
   if (guardReadOnlyAction()) return
 
-  if (!stepForm.value.title.trim()) {
-    showNotification('Заполните наименование подоперации', 'error')
+  const validationMessage = getStepValidationMessage()
+  if (validationMessage) {
+    showNotification(validationMessage, 'error')
     return
   }
 
-  if (stepForm.value.hours <= 0) {
-    showNotification('Часы должны быть больше 0', 'error')
+  if (editingStepId.value) {
+    savingStep.value = true
+    try {
+      const saved = await flushStepAutosave({ notify: true })
+      if (saved) {
+        showNotification('Этап сохранен', 'success')
+      }
+    } finally {
+      savingStep.value = false
+    }
     return
   }
 
   savingStep.value = true
 
   try {
-    // Найти оригинальный sort_order при редактировании
-    let sortOrder = laborWorkSteps.value.length
-    if (editingStepId.value) {
-      const existingStep = laborWorkSteps.value.find((s: any) => s.id === editingStepId.value)
-      if (existingStep) {
-        sortOrder = existingStep.sort_order ?? sortOrder
-      } else {
-        // Шаг с editingStepId не найден — возможно удалён, сбросим режим редактирования
-        console.warn('Editing step not found, switching to create mode', { editingStepId: editingStepId.value })
-        editingStepId.value = null
-      }
-    }
+    const payload = buildStepPayload(laborWorkSteps.value.length)
 
-    const payload = {
-      title: stepForm.value.title.trim(),
-      basis: stepForm.value.basis?.trim() || null,
-      input_data: stepForm.value.input_data?.trim() || null,
-      hours: parseFloat(String(stepForm.value.hours)) || 0,
-      note: stepForm.value.note?.trim() || null,
-      sort_order: sortOrder
-    }
-
-    if (editingStepId.value) {
-      await api.put(
-        `/api/projects/${projectId}/labor-works/${selectedLaborWork.value?.id}/steps/${editingStepId.value}`,
-        payload,
-        { timeout: 60000 }
-      )
-    } else {
-      await api.post(
-        `/api/projects/${projectId}/labor-works/${selectedLaborWork.value?.id}/steps`,
-        payload,
-        { timeout: 60000 }
-      )
-    }
+    await api.post(
+      `/api/projects/${projectId}/labor-works/${selectedLaborWork.value?.id}/steps`,
+      payload,
+      { timeout: 60000 }
+    )
 
     // Всегда перезагружаем список после успеха
     await loadSteps(selectedLaborWork.value?.id!)
 
     resetStepForm()
 
-    showNotification(editingStepId.value ? 'Подоперация обновлена' : 'Подоперация добавлена', 'success')
+    showNotification('Подоперация добавлена', 'success')
     
     // Перезагрузить работы в фоне для обновления часов
     loadLaborWorks().catch((e: any) => {
@@ -9720,17 +9911,30 @@ const saveStep = async () => {
   }
 }
 
-const editStep = (step: any) => {
+const editStep = async (step: any) => {
   if (guardReadOnlyAction()) return
 
-  editingStepId.value = step.id
-  stepForm.value = {
-    title: step.title || '',
-    basis: step.basis || '',
-    input_data: step.input_data || '',
-    hours: step.hours || 0,
-    note: step.note || ''
+  if (editingStepId.value === step.id) return
+
+  if (editingStepId.value) {
+    const saved = await flushStepAutosave({ notify: true })
+    if (!saved) return
   }
+
+  resetStepAutosaveState()
+  editingStepId.value = step.id
+  showNoteField.value = Boolean(step.note)
+  setStepFormPaused(() => {
+    stepForm.value = {
+      title: step.title || '',
+      basis: step.basis || '',
+      input_data: step.input_data || '',
+      hours: step.hours || 0,
+      note: step.note || ''
+    }
+    stepAutosaveLastSavedSignature.value = getStepPayloadSignature(buildStepPayload(getStepSortOrder(step.id)))
+    stepAutosaveStatus.value = 'saved'
+  })
 }
 
 const cancelEdit = () => {
@@ -9799,6 +10003,10 @@ const deleteStep = async (step: any) => {
 
   if (!confirm(`Удалить подоперацию "${step.title}"?`)) {
     return
+  }
+
+  if (editingStepId.value === step.id) {
+    resetStepAutosaveState()
   }
 
   try {
@@ -9962,6 +10170,7 @@ onBeforeUnmount(() => {
   Object.values(materialSearchTimeouts).forEach((timeout) => {
     if (timeout) clearTimeout(timeout)
   })
+  clearStepAutosaveTimer()
   window.removeEventListener('paste', onWindowPasteForManualClose)
   window.removeEventListener('focus', onWindowFocusForDocuments)
   stopRevisionRunPolling()
@@ -11442,6 +11651,40 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.step-autosave-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  background: rgba(var(--v-theme-surface-variant), 0.55);
+  white-space: nowrap;
+}
+
+.step-autosave-status--saving {
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.step-autosave-status--saved {
+  color: rgb(var(--v-theme-success));
+  background: rgba(var(--v-theme-success), 0.09);
+}
+
+.step-autosave-status--dirty {
+  color: rgb(var(--v-theme-warning));
+  background: rgba(var(--v-theme-warning), 0.1);
+}
+
+.step-autosave-status--error {
+  color: rgb(var(--v-theme-error));
+  background: rgba(var(--v-theme-error), 0.1);
 }
 
 .step-form {
