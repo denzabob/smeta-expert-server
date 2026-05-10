@@ -177,22 +177,6 @@ const feedback = ref({
 
 const sections = [
   {
-    key: 'operations',
-    title: 'Операции',
-    description: 'Цены на технологические операции',
-    icon: 'mdi-cog-outline',
-    to: '/pricing/operations',
-    available: true,
-  },
-  {
-    key: 'labor',
-    title: 'Труд',
-    description: 'Нормочасовые ставки и профили работ',
-    icon: 'mdi-account-hard-hat-outline',
-    to: '/pricing/labor',
-    available: true,
-  },
-  {
     key: 'materials',
     title: 'Материалы',
     description: 'Цены на материалы и комплектующие',
@@ -206,6 +190,22 @@ const sections = [
     description: 'Котировки на готовые изделия',
     icon: 'mdi-door',
     to: '/products',
+    available: true,
+  },
+  {
+    key: 'operations',
+    title: 'Операции',
+    description: 'Цены на технологические операции',
+    icon: 'mdi-cog-outline',
+    to: '/pricing/operations',
+    available: true,
+  },
+  {
+    key: 'labor',
+    title: 'Труд',
+    description: 'Нормочасовые ставки и профили работ',
+    icon: 'mdi-account-hard-hat-outline',
+    to: '/pricing/labor',
     available: true,
   },
 ]

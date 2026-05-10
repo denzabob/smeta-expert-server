@@ -48,27 +48,27 @@ export const sidebarSections: MenuSection[] = [
     title: 'Справочники',
     items: [
       {
-        title: 'Каталог',
+        title: 'Цены',
+        routeName: 'pricing',
+        icon: 'mdi-currency-usd',
+        showInRail: true,
+      },
+      {
+        title: 'Материалы',
         routeName: 'catalog',
         icon: 'mdi-book-open-variant',
         showInRail: true,
       },
       {
-        title: 'Готовые изделия',
+        title: 'Изделия',
         routeName: 'products',
         icon: 'mdi-door',
         showInRail: true,
       },
       {
-        title: 'Объекты',
-        routeName: 'detail-types',
-        icon: 'mdi-shape-outline',
-        showInRail: false,
-      },
-      {
-        title: 'Цены',
-        routeName: 'pricing',
-        icon: 'mdi-currency-usd',
+        title: 'Операции',
+        routeName: 'pricing-operations',
+        icon: 'mdi-cog-outline',
         showInRail: true,
       },
       {
@@ -76,6 +76,12 @@ export const sidebarSections: MenuSection[] = [
         routeName: 'pricing-labor',
         icon: 'mdi-clipboard-list-outline',
         showInRail: true,
+      },
+      {
+        title: 'Объекты',
+        routeName: 'detail-types',
+        icon: 'mdi-shape-outline',
+        showInRail: false,
       },
     ],
   },
