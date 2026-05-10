@@ -95,6 +95,8 @@ export interface RunShowResponse {
 
 export interface FinalizeRunResponse {
   success: boolean
+  status?: 'created' | 'unchanged'
+  message?: string | null
   revision: {
     id: number
     number: number

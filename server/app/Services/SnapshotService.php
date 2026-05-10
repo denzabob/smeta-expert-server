@@ -30,20 +30,39 @@ class SnapshotService
      */
     public function createSnapshot(Project $project, int $userId, array $extraSnapshot = []): ProjectRevision
     {
-        // 1. Получить полный отчёт через единый источник истины
+        $prepared = $this->buildSnapshotData($project, $extraSnapshot);
+
+        return $this->createSnapshotFromPrepared($project, $userId, $prepared);
+    }
+
+    /**
+     * Собрать snapshot и hash без создания ревизии.
+     *
+     * @return array{snapshot: array<string, mixed>, canonical_json: string, snapshot_hash: string}
+     */
+    public function buildSnapshotData(Project $project, array $extraSnapshot = []): array
+    {
         $reportDto = $this->reportService->buildReport($project);
         $snapshot = $reportDto->toArray();
         if (!empty($extraSnapshot)) {
             $snapshot = array_replace_recursive($snapshot, $extraSnapshot);
         }
 
-        // 2. Канонизировать JSON (рекурсивная сортировка ключей)
         $canonicalJson = $this->canonicalizeJson($snapshot);
 
-        // 3. Вычислить SHA256 хеш
-        $snapshotHash = hash('sha256', $canonicalJson);
+        return [
+            'snapshot' => $snapshot,
+            'canonical_json' => $canonicalJson,
+            'snapshot_hash' => hash('sha256', $canonicalJson),
+        ];
+    }
 
-        return DB::transaction(function () use ($project, $userId, $canonicalJson, $snapshotHash) {
+    /**
+     * @param  array{snapshot?: array<string, mixed>, canonical_json: string, snapshot_hash: string}  $prepared
+     */
+    public function createSnapshotFromPrepared(Project $project, int $userId, array $prepared): ProjectRevision
+    {
+        return DB::transaction(function () use ($project, $userId, $prepared) {
             // 4. Получить следующий номер ревизии для проекта
             Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
             $latestNumber = ProjectRevision::query()
@@ -58,8 +77,8 @@ class SnapshotService
                 'created_by_user_id' => $userId,
                 'number' => $nextNumber,
                 'status' => 'locked',
-                'snapshot_json' => $canonicalJson,
-                'snapshot_hash' => $snapshotHash,
+                'snapshot_json' => $prepared['canonical_json'],
+                'snapshot_hash' => $prepared['snapshot_hash'],
                 'app_version' => config('app.version', '1.0.0'),
                 'calculation_engine_version' => $this->getCalculationEngineVersion(),
                 'locked_at' => now(),

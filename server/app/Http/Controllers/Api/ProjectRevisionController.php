@@ -13,6 +13,7 @@ use App\Service\ReportService;
 use App\Services\Billing\BillingCodes;
 use App\Services\FinishedProductFacadeRevisionRowAssembler;
 use App\Services\FinishedProductFacadeSnapshotPresenter;
+use App\Services\ProjectReportReadinessService;
 use App\Services\Reports\ReportSettingsResolver;
 use App\Services\SnapshotService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -32,6 +33,7 @@ class ProjectRevisionController extends Controller
         private FinishedProductFacadeRevisionRowAssembler $finishedProductFacadeRevisionRowAssembler,
         private FinishedProductFacadeSnapshotPresenter $finishedProductFacadeSnapshotPresenter,
         private ReportSettingsResolver $reportSettingsResolver,
+        private ProjectReportReadinessService $reportReadinessService,
     ) {}
 
     /**
@@ -48,7 +50,8 @@ class ProjectRevisionController extends Controller
         $this->authorize('update', $project);
 
         try {
-            $report = $this->reportService->buildReport($project)->toArray();
+            $prepared = $this->snapshotService->buildSnapshotData($project);
+            $report = $prepared['snapshot'];
             if (($report['totals']['total_is_valid'] ?? true) === false) {
                 return response()->json([
                     'success' => false,
@@ -57,9 +60,35 @@ class ProjectRevisionController extends Controller
                 ], 422);
             }
 
-            $revision = $this->snapshotService->createSnapshot(
+            if (!$this->reportReadinessService->hasMeaningfulEstimateContent($report)) {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'empty_project',
+                    'message' => 'Смету пока нельзя создать: в проекте нет расчетных позиций.',
+                ], 422);
+            }
+
+            $latestRevision = $this->latestActualRevision($project);
+            if (
+                $latestRevision
+                && $this->reportReadinessService->estimateSnapshotHashForRevision($latestRevision) === $prepared['snapshot_hash']
+            ) {
+                return response()->json([
+                    'success' => true,
+                    'status' => 'unchanged',
+                    'message' => 'Актуальный отчет уже создан. Смета не изменилась после последнего формирования.',
+                    'revision' => $this->revisionPayload($latestRevision),
+                    'pdf_url' => url("/api/projects/{$project->id}/revisions/{$latestRevision->number}/pdf"),
+                    'revision_id' => $latestRevision->id,
+                    'number' => $latestRevision->number,
+                    'created_at' => $latestRevision->created_at?->toIso8601String(),
+                ]);
+            }
+
+            $revision = $this->snapshotService->createSnapshotFromPrepared(
                 $project,
-                auth()->id()
+                auth()->id(),
+                $prepared
             );
 
             $this->recordUsageEvent(BillingCodes::METRIC_REVISIONS_CREATED, 1, [
@@ -78,6 +107,7 @@ class ProjectRevisionController extends Controller
 
             return response()->json([
                 'success' => true,
+                'status' => 'created',
                 'revision_id' => $revision->id,
                 'number' => $revision->number,
                 'snapshot_hash' => $revision->snapshot_hash,
@@ -798,5 +828,26 @@ class ProjectRevisionController extends Controller
     private function makePublicVerificationUrl(string $publicId): string
     {
         return rtrim((string) config('app.public_verify_base_url'), '/') . "/v/{$publicId}";
+    }
+
+    private function latestActualRevision(Project $project): ?ProjectRevision
+    {
+        return $project->revisions()
+            ->whereIn('status', ['locked', 'published'])
+            ->orderByDesc('number')
+            ->first();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function revisionPayload(ProjectRevision $revision): array
+    {
+        return [
+            'id' => $revision->id,
+            'number' => $revision->number,
+            'status' => $revision->status,
+            'created_at' => $revision->created_at?->toIso8601String(),
+        ];
     }
 }

@@ -868,8 +868,11 @@ const createProject = async () => {
     router.push(projectEditorUrl(response.data))
   } catch (e) {
     console.error('Ошибка создания проекта:', e)
-    const message = (e as any)?.response?.data?.message
-    showNotification(message || 'Не удалось создать проект', 'warning')
+    const rawMessage = (e as any)?.response?.data?.message
+    const message = typeof rawMessage === 'string' && rawMessage.length <= 300
+      ? rawMessage
+      : 'Не удалось создать проект. Проверьте настройки проекта по умолчанию.'
+    showNotification(message, 'warning')
   } finally {
     creating.value = false
   }

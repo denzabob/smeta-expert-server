@@ -15,6 +15,9 @@ use App\Services\Reports\ReportSettingsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 class ProjectController extends Controller
 {
@@ -121,7 +124,9 @@ class ProjectController extends Controller
             'default_edge_material_id' => $request->input('default_edge_material_id') ?? $userSettings->default_edge_material_id,
             'facade_width_allowance_mm' => $request->input('facade_width_allowance_mm') ?? $userSettings->facade_width_allowance_mm ?? 0,
             'facade_height_allowance_mm' => $request->input('facade_height_allowance_mm') ?? $userSettings->facade_height_allowance_mm ?? 0,
-            'text_blocks' => $request->input('text_blocks') ?? $userSettings->text_blocks,
+            'text_blocks' => $this->normalizeTextBlocksForProject(
+                $request->input('text_blocks') ?? $userSettings->text_blocks
+            ),
             'report_settings' => $this->reportSettingsResolver->merge(
                 is_array($userSettings->report_settings ?? null) ? $userSettings->report_settings : null,
                 $request->input('report_settings'),
@@ -141,6 +146,7 @@ class ProjectController extends Controller
         unset($validatedForMerge['report_settings']);
         $validated = array_merge($defaults, $validatedForMerge);
         $validated['user_id'] = Auth::id();
+        $validated = $this->filterProjectAttributesForSchema($validated);
 
         $billingStatus = app(ProjectWorkspaceAccessService::class)->createStatus($request->user());
         $this->checkBillingGateSafely($request->user(), BillingCodes::CAP_PROJECTS_MAX_OWNED, [
@@ -158,7 +164,19 @@ class ProjectController extends Controller
             );
         }
         
-        $project = Project::create($validated);
+        try {
+            $project = Project::create($validated);
+        } catch (Throwable $exception) {
+            Log::error('Failed to create project', [
+                'user_id' => $request->user()?->id,
+                'exception' => $exception::class,
+                'code' => $exception->getCode(),
+            ]);
+
+            return response()->json([
+                'message' => 'Не удалось создать проект. Проверьте настройки проекта по умолчанию и повторите попытку.',
+            ], 500);
+        }
 
         $this->recordUsageEvent(BillingCodes::METRIC_PROJECTS_CREATED, 1, [
             'user' => $request->user(),
@@ -574,6 +592,57 @@ class ProjectController extends Controller
             'normohour_method.in' => 'Выбран неверный метод расчёта нормо-часа.',
             'normohour_justification.max' => 'Обоснование нормо-часа не должно превышать 5000 символов.',
         ];
+    }
+
+    /**
+     * @return array<int, array{title: string, text: string, enabled: bool}>
+     */
+    private function normalizeTextBlocksForProject(mixed $blocks): array
+    {
+        if (is_string($blocks)) {
+            $decoded = json_decode($blocks, true);
+            $blocks = json_last_error() === JSON_ERROR_NONE ? $decoded : [];
+        }
+
+        if (!is_array($blocks)) {
+            return [];
+        }
+
+        return collect($blocks)
+            ->take(10)
+            ->map(function ($block) {
+                if (is_string($block)) {
+                    return [
+                        'title' => '',
+                        'text' => mb_substr(trim($block), 0, 10000),
+                        'enabled' => true,
+                    ];
+                }
+
+                if (!is_array($block)) {
+                    return null;
+                }
+
+                return [
+                    'title' => mb_substr(trim((string) ($block['title'] ?? '')), 0, 255),
+                    'text' => mb_substr(trim((string) ($block['text'] ?? '')), 0, 10000),
+                    'enabled' => (bool) ($block['enabled'] ?? true),
+                ];
+            })
+            ->filter(fn ($block) => is_array($block) && (($block['title'] ?? '') !== '' || ($block['text'] ?? '') !== ''))
+            ->values()
+            ->all();
+    }
+
+    private function filterProjectAttributesForSchema(array $attributes): array
+    {
+        $columns = array_flip(Schema::getColumnListing((new Project())->getTable()));
+
+        return array_filter(
+            $attributes,
+            fn (string $key): bool => isset($columns[$key]),
+            ARRAY_FILTER_USE_KEY,
+        );
     }
 
     public function destroy(Request $request, Project $project)

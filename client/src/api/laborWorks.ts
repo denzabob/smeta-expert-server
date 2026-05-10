@@ -22,6 +22,7 @@ export interface LaborWork {
   cost_total?: number | null
   rate_snapshot?: any | null
   cost?: number
+  steps_count?: number | null
   created_at?: string
   updated_at?: string
 }

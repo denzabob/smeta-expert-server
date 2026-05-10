@@ -1403,6 +1403,7 @@
                 <th class="lw-th lw-th-right">Норма, ч</th>
                 <th class="lw-th lw-th-right">Ставка, ₽/ч</th>
                 <th class="lw-th lw-th-right">Сумма, ₽</th>
+                <th class="lw-th lw-th-actions">Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -1425,26 +1426,26 @@
                   <v-icon class="lw-drag-handle" size="18">mdi-drag</v-icon>
                 </td>
                 <td class="lw-td">
-                  <div
-                    class="cell-with-actions"
-                    @mouseenter="hoveredLaborWorkId = item.id!"
-                    @mouseleave="hoveredLaborWorkId = null"
-                  >
-                    <div class="cell-name-column">
-                      <div class="cell-ellipsis">{{ item.title || '—' }}</div>
-                      <div v-if="item.labor_profile_name" class="text-caption text-medium-emphasis mt-1">
-                        {{ item.labor_profile_name }}
-                      </div>
-                      <RowHoverActions
-                        :row-id="item.id!"
-                        :quick-actions="getLaborQuickActions(item)"
-                        :menu-actions="getLaborMenuActions(item)"
-                        :visible="isLaborActionsVisible(item.id!)"
-                        :loading-key="laborStepsLoadingId === item.id ? 'details' : null"
-                        dense
-                        @action="handleLaborRowAction"
-                      />
-                    </div>
+                  <div class="labor-work-title-line">
+                    <span class="cell-ellipsis">{{ item.title || '—' }}</span>
+                    <v-tooltip
+                      v-if="getLaborWorkStepsCount(item) > 0"
+                      :text="`Детализация: ${formatStageCount(getLaborWorkStepsCount(item))}`"
+                      location="top"
+                    >
+                      <template #activator="{ props }">
+                        <v-chip
+                          v-bind="props"
+                          class="labor-work-stages-chip"
+                          size="x-small"
+                          variant="tonal"
+                          color="secondary"
+                          density="compact"
+                        >
+                          {{ formatStageCount(getLaborWorkStepsCount(item)) }}
+                        </v-chip>
+                      </template>
+                    </v-tooltip>
                   </div>
                 </td>
                 <td class="lw-td">{{ item.basis || '—' }}</td>
@@ -1453,9 +1454,59 @@
                 <td class="lw-td lw-td-right">
                   <strong>{{ (parseFloat(String(item.cost_total)) || 0).toFixed(2) }}</strong>
                 </td>
+                <td class="lw-td lw-td-actions">
+                  <div class="lw-actions">
+                    <v-tooltip text="Детализация" location="top">
+                      <template #activator="{ props }">
+                        <v-btn
+                          v-bind="props"
+                          icon="mdi-clipboard-list"
+                          variant="text"
+                          size="x-small"
+                          density="compact"
+                          :loading="laborStepsLoadingId === item.id"
+                          :disabled="laborStepsLoadingId === item.id"
+                          @mousedown.stop
+                          @click.stop="handleLaborRowAction({ rowId: item.id!, actionKey: 'details' })"
+                        />
+                      </template>
+                    </v-tooltip>
+                    <v-tooltip text="Редактировать" location="top">
+                      <template #activator="{ props }">
+                        <v-btn
+                          v-bind="props"
+                          icon="mdi-pencil"
+                          variant="text"
+                          size="x-small"
+                          density="compact"
+                          :disabled="isProjectReadOnly"
+                          :title="readOnlyActionTitle || undefined"
+                          @mousedown.stop
+                          @click.stop="handleLaborRowAction({ rowId: item.id!, actionKey: 'edit' })"
+                        />
+                      </template>
+                    </v-tooltip>
+                    <v-tooltip text="Удалить" location="top">
+                      <template #activator="{ props }">
+                        <v-btn
+                          v-bind="props"
+                          icon="mdi-delete"
+                          variant="text"
+                          size="x-small"
+                          density="compact"
+                          color="error"
+                          :disabled="isProjectReadOnly"
+                          :title="readOnlyActionTitle || undefined"
+                          @mousedown.stop
+                          @click.stop="handleLaborRowAction({ rowId: item.id!, actionKey: 'delete' })"
+                        />
+                      </template>
+                    </v-tooltip>
+                  </div>
+                </td>
               </tr>
               <tr v-if="laborWorks.length === 0">
-                <td colspan="6" class="text-center py-8 text-grey">
+                <td colspan="7" class="text-center py-8 text-grey">
                   Монтажно-сборочные работы не добавлены
                 </td>
               </tr>
@@ -1583,6 +1634,15 @@
                 >
                   Смета изменилась после последнего созданного отчета.
                 </v-alert>
+                <v-alert
+                  v-if="projectEmptyForDocuments"
+                  type="warning"
+                  variant="tonal"
+                  density="compact"
+                  class="mt-3"
+                >
+                  Добавьте позиции, работы или расходы, чтобы сформировать документы.
+                </v-alert>
                 <div v-if="latestRevision || estimateReportResult" class="document-last-generated">
                   <div>Последний отчет: {{ formatRevisionDate(estimateReportResult?.created_at || latestRevision?.created_at) }}</div>
                   <div>Версия отчета: {{ estimateReportResult?.number || latestRevision?.number }}</div>
@@ -1593,8 +1653,8 @@
                   color="primary"
                   prepend-icon="mdi-file-document-plus-outline"
                   :loading="estimateReportLoading"
-                  :disabled="isProjectReadOnly || estimateReportLoading || estimateHardInvalid"
-                  :title="readOnlyActionTitle || undefined"
+                  :disabled="isProjectReadOnly || estimateReportLoading || estimateHardInvalid || projectEmptyForDocuments"
+                  :title="documentActionDisabledTitle"
                   @click="generateEstimateReport"
                 >
                   Создать отчет
@@ -1651,6 +1711,15 @@
                   Все доказательства добавлены
                 </v-alert>
                 <v-alert
+                  v-if="projectEmptyForDocuments"
+                  type="warning"
+                  variant="tonal"
+                  density="compact"
+                  class="mt-3"
+                >
+                  Добавьте позиции, работы или расходы, чтобы сформировать документы.
+                </v-alert>
+                <v-alert
                   v-if="isPriceEvidenceCheckRunning"
                   type="info"
                   variant="tonal"
@@ -1669,8 +1738,8 @@
                   color="primary"
                   prepend-icon="mdi-file-certificate-outline"
                   :loading="priceEvidenceReportLoading || isPriceEvidenceCheckRunning || revisionRunFinalizeLoading"
-                  :disabled="isProjectReadOnly || priceEvidenceReportLoading || isPriceEvidenceCheckRunning || revisionRunFinalizeLoading || estimateHardInvalid"
-                  :title="readOnlyActionTitle || undefined"
+                  :disabled="isProjectReadOnly || priceEvidenceReportLoading || isPriceEvidenceCheckRunning || revisionRunFinalizeLoading || estimateHardInvalid || projectEmptyForDocuments"
+                  :title="documentActionDisabledTitle"
                   @click="generatePriceEvidenceReport"
                 >
                   Создать доказательства
@@ -4977,6 +5046,43 @@ const priceEvidenceStatus = computed(() => {
 
   return { total, confirmed, missing }
 })
+const hasPositiveNumber = (value: unknown): boolean => {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) && numberValue > 0
+}
+const projectEmptyForDocuments = computed(() => {
+  const hasPositions = positions.value.some((position: any) =>
+    hasPositiveNumber(position.quantity)
+    || hasPositiveNumber(position.width)
+    || hasPositiveNumber(position.length)
+    || hasPositiveNumber(position.height)
+  )
+  const hasFittings = fittings.value.some((fitting: any) =>
+    hasPositiveNumber(fitting.quantity)
+    || hasPositiveNumber(fitting.total_cost)
+  )
+  const hasExpenses = expenses.value.some((expense: any) =>
+    hasPositiveNumber(expense.amount)
+    || hasPositiveNumber(expense.cost)
+  )
+  const hasOperations = operations.value.some((operation: any) =>
+    hasPositiveNumber(operation.quantity)
+    || hasPositiveNumber(operation.total_cost)
+  )
+  const hasLaborWorks = laborWorks.value.some((work: any) =>
+    hasPositiveNumber(work.hours)
+    || hasPositiveNumber(work.cost)
+    || hasPositiveNumber(work.cost_total)
+  )
+
+  return !(hasPositions || hasFittings || hasExpenses || hasOperations || hasLaborWorks)
+})
+const documentActionDisabledTitle = computed(() => {
+  if (readOnlyActionTitle.value) return readOnlyActionTitle.value
+  if (projectEmptyForDocuments.value) return 'Добавьте позиции, работы или расходы, чтобы сформировать документы.'
+  if (estimateHardInvalid.value) return 'Смета содержит ошибки и не может быть использована'
+  return undefined
+})
 const isPriceEvidenceCheckRunning = computed(() =>
   activeRevisionRun.value?.status === 'PENDING' || activeRevisionRun.value?.status === 'IN_PROGRESS'
 )
@@ -7256,6 +7362,11 @@ const formatMoney = (value: number | string | null | undefined): string => {
 const generateEstimateReport = async () => {
   if (guardReadOnlyAction()) return
 
+  if (projectEmptyForDocuments.value) {
+    showNotification('Смету пока нельзя создать: в проекте нет расчетных позиций.', 'warning')
+    return
+  }
+
   if (estimateHardInvalid.value) {
     showNotification('Смета содержит ошибки и не может быть использована', 'error')
     return
@@ -7268,18 +7379,28 @@ const generateEstimateReport = async () => {
       throw new Error(res.data?.message || 'Не удалось создать отчет')
     }
 
+    const revision = res.data.revision || res.data
     estimateReportResult.value = {
-      number: res.data.number,
-      created_at: res.data.created_at,
-      pdf_url: getEstimateReportPdfUrl(res.data.number),
+      number: revision.number,
+      created_at: revision.created_at || res.data.created_at,
+      pdf_url: res.data.pdf_url || getEstimateReportPdfUrl(revision.number),
     }
-    showNotification('Отчет создан. PDF готов.', 'success')
+    showNotification(
+      res.data.status === 'unchanged'
+        ? 'Актуальный отчет уже создан. Смета не изменилась после последнего формирования.'
+        : 'Отчет создан. PDF готов.',
+      res.data.status === 'unchanged' ? 'info' : 'success'
+    )
     await fetchLatestRevision()
     await fetchRevisions(1)
   } catch (error: any) {
     if (showBillingLockedError(error)) return
 
-    showNotification(`Ошибка создания отчета: ${error.response?.data?.message || error.message}`, 'error')
+    const code = error.response?.data?.code
+    const message = code === 'empty_project'
+      ? 'Смету пока нельзя создать: в проекте нет расчетных позиций.'
+      : `Ошибка создания отчета: ${error.response?.data?.message || error.message}`
+    showNotification(message, code === 'empty_project' ? 'warning' : 'error')
   } finally {
     estimateReportLoading.value = false
   }
@@ -7299,6 +7420,11 @@ const downloadLatestEstimateReportPdf = async () => {
 
 const generatePriceEvidenceReport = async () => {
   if (guardReadOnlyAction()) return
+
+  if (projectEmptyForDocuments.value) {
+    showNotification('Доказательства пока нельзя создать: сначала подготовьте смету.', 'warning')
+    return
+  }
 
   if (estimateHardInvalid.value) {
     showNotification('Смета содержит ошибки и не может быть использована', 'error')
@@ -7350,7 +7476,11 @@ const generatePriceEvidenceReport = async () => {
   } catch (error: any) {
     if (showBillingLockedError(error)) return
 
-    showNotification(`Ошибка подготовки отчета обоснований: ${error.response?.data?.message || error.message}`, 'error')
+    const code = error.response?.data?.code
+    const message = code === 'empty_project'
+      ? 'Доказательства пока нельзя создать: сначала подготовьте смету.'
+      : `Ошибка подготовки отчета обоснований: ${error.response?.data?.message || error.message}`
+    showNotification(message, code === 'empty_project' ? 'warning' : 'error')
   } finally {
     priceEvidenceReportLoading.value = false
   }
@@ -8280,6 +8410,11 @@ const finalizeRevisionRun = async () => {
   if (revisionRunFinalizeLoading.value) return
   if (guardReadOnlyAction()) return
 
+  if (projectEmptyForDocuments.value) {
+    showNotification('Доказательства пока нельзя создать: сначала подготовьте смету.', 'warning')
+    return
+  }
+
   if (estimateHardInvalid.value) {
     showNotification('Смета содержит ошибки и не может быть использована', 'error')
     return
@@ -8294,7 +8429,12 @@ const finalizeRevisionRun = async () => {
       pdf_url: data.pdf.price_justification,
       estimate_pdf_url: data.pdf.smeta,
     }
-    showNotification('Документ подтверждения цен готов. PDF готов.', 'success')
+    showNotification(
+      data.status === 'unchanged'
+        ? 'Документ подтверждения цен уже актуален. Изменений после последнего формирования нет.'
+        : 'Документ подтверждения цен готов. PDF готов.',
+      data.status === 'unchanged' ? 'info' : 'success'
+    )
     setStoredRevisionRunId(null)
     stopRevisionRunPolling()
     activeRevisionRun.value = null
@@ -8308,7 +8448,11 @@ const finalizeRevisionRun = async () => {
       showNotification('Есть незакрытые позиции. Закройте все и повторите завершение', 'warning')
       await refreshRevisionRun()
     } else {
-      showNotification(`Ошибка финализации: ${error.response?.data?.message || error.message}`, 'error')
+      const code = error.response?.data?.code
+      const message = code === 'empty_project'
+        ? 'Доказательства пока нельзя создать: сначала подготовьте смету.'
+        : `Ошибка финализации: ${error.response?.data?.message || error.message}`
+      showNotification(message, code === 'empty_project' ? 'warning' : 'error')
     }
   } finally {
     revisionRunFinalizeLoading.value = false
@@ -8581,6 +8725,45 @@ const totalStepsHours = computed(() => {
   return laborWorkSteps.value.reduce((sum, step) => sum + (parseFloat(step.hours) || 0), 0)
 })
 
+const getLaborWorkStepsCount = (work: LaborWork | null | undefined): number => {
+  const count = Number(work?.steps_count ?? 0)
+  return Number.isFinite(count) && count > 0 ? count : 0
+}
+
+const formatStageCount = (count: number): string => {
+  const normalized = Math.abs(Math.trunc(count))
+  const lastTwo = normalized % 100
+  const last = normalized % 10
+
+  if (lastTwo >= 11 && lastTwo <= 14) {
+    return `${normalized} этапов`
+  }
+
+  if (last === 1) {
+    return `${normalized} этап`
+  }
+
+  if (last >= 2 && last <= 4) {
+    return `${normalized} этапа`
+  }
+
+  return `${normalized} этапов`
+}
+
+const syncSelectedLaborWorkStepsCount = (count = laborWorkSteps.value.length) => {
+  const workId = selectedLaborWork.value?.id
+  if (!workId) return
+
+  laborWorks.value = laborWorks.value.map(work =>
+    work.id === workId ? { ...work, steps_count: count } : work
+  )
+
+  selectedLaborWork.value = {
+    ...selectedLaborWork.value,
+    steps_count: count
+  }
+}
+
 const filteredSteps = computed(() => {
   // Сортировка по sort_order
   const sorted = [...laborWorkSteps.value].sort((a: any, b: any) => 
@@ -8617,35 +8800,6 @@ const stepAutosaveCanSaveNow = computed(() => {
   return Boolean(editingStepId.value) && ['dirty', 'error'].includes(stepAutosaveStatus.value)
 })
 
-const hoveredLaborWorkId = ref<number | null>(null)
-
-const getLaborQuickActions = (item: LaborWork): RowAction[] => [
-  {
-    key: 'details',
-    icon: 'mdi-clipboard-list',
-    label: 'Детализация'
-    ,
-    disabled: laborStepsLoadingId.value === item.id
-  },
-  {
-    key: 'edit',
-    icon: 'mdi-pencil',
-    label: 'Изменить',
-    tooltip: readOnlyActionTitle.value || 'Изменить',
-    disabled: isProjectReadOnly.value
-  },
-  {
-    key: 'delete',
-    icon: 'mdi-delete',
-    label: 'Удалить',
-    tooltip: readOnlyActionTitle.value || 'Удалить',
-    disabled: isProjectReadOnly.value,
-    color: 'error'
-  }
-]
-
-const getLaborMenuActions = (_item: LaborWork): RowAction[] => []
-
 const handleLaborRowAction = (payload: { rowId: number | string, actionKey: string }) => {
   const item = laborWorks.value.find(w => w.id === payload.rowId)
   if (!item) return
@@ -8665,11 +8819,6 @@ const handleLaborRowAction = (payload: { rowId: number | string, actionKey: stri
       deleteLaborWork(item)
       break
   }
-}
-
-const isLaborActionsVisible = (itemId: number | null): boolean => {
-  if (!itemId) return false
-  return hoveredLaborWorkId.value === itemId
 }
 
 // Drag-and-drop для нормируемых работ
@@ -9854,6 +10003,7 @@ const loadSteps = async (laborWorkId: number) => {
       `/api/projects/${projectId}/labor-works/${laborWorkId}/steps`
     )
     laborWorkSteps.value = response.data || []
+    syncSelectedLaborWorkStepsCount(laborWorkSteps.value.length)
   } catch (e: any) {
     console.error('Error loading steps:', e)
     showNotification('Ошибка загрузки подопераций', 'error')
@@ -11548,9 +11698,9 @@ onBeforeUnmount(() => {
 
 .lw-th {
   text-align: left;
-  padding: 0 var(--ds-space-16);
-  height: 44px;
-  min-height: 44px;
+  padding: 0 var(--ds-space-12);
+  height: 36px;
+  min-height: 36px;
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -11570,10 +11720,15 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
+.lw-th-actions {
+  width: 104px;
+  text-align: center;
+}
+
 .lw-row {
   transition: background 0.15s;
   cursor: grab;
-  height: 52px;
+  height: 40px;
 }
 
 .lw-row:hover {
@@ -11590,10 +11745,10 @@ onBeforeUnmount(() => {
 }
 
 .lw-td {
-  padding: 10px var(--ds-space-16);
+  padding: 5px var(--ds-space-12);
   font-size: 0.8125rem;
   line-height: 1.35;
-  min-height: 52px;
+  min-height: 40px;
   border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.4);
   vertical-align: middle;
 }
@@ -11605,6 +11760,43 @@ onBeforeUnmount(() => {
 
 .lw-td-right {
   text-align: right;
+}
+
+.lw-td-actions {
+  width: 104px;
+  padding-inline: 6px;
+}
+
+.lw-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+}
+
+.lw-actions :deep(.v-btn--icon.v-btn--density-compact) {
+  width: 28px;
+  height: 28px;
+}
+
+.labor-work-title-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.labor-work-title-line .cell-ellipsis {
+  flex: 0 1 auto;
+}
+
+.labor-work-stages-chip {
+  flex: 0 0 auto;
+  height: 18px;
+  font-size: 0.6875rem;
+  font-weight: 600;
 }
 
 .lw-drag-handle {

@@ -22,6 +22,7 @@ use App\Service\ReportService;
 use App\Services\FinishedProductFacadeRevisionRowAssembler;
 use App\Services\FinishedProductPositionSnapshotReader;
 use App\Services\MaterialConfirmationService;
+use App\Services\ProjectReportReadinessService;
 use App\Services\SnapshotService;
 use App\Services\UrlNormalizer;
 use Illuminate\Http\JsonResponse;
@@ -39,18 +40,28 @@ class RevisionRunController extends Controller
         private FinishedProductPositionSnapshotReader $finishedProductSnapshotReader,
         private FinishedProductFacadeRevisionRowAssembler $finishedProductFacadeRevisionRowAssembler,
         private MaterialConfirmationService $materialConfirmationService,
+        private ProjectReportReadinessService $reportReadinessService,
     ) {}
 
     public function start(Project $project): JsonResponse
     {
         $this->authorize('update', $project);
 
-        $report = $this->reportService->buildReport($project)->toArray();
+        $prepared = $this->snapshotService->buildSnapshotData($project);
+        $report = $prepared['snapshot'];
         if (($report['totals']['total_is_valid'] ?? true) === false) {
             return response()->json([
                 'success' => false,
                 'error' => 'invalid_estimate',
                 'message' => 'Смета содержит ошибки и не может быть использована',
+            ], 422);
+        }
+
+        if (!$this->reportReadinessService->hasMeaningfulEstimateContent($report)) {
+            return response()->json([
+                'success' => false,
+                'code' => 'empty_project',
+                'message' => 'Доказательства пока нельзя создать: сначала подготовьте смету.',
             ], 422);
         }
 
@@ -299,12 +310,21 @@ class RevisionRunController extends Controller
             }
         }
 
-        $report = $this->reportService->buildReport($project)->toArray();
+        $preparedBaseSnapshot = $this->snapshotService->buildSnapshotData($project);
+        $report = $preparedBaseSnapshot['snapshot'];
         if (($report['totals']['total_is_valid'] ?? true) === false) {
             return response()->json([
                 'success' => false,
                 'error' => 'invalid_estimate',
                 'message' => 'Смета содержит ошибки и не может быть использована',
+            ], 422);
+        }
+
+        if (!$this->reportReadinessService->hasMeaningfulEstimateContent($report)) {
+            return response()->json([
+                'success' => false,
+                'code' => 'empty_project',
+                'message' => 'Доказательства пока нельзя создать: сначала подготовьте смету.',
             ], 422);
         }
 
@@ -444,8 +464,17 @@ class RevisionRunController extends Controller
                 'by_capture_source' => $bySource,
             ];
 
+        $evidenceSnapshotExtra = [
+            'estimate_snapshot_hash' => $preparedBaseSnapshot['snapshot_hash'],
+            'price_justifications' => $justifications,
+            'evidence_summary' => $evidenceSummary,
+            'revision_run_id' => $run->id,
+        ];
+        $preparedEvidenceSnapshot = $this->snapshotService->buildSnapshotData($project, $evidenceSnapshotExtra);
+        $existingActualEvidenceRevision = $this->findUnchangedEvidenceRevision($project, $preparedEvidenceSnapshot['snapshot']);
+
         try {
-            $revision = DB::transaction(function () use ($project, $run, $runId, $justifications, $evidenceSummary) {
+            $revision = DB::transaction(function () use ($project, $runId, $preparedEvidenceSnapshot, $existingActualEvidenceRevision) {
                 Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
 
                 $lockedRun = RevisionRun::query()
@@ -466,14 +495,20 @@ class RevisionRunController extends Controller
                     }
                 }
 
-                $revision = $this->snapshotService->createSnapshot(
+                if ($existingActualEvidenceRevision) {
+                    $lockedRun->update([
+                        'status' => RevisionRun::STATUS_FINALIZED,
+                        'project_revision_id' => $existingActualEvidenceRevision->id,
+                        'finished_at' => now(),
+                    ]);
+
+                    return $existingActualEvidenceRevision;
+                }
+
+                $revision = $this->snapshotService->createSnapshotFromPrepared(
                     $project,
                     auth()->id(),
-                    [
-                        'price_justifications' => $justifications,
-                        'evidence_summary' => $evidenceSummary,
-                        'revision_run_id' => $run->id,
-                    ]
+                    $preparedEvidenceSnapshot
                 );
 
                 $lockedRun->update([
@@ -508,13 +543,24 @@ class RevisionRunController extends Controller
             throw $exception;
         }
 
-        return $this->finalizedRevisionResponse($project, $revision);
+        if ($existingActualEvidenceRevision && $revision->is($existingActualEvidenceRevision)) {
+            return $this->finalizedRevisionResponse(
+                $project,
+                $revision,
+                'unchanged',
+                'Документ подтверждения цен уже актуален. Изменений после последнего формирования нет.'
+            );
+        }
+
+        return $this->finalizedRevisionResponse($project, $revision, 'created');
     }
 
-    private function finalizedRevisionResponse(Project $project, ProjectRevision $revision): JsonResponse
+    private function finalizedRevisionResponse(Project $project, ProjectRevision $revision, string $status = 'created', ?string $message = null): JsonResponse
     {
         return response()->json([
             'success' => true,
+            'status' => $status,
+            'message' => $message,
             'revision' => [
                 'id' => $revision->id,
                 'number' => $revision->number,
@@ -533,6 +579,32 @@ class RevisionRunController extends Controller
             ->where('snapshot_json', 'like', '%"revision_run_id":' . $runId . '%')
             ->orderByDesc('number')
             ->first();
+    }
+
+    /**
+     * @param  array<string, mixed>  $currentEvidenceSnapshot
+     */
+    private function findUnchangedEvidenceRevision(Project $project, array $currentEvidenceSnapshot): ?ProjectRevision
+    {
+        $currentComparableHash = $this->reportReadinessService->comparableEvidenceHash($currentEvidenceSnapshot);
+
+        $latest = ProjectRevision::query()
+            ->where('project_id', $project->id)
+            ->whereIn('status', ['locked', 'published'])
+            ->orderByDesc('number')
+            ->get()
+            ->first(function (ProjectRevision $revision) use ($currentComparableHash) {
+                if (!$this->reportReadinessService->revisionHasPriceEvidence($revision)) {
+                    return false;
+                }
+
+                $snapshot = $this->reportReadinessService->decodeRevisionSnapshot($revision);
+
+                return is_array($snapshot)
+                    && hash_equals($currentComparableHash, $this->reportReadinessService->comparableEvidenceHash($snapshot));
+            });
+
+        return $latest instanceof ProjectRevision ? $latest : null;
     }
 
     private function isDuplicateRevisionNumberException(QueryException $exception): bool

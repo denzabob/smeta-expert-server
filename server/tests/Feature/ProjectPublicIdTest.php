@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Project;
 use App\Models\User;
+use App\Models\UserSettings;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
@@ -66,6 +67,41 @@ class ProjectPublicIdTest extends TestCase
         $this->actingAs($otherUser, 'sanctum')
             ->getJson("/api/projects/{$project->id}")
             ->assertForbidden();
+    }
+
+    public function test_project_creation_normalizes_large_default_text_blocks(): void
+    {
+        $user = User::factory()->create();
+
+        UserSettings::query()->create([
+            'user_id' => $user->id,
+            'waste_coefficient' => 1.0,
+            'repair_coefficient' => 1.0,
+            'apply_waste_to_plate' => true,
+            'apply_waste_to_edge' => true,
+            'apply_waste_to_operations' => false,
+            'use_area_calc_mode' => false,
+            'text_blocks' => [
+                [
+                    'title' => str_repeat('A', 400),
+                    'text' => str_repeat('Большой текст ', 1200),
+                    'enabled' => true,
+                ],
+                str_repeat('Строковый блок ', 1200),
+            ],
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/projects', []);
+
+        $response->assertCreated();
+        $response->assertJsonStructure(['id', 'public_id', 'text_blocks']);
+
+        $blocks = $response->json('text_blocks');
+        $this->assertCount(2, $blocks);
+        $this->assertLessThanOrEqual(255, mb_strlen($blocks[0]['title']));
+        $this->assertLessThanOrEqual(10000, mb_strlen($blocks[0]['text']));
+        $this->assertLessThanOrEqual(10000, mb_strlen($blocks[1]['text']));
     }
 
     private function makeProject(): array

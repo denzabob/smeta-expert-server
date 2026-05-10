@@ -25,6 +25,7 @@ class ProjectLaborWorkController extends Controller
 
         return $project->laborWorks()
             ->with('laborProfile:id,title')
+            ->withCount('steps')
             ->get()
             ->map(fn (ProjectLaborWork $work) => $this->serializeWork($work));
     }
@@ -71,6 +72,7 @@ class ProjectLaborWorkController extends Controller
         $this->rateApplier->apply($project);
         $work->refresh();
         $work->load('laborProfile:id,title');
+        $work->loadCount('steps');
 
         \Illuminate\Support\Facades\Log::info('ProjectLaborWorkController::store - work created', [
             'work_id' => $work->id,
@@ -94,6 +96,7 @@ class ProjectLaborWorkController extends Controller
         }
 
         $laborWork->load('laborProfile:id,title');
+        $laborWork->loadCount('steps');
 
         return response()->json($this->serializeWork($laborWork));
     }
@@ -127,6 +130,7 @@ class ProjectLaborWorkController extends Controller
         $this->rateApplier->apply($project);
         $laborWork->refresh();
         $laborWork->load('laborProfile:id,title');
+        $laborWork->loadCount('steps');
 
         \Illuminate\Support\Facades\Log::info('ProjectLaborWorkController::update - work updated', [
             'work_id' => $laborWork->id,
