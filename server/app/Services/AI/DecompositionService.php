@@ -147,12 +147,14 @@ class DecompositionService
     private function buildLocalFallbackSteps(string $title, ?float $desiredHours = null, ?string $note = null): array
     {
         $totalHours = max(0.1, round((float) ($desiredHours ?? 1.5), 2));
+        $fallbackBasis = 'Локальный шаблон декомпозиции; требуется проверка специалистом';
 
         if ($totalHours <= 0.75) {
             return [
                 [
                     'title' => $this->truncateStepTitle($title),
                     'hours' => $totalHours,
+                    'basis' => $fallbackBasis,
                 ],
             ];
         }
@@ -165,10 +167,12 @@ class DecompositionService
                 [
                     'title' => 'Подготовка и разметка',
                     'hours' => $prepareHours,
+                    'basis' => $fallbackBasis,
                 ],
                 [
                     'title' => $this->truncateStepTitle($title),
                     'hours' => round(max(0.1, $mainHours), 2),
+                    'basis' => $fallbackBasis,
                 ],
             ];
         }
@@ -186,14 +190,17 @@ class DecompositionService
             [
                 'title' => 'Подготовка, доступ и защита зоны работ',
                 'hours' => $prepareHours,
+                'basis' => $fallbackBasis,
             ],
             [
                 'title' => $mainTitle,
                 'hours' => $mainHours,
+                'basis' => $fallbackBasis,
             ],
             [
                 'title' => 'Проверка результата и завершение работ',
                 'hours' => round(max(0.1, $finishHours), 2),
+                'basis' => $fallbackBasis,
             ],
         ];
     }

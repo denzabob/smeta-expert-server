@@ -3170,12 +3170,12 @@
             <span>AI помощник</span>
             <v-spacer />
             <v-chip 
-              v-if="aiSuggestion && aiSuggestion.status" 
+              v-if="aiSuggestion"
               size="x-small" 
-              :color="aiSuggestion.status === 'verified' ? 'success' : aiSuggestion.status === 'candidate' ? 'info' : 'warning'"
+              :color="aiSourceChipColor"
               variant="flat"
             >
-              {{ aiSuggestion.status === 'verified' ? 'Проверено' : aiSuggestion.status === 'candidate' ? 'Рекомендовано' : 'Черновик AI' }}
+              {{ aiSourceLabel }}
             </v-chip>
           </div>
 
@@ -3297,6 +3297,13 @@
                   </v-chip>
                 </div>
               </div>
+              <div class="ai-preview-impact">
+                <span>Сейчас: {{ totalStepsHours.toFixed(2) }} ч</span>
+                <span>Выбрано: {{ aiSelectedHours.toFixed(2) }} ч</span>
+                <span :class="`ai-preview-delta ai-preview-delta--${aiHoursDeltaTone}`">
+                  Разница: {{ formatSignedHours(aiHoursDelta) }} ч
+                </span>
+              </div>
               
               <div class="ai-preview-list">
                 <div 
@@ -3315,7 +3322,10 @@
                     @update:model-value="toggleAiStepSelection(idx)"
                   />
                   <span class="ai-preview-num">{{ idx + 1 }}.</span>
-                  <span class="ai-preview-text">{{ step.title }}</span>
+                  <span class="ai-preview-text">
+                    <span>{{ step.title }}</span>
+                    <span v-if="step.basis" class="ai-preview-basis">{{ step.basis }}</span>
+                  </span>
                   <span class="ai-preview-hours">{{ step.hours }} ч</span>
                 </div>
               </div>
@@ -3352,6 +3362,9 @@
                 >
                   Отмена
                 </v-btn>
+              </div>
+              <div class="ai-feedback-note">
+                Принятые этапы могут использоваться для улучшения ваших шаблонов работ.
               </div>
             </div>
           </v-expand-transition>
@@ -8678,7 +8691,7 @@ const deleteStepConfirmed = async () => {
 }
 
 // === AI Decomposition State ===
-import { decompose as aiDecompose, feedback as aiFeedback, makeFingerprint, type DecomposeContext, type DecomposeResponse } from '@/api/workDecomposition'
+import { decompose as aiDecompose, feedback as aiFeedback, makeLocalFeedbackFingerprint, type DecomposeContext, type DecomposeResponse } from '@/api/workDecomposition'
 
 const aiContext = ref<DecomposeContext>({
   domain: undefined,
@@ -9812,8 +9825,7 @@ const generateAiSteps = async () => {
     if (showBillingLockedError(e)) return
 
     console.error('AI decomposition error:', e)
-    const message = e.response?.data?.message || e.message || 'Ошибка AI генерации'
-    showNotification(message, 'error')
+    showNotification('Не удалось получить предложение. Попробуйте позже или добавьте этапы вручную.', 'error')
   } finally {
     aiLoading.value = false
   }
@@ -9825,6 +9837,33 @@ const aiSelectedHours = computed(() => {
   return Array.from(aiSelectedSteps.value).reduce((sum, idx) => {
     return sum + (aiSuggestion.value!.steps[idx]?.hours || 0)
   }, 0)
+})
+const aiHoursDelta = computed(() => aiSelectedHours.value - totalStepsHours.value)
+const aiHoursDeltaTone = computed(() => {
+  if (Math.abs(aiHoursDelta.value) < 0.005) return 'neutral'
+  return aiHoursDelta.value > 0 ? 'up' : 'down'
+})
+const formatSignedHours = (value: number): string => {
+  if (Math.abs(value) < 0.005) return '0.00'
+  return `${value > 0 ? '+' : ''}${value.toFixed(2)}`
+}
+const aiSourceLabel = computed(() => {
+  if (!aiSuggestion.value) return ''
+
+  if (aiSuggestion.value.source === 'tier1_exact' || aiSuggestion.value.status === 'verified') return 'Проверенный шаблон'
+  if (aiSuggestion.value.status === 'candidate') return 'Рекомендовано'
+  if (aiSuggestion.value.source === 'ai') return 'Сгенерировано AI'
+  if (aiSuggestion.value.source === 'fallback_local') return 'Черновик'
+
+  return aiSuggestion.value.status === 'draft' ? 'Черновик' : 'Предложение'
+})
+const aiSourceChipColor = computed(() => {
+  if (!aiSuggestion.value) return 'default'
+
+  if (aiSuggestion.value.source === 'tier1_exact' || aiSuggestion.value.status === 'verified') return 'success'
+  if (aiSuggestion.value.status === 'candidate') return 'info'
+  if (aiSuggestion.value.source === 'ai') return 'purple'
+  return 'warning'
 })
 const aiAllSelected = computed(() => {
   if (!aiSuggestion.value) return false
@@ -9858,6 +9897,17 @@ const applyAiSteps = async (mode: 'replace' | 'append') => {
   if (aiSelectedSteps.value.size === 0) {
     showNotification('Выберите хотя бы один этап', 'warning')
     return
+  }
+
+  if (mode === 'replace' && laborWorkSteps.value.length > 0) {
+    const confirmed = window.confirm([
+      'Текущие этапы будут удалены и заменены выбранными этапами. Продолжить?',
+      '',
+      `Сейчас: ${formatStageCount(laborWorkSteps.value.length)}, ${totalStepsHours.value.toFixed(2)} ч.`,
+      `Будет: ${formatStageCount(aiSelectedCount.value)}, ${aiSelectedHours.value.toFixed(2)} ч.`,
+    ].join('\n'))
+
+    if (!confirmed) return
   }
 
   aiApplying.value = true
@@ -9920,7 +9970,7 @@ const sendFeedbackOnClose = async () => {
   }
 
   // Calculate fingerprint
-  const currentFingerprint = makeFingerprint(
+  const currentFingerprint = makeLocalFeedbackFingerprint(
     selectedLaborWork.value.title,
     laborWorkSteps.value.map(s => ({ title: s.title, hours: s.hours }))
   )
@@ -12034,6 +12084,31 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
+.ai-preview-impact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+}
+
+.ai-preview-delta {
+  font-weight: 600;
+}
+
+.ai-preview-delta--up {
+  color: rgba(var(--v-theme-warning), 1);
+}
+
+.ai-preview-delta--down {
+  color: rgba(var(--v-theme-success), 1);
+}
+
+.ai-preview-delta--neutral {
+  color: rgba(var(--v-theme-on-surface), 0.72);
+}
+
 .ai-select-all-cb {
   flex-shrink: 0;
 }
@@ -12098,6 +12173,15 @@ onBeforeUnmount(() => {
 .ai-preview-text {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-preview-basis {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: rgba(var(--v-theme-on-surface), 0.58);
 }
 
 .ai-preview-hours {
@@ -12110,6 +12194,13 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.ai-feedback-note {
+  margin-top: 8px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: rgba(var(--v-theme-on-surface), 0.62);
 }
 
 .dimension-swap-col {

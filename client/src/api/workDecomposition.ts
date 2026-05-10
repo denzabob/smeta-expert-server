@@ -28,6 +28,7 @@ export interface DecomposeStep {
 
 export interface DecomposeResponse {
   tier: 1 | 2 | 3
+  source: 'tier1_exact' | 'ai' | 'fallback_local' | string
   preset_id: number | null
   status: 'draft' | 'candidate' | 'verified' | null
   steps: DecomposeStep[]
@@ -64,13 +65,14 @@ export async function decompose(
     note: note || undefined
   })
   
-  // Map backend response to frontend expected structure
-  // Backend returns: { source, meta, suggestion: { steps, totals: { hours } } }
-  // Frontend expects: { tier, preset_id, status, steps, total_hours }
+  const source = String(data.source ?? '')
+  const status = (data.meta?.status ?? data.status ?? (data.meta?.is_draft ? 'draft' : null)) as DecomposeResponse['status']
+
   return {
-    tier: data.source === 'ai' ? 3 : (data.source === 'preset' ? 1 : 2),
-    preset_id: data.preset_id ?? null,
-    status: data.meta?.is_draft ? 'draft' : (data.status ?? null),
+    tier: source === 'tier1_exact' ? 1 : (source === 'ai' || source === 'fallback_local' ? 3 : 2),
+    source,
+    preset_id: data.meta?.preset_id ?? data.preset_id ?? null,
+    status,
     steps: data.suggestion?.steps ?? [],
     total_hours: data.suggestion?.totals?.hours ?? 0
   }
@@ -83,13 +85,13 @@ export async function feedback(payload: FeedbackPayload): Promise<void> {
   await api.post('/api/work/presets/feedback', payload)
 }
 
-// === Fingerprint Helper (matches backend) ===
+// === Local feedback fingerprint helper ===
 
 /**
- * Calculate fingerprint for anti-spam check
- * Must match backend ContextNormalizer::makeFingerprint
+ * Calculate a local fingerprint for anti-spam checks inside the current modal session.
+ * It is intentionally UI-local and does not match backend preset fingerprints.
  */
-export function makeFingerprint(
+export function makeLocalFeedbackFingerprint(
   title: string,
   steps: Array<{ title: string; hours: number }>
 ): string {
@@ -98,13 +100,11 @@ export function makeFingerprint(
     .map(s => `${s.title.toLowerCase().trim()}:${Number(s.hours).toFixed(2)}`)
     .join('|')
   
-  // Simple hash for fingerprint (matches MD5 concept but client-side)
-  // We use a simple string for comparison, not crypto hash
   return `${normalizedTitle}::${stepsStr}`
 }
 
 export default {
   decompose,
   feedback,
-  makeFingerprint
+  makeLocalFeedbackFingerprint
 }

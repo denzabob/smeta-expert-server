@@ -486,7 +486,12 @@
                             <v-text-field v-model="block.title" label="Заголовок" />
                           </v-col>
                           <v-col cols="12">
-                            <v-textarea v-model="block.text" label="Текст" rows="3" />
+                            <RichTextEditor
+                              v-model="block.text"
+                              label="Текст"
+                              placeholder="Введите текст справочного блока"
+                              :disabled="block.enabled === false"
+                            />
                           </v-col>
                         </v-row>
                       </v-card>
@@ -761,6 +766,7 @@ import api from '@/api/axios'
 import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
+import RichTextEditor from '@/components/notifications/RichTextEditor.vue'
 import SettingsShell from '@/components/settings/shell/SettingsShell.vue'
 import SettingsShellFooter from '@/components/settings/shell/SettingsShellFooter.vue'
 

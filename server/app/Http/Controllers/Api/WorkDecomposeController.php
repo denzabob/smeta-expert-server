@@ -44,7 +44,7 @@ class WorkDecomposeController extends Controller
             
             return response()->json([
                 'error' => 'Не удалось выполнить декомпозицию работы',
-                'message' => $e->getMessage(),
+                'message' => 'Не удалось получить предложение. Попробуйте позже или добавьте этапы вручную.',
             ], 500);
         }
     }
