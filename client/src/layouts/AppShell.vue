@@ -6,6 +6,61 @@
         <v-icon icon="mdi-menu" size="24" />
       </button>
       <span class="mobile-title">ПРИЗМА</span>
+      <div class="mobile-actions">
+        <v-tooltip v-if="lastProject" :text="lastProjectTooltip" location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              class="toolbar-action toolbar-action--icon"
+              icon="mdi-history"
+              variant="tonal"
+              size="small"
+              aria-label="Открыть последний проект"
+              @click="openLastProject"
+            />
+          </template>
+        </v-tooltip>
+
+        <v-tooltip text="Идеи и предложения" location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              class="toolbar-action toolbar-action--icon"
+              :class="{ 'toolbar-action--active': isIdeasRoute }"
+              icon="mdi-lightbulb-outline"
+              :variant="isIdeasRoute ? 'flat' : 'tonal'"
+              :color="isIdeasRoute ? 'primary' : undefined"
+              size="small"
+              aria-label="Идеи и предложения"
+              @click="goToIdeas"
+            />
+          </template>
+        </v-tooltip>
+
+        <v-tooltip text="Уведомления" location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              class="toolbar-action toolbar-action--icon"
+              variant="tonal"
+              size="small"
+              icon
+              aria-label="Уведомления"
+              @click="openNotifications"
+            >
+              <v-badge
+                :model-value="notificationsStore.hasUnread"
+                :content="notificationsStore.badgeText"
+                color="error"
+                offset-x="-2"
+                offset-y="-2"
+              >
+                <v-icon icon="mdi-bell-outline" size="20" />
+              </v-badge>
+            </v-btn>
+          </template>
+        </v-tooltip>
+      </div>
     </div>
 
     <!-- Sidebar (Mistral-style) -->
@@ -22,8 +77,74 @@
       :class="{
         'app-main--mobile-header': compactNav,
         'app-main--project-editor': isProjectEditorRoute,
+        'app-main--with-toolbar': showTopToolbar,
       }"
     >
+      <div v-if="showTopToolbar" class="app-top-toolbar">
+        <div class="app-top-toolbar__inner md3-app-shell__content">
+          <div class="app-top-toolbar__search-slot" aria-hidden="true" />
+          <div class="toolbar-actions">
+            <v-tooltip v-if="lastProject" :text="lastProjectTooltip" location="bottom">
+              <template #activator="{ props: tooltipProps }">
+                <v-btn
+                  v-bind="tooltipProps"
+                  class="toolbar-action toolbar-action--last-project"
+                  variant="tonal"
+                  size="small"
+                  aria-label="Открыть последний проект"
+                  @click="openLastProject"
+                >
+                  <v-icon icon="mdi-history" size="18" />
+                  <span class="toolbar-action__label">{{ lastProjectLabel }}</span>
+                </v-btn>
+              </template>
+            </v-tooltip>
+
+            <v-tooltip text="Идеи и предложения" location="bottom">
+              <template #activator="{ props: tooltipProps }">
+                <v-btn
+                  v-bind="tooltipProps"
+                  class="toolbar-action"
+                  :class="{ 'toolbar-action--active': isIdeasRoute }"
+                  :variant="isIdeasRoute ? 'flat' : 'tonal'"
+                  :color="isIdeasRoute ? 'primary' : undefined"
+                  size="small"
+                  aria-label="Идеи и предложения"
+                  @click="goToIdeas"
+                >
+                  <v-icon icon="mdi-lightbulb-outline" size="18" />
+                  <span class="toolbar-action__label">Идеи</span>
+                </v-btn>
+              </template>
+            </v-tooltip>
+
+            <v-tooltip text="Уведомления" location="bottom">
+              <template #activator="{ props: tooltipProps }">
+                <v-btn
+                  v-bind="tooltipProps"
+                  class="toolbar-action toolbar-action--icon"
+                  variant="tonal"
+                  size="small"
+                  icon
+                  aria-label="Уведомления"
+                  @click="openNotifications"
+                >
+                  <v-badge
+                    :model-value="notificationsStore.hasUnread"
+                    :content="notificationsStore.badgeText"
+                    color="error"
+                    offset-x="-2"
+                    offset-y="-2"
+                  >
+                    <v-icon icon="mdi-bell-outline" size="20" />
+                  </v-badge>
+                </v-btn>
+              </template>
+            </v-tooltip>
+          </div>
+        </div>
+      </div>
+
       <!-- Page content -->
       <div
         class="page-content md3-app-shell__content"
@@ -52,6 +173,8 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
+import { useNotificationsStore } from '@/stores/notifications'
+import api from '@/api/axios'
 import {
   isAppThemeMode,
   readStoredThemeMode,
@@ -67,10 +190,51 @@ import SupportChatWidget from '@/components/support/SupportChatWidget.vue'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const notificationsStore = useNotificationsStore()
 const { smAndDown } = useDisplay()
 const theme = useTheme()
 const compactNav = computed(() => smAndDown.value)
 const isProjectEditorRoute = computed(() => route.name === 'ProjectEditorView')
+const isIdeasRoute = computed(() => String(route.path).startsWith('/ideas'))
+const showTopToolbar = computed(() => !compactNav.value)
+
+const LAST_PROJECT_KEY = 'prism.lastProject'
+
+interface LastProjectLink {
+  id: string
+  number: string
+  address?: string | null
+  updated_at?: string | null
+}
+
+const lastProject = ref<LastProjectLink | null>(readLastProject())
+const lastProjectLabel = computed(() => lastProject.value?.number || 'Последний проект')
+const lastProjectTooltip = computed(() => {
+  if (!lastProject.value) return ''
+  const address = lastProject.value.address?.trim()
+  return address
+    ? `Открыть последний проект: ${address}`
+    : `Открыть последний проект: ${lastProjectLabel.value}`
+})
+
+function readLastProject(): LastProjectLink | null {
+  try {
+    const raw = localStorage.getItem(LAST_PROJECT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<LastProjectLink>
+    const id = String(parsed.id ?? '').trim()
+    if (!id) return null
+    return {
+      id,
+      number: String(parsed.number ?? 'Последний проект').trim() || 'Последний проект',
+      address: typeof parsed.address === 'string' ? parsed.address : null,
+      updated_at: typeof parsed.updated_at === 'string' ? parsed.updated_at : null,
+    }
+  } catch {
+    localStorage.removeItem(LAST_PROJECT_KEY)
+    return null
+  }
+}
 
 // Drawer state
 const drawerOpen = ref(true)
@@ -84,6 +248,33 @@ const profileEditOpen = ref(false)
 
 function openProfileEdit() {
   profileEditOpen.value = true
+}
+
+function goToIdeas() {
+  if (!isIdeasRoute.value) {
+    void router.push({ name: 'ideas' })
+  }
+}
+
+async function openLastProject() {
+  const target = lastProject.value
+  if (!target) return
+
+  try {
+    await api.get(`/api/projects/${encodeURIComponent(target.id)}`)
+    await router.push({ name: 'ProjectEditorView', params: { projectPublicId: target.id } })
+  } catch {
+    localStorage.removeItem(LAST_PROJECT_KEY)
+    lastProject.value = null
+  }
+}
+
+function openNotifications() {
+  window.dispatchEvent(new CustomEvent('app-notifications:open'))
+}
+
+function handleLastProjectUpdated() {
+  lastProject.value = readLastProject()
 }
 
 // Theme mode
@@ -157,6 +348,8 @@ onMounted(() => {
   
   // Listen for theme mode changes from topbar/dialog
   window.addEventListener('theme-mode-change', handleThemeModeChange)
+  window.addEventListener('storage', handleLastProjectUpdated)
+  window.addEventListener('prism:last-project-updated', handleLastProjectUpdated)
   
   applyTheme()
   handleSettingsQueryOpen()
@@ -167,6 +360,8 @@ onBeforeUnmount(() => {
     mediaQuery.removeEventListener('change', mediaListener)
   }
   window.removeEventListener('theme-mode-change', handleThemeModeChange)
+  window.removeEventListener('storage', handleLastProjectUpdated)
+  window.removeEventListener('prism:last-project-updated', handleLastProjectUpdated)
 })
 
 watch(themeMode, () => {
@@ -216,6 +411,10 @@ watch(
   min-height: 100vh;
 }
 
+.app-main--with-toolbar .page-content {
+  min-height: calc(100vh - 64px);
+}
+
 .md3-app-shell__content {
   max-width: 1600px;
   margin: 0 auto;
@@ -232,6 +431,10 @@ watch(
   min-height: 0;
   overflow: hidden;
   box-sizing: border-box;
+}
+
+.app-main--with-toolbar .page-content--project-editor {
+  height: calc(100dvh - 64px);
 }
 
 /* Mobile header */
@@ -275,6 +478,63 @@ watch(
   color: rgb(var(--v-theme-on-surface));
 }
 
+.mobile-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-top-toolbar {
+  position: relative;
+  z-index: 2;
+  min-height: 64px;
+  padding: 12px 24px 0;
+}
+
+.app-top-toolbar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.app-top-toolbar__search-slot {
+  flex: 1;
+  min-width: 0;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.toolbar-action {
+  min-width: 0;
+  border-radius: 999px;
+  text-transform: none;
+  font-weight: 700;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.toolbar-action__label {
+  margin-left: 6px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbar-action--active {
+  box-shadow: var(--ds-shadow-soft);
+}
+
+.toolbar-action--icon {
+  flex-shrink: 0;
+}
+
 /* Mobile */
 @media (max-width: 600px) {
   .page-content {
@@ -283,6 +543,12 @@ watch(
 
   .page-content--project-editor {
     height: calc(100dvh - 56px);
+  }
+}
+
+@media (max-width: 960px) {
+  .toolbar-action__label {
+    display: none;
   }
 }
 </style>

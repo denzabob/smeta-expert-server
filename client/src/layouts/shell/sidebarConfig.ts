@@ -42,12 +42,6 @@ export const sidebarSections: MenuSection[] = [
         icon: 'mdi-folder-outline',
         showInRail: true,
       },
-      {
-        title: 'Идеи',
-        routeName: 'ideas',
-        icon: 'mdi-lightbulb-outline',
-        showInRail: true,
-      },
     ],
   },
   {
@@ -94,7 +88,7 @@ export interface AccountMenuItem {
   title: string
   icon: string
   /** Специальное действие */
-  action?: 'logout' | 'support' | 'notifications' | 'profile' | 'settings'
+  action?: 'logout' | 'support' | 'profile' | 'settings'
   /** Навигация на маршрут (закрывает меню) */
   route?: string
   /** Показывать badge с кол-вом непрочитанных */
@@ -111,7 +105,6 @@ export interface AccountMenuItem {
  *   action:'profile'        → compact ProfileEditModal (~420px)
  *   action:'settings'       → AccountSettingsDialog (settings shell, 800px)
  *   route:'/settings'       → UserSettingsView (full page)
- *   action:'notifications'  → notifications panel / fullscreen on mobile
  */
 export const accountMenuItems: AccountMenuItem[] = [
   {
@@ -138,13 +131,6 @@ export const accountMenuItems: AccountMenuItem[] = [
     icon: 'mdi-chart-box-outline',
     route: '/settings/billing',
     visibleIf: canShowUserBilling,
-  },
-  {
-    id: 'notifications',
-    title: 'Уведомления',
-    icon: 'mdi-bell-outline',
-    action: 'notifications',
-    badge: true,
   },
   {
     id: 'support',

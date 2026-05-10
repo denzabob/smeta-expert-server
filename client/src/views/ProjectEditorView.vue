@@ -5955,6 +5955,19 @@ const loadReferences = async () => {
   }
 }
 
+const rememberLastProject = () => {
+  const routeId = String(project.value.public_id || project.value.id || projectRouteIdentifier).trim()
+  if (!routeId) return
+
+  localStorage.setItem('prism.lastProject', JSON.stringify({
+    id: routeId,
+    number: project.value.number || `#${routeId}`,
+    address: project.value.address || null,
+    updated_at: new Date().toISOString(),
+  }))
+  window.dispatchEvent(new CustomEvent('prism:last-project-updated'))
+}
+
 const fetchData = async (): Promise<boolean> => {
   try {
     suppressAutoSave.value = true
@@ -5969,6 +5982,7 @@ const fetchData = async (): Promise<boolean> => {
     await loadUserDefaultFacadeAllowances()
     projectId = String(project.value.id || projectRouteIdentifier)
     projectApiId.value = projectId
+    rememberLastProject()
 
     if (/^\d+$/.test(projectRouteIdentifier) && project.value.public_id) {
       await router.replace({

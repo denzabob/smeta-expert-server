@@ -111,17 +111,9 @@
               :class="{ 'account-btn--rail': isRail }"
               @click="accountDrawerOpen = true"
             >
-              <v-badge
-                :model-value="notificationsStore.hasUnread"
-                :content="notificationsStore.badgeText"
-                color="error"
-                offset-x="-2"
-                offset-y="-2"
-              >
-                <div class="account-avatar">
-                  {{ userInitial }}
-                </div>
-              </v-badge>
+              <div class="account-avatar">
+                {{ userInitial }}
+              </div>
             </button>
           </template>
           Аккаунт и настройки
@@ -132,17 +124,9 @@
           :class="{ 'account-btn--rail': isRail }"
           @click="accountDrawerOpen = true"
         >
-          <v-badge
-            :model-value="notificationsStore.hasUnread"
-            :content="notificationsStore.badgeText"
-            color="error"
-            offset-x="-2"
-            offset-y="-2"
-          >
-            <div class="account-avatar">
-              {{ userInitial }}
-            </div>
-          </v-badge>
+          <div class="account-avatar">
+            {{ userInitial }}
+          </div>
           <div class="account-info">
             <div class="account-name">{{ userName }}</div>
             <div class="account-email">{{ userEmail }}</div>
@@ -161,7 +145,6 @@
     :user-initial="userInitial"
     @open-settings="handleOpenSettings"
     @open-profile="handleOpenProfile"
-    @open-notifications="handleOpenNotifications"
     @logout="$emit('logout')"
   />
 
@@ -347,12 +330,14 @@ onMounted(() => {
   }
   window.addEventListener('app-sidebar:request-rail', handleRequestRail)
   window.addEventListener('app-sidebar:restore', handleRestore)
+  window.addEventListener('app-notifications:open', handleOpenNotifications)
 })
 
 onBeforeUnmount(() => {
   notificationsStore.stopPolling()
   window.removeEventListener('app-sidebar:request-rail', handleRequestRail)
   window.removeEventListener('app-sidebar:restore', handleRestore)
+  window.removeEventListener('app-notifications:open', handleOpenNotifications)
 })
 
 // На мобильных всегда wide

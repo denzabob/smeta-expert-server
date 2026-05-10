@@ -32,13 +32,6 @@
                 >
                   <v-icon :icon="item.icon" size="20" class="drawer-item-icon" />
                   <span class="drawer-item-text">{{ item.title }}</span>
-                  <v-badge
-                    v-if="item.badge && notificationsStore.hasUnread"
-                    :content="notificationsStore.badgeText"
-                    color="error"
-                    inline
-                    class="ml-auto"
-                  />
                 </button>
               </template>
             </nav>
@@ -72,7 +65,6 @@
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { accountMenuItems, type AccountMenuItem } from './sidebarConfig'
-import { useNotificationsStore } from '@/stores/notifications'
 import {
   isAppThemeMode,
   readStoredThemeMode,
@@ -91,12 +83,10 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'open-settings'): void
   (e: 'open-profile'): void
-  (e: 'open-notifications'): void
   (e: 'logout'): void
 }>()
 
 const router = useRouter()
-const notificationsStore = useNotificationsStore()
 const visibleAccountMenuItems = computed(() => {
   return accountMenuItems.filter((item) => !item.visibleIf || item.visibleIf(null))
 })
@@ -133,8 +123,6 @@ function handleItemClick(item: AccountMenuItem) {
       close(); emit('logout'); return
     case 'support':
       close(); window.open('https://t.me/denzabob', '_blank'); return
-    case 'notifications':
-      close(); emit('open-notifications'); return
     case 'profile':
       close(); emit('open-profile'); return
     case 'settings':
