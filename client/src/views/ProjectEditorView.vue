@@ -1,55 +1,5 @@
 <template>
   <div class="workspace-root">
-    <!-- Workspace Header -->
-    <WorkspaceHeader
-      :title="`Проект #${project.number}`"
-      :positions-count="positions.length"
-      :total-sum="projectTotalSum"
-      :warnings-count="healthIssues.length"
-      :latest-revision="latestRevision ? { number: latestRevision.number, status: latestRevision.status } : null"
-      :loading="!loadingReady"
-    >
-      <template #actions>
-        <div class="toolbar-actions">
-          <v-btn
-            size="small"
-            color="primary"
-            prepend-icon="mdi-file-document-multiple-outline"
-            :disabled="estimateHardInvalid"
-            :title="estimateHardInvalid ? 'Смета содержит ошибки и не может быть использована' : 'Документы проекта'"
-            @click="activeModule = 'documents'"
-          >
-            Документы
-          </v-btn>
-          <v-btn
-            size="small"
-            color="secondary"
-            prepend-icon="mdi-refresh"
-            :loading="refreshing"
-            :disabled="refreshing"
-            @click="refreshAll"
-          >
-            Обновить
-          </v-btn>
-          <v-btn
-            size="small"
-            prepend-icon="mdi-cog"
-            :disabled="isProjectReadOnly"
-            :title="readOnlyActionTitle || 'Настройки'"
-            @click="activeModule = 'settings'"
-          >
-            Настройки
-          </v-btn>
-        </div>
-      </template>
-    </WorkspaceHeader>
-
-    <!-- Health / Issues Bar -->
-    <ProjectHealthBar
-      :issues="healthIssues"
-      @navigate="handleHealthNavigate"
-    />
-
     <v-alert
       v-if="estimateHardInvalid"
       type="error"
@@ -3578,9 +3528,7 @@ import { consumePrefetchedProject, setProjectsFlashMessage } from '@/router/proj
 import ProjectSettingsModal from '@/components/ProjectSettingsModal.vue'
 import ImportPositionsDialog from '@/components/ImportPositionsDialog.vue'
 import RowHoverActions, { type RowAction } from '@/components/RowHoverActions.vue'
-import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceSidebar, { type SidebarModule } from '@/components/workspace/WorkspaceSidebar.vue'
-import ProjectHealthBar, { type HealthIssue } from '@/components/workspace/ProjectHealthBar.vue'
 import ProjectLaborEvidencePanel from '@/components/project/ProjectLaborEvidencePanel.vue'
 import ProjectLaborCalculationPanel from '@/components/project/ProjectLaborCalculationPanel.vue'
 
@@ -3616,6 +3564,13 @@ watch(activeModule, (val) => {
 
 const handleHealthNavigate = (target: string) => {
   activeModule.value = normalizeProjectEditorModule(target)
+}
+
+const onProjectToolbarNavigate = (event: Event) => {
+  const target = String((event as CustomEvent<string>).detail || '').trim()
+  if (target) {
+    handleHealthNavigate(target)
+  }
 }
 
 // === Типы ===
@@ -3668,6 +3623,13 @@ interface TextBlock {
   title: string
   text: string
   enabled?: boolean
+}
+
+interface HealthIssue {
+  severity: 'error' | 'warning' | 'info'
+  message: string
+  action?: string
+  actionLabel?: string
 }
 
 interface NormohourSource {
@@ -9330,6 +9292,47 @@ const healthIssues = computed<HealthIssue[]>(() => {
   return issues
 })
 
+const emitProjectToolbarContext = () => {
+  window.dispatchEvent(new CustomEvent('project-toolbar:update', {
+    detail: {
+      title: project.value.number ? `Проект #${project.value.number}` : 'Проект',
+      positionsCount: positions.value.length,
+      totalLabel: projectTotalSum.value == null ? null : formatMoney(projectTotalSum.value),
+      warningsCount: healthIssues.value.length,
+      issues: healthIssues.value.map((issue) => ({ ...issue })),
+      documentsDisabled: estimateHardInvalid.value,
+      settingsDisabled: isProjectReadOnly.value,
+      refreshing: refreshing.value,
+    },
+  }))
+}
+
+const openDocumentsFromToolbar = () => {
+  activeModule.value = 'documents'
+}
+
+const openSettingsFromToolbar = () => {
+  activeModule.value = 'settings'
+}
+
+const refreshFromToolbar = () => {
+  void refreshAll()
+}
+
+watch(
+  [
+    () => project.value.number,
+    () => positions.value.length,
+    projectTotalSum,
+    () => healthIssues.value.length,
+    estimateHardInvalid,
+    isProjectReadOnly,
+    refreshing,
+  ],
+  emitProjectToolbarContext,
+  { immediate: true }
+)
+
 // === Ручные операции ===
 const openOperationDialog = () => {
   if (guardReadOnlyAction()) return
@@ -10320,6 +10323,11 @@ const openDetailTypesInNewTab = () => {
 onMounted(async () => {
   // Сворачиваем основной sidebar приложения для фокуса на редакторе
   window.dispatchEvent(new CustomEvent('app-sidebar:request-rail'))
+  window.addEventListener('project-toolbar:documents', openDocumentsFromToolbar)
+  window.addEventListener('project-toolbar:refresh', refreshFromToolbar)
+  window.addEventListener('project-toolbar:settings', openSettingsFromToolbar)
+  window.addEventListener('project-toolbar:navigate', onProjectToolbarNavigate)
+  emitProjectToolbarContext()
 
   await loadReferences()
   const projectLoaded = await fetchData()
@@ -10388,6 +10396,22 @@ watch(manualCloseDialog, (isOpen) => {
 onBeforeUnmount(() => {
   // Восстанавливаем сохранённое состояние sidebar
   window.dispatchEvent(new CustomEvent('app-sidebar:restore'))
+  window.dispatchEvent(new CustomEvent('project-toolbar:update', {
+    detail: {
+      title: 'Проект',
+      positionsCount: 0,
+      totalLabel: null,
+      warningsCount: 0,
+      issues: [],
+      documentsDisabled: false,
+      settingsDisabled: false,
+      refreshing: false,
+    },
+  }))
+  window.removeEventListener('project-toolbar:documents', openDocumentsFromToolbar)
+  window.removeEventListener('project-toolbar:refresh', refreshFromToolbar)
+  window.removeEventListener('project-toolbar:settings', openSettingsFromToolbar)
+  window.removeEventListener('project-toolbar:navigate', onProjectToolbarNavigate)
 
   if (toolbarSentinelObserver) {
     toolbarSentinelObserver.disconnect()
@@ -10425,8 +10449,8 @@ onBeforeUnmount(() => {
 .workspace-root {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  height: calc(100dvh - 48px);
+  gap: 10px;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }

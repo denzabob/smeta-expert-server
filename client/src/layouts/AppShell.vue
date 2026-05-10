@@ -7,7 +7,100 @@
       </button>
       <span class="mobile-title">ПРИЗМА</span>
       <div class="mobile-actions">
-        <v-tooltip v-if="lastProject" :text="lastProjectTooltip" location="bottom">
+        <template v-if="isProjectEditorRoute">
+          <v-menu
+            v-if="projectToolbar.issues.length > 0"
+            location="bottom end"
+          >
+            <template #activator="{ props: menuProps }">
+              <v-btn
+                v-bind="menuProps"
+                class="toolbar-action project-problem-chip project-problem-chip--mobile"
+                :class="`project-problem-chip--${projectToolbar.maxSeverity}`"
+                variant="tonal"
+                size="small"
+                aria-label="Проблемы проекта"
+              >
+                <v-icon icon="mdi-alert-circle-outline" size="17" />
+                <span class="project-problem-chip__count">{{ projectToolbar.issues.length }}</span>
+              </v-btn>
+            </template>
+            <v-card class="project-problems-popover" elevation="8">
+              <div class="project-problems-popover__title">Проблемы проекта</div>
+              <div class="project-problems-popover__list">
+                <div
+                  v-for="(issue, index) in projectToolbar.issues"
+                  :key="`${issue.message}-mobile-${index}`"
+                  class="project-problems-popover__item"
+                >
+                  <v-icon
+                    :icon="issue.severity === 'error' ? 'mdi-close-circle-outline' : issue.severity === 'warning' ? 'mdi-alert-outline' : 'mdi-information-outline'"
+                    :color="issue.severity === 'error' ? 'error' : issue.severity === 'warning' ? 'warning' : 'info'"
+                    size="17"
+                  />
+                  <span class="project-problems-popover__message">{{ issue.message }}</span>
+                  <v-btn
+                    v-if="issue.action"
+                    size="x-small"
+                    variant="text"
+                    color="primary"
+                    @click="dispatchProjectToolbarNavigate(issue.action)"
+                  >
+                    {{ issue.actionLabel || 'Перейти' }}
+                  </v-btn>
+                </div>
+              </div>
+            </v-card>
+          </v-menu>
+
+          <v-tooltip text="Документы" location="bottom">
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                class="toolbar-action toolbar-action--icon"
+                icon="mdi-file-document-multiple-outline"
+                variant="tonal"
+                size="small"
+                :disabled="projectToolbar.documentsDisabled"
+                aria-label="Документы"
+                @click="dispatchProjectToolbarAction('documents')"
+              />
+            </template>
+          </v-tooltip>
+
+          <v-tooltip text="Обновить" location="bottom">
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                class="toolbar-action toolbar-action--icon"
+                icon="mdi-refresh"
+                variant="tonal"
+                size="small"
+                :loading="projectToolbar.refreshing"
+                :disabled="projectToolbar.refreshing"
+                aria-label="Обновить"
+                @click="dispatchProjectToolbarAction('refresh')"
+              />
+            </template>
+          </v-tooltip>
+
+          <v-tooltip text="Настройки" location="bottom">
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                class="toolbar-action toolbar-action--icon"
+                icon="mdi-cog-outline"
+                variant="tonal"
+                size="small"
+                :disabled="projectToolbar.settingsDisabled"
+                aria-label="Настройки"
+                @click="dispatchProjectToolbarAction('settings')"
+              />
+            </template>
+          </v-tooltip>
+        </template>
+
+        <v-tooltip v-else-if="lastProject" :text="lastProjectTooltip" location="bottom">
           <template #activator="{ props: tooltipProps }">
             <v-btn
               v-bind="tooltipProps"
@@ -41,10 +134,9 @@
           <template #activator="{ props: tooltipProps }">
             <v-btn
               v-bind="tooltipProps"
-              class="toolbar-action toolbar-action--icon"
+              class="toolbar-action toolbar-action--icon toolbar-action--notification"
               variant="tonal"
               size="small"
-              icon
               aria-label="Уведомления"
               @click="openNotifications"
             >
@@ -80,11 +172,127 @@
         'app-main--with-toolbar': showTopToolbar,
       }"
     >
-      <div v-if="showTopToolbar" class="app-top-toolbar">
+      <div
+        v-if="showTopToolbar"
+        class="app-top-toolbar"
+        :class="{ 'app-top-toolbar--project': isProjectEditorRoute }"
+      >
         <div class="app-top-toolbar__inner md3-app-shell__content">
-          <div class="app-top-toolbar__search-slot" aria-hidden="true" />
+          <div v-if="isProjectEditorRoute" class="project-toolbar-context">
+            <div class="project-toolbar-title">{{ projectToolbar.title }}</div>
+            <v-chip size="x-small" variant="tonal" class="project-toolbar-chip">
+              {{ projectToolbar.positionsCount }} поз.
+            </v-chip>
+            <v-chip
+              v-if="projectToolbar.totalLabel"
+              size="x-small"
+              variant="tonal"
+              color="primary"
+              class="project-toolbar-chip"
+            >
+              {{ projectToolbar.totalLabel }}
+            </v-chip>
+            <v-menu
+              v-if="projectToolbar.issues.length > 0"
+              location="bottom start"
+            >
+              <template #activator="{ props: menuProps }">
+                <v-btn
+                  v-bind="menuProps"
+                  class="toolbar-action project-problem-chip"
+                  :class="`project-problem-chip--${projectToolbar.maxSeverity}`"
+                  variant="tonal"
+                  size="small"
+                >
+                  <v-icon icon="mdi-alert-circle-outline" size="17" />
+                  <span class="toolbar-action__label">{{ projectProblemsLabel }}</span>
+                </v-btn>
+              </template>
+              <v-card class="project-problems-popover" elevation="8">
+                <div class="project-problems-popover__title">Проблемы проекта</div>
+                <div class="project-problems-popover__list">
+                  <div
+                    v-for="(issue, index) in projectToolbar.issues"
+                    :key="`${issue.message}-${index}`"
+                    class="project-problems-popover__item"
+                  >
+                    <v-icon
+                      :icon="issue.severity === 'error' ? 'mdi-close-circle-outline' : issue.severity === 'warning' ? 'mdi-alert-outline' : 'mdi-information-outline'"
+                      :color="issue.severity === 'error' ? 'error' : issue.severity === 'warning' ? 'warning' : 'info'"
+                      size="17"
+                    />
+                    <span class="project-problems-popover__message">{{ issue.message }}</span>
+                    <v-btn
+                      v-if="issue.action"
+                      size="x-small"
+                      variant="text"
+                      color="primary"
+                      @click="dispatchProjectToolbarNavigate(issue.action)"
+                    >
+                      {{ issue.actionLabel || 'Перейти' }}
+                    </v-btn>
+                  </div>
+                </div>
+              </v-card>
+            </v-menu>
+          </div>
+          <div v-else class="app-top-toolbar__search-slot" aria-hidden="true" />
           <div class="toolbar-actions">
-            <v-tooltip v-if="lastProject" :text="lastProjectTooltip" location="bottom">
+            <template v-if="isProjectEditorRoute">
+              <v-tooltip text="Документы" location="bottom">
+                <template #activator="{ props: tooltipProps }">
+                  <v-btn
+                    v-bind="tooltipProps"
+                    class="toolbar-action"
+                    variant="tonal"
+                    size="small"
+                    :disabled="projectToolbar.documentsDisabled"
+                    aria-label="Документы"
+                    @click="dispatchProjectToolbarAction('documents')"
+                  >
+                    <v-icon icon="mdi-file-document-multiple-outline" size="18" />
+                    <span class="toolbar-action__label">Документы</span>
+                  </v-btn>
+                </template>
+              </v-tooltip>
+
+              <v-tooltip text="Обновить" location="bottom">
+                <template #activator="{ props: tooltipProps }">
+                  <v-btn
+                    v-bind="tooltipProps"
+                    class="toolbar-action"
+                    variant="tonal"
+                    size="small"
+                    :loading="projectToolbar.refreshing"
+                    :disabled="projectToolbar.refreshing"
+                    aria-label="Обновить"
+                    @click="dispatchProjectToolbarAction('refresh')"
+                  >
+                    <v-icon icon="mdi-refresh" size="18" />
+                    <span class="toolbar-action__label">Обновить</span>
+                  </v-btn>
+                </template>
+              </v-tooltip>
+
+              <v-tooltip text="Настройки" location="bottom">
+                <template #activator="{ props: tooltipProps }">
+                  <v-btn
+                    v-bind="tooltipProps"
+                    class="toolbar-action"
+                    variant="tonal"
+                    size="small"
+                    :disabled="projectToolbar.settingsDisabled"
+                    aria-label="Настройки"
+                    @click="dispatchProjectToolbarAction('settings')"
+                  >
+                    <v-icon icon="mdi-cog-outline" size="18" />
+                    <span class="toolbar-action__label">Настройки</span>
+                  </v-btn>
+                </template>
+              </v-tooltip>
+            </template>
+
+            <v-tooltip v-else-if="lastProject" :text="lastProjectTooltip" location="bottom">
               <template #activator="{ props: tooltipProps }">
                 <v-btn
                   v-bind="tooltipProps"
@@ -122,10 +330,9 @@
               <template #activator="{ props: tooltipProps }">
                 <v-btn
                   v-bind="tooltipProps"
-                  class="toolbar-action toolbar-action--icon"
+                  class="toolbar-action toolbar-action--icon toolbar-action--notification"
                   variant="tonal"
                   size="small"
-                  icon
                   aria-label="Уведомления"
                   @click="openNotifications"
                 >
@@ -207,7 +414,37 @@ interface LastProjectLink {
   updated_at?: string | null
 }
 
+interface ProjectToolbarState {
+  title: string
+  positionsCount: number
+  totalLabel: string | null
+  warningsCount: number
+  maxSeverity: 'error' | 'warning' | 'info'
+  issues: ProjectToolbarIssue[]
+  documentsDisabled: boolean
+  settingsDisabled: boolean
+  refreshing: boolean
+}
+
+interface ProjectToolbarIssue {
+  severity: 'error' | 'warning' | 'info'
+  message: string
+  action?: string
+  actionLabel?: string
+}
+
 const lastProject = ref<LastProjectLink | null>(readLastProject())
+const projectToolbar = ref<ProjectToolbarState>({
+  title: 'Проект',
+  positionsCount: 0,
+  totalLabel: null,
+  warningsCount: 0,
+  maxSeverity: 'info',
+  issues: [],
+  documentsDisabled: false,
+  settingsDisabled: false,
+  refreshing: false,
+})
 const lastProjectLabel = computed(() => lastProject.value?.number || 'Последний проект')
 const lastProjectTooltip = computed(() => {
   if (!lastProject.value) return ''
@@ -215,6 +452,12 @@ const lastProjectTooltip = computed(() => {
   return address
     ? `Открыть последний проект: ${address}`
     : `Открыть последний проект: ${lastProjectLabel.value}`
+})
+const projectProblemsLabel = computed(() => {
+  const count = projectToolbar.value.issues.length
+  if (count % 10 === 1 && count % 100 !== 11) return `${count} проблема`
+  if ([2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100)) return `${count} проблемы`
+  return `${count} проблем`
 })
 
 function readLastProject(): LastProjectLink | null {
@@ -273,8 +516,54 @@ function openNotifications() {
   window.dispatchEvent(new CustomEvent('app-notifications:open'))
 }
 
+function dispatchProjectToolbarAction(action: 'documents' | 'refresh' | 'settings') {
+  window.dispatchEvent(new CustomEvent(`project-toolbar:${action}`))
+}
+
+function dispatchProjectToolbarNavigate(target: string) {
+  window.dispatchEvent(new CustomEvent('project-toolbar:navigate', { detail: target }))
+}
+
 function handleLastProjectUpdated() {
   lastProject.value = readLastProject()
+}
+
+function handleProjectToolbarUpdate(event: Event) {
+  const detail = (event as CustomEvent<Partial<ProjectToolbarState>>).detail || {}
+  const issues = Array.isArray(detail.issues) ? detail.issues : []
+  const maxSeverity = issues.some((issue) => issue.severity === 'error')
+    ? 'error'
+    : issues.some((issue) => issue.severity === 'warning')
+      ? 'warning'
+      : 'info'
+
+  projectToolbar.value = {
+    ...projectToolbar.value,
+    ...detail,
+    title: typeof detail.title === 'string' && detail.title.trim() ? detail.title : projectToolbar.value.title,
+    positionsCount: Number(detail.positionsCount ?? projectToolbar.value.positionsCount) || 0,
+    warningsCount: issues.length,
+    maxSeverity,
+    issues,
+    totalLabel: typeof detail.totalLabel === 'string' && detail.totalLabel.trim() ? detail.totalLabel : null,
+    documentsDisabled: Boolean(detail.documentsDisabled),
+    settingsDisabled: Boolean(detail.settingsDisabled),
+    refreshing: Boolean(detail.refreshing),
+  }
+}
+
+function clearProjectToolbar() {
+  projectToolbar.value = {
+    title: 'Проект',
+    positionsCount: 0,
+    totalLabel: null,
+    warningsCount: 0,
+    maxSeverity: 'info',
+    issues: [],
+    documentsDisabled: false,
+    settingsDisabled: false,
+    refreshing: false,
+  }
 }
 
 // Theme mode
@@ -350,6 +639,7 @@ onMounted(() => {
   window.addEventListener('theme-mode-change', handleThemeModeChange)
   window.addEventListener('storage', handleLastProjectUpdated)
   window.addEventListener('prism:last-project-updated', handleLastProjectUpdated)
+  window.addEventListener('project-toolbar:update', handleProjectToolbarUpdate)
   
   applyTheme()
   handleSettingsQueryOpen()
@@ -362,6 +652,13 @@ onBeforeUnmount(() => {
   window.removeEventListener('theme-mode-change', handleThemeModeChange)
   window.removeEventListener('storage', handleLastProjectUpdated)
   window.removeEventListener('prism:last-project-updated', handleLastProjectUpdated)
+  window.removeEventListener('project-toolbar:update', handleProjectToolbarUpdate)
+})
+
+watch(isProjectEditorRoute, (isProjectRoute) => {
+  if (!isProjectRoute) {
+    clearProjectToolbar()
+  }
 })
 
 watch(themeMode, () => {
@@ -488,8 +785,13 @@ watch(
 .app-top-toolbar {
   position: relative;
   z-index: 2;
-  min-height: 64px;
-  padding: 12px 24px 0;
+  min-height: 58px;
+  padding: 10px 24px 0;
+}
+
+.app-top-toolbar--project .app-top-toolbar__inner {
+  max-width: none;
+  margin: 0;
 }
 
 .app-top-toolbar__inner {
@@ -504,6 +806,93 @@ watch(
   min-width: 0;
 }
 
+.project-toolbar-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.project-toolbar-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.project-toolbar-chip {
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.project-problem-chip {
+  flex-shrink: 0;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.project-problem-chip--mobile {
+  width: auto;
+  min-width: 42px;
+  padding-inline: 10px;
+}
+
+.project-problem-chip__count {
+  margin-left: 3px;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.project-problem-chip--error {
+  color: rgb(var(--v-theme-error));
+}
+
+.project-problem-chip--warning {
+  color: rgb(var(--v-theme-warning));
+}
+
+.project-problems-popover {
+  width: min(440px, calc(100vw - 32px));
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.7);
+  background: rgb(var(--v-theme-surface));
+}
+
+.project-problems-popover__title {
+  padding: 12px 14px 8px;
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.project-problems-popover__list {
+  display: grid;
+  gap: 6px;
+  padding: 0 8px 10px;
+}
+
+.project-problems-popover__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--md-sys-shape-corner-large);
+}
+
+.project-problems-popover__item:hover {
+  background: rgba(var(--v-theme-on-surface), 0.05);
+}
+
+.project-problems-popover__message {
+  min-width: 0;
+  font-size: 0.82rem;
+  color: rgba(var(--v-theme-on-surface), 0.88);
+}
+
 .toolbar-actions {
   display: flex;
   align-items: center;
@@ -512,11 +901,16 @@ watch(
 }
 
 .toolbar-action {
+  height: 36px;
   min-width: 0;
   border-radius: 999px;
   text-transform: none;
   font-weight: 700;
   color: rgb(var(--v-theme-on-surface));
+}
+
+.toolbar-action :deep(.v-btn__content) {
+  gap: 0;
 }
 
 .toolbar-action__label {
@@ -533,6 +927,11 @@ watch(
 
 .toolbar-action--icon {
   flex-shrink: 0;
+  width: 36px;
+}
+
+.toolbar-action--notification {
+  padding: 0;
 }
 
 /* Mobile */
@@ -548,6 +947,10 @@ watch(
 
 @media (max-width: 960px) {
   .toolbar-action__label {
+    display: none;
+  }
+
+  .project-toolbar-chip {
     display: none;
   }
 }
