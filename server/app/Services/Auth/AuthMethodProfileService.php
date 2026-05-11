@@ -28,6 +28,8 @@ class AuthMethodProfileService
         $hasEmail      = !empty($user->email);
         $emailVerified = $hasEmail && $user->email_verified_at !== null;
         $hasYandex     = $this->hasYandexLink($user);
+        $hasVk         = $this->hasVkLink($user);
+        $hasOauthProvider = $hasYandex || $hasVk;
         $pinEnabled    = (bool) $user->pin_enabled;
         $deviceCount   = $user->activeTrustedDevices()->count();
 
@@ -37,7 +39,7 @@ class AuthMethodProfileService
         $phoneStepUpEnabled = $this->isPhoneStepUpEnabled();
         $canStepUp = $hasPassword || $emailVerified || ($phoneVerified && $phoneStepUpEnabled);
 
-        $recoveryMethods = $this->recoveryMethods($user, $hasPassword, $phoneVerified, $hasYandex);
+        $recoveryMethods = $this->recoveryMethods($user, $hasPassword, $phoneVerified, $hasYandex, $hasVk);
         $blockedActions  = $this->blockedActions($hasPassword, $pinEnabled, $canStepUp);
 
         return [
@@ -57,6 +59,9 @@ class AuthMethodProfileService
             'yandex' => [
                 'linked' => $hasYandex,
             ],
+            'vk' => [
+                'linked' => $hasVk,
+            ],
             'quick_pin' => [
                 'enabled' => $pinEnabled,
             ],
@@ -64,7 +69,7 @@ class AuthMethodProfileService
                 'count' => $deviceCount,
             ],
             'recommended_actions' => $this->recommendedActions(
-                $user, $hasPassword, $phoneVerified, $emailVerified, $pinEnabled, $hasYandex, $canStepUp
+                $user, $hasPassword, $phoneVerified, $emailVerified, $pinEnabled, $hasOauthProvider, $canStepUp
             ),
             'completion' => [
                 'needs_email'               => !$hasEmail,
@@ -78,7 +83,7 @@ class AuthMethodProfileService
             'can_manage_sessions'        => true,
             'can_manage_trusted_devices' => true,
             'blocked_actions'            => $blockedActions,
-            'prerequisite_actions'       => $this->prerequisiteActions($blockedActions, $hasYandex, $phoneVerified, $hasEmail, $emailVerified),
+            'prerequisite_actions'       => $this->prerequisiteActions($blockedActions, $hasOauthProvider, $phoneVerified, $hasEmail, $emailVerified),
             // ── Step-up availability (Block 6A) ─────────────────────────
             'available_step_up_methods'  => $this->availableStepUpMethods($hasPassword, $phoneVerified, $emailVerified, $phoneStepUpEnabled),
         ];
@@ -103,8 +108,18 @@ class AuthMethodProfileService
 
     public function hasYandexLink(User $user): bool
     {
+        return $this->hasProviderLink($user, 'yandex');
+    }
+
+    public function hasVkLink(User $user): bool
+    {
+        return $this->hasProviderLink($user, 'vk');
+    }
+
+    private function hasProviderLink(User $user, string $provider): bool
+    {
         return $user->socialAccounts()
-            ->where('provider', 'yandex')
+            ->where('provider', $provider)
             ->where('is_active', true)
             ->exists();
     }
@@ -122,7 +137,7 @@ class AuthMethodProfileService
         bool $phoneVerified,
         bool $emailVerified,
         bool $pinEnabled,
-        bool $hasYandex,
+        bool $hasOauthProvider,
         bool $canStepUp
     ): array {
         $actions = [];
@@ -134,8 +149,8 @@ class AuthMethodProfileService
 
         // Phase 2: Phone
         if (!$phoneVerified) {
-            if ($hasYandex && !$hasPassword) {
-                // Yandex-only bootstrap trap: recommend the safe escape path
+            if ($hasOauthProvider && !$hasPassword) {
+                // OAuth-only bootstrap trap: recommend the safe escape path
                 $actions[] = 'bootstrap_add_phone';
             } elseif (empty($user->phone)) {
                 // Has password but no phone — add phone for recovery diversity
@@ -174,7 +189,8 @@ class AuthMethodProfileService
         User $user,
         bool $hasPassword,
         bool $phoneVerified,
-        bool $hasYandex
+        bool $hasYandex,
+        bool $hasVk
     ): array {
         $methods = [];
 
@@ -189,6 +205,10 @@ class AuthMethodProfileService
 
         if ($hasYandex) {
             $methods[] = 'yandex_oauth';
+        }
+
+        if ($hasVk) {
+            $methods[] = 'vk_oauth';
         }
 
         return $methods;
@@ -223,7 +243,7 @@ class AuthMethodProfileService
      */
     private function prerequisiteActions(
         array $blockedActions,
-        bool $hasYandex,
+        bool $hasOauthProvider,
         bool $phoneVerified,
         bool $hasEmail = false,
         bool $emailVerified = false
@@ -236,8 +256,8 @@ class AuthMethodProfileService
 
         foreach ($blockedActions as $action) {
             if (in_array($action, ['set_password', 'enable_quick_pin'], true)) {
-                if ($hasYandex && !$phoneVerified && !$emailVerified) {
-                    // Yandex-only bootstrap trap with no verified email: must add phone first
+                if ($hasOauthProvider && !$phoneVerified && !$emailVerified) {
+                    // OAuth-only bootstrap trap with no verified email: must add phone first
                     $prerequisites[$action] = 'bootstrap_add_phone';
                 } elseif ($hasEmail && !$emailVerified) {
                     // Email linked but not verified — verify it to unlock email OTP step-up

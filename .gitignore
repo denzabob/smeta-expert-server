@@ -62,6 +62,7 @@ server/tests/Feature/*
 !server/tests/Feature/MaterialCatalogVisibilityTest.php
 !server/tests/Feature/ProjectRegionUpdateTest.php
 !server/tests/Feature/ReportGenerationReadinessTest.php
+!server/tests/Feature/VkAuthTest.php
 !server/tests/Feature/Billing/
 !server/tests/Feature/Billing/*.php
 

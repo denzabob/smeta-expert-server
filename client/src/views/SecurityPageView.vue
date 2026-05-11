@@ -55,6 +55,8 @@
         @change-email="handleChangeEmail"
         @link-yandex="handleLinkYandex"
         @unlink-yandex="handleUnlinkYandex"
+        @link-provider="handleLinkProvider"
+        @unlink-provider="handleUnlinkProvider"
         @enable-pin="handleEnablePin"
         @disable-pin="handleDisablePin"
         @action="handleRecommendedAction"
@@ -283,14 +285,42 @@ function handleChangeEmail() {
   notify('Изменение email доступно в разделе «Настройки профиля».', 'info', 5000)
 }
 
-// ── Yandex ────────────────────────────────────────────────────────────────
+// ── OAuth providers ───────────────────────────────────────────────────────
 
 function handleLinkYandex() {
-  notify('Подключение Яндекс-аккаунта будет доступно в ближайшем обновлении.', 'info', 5000)
+  void handleLinkProvider('yandex')
 }
 
 function handleUnlinkYandex() {
-  notify('Отвязка Яндекс-аккаунта будет доступна в ближайшем обновлении.', 'info', 5000)
+  void handleUnlinkProvider('yandex')
+}
+
+async function handleLinkProvider(provider: string) {
+  try {
+    const result = await authApi.getProviderLinkRedirect(provider)
+    window.location.href = result.redirect_url
+  } catch (e: any) {
+    notify(e?.response?.data?.message || `Не удалось начать подключение ${oauthProviderLabel(provider)}.`, 'error')
+  }
+}
+
+async function handleUnlinkProvider(provider: string) {
+  const confirmed = window.confirm(`Отвязать аккаунт ${oauthProviderLabel(provider)} от входа?`)
+  if (!confirmed) return
+
+  try {
+    await authApi.unlinkProvider(provider)
+    await store.fetchAuthStatus()
+    notify(`Аккаунт ${oauthProviderLabel(provider)} отвязан.`, 'success')
+  } catch (e: any) {
+    notify(e?.response?.data?.message || `Не удалось отвязать ${oauthProviderLabel(provider)}.`, 'error')
+  }
+}
+
+function oauthProviderLabel(provider: string): string {
+  if (provider === 'yandex') return 'Яндекс'
+  if (provider === 'vk') return 'VK ID'
+  return 'внешний аккаунт'
 }
 
 // ── PIN ───────────────────────────────────────────────────────────────────

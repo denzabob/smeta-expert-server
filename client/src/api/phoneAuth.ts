@@ -161,4 +161,13 @@ export const phoneAuthApi = {
     const { data } = await api.get('/api/auth/yandex/redirect')
     return data
   },
+
+  /**
+   * Получить URL для VK ID OAuth
+   * GET /api/auth/vk/redirect
+   */
+  async getVkRedirectUrl(): Promise<{ redirect_url: string }> {
+    const { data } = await api.get('/api/auth/vk/redirect')
+    return data
+  },
 }

@@ -53,6 +53,8 @@
         @change-email="openEmailDialog"
         @link-yandex="doLinkYandex"
         @unlink-yandex="doUnlinkYandex"
+        @link-provider="doLinkProvider"
+        @unlink-provider="doUnlinkProvider"
         @enable-pin="openPinSetup"
         @disable-pin="openPinDisable"
         class="acc-sec__stack-item"
@@ -336,7 +338,7 @@ function consumeOauthLinkResult() {
   const provider = url.searchParams.get('provider')
   if (!result) return
 
-  const label = provider === 'yandex' ? 'Яндекс' : 'внешний аккаунт'
+  const label = providerLabel(provider)
   if (result === 'success') {
     store.fetchAuthStatus()
   }
@@ -385,9 +387,13 @@ const bootstrapPhoneDialog = ref(false)
 const providerBusy = ref<string | null>(null)
 
 async function doLinkYandex() {
-  providerBusy.value = 'yandex'
+  await doLinkProvider('yandex')
+}
+
+async function doLinkProvider(provider: string) {
+  providerBusy.value = provider
   try {
-    const result = await authApi.getProviderLinkRedirect('yandex')
+    const result = await authApi.getProviderLinkRedirect(provider)
     window.location.href = result.redirect_url
   } catch {
     // noop
@@ -397,17 +403,27 @@ async function doLinkYandex() {
 }
 
 async function doUnlinkYandex() {
-  const confirmed = window.confirm('Отвязать аккаунт Яндекс от входа?')
+  await doUnlinkProvider('yandex')
+}
+
+async function doUnlinkProvider(provider: string) {
+  const confirmed = window.confirm(`Отвязать аккаунт ${providerLabel(provider)} от входа?`)
   if (!confirmed) return
-  providerBusy.value = 'yandex'
+  providerBusy.value = provider
   try {
-    await authApi.unlinkProvider('yandex')
+    await authApi.unlinkProvider(provider)
     await store.fetchAuthStatus()
   } catch {
     // noop
   } finally {
     providerBusy.value = null
   }
+}
+
+function providerLabel(provider: string | null): string {
+  if (provider === 'yandex') return 'Яндекс'
+  if (provider === 'vk') return 'VK ID'
+  return 'внешний аккаунт'
 }
 
 // ── Resend email verification ─────────────────────────────────────────────
@@ -1061,4 +1077,5 @@ function copyChromeToken() {
     flex: 1 1 100%;
   }
 }
+
 </style>

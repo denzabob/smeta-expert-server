@@ -201,6 +201,48 @@
 
         <v-divider class="my-2" />
 
+        <!-- ── VK ID ──────────────────────────────────────────────────── -->
+        <div class="method-row">
+          <div class="method-icon">
+            <v-icon
+              size="20"
+              :color="vkLinked ? '#0077FF' : 'medium-emphasis'"
+            >mdi-alpha-v-circle-outline</v-icon>
+          </div>
+          <div class="method-body">
+            <div class="d-flex align-center gap-2 flex-wrap">
+              <span class="text-body-2 font-weight-medium">VK ID</span>
+              <v-chip
+                v-if="vkLinked"
+                size="x-small"
+                color="success"
+                variant="tonal"
+              >Подключён</v-chip>
+              <v-chip v-else size="x-small" variant="tonal">Не подключён</v-chip>
+            </div>
+            <div class="text-caption text-medium-emphasis mt-0-5">
+              <span v-if="vkLinked">Для входа через аккаунт VK ID</span>
+              <span v-else>Быстрый вход через VK ID</span>
+            </div>
+          </div>
+          <div class="method-action">
+            <v-btn
+              v-if="vkLinked"
+              size="small"
+              variant="text"
+              @click="$emit('unlinkProvider', 'vk')"
+            >Отвязать</v-btn>
+            <v-btn
+              v-else
+              size="small"
+              variant="outlined"
+              @click="$emit('linkProvider', 'vk')"
+            >Подключить</v-btn>
+          </div>
+        </div>
+
+        <v-divider class="my-2" />
+
         <!-- ── Quick PIN ───────────────────────────────────────────────── -->
         <div class="method-row">
           <div class="method-icon">
@@ -277,6 +319,8 @@ defineEmits<{
   (e: 'changePassword'): void
   (e: 'linkYandex'): void
   (e: 'unlinkYandex'): void
+  (e: 'linkProvider', provider: string): void
+  (e: 'unlinkProvider', provider: string): void
   (e: 'enablePin'): void
   (e: 'disablePin'): void
   (e: 'action', action: string): void
@@ -284,6 +328,7 @@ defineEmits<{
 
 const isPasswordBlocked = computed(() => props.status.blocked_actions.includes('set_password'))
 const isPinBlocked = computed(() => props.status.blocked_actions.includes('enable_quick_pin'))
+const vkLinked = computed(() => props.status.vk?.linked === true)
 
 function prerequisiteAction(blockedAction: string): string {
   return props.status.prerequisite_actions[blockedAction] ?? ''

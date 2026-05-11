@@ -8,10 +8,12 @@ use App\Models\User;
 class LoginMethodService
 {
     protected YandexAuthService $yandexAuthService;
+    protected VkAuthService $vkAuthService;
 
-    public function __construct(YandexAuthService $yandexAuthService)
+    public function __construct(YandexAuthService $yandexAuthService, VkAuthService $vkAuthService)
     {
         $this->yandexAuthService = $yandexAuthService;
+        $this->vkAuthService = $vkAuthService;
     }
 
     /**
@@ -24,6 +26,11 @@ class LoginMethodService
                 'provider' => 'yandex',
                 'label' => 'Яндекс',
                 'configured' => $this->yandexAuthService->isConfigured(),
+            ],
+            [
+                'provider' => 'vk',
+                'label' => 'VK ID',
+                'configured' => $this->vkAuthService->isConfigured(),
             ],
         ];
     }
@@ -43,6 +50,10 @@ class LoginMethodService
     {
         if ($provider === 'yandex') {
             return $this->yandexAuthService->isConfigured();
+        }
+
+        if ($provider === 'vk') {
+            return $this->vkAuthService->isConfigured();
         }
 
         return false;

@@ -58,6 +58,7 @@ use App\Http\Controllers\Api\BillingWebhookController;
 use App\Http\Controllers\Api\PinAuthController;
 use App\Http\Controllers\Api\PhoneAuthController;
 use App\Http\Controllers\Api\YandexAuthController;
+use App\Http\Controllers\Api\VkAuthController;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\AuthMethodController;
@@ -112,6 +113,8 @@ Route::get('auth/phone/callcheck/webhook', SmsRuCallCheckWebhookController::clas
 Route::middleware('web')->group(function () {
     Route::get('auth/yandex/redirect', [YandexAuthController::class, 'redirect']);
     Route::get('auth/yandex/callback', [YandexAuthController::class, 'callback']);
+    Route::get('auth/vk/redirect', [VkAuthController::class, 'redirect']);
+    Route::get('auth/vk/callback', [VkAuthController::class, 'callback']);
 });
 
 // ========== Password Reset (публичные) ==========

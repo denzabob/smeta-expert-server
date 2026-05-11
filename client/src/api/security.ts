@@ -17,6 +17,7 @@ export interface AuthMethodProfile {
   }
   password: { set: boolean }
   yandex: { linked: boolean }
+  vk: { linked: boolean }
   quick_pin: { enabled: boolean }
   trusted_devices: { count: number }
   recommended_actions: string[]

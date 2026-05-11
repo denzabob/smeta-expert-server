@@ -30,6 +30,7 @@ function makeProfile(overrides: Partial<AuthMethodProfile> = {}): AuthMethodProf
     email: { linked: false, verified: false, masked: null },
     password: { set: false },
     yandex: { linked: false },
+    vk: { linked: false },
     quick_pin: { enabled: false },
     trusted_devices: { count: 0 },
     recommended_actions: [],
@@ -142,9 +143,9 @@ describe('prerequisiteLabel — readable formatting', () => {
     expect(label.toLowerCase()).toContain('телефон')
   })
 
-  it('bootstrap_add_phone mentions Яндекс', () => {
+  it('bootstrap_add_phone mentions account phone', () => {
     const label = prerequisiteLabel('bootstrap_add_phone')
-    expect(label.toLowerCase()).toContain('яндекс')
+    expect(label.toLowerCase()).toContain('телефон')
   })
 
   it('unknown prerequisite returns fallback string (not undefined)', () => {

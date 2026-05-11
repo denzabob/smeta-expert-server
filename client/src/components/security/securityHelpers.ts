@@ -18,6 +18,7 @@ const recoveryMethodLabels: Record<string, string> = {
   phone_otp: 'Вход по телефону (SMS-код)',
   password_reset: 'Сброс пароля через почту',
   yandex_oauth: 'Вход через аккаунт Яндекс',
+  vk_oauth: 'Вход через аккаунт VK ID',
 }
 
 export function recoveryMethodLabel(method: string): string {
@@ -85,8 +86,8 @@ const actionMap: Record<string, ActionMeta> = {
     color: 'primary',
   },
   bootstrap_add_phone: {
-    label: 'Добавить телефон через Яндекс',
-    description: 'Привяжите телефон Яндекс-аккаунта, чтобы установить пароль и PIN.',
+    label: 'Добавить телефон',
+    description: 'Привяжите телефон к аккаунту, чтобы установить пароль и PIN.',
     buttonLabel: 'Добавить',
     icon: 'mdi-cellphone-plus',
     color: 'primary',
@@ -108,7 +109,7 @@ export function recommendedActionMeta(action: string): ActionMeta {
 // ── Prerequisite action labels ────────────────────────────────────────────────
 
 const prerequisiteLabels: Record<string, string> = {
-  bootstrap_add_phone: 'добавьте телефон через Яндекс-аккаунт',
+  bootstrap_add_phone: 'добавьте телефон к аккаунту',
   verify_phone: 'подтвердите номер телефона',
   add_phone: 'добавьте номер телефона',
   add_email: 'добавьте адрес почты',

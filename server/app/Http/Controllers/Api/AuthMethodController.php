@@ -11,6 +11,7 @@ use App\Services\Auth\LoginMethodService;
 use App\Services\Auth\StepUpService;
 use App\Services\Auth\StepUpTokenInvalidException;
 use App\Services\Auth\VerificationCodeService;
+use App\Services\Auth\VkAuthService;
 use App\Services\Auth\YandexAuthService;
 use App\Services\AuthAuditService;
 use Illuminate\Http\JsonResponse;
@@ -24,11 +25,13 @@ class AuthMethodController extends Controller
     protected LoginMethodService $loginMethodService;
     protected VerificationCodeService $verificationCodeService;
     protected YandexAuthService $yandexAuthService;
+    protected VkAuthService $vkAuthService;
 
     public function __construct(
         LoginMethodService $loginMethodService,
         VerificationCodeService $verificationCodeService,
         YandexAuthService $yandexAuthService,
+        VkAuthService $vkAuthService,
         private readonly StepUpService $stepUpService,
         private readonly AuthMethodProfileService $profileService,
         private readonly AuthAuditService $audit,
@@ -36,6 +39,7 @@ class AuthMethodController extends Controller
         $this->loginMethodService = $loginMethodService;
         $this->verificationCodeService = $verificationCodeService;
         $this->yandexAuthService = $yandexAuthService;
+        $this->vkAuthService = $vkAuthService;
     }
 
     /**
@@ -107,22 +111,40 @@ class AuthMethodController extends Controller
             return response()->json(['message' => 'Провайдер временно недоступен.'], 503);
         }
 
-        if ($provider !== 'yandex') {
-            return response()->json(['message' => 'Провайдер пока не реализован.'], 422);
+        $state = Str::random(40);
+        if ($provider === 'yandex') {
+            $request->session()->put('yandex_oauth_state', $state);
+            $request->session()->put('yandex_oauth_context', [
+                'state' => $state,
+                'intent' => 'link',
+                'provider' => 'yandex',
+                'user_id' => $user->id,
+            ]);
+
+            return response()->json([
+                'redirect_url' => $this->yandexAuthService->getRedirectUrl($state),
+            ]);
         }
 
-        $state = Str::random(40);
-        $request->session()->put('yandex_oauth_state', $state);
-        $request->session()->put('yandex_oauth_context', [
-            'state' => $state,
-            'intent' => 'link',
-            'provider' => 'yandex',
-            'user_id' => $user->id,
-        ]);
+        if ($provider === 'vk') {
+            $codeVerifier = $this->vkAuthService->generateCodeVerifier();
+            $codeChallenge = $this->vkAuthService->generateCodeChallenge($codeVerifier);
+            $request->session()->put('vk_oauth_state', $state);
+            $request->session()->put('vk_oauth_code_verifier', $codeVerifier);
+            $request->session()->put('vk_oauth_context', [
+                'state' => $state,
+                'code_verifier' => $codeVerifier,
+                'intent' => 'link',
+                'provider' => 'vk',
+                'user_id' => $user->id,
+            ]);
 
-        return response()->json([
-            'redirect_url' => $this->yandexAuthService->getRedirectUrl($state),
-        ]);
+            return response()->json([
+                'redirect_url' => $this->vkAuthService->getRedirectUrl($state, $codeChallenge),
+            ]);
+        }
+
+        return response()->json(['message' => 'Провайдер пока не реализован.'], 422);
     }
 
     /**
@@ -157,7 +179,7 @@ class AuthMethodController extends Controller
             'unlinked_at' => now(),
         ]);
 
-        Log::info('[YandexAuth] provider unlinked', [
+        Log::info('[AuthMethod] provider unlinked', [
             'provider' => $provider,
             'provider_user_id' => $account->provider_user_id,
             'user_id' => $user->id,

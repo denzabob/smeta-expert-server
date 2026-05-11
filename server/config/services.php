@@ -99,4 +99,16 @@ return [
         'force_confirm' => env('YANDEX_ID_FORCE_CONFIRM', false),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | VK ID OAuth
+    |--------------------------------------------------------------------------
+    */
+    'vk' => [
+        'client_id' => env('VK_ID_CLIENT_ID'),
+        'client_secret' => env('VK_ID_CLIENT_SECRET'),
+        'redirect_uri' => env('VK_ID_REDIRECT_URI'),
+        'scope' => env('VK_ID_SCOPE', 'vkid.personal_info email phone'),
+    ],
+
 ];

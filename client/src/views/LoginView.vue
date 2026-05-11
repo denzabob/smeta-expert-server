@@ -52,6 +52,7 @@
               </div>
 
               <YandexLoginButton class="mb-3" />
+              <VkLoginButton class="mb-3" />
 
               <div class="text-center">
                 <v-btn variant="text" size="small" @click="switchMode('login')">
@@ -90,7 +91,8 @@
                 Войти по телефону
               </v-btn>
 
-              <YandexLoginButton />
+              <YandexLoginButton class="mb-3" />
+              <VkLoginButton />
             </template>
 
             <!-- Восстановление PIN (ввод пароля → новый PIN) -->
@@ -159,6 +161,7 @@ import AuthPinLogin from '@/components/auth/AuthPinLogin.vue'
 import AuthPhoneLogin from '@/components/auth/AuthPhoneLogin.vue'
 import OnboardingCompletion from '@/components/auth/OnboardingCompletion.vue'
 import YandexLoginButton from '@/components/auth/YandexLoginButton.vue'
+import VkLoginButton from '@/components/auth/VkLoginButton.vue'
 import SetPinDialog from '@/components/security/SetPinDialog.vue'
 import { pinApi } from '@/api/pin'
 import { useAuthStore } from '@/stores/auth'
@@ -277,16 +280,17 @@ watch(
       return
     }
 
-    const providerLabel = provider === 'yandex' ? 'Яндекса' : 'провайдера'
+    const providerLabel = provider === 'yandex' ? 'Яндекса' : provider === 'vk' ? 'VK ID' : 'провайдера'
+    const providerActionLabel = provider === 'yandex' ? 'Яндекс' : provider === 'vk' ? 'VK ID' : 'внешний аккаунт'
 
     const messages: Record<string, string> = {
-      oauth_state_mismatch: 'Сессия авторизации устарела. Попробуйте вход через Яндекс ещё раз.',
-      oauth_no_code: 'Яндекс не передал код авторизации. Повторите попытку.',
-      oauth_token_failed: 'Не удалось подтвердить вход через Яндекс. Попробуйте позже.',
-      oauth_profile_failed: 'Не удалось получить профиль Яндекса. Попробуйте позже.',
+      oauth_state_mismatch: `Сессия авторизации устарела. Попробуйте вход через ${providerActionLabel} ещё раз.`,
+      oauth_no_code: `${providerActionLabel} не передал код авторизации. Повторите попытку.`,
+      oauth_token_failed: `Не удалось подтвердить вход через ${providerActionLabel}. Попробуйте позже.`,
+      oauth_profile_failed: `Не удалось получить профиль ${providerLabel}. Попробуйте позже.`,
       oauth_link_required: `Этот аккаунт ${providerLabel} не подключен. Войдите по телефону или email и подключите его в настройках.`,
-      already_linked_to_other_user: 'Этот аккаунт Яндекса уже подключён к другому пользователю.',
-      provider_already_connected: 'К вашему профилю уже подключён другой аккаунт Яндекса. Сначала отключите текущий.',
+      already_linked_to_other_user: `Этот аккаунт ${providerLabel} уже подключён к другому пользователю.`,
+      provider_already_connected: `К вашему профилю уже подключён другой аккаунт ${providerLabel}. Сначала отключите текущий.`,
       account_deleted: 'Ваша учетная запись удалена. Обратитесь к администратору для восстановления.',
       account_blocked: 'Ваша учетная запись заблокирована. Обратитесь к администратору.',
     }

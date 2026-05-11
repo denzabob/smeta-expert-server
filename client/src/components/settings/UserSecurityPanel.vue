@@ -743,14 +743,14 @@ function consumeOauthLinkResult() {
   const provider = url.searchParams.get('provider')
   if (!result) return
 
-  const providerLabel = provider === 'yandex' ? 'Яндекс' : 'внешний аккаунт'
+  const providerLabel = oauthProviderLabel(provider)
 
   if (result === 'success') {
     authMethodsSuccess.value = `${providerLabel} успешно подключён.`
   } else if (result === 'already_linked_to_other_user') {
     authMethodsError.value = `${providerLabel} уже подключён к другому аккаунту.`
   } else if (result === 'provider_already_connected') {
-    authMethodsError.value = 'У вас уже подключён другой аккаунт Яндекса. Сначала отключите текущий.'
+    authMethodsError.value = `У вас уже подключён другой аккаунт ${providerLabel}. Сначала отключите текущий.`
   } else if (result === 'auth_required') {
     authMethodsError.value = 'Сессия устарела. Повторите подключение из настроек аккаунта.'
   } else {
@@ -760,6 +760,12 @@ function consumeOauthLinkResult() {
   url.searchParams.delete('oauth_link')
   url.searchParams.delete('provider')
   window.history.replaceState({}, '', url.toString())
+}
+
+function oauthProviderLabel(provider: string | null): string {
+  if (provider === 'yandex') return 'Яндекс'
+  if (provider === 'vk') return 'VK ID'
+  return 'внешний аккаунт'
 }
 
 async function linkProvider(provider: string) {
