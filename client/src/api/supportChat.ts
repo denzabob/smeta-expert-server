@@ -90,6 +90,13 @@ export const supportChatApi = {
       .then(() => undefined)
   },
 
+  /** POST /api/support-chat/conversations/{id}/reopen */
+  reopen(conversationId: number): Promise<{ conversation: ChatConversation }> {
+    return api
+      .post(`/api/support-chat/conversations/${conversationId}/reopen`)
+      .then((r) => r.data)
+  },
+
   /** POST /api/support-chat/conversations/{id}/typing */
   reportTyping(conversationId: number): Promise<void> {
     return api

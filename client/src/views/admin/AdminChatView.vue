@@ -282,9 +282,22 @@
                   </div>
 
                   <div
-                    class="d-flex"
+                    class="admin-message-row"
                     :class="msg.sender_role === 'admin' ? 'justify-end' : 'justify-start'"
                   >
+                    <v-btn
+                      v-if="msg.sender_role === 'admin'"
+                      icon
+                      size="x-small"
+                      variant="tonal"
+                      color="error"
+                      class="admin-chat-message-delete"
+                      :loading="deletingMessageId === msg.id"
+                      title="Удалить сообщение"
+                      @click="deleteAdminMessage(msg)"
+                    >
+                      <v-icon size="15">mdi-delete-outline</v-icon>
+                    </v-btn>
                     <div
                       class="admin-chat-bubble text-body-2"
                       :class="msg.sender_role === 'admin' ? 'admin-chat-bubble--admin' : 'admin-chat-bubble--customer'"
@@ -305,19 +318,20 @@
                       <div class="admin-chat-bubble__time">
                         {{ formatTime(msg.created_at) }}
                       </div>
-                      <v-btn
-                        v-if="msg.sender_role === 'admin'"
-                        icon
-                        size="x-small"
-                        variant="text"
-                        class="admin-chat-bubble__delete"
-                        :loading="deletingMessageId === msg.id"
-                        title="Удалить сообщение"
-                        @click="deleteAdminMessage(msg)"
-                      >
-                        <v-icon size="15">mdi-delete-outline</v-icon>
-                      </v-btn>
                     </div>
+                    <v-btn
+                      v-if="msg.sender_role !== 'admin'"
+                      icon
+                      size="x-small"
+                      variant="tonal"
+                      color="error"
+                      class="admin-chat-message-delete"
+                      :loading="deletingMessageId === msg.id"
+                      title="Удалить сообщение"
+                      @click="deleteAdminMessage(msg)"
+                    >
+                      <v-icon size="15">mdi-delete-outline</v-icon>
+                    </v-btn>
                   </div>
                 </template>
               </div>
@@ -1185,8 +1199,13 @@ onUnmounted(() => {
   padding: var(--ds-space-14);
 }
 
+.admin-message-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-6);
+}
+
 .admin-chat-bubble {
-  position: relative;
   max-width: 72%;
   padding: var(--ds-space-10) var(--ds-space-12);
   border-radius: var(--ds-radius-16);
@@ -1233,16 +1252,9 @@ onUnmounted(() => {
   text-align: right;
 }
 
-.admin-chat-bubble__delete {
-  position: absolute;
-  inset-block-start: 2px;
-  inset-inline-end: 2px;
-  opacity: 0;
-}
-
-.admin-chat-bubble:hover .admin-chat-bubble__delete,
-.admin-chat-bubble__delete:focus-visible {
-  opacity: 1;
+.admin-chat-message-delete {
+  flex: 0 0 auto;
+  margin-top: var(--ds-space-4);
 }
 
 .thread-header__alias {

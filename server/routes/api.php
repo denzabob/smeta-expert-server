@@ -791,6 +791,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('conversations/{conversation}/messages', [\App\Http\Controllers\Api\SupportChatController::class, 'messages']);
         Route::post('conversations/{conversation}/messages', [\App\Http\Controllers\Api\SupportChatController::class, 'sendMessage']);
         Route::post('conversations/{conversation}/read', [\App\Http\Controllers\Api\SupportChatController::class, 'markRead']);
+        Route::post('conversations/{conversation}/reopen', [\App\Http\Controllers\Api\SupportChatController::class, 'reopen']);
         Route::post('conversations/{conversation}/typing', [\App\Http\Controllers\Api\SupportChatController::class, 'reportTyping']);
         Route::get('conversations/{conversation}/typing-status', [\App\Http\Controllers\Api\SupportChatController::class, 'typingStatus']);
     });

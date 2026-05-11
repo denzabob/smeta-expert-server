@@ -105,6 +105,22 @@ class SupportChatController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function reopen(Request $request, ChatConversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+
+        $this->chatService->reopenConversation($conversation);
+
+        $messages = $this->chatService->listMessages($conversation);
+        $conversation->setRelation('messages', $messages);
+        $conversation->load('participants.user:id,name');
+        $conversation->unread_count = $this->chatService->getUnreadCount($conversation, $request->user());
+
+        return response()->json([
+            'conversation' => new ChatConversationResource($conversation),
+        ]);
+    }
+
     /**
      * POST /api/support-chat/conversations/{conversation}/typing
      *

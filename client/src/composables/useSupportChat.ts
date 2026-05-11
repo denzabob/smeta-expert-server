@@ -30,6 +30,7 @@ export function useSupportChat() {
   const messages            = ref<ChatMessage[]>([])
   const loadingConversation = ref(false)
   const loadingSend         = ref(false)
+  const loadingReopen       = ref(false)
   const error               = ref<string | null>(null)
   const messageInput        = ref('')
   const attachedFile        = ref<File | null>(null)
@@ -254,6 +255,21 @@ export function useSupportChat() {
     }
   }
 
+  async function reopenConversation(): Promise<void> {
+    if (!conversation.value || loadingReopen.value) return
+    loadingReopen.value = true
+    error.value = null
+    try {
+      const { conversation: reopened } = await supportChatApi.reopen(conversation.value.id)
+      conversation.value = reopened
+      messages.value = reopened.messages ?? []
+    } catch {
+      error.value = 'Не удалось открыть диалог. Попробуйте ещё раз.'
+    } finally {
+      loadingReopen.value = false
+    }
+  }
+
   function dismissError(): void {
     error.value = null
   }
@@ -272,6 +288,7 @@ export function useSupportChat() {
     messages,
     loadingConversation,
     loadingSend,
+    loadingReopen,
     error,
     messageInput,
     attachedFile,
@@ -283,6 +300,7 @@ export function useSupportChat() {
     openWidget,
     closeWidget,
     sendMessage,
+    reopenConversation,
     dismissError,
     onUserTyping,
   }

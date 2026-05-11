@@ -169,7 +169,7 @@ class SupportChatService
         return $conversation->refresh();
     }
 
-    public function deleteAdminMessage(ChatConversation $conversation, ChatMessage $message): void
+    public function deleteMessageForAdmin(ChatConversation $conversation, ChatMessage $message): void
     {
         if ($message->conversation_id !== $conversation->id) {
             abort(404);
@@ -179,8 +179,8 @@ class SupportChatService
             ? $message->sender_role->value
             : (string) $message->sender_role;
 
-        if ($senderRole !== ParticipantRole::ADMIN->value) {
-            abort(422, 'Можно удалить только сообщения администратора.');
+        if (!in_array($senderRole, [ParticipantRole::ADMIN->value, ParticipantRole::CUSTOMER->value], true)) {
+            abort(422, 'Можно удалить только сообщения администратора или пользователя.');
         }
 
         DB::transaction(function () use ($conversation, $message) {

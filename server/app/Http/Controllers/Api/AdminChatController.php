@@ -172,7 +172,7 @@ class AdminChatController extends Controller
     {
         $this->authorizeAdmin($request);
 
-        $this->chatService->deleteAdminMessage($conversation, $message);
+        $this->chatService->deleteMessageForAdmin($conversation, $message);
 
         return response()->json(['ok' => true]);
     }

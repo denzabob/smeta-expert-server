@@ -109,7 +109,17 @@
 
       <!-- Closed state notice -->
       <div v-if="conversation?.status === 'closed'" class="chat-closed-notice">
-        Диалог закрыт. Для нового вопроса обратитесь к администратору.
+        <div class="chat-closed-notice__text">Диалог закрыт.</div>
+        <v-btn
+          color="primary"
+          variant="tonal"
+          size="small"
+          prepend-icon="mdi-chat-plus-outline"
+          :loading="loadingReopen"
+          @click="reopenConversation"
+        >
+          Открыть диалог
+        </v-btn>
       </div>
 
       <!-- Composer footer -->
@@ -199,6 +209,7 @@ const {
   messages,
   loadingConversation,
   loadingSend,
+  loadingReopen,
   error,
   messageInput,
   attachedFile,
@@ -209,6 +220,7 @@ const {
   openWidget,
   closeWidget,
   sendMessage,
+  reopenConversation,
   dismissError,
 } = useSupportChat()
 
@@ -564,12 +576,21 @@ watch(isOpen, (opened) => {
 }
 
 .chat-closed-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
   padding: 14px 18px;
   text-align: center;
   font-size: 0.8125rem;
   color: rgba(var(--v-theme-on-surface), 0.68);
   background: rgba(var(--v-theme-surface-variant), 0.28);
   border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.56);
+}
+
+.chat-closed-notice__text {
+  min-width: 0;
 }
 
 .chat-footer {
