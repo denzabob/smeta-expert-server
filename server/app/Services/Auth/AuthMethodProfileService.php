@@ -58,9 +58,11 @@ class AuthMethodProfileService
             ],
             'yandex' => [
                 'linked' => $hasYandex,
+                'configured' => $this->loginMethodService->isProviderConfigured('yandex'),
             ],
             'vk' => [
                 'linked' => $hasVk,
+                'configured' => $this->loginMethodService->isProviderConfigured('vk'),
             ],
             'quick_pin' => [
                 'enabled' => $pinEnabled,

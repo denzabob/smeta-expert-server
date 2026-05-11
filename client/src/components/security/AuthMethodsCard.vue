@@ -218,10 +218,17 @@
                 color="success"
                 variant="tonal"
               >Подключён</v-chip>
+              <v-chip
+                v-else-if="!vkConfigured"
+                size="x-small"
+                color="warning"
+                variant="tonal"
+              >Недоступен</v-chip>
               <v-chip v-else size="x-small" variant="tonal">Не подключён</v-chip>
             </div>
             <div class="text-caption text-medium-emphasis mt-0-5">
               <span v-if="vkLinked">Для входа через аккаунт VK ID</span>
+              <span v-else-if="!vkConfigured">Провайдер не настроен на сервере</span>
               <span v-else>Быстрый вход через VK ID</span>
             </div>
           </div>
@@ -236,6 +243,7 @@
               v-else
               size="small"
               variant="outlined"
+              :disabled="!vkConfigured"
               @click="$emit('linkProvider', 'vk')"
             >Подключить</v-btn>
           </div>
@@ -329,6 +337,7 @@ defineEmits<{
 const isPasswordBlocked = computed(() => props.status.blocked_actions.includes('set_password'))
 const isPinBlocked = computed(() => props.status.blocked_actions.includes('enable_quick_pin'))
 const vkLinked = computed(() => props.status.vk?.linked === true)
+const vkConfigured = computed(() => props.status.vk?.configured !== false)
 
 function prerequisiteAction(blockedAction: string): string {
   return props.status.prerequisite_actions[blockedAction] ?? ''
