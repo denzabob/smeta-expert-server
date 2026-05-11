@@ -55,6 +55,9 @@ class SupportChatController extends Controller
 
         return response()->json([
             'messages' => ChatMessageResource::collection($messages),
+            'conversation_status' => $conversation->status instanceof \BackedEnum
+                ? $conversation->status->value
+                : $conversation->status,
         ]);
     }
 
@@ -77,7 +80,7 @@ class SupportChatController extends Controller
         // Clear typing indicator immediately so the other party doesn't see a stale state
         \Illuminate\Support\Facades\Cache::forget("chat.typing.user.{$conversation->id}");
 
-        $message->load(['sender:id,name', 'attachments']);
+        $message->load(['sender:id,name,admin_chat_alias', 'attachments']);
 
         return response()->json([
             'message' => new ChatMessageResource($message),

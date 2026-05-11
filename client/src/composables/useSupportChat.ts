@@ -38,9 +38,10 @@ export function useSupportChat() {
   // ── Derived ──────────────────────────────────────────────────────────────────
   const unreadCount = computed(() => conversation.value?.unread_count ?? 0)
 
-  const lastMessageId = computed(() =>
-    messages.value.length > 0 ? messages.value[messages.value.length - 1].id : 0,
-  )
+  const lastMessageId = computed(() => {
+    const last = messages.value[messages.value.length - 1]
+    return last?.id ?? 0
+  })
 
   // ── Polling internals ────────────────────────────────────────────────────────
   let pollTimer:   ReturnType<typeof setInterval> | null = null
@@ -84,9 +85,10 @@ export function useSupportChat() {
   async function poll(): Promise<void> {
     if (isPollRunning || !conversation.value) return
     isPollRunning = true
+    const previousLastMessageId = lastMessageId.value
     try {
       const [messagesResult, typingResult] = await Promise.allSettled([
-        supportChatApi.getMessages(conversation.value.id, lastMessageId.value),
+        supportChatApi.getMessages(conversation.value.id),
         supportChatApi.typingStatus(conversation.value.id),
       ])
 
@@ -95,9 +97,13 @@ export function useSupportChat() {
       }
 
       if (messagesResult.status === 'fulfilled') {
-        const fresh = messagesResult.value.messages
+        if (conversation.value && messagesResult.value.conversation_status) {
+          conversation.value.status = messagesResult.value.conversation_status
+        }
+        const latest = messagesResult.value.messages
+        const fresh = latest.filter((message) => message.id > previousLastMessageId)
+        messages.value = latest
         if (fresh.length > 0) {
-          messages.value.push(...fresh)
           // Play sound for messages from admin
           if (fresh.some((m) => !m.is_mine)) {
             playNotificationSound()
@@ -204,7 +210,7 @@ export function useSupportChat() {
     if (!conversation.value) {
       await loadConversation()
       // Mark read after initial data arrives
-      if (conversation.value && conversation.value.unread_count > 0) {
+      if (unreadCount.value > 0) {
         await callMarkRead()
       }
     } else {

@@ -7,8 +7,15 @@
           <div class="chat-panel-title">Диалоги поддержки</div>
           <div class="chat-panel-subtitle">
             {{ pagination.total }} {{ pagination.total === 1 ? 'обращение' : 'обращений' }}
+            <span v-if="totalUnreadCount > 0"> · новых: {{ totalUnreadCount }}</span>
           </div>
         </div>
+        <v-badge
+          v-if="totalUnreadCount > 0"
+          :content="totalUnreadCount"
+          color="error"
+          inline
+        />
       </div>
 
       <!-- Filters -->
@@ -75,7 +82,16 @@
             {{ conv.creator?.name ?? 'Неизвестный пользователь' }}
           </v-list-item-title>
           <v-list-item-subtitle class="text-caption">
-            {{ conv.subject ?? statusLabel(conv.status) }}
+            <span>{{ conv.subject ?? statusLabel(conv.status) }}</span>
+            <v-chip
+              v-if="conv.unread_count > 0"
+              size="x-small"
+              color="error"
+              variant="tonal"
+              class="ml-1"
+            >
+              Новые: {{ conv.unread_count }}
+            </v-chip>
           </v-list-item-subtitle>
 
           <template #append>
@@ -146,6 +162,28 @@
 
           <!-- Header actions -->
           <ButtonGroup class="thread-header__actions">
+            <v-text-field
+              v-model="adminAlias"
+              placeholder="Псевдоним"
+              density="compact"
+              variant="outlined"
+              hide-details
+              clearable
+              class="thread-header__alias"
+              :loading="aliasLoading"
+              :disabled="aliasSaving"
+              @keydown.enter.prevent="saveAdminAlias"
+            />
+            <v-btn
+              icon
+              variant="text"
+              density="compact"
+              :loading="aliasSaving"
+              title="Сохранить псевдоним"
+              @click="saveAdminAlias"
+            >
+              <v-icon size="18">mdi-content-save-outline</v-icon>
+            </v-btn>
             <v-btn
               v-if="!activeConversation?.assigned_admin_id"
               size="small"
@@ -156,6 +194,28 @@
               @click="assignMe"
             >
               Взять в работу
+            </v-btn>
+            <v-btn
+              v-if="activeConversation?.status !== 'closed'"
+              size="small"
+              color="warning"
+              variant="tonal"
+              :loading="statusChanging"
+              prepend-icon="mdi-chat-minus-outline"
+              @click="closeConversation"
+            >
+              Закрыть
+            </v-btn>
+            <v-btn
+              v-else
+              size="small"
+              color="success"
+              variant="tonal"
+              :loading="statusChanging"
+              prepend-icon="mdi-chat-plus-outline"
+              @click="reopenConversation"
+            >
+              Открыть
             </v-btn>
             <v-btn
               icon
@@ -170,7 +230,7 @@
           </ButtonGroup>
           <div v-if="activeConversation?.assigned_admin_id" class="text-caption text-medium-emphasis d-flex align-center gap-1">
             <v-icon size="14">mdi-account-check</v-icon>
-            {{ activeConversation.assigned_admin?.name ?? 'Назначен' }}
+            {{ activeConversation.assigned_admin?.display_name ?? activeConversation.assigned_admin?.name ?? 'Назначен' }}
           </div>
         </div>
 
@@ -245,6 +305,18 @@
                       <div class="admin-chat-bubble__time">
                         {{ formatTime(msg.created_at) }}
                       </div>
+                      <v-btn
+                        v-if="msg.sender_role === 'admin'"
+                        icon
+                        size="x-small"
+                        variant="text"
+                        class="admin-chat-bubble__delete"
+                        :loading="deletingMessageId === msg.id"
+                        title="Удалить сообщение"
+                        @click="deleteAdminMessage(msg)"
+                      >
+                        <v-icon size="15">mdi-delete-outline</v-icon>
+                      </v-btn>
                     </div>
                   </div>
                 </template>
@@ -410,6 +482,9 @@ const statusFilter   = ref<ConversationStatus | ''>('')
 const search         = ref('')
 const unassignedOnly = ref(false)
 const listLoading    = ref(false)
+const adminAlias     = ref('')
+const aliasLoading   = ref(false)
+const aliasSaving    = ref(false)
 
 const activeId           = ref<number | null>(null)
 const activeConversation = ref<AdminConversationDetail | null>(null)
@@ -417,6 +492,8 @@ const messages           = ref<ChatMessage[]>([])
 const threadLoading      = ref(false)
 const sending            = ref(false)
 const assigning          = ref(false)
+const statusChanging     = ref(false)
+const deletingMessageId  = ref<number | null>(null)
 const replyText          = ref('')
 const sendError          = ref<string | null>(null)
 const isUserTyping       = ref(false)   // user is typing in this conversation
@@ -427,6 +504,10 @@ const messagesEl    = ref<HTMLElement | null>(null)
 const textareaRef   = ref<InstanceType<typeof import('vuetify/components').VTextarea> | null>(null)
 const fileInputEl   = ref<HTMLInputElement | null>(null)
 const attachedFile  = ref<File | null>(null)
+
+const totalUnreadCount = computed(() =>
+  conversations.value.reduce((sum, conv) => sum + (conv.unread_count ?? 0), 0)
+)
 
 // ── Filtered messages (search) ────────────────────────────────────────────────
 const filteredMessages = computed(() => {
@@ -448,7 +529,10 @@ function isSameDay(a: string, b: string): boolean {
 
 function showDateSeparator(list: ChatMessage[], index: number): boolean {
   if (index === 0) return true
-  return !isSameDay(list[index - 1].created_at, list[index].created_at)
+  const previous = list[index - 1]
+  const current = list[index]
+  if (!previous || !current) return false
+  return !isSameDay(previous.created_at, current.created_at)
 }
 
 function formatDateLabel(iso: string): string {
@@ -482,9 +566,10 @@ let adminTypingStartTimer: ReturnType<typeof setTimeout>  | null = null  // 3-se
 let adminTypingStopTimer:  ReturnType<typeof setTimeout>  | null = null
 let sendingTyping = false
 
-const lastMessageId = computed(() =>
-  messages.value.length > 0 ? messages.value[messages.value.length - 1].id : 0
-)
+const lastMessageId = computed(() => {
+  const last = messages.value[messages.value.length - 1]
+  return last?.id ?? 0
+})
 
 function startPolling() {
   if (pollTimer) return
@@ -626,6 +711,28 @@ async function loadList() {
   }
 }
 
+async function loadAdminProfile() {
+  aliasLoading.value = true
+  try {
+    const profile = await adminChatApi.profile()
+    adminAlias.value = profile.admin_chat_alias ?? ''
+  } finally {
+    aliasLoading.value = false
+  }
+}
+
+async function saveAdminAlias() {
+  if (aliasSaving.value) return
+  aliasSaving.value = true
+  try {
+    const profile = await adminChatApi.updateProfile(adminAlias.value.trim() || null)
+    adminAlias.value = profile.admin_chat_alias ?? ''
+    await refreshThread()
+  } finally {
+    aliasSaving.value = false
+  }
+}
+
 // ── Select conversation ───────────────────────────────────────────────────────
 async function selectConversation(id: number) {
   if (activeId.value === id) return
@@ -727,6 +834,61 @@ async function assignMe() {
   }
 }
 
+async function closeConversation() {
+  if (!activeId.value || statusChanging.value) return
+  statusChanging.value = true
+  try {
+    const { conversation } = await adminChatApi.close(activeId.value)
+    activeConversation.value = conversation
+    messages.value = conversation.messages
+    updateConversationMeta(conversation)
+  } finally {
+    statusChanging.value = false
+  }
+}
+
+async function reopenConversation() {
+  if (!activeId.value || statusChanging.value) return
+  statusChanging.value = true
+  try {
+    const { conversation } = await adminChatApi.reopen(activeId.value)
+    activeConversation.value = conversation
+    messages.value = conversation.messages
+    updateConversationMeta(conversation)
+  } finally {
+    statusChanging.value = false
+  }
+}
+
+async function deleteAdminMessage(message: ChatMessage) {
+  if (!activeId.value || deletingMessageId.value) return
+  deletingMessageId.value = message.id
+  try {
+    await adminChatApi.deleteMessage(activeId.value, message.id)
+    messages.value = messages.value.filter((item) => item.id !== message.id)
+    await silentRefreshList()
+  } finally {
+    deletingMessageId.value = null
+  }
+}
+
+function updateConversationMeta(conversation: AdminConversationDetail) {
+  const index = conversations.value.findIndex((item) => item.id === conversation.id)
+  if (index === -1) return
+
+  conversations.value[index] = {
+    id: conversation.id,
+    status: conversation.status,
+    subject: conversation.subject,
+    assigned_admin_id: conversation.assigned_admin_id,
+    assigned_admin: conversation.assigned_admin,
+    creator: conversation.creator,
+    last_message_at: conversation.last_message_at,
+    unread_count: conversation.unread_count,
+    created_at: conversation.created_at,
+  }
+}
+
 // ── Scroll ────────────────────────────────────────────────────────────────────
 function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
   nextTick(() => {
@@ -767,6 +929,7 @@ watch(statusFilter, () => { currentPage.value = 1; loadList() })
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(() => {
   loadList()
+  loadAdminProfile()
   startListPolling()
 })
 
@@ -1023,6 +1186,7 @@ onUnmounted(() => {
 }
 
 .admin-chat-bubble {
+  position: relative;
   max-width: 72%;
   padding: var(--ds-space-10) var(--ds-space-12);
   border-radius: var(--ds-radius-16);
@@ -1067,6 +1231,22 @@ onUnmounted(() => {
   font-size: 0.68rem;
   line-height: 1.25;
   text-align: right;
+}
+
+.admin-chat-bubble__delete {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-end: 2px;
+  opacity: 0;
+}
+
+.admin-chat-bubble:hover .admin-chat-bubble__delete,
+.admin-chat-bubble__delete:focus-visible {
+  opacity: 1;
+}
+
+.thread-header__alias {
+  width: 180px;
 }
 
 .chat-composer {

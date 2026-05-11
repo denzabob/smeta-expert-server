@@ -19,6 +19,8 @@ class AdminChatConversationResource extends JsonResource
             'assigned_admin'    => $this->whenLoaded('assignedAdmin', fn () => [
                 'id'   => $this->assignedAdmin?->id,
                 'name' => $this->assignedAdmin?->name,
+                'admin_chat_alias' => $this->assignedAdmin?->admin_chat_alias,
+                'display_name' => $this->assignedAdmin?->admin_chat_alias ?: $this->assignedAdmin?->name,
             ]),
             'creator'           => $this->whenLoaded('creator', fn () => [
                 'id'    => $this->creator?->id,

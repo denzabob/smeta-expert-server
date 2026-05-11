@@ -61,7 +61,7 @@ export const supportChatApi = {
   getMessages(
     conversationId: number,
     afterId = 0,
-  ): Promise<{ messages: ChatMessage[] }> {
+  ): Promise<{ messages: ChatMessage[]; conversation_status?: ConversationStatus }> {
     const params = afterId > 0 ? { after_id: afterId } : {}
     return api
       .get(`/api/support-chat/conversations/${conversationId}/messages`, { params })

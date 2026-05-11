@@ -141,6 +141,64 @@ class SupportChatService
         });
     }
 
+    public function closeConversation(ChatConversation $conversation): ChatConversation
+    {
+        if ($conversation->status === ConversationStatus::CLOSED) {
+            return $conversation;
+        }
+
+        $conversation->update([
+            'status' => ConversationStatus::CLOSED,
+            'closed_at' => now(),
+        ]);
+
+        return $conversation->refresh();
+    }
+
+    public function reopenConversation(ChatConversation $conversation): ChatConversation
+    {
+        if ($conversation->status !== ConversationStatus::CLOSED) {
+            return $conversation;
+        }
+
+        $conversation->update([
+            'status' => ConversationStatus::OPEN,
+            'closed_at' => null,
+        ]);
+
+        return $conversation->refresh();
+    }
+
+    public function deleteAdminMessage(ChatConversation $conversation, ChatMessage $message): void
+    {
+        if ($message->conversation_id !== $conversation->id) {
+            abort(404);
+        }
+
+        $senderRole = $message->sender_role instanceof \BackedEnum
+            ? $message->sender_role->value
+            : (string) $message->sender_role;
+
+        if ($senderRole !== ParticipantRole::ADMIN->value) {
+            abort(422, 'Можно удалить только сообщения администратора.');
+        }
+
+        DB::transaction(function () use ($conversation, $message) {
+            $message->loadMissing('attachments');
+
+            foreach ($message->attachments as $attachment) {
+                $attachment->delete();
+            }
+
+            $message->delete();
+
+            $lastMessage = $conversation->messages()->latest('id')->first();
+            $conversation->update([
+                'last_message_at' => $lastMessage?->created_at,
+            ]);
+        });
+    }
+
     /**
      * Paginated list of conversations for the admin panel.
      * Supports filtering by status, assigned_admin_id, and user search.
@@ -150,7 +208,7 @@ class SupportChatService
         $perPage = min($perPage, 100);
 
         $query = ChatConversation::query()
-            ->with(['creator:id,name,email', 'assignedAdmin:id,name']);
+            ->with(['creator:id,name,email', 'assignedAdmin:id,name,admin_chat_alias']);
 
         if (!empty($filters['status'])) {
             $query->where('status', $filters['status']);
@@ -185,9 +243,9 @@ class SupportChatService
     {
         return $conversation->load([
             'creator:id,name,email',
-            'assignedAdmin:id,name',
-            'participants.user:id,name',
-            'messages' => fn ($q) => $q->with(['sender:id,name', 'attachments'])->orderBy('id', 'asc'),
+            'assignedAdmin:id,name,admin_chat_alias',
+            'participants.user:id,name,admin_chat_alias',
+            'messages' => fn ($q) => $q->with(['sender:id,name,admin_chat_alias', 'attachments'])->orderBy('id', 'asc'),
         ]);
     }
 
@@ -207,7 +265,7 @@ class SupportChatService
     {
         if ($afterId > 0) {
             return $conversation->messages()
-                ->with(['sender:id,name', 'attachments'])
+                ->with(['sender:id,name,admin_chat_alias', 'attachments'])
                 ->where('id', '>', $afterId)
                 ->orderBy('id', 'asc')
                 ->limit(self::MESSAGES_LIMIT)
@@ -216,7 +274,7 @@ class SupportChatService
 
         // Initial load: fetch latest N in reverse, then flip to chronological.
         return $conversation->messages()
-            ->with(['sender:id,name', 'attachments'])
+            ->with(['sender:id,name,admin_chat_alias', 'attachments'])
             ->latest('id')
             ->limit(self::MESSAGES_LIMIT)
             ->get()

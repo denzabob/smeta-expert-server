@@ -797,12 +797,17 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ========== Support Chat (Admin) ==========
     Route::prefix('admin/chat')->group(function () {
+        Route::get('profile', [\App\Http\Controllers\Api\AdminChatController::class, 'profile']);
+        Route::patch('profile', [\App\Http\Controllers\Api\AdminChatController::class, 'updateProfile']);
         Route::get('conversations', [\App\Http\Controllers\Api\AdminChatController::class, 'index']);
         Route::get('conversations/{conversation}', [\App\Http\Controllers\Api\AdminChatController::class, 'show']);
         Route::get('conversations/{conversation}/messages', [\App\Http\Controllers\Api\AdminChatController::class, 'messages']);
         Route::post('conversations/{conversation}/messages', [\App\Http\Controllers\Api\AdminChatController::class, 'sendMessage']);
+        Route::delete('conversations/{conversation}/messages/{message}', [\App\Http\Controllers\Api\AdminChatController::class, 'deleteMessage']);
         Route::post('conversations/{conversation}/read', [\App\Http\Controllers\Api\AdminChatController::class, 'markRead']);
         Route::post('conversations/{conversation}/assign', [\App\Http\Controllers\Api\AdminChatController::class, 'assign']);
+        Route::post('conversations/{conversation}/close', [\App\Http\Controllers\Api\AdminChatController::class, 'close']);
+        Route::post('conversations/{conversation}/reopen', [\App\Http\Controllers\Api\AdminChatController::class, 'reopen']);
         Route::post('conversations/{conversation}/typing', [\App\Http\Controllers\Api\AdminChatController::class, 'reportTyping']);
         Route::get('conversations/{conversation}/typing-status', [\App\Http\Controllers\Api\AdminChatController::class, 'typingStatus']);
     });

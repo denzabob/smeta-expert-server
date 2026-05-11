@@ -23,6 +23,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     protected $fillable = [
         'name',
+        'admin_chat_alias',
         'full_name',
         'email',
         'password',

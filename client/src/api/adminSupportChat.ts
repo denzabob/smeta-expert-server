@@ -12,7 +12,7 @@ export interface AdminConversationMeta {
   status:            ConversationStatus
   subject:           string | null
   assigned_admin_id: number | null
-  assigned_admin:    { id: number; name: string } | null
+  assigned_admin:    { id: number; name: string; admin_chat_alias?: string | null; display_name?: string | null } | null
   creator:           { id: number; name: string; email: string } | null
   last_message_at:   string | null
   unread_count:      number
@@ -51,12 +51,27 @@ export interface AdminListResponse {
 
 export interface AssignResponse {
   assigned_admin_id: number | null
-  assigned_admin:    { id: number; name: string } | null
+  assigned_admin:    { id: number; name: string; admin_chat_alias?: string | null; display_name?: string | null } | null
+}
+
+export interface AdminChatProfile {
+  admin_chat_alias: string | null
+  display_name: string
 }
 
 // ── API functions ─────────────────────────────────────────────────────────────
 
 export const adminChatApi = {
+  /** GET /api/admin/chat/profile */
+  profile(): Promise<AdminChatProfile> {
+    return api.get('/api/admin/chat/profile').then((r) => r.data)
+  },
+
+  /** PATCH /api/admin/chat/profile */
+  updateProfile(adminChatAlias: string | null): Promise<AdminChatProfile> {
+    return api.patch('/api/admin/chat/profile', { admin_chat_alias: adminChatAlias }).then((r) => r.data)
+  },
+
   /** GET /api/admin/chat/conversations */
   list(params: AdminListParams = {}): Promise<AdminListResponse> {
     const query: Record<string, string | number | boolean> = {}
@@ -90,6 +105,11 @@ export const adminChatApi = {
     }).then((r) => r.data)
   },
 
+  /** DELETE /api/admin/chat/conversations/{id}/messages/{messageId} */
+  deleteMessage(id: number, messageId: number): Promise<void> {
+    return api.delete(`/api/admin/chat/conversations/${id}/messages/${messageId}`).then(() => undefined)
+  },
+
   /** POST /api/admin/chat/conversations/{id}/read */
   markRead(id: number): Promise<void> {
     return api.post(`/api/admin/chat/conversations/${id}/read`).then(() => undefined)
@@ -98,6 +118,16 @@ export const adminChatApi = {
   /** POST /api/admin/chat/conversations/{id}/assign */
   assignMe(id: number): Promise<AssignResponse> {
     return api.post(`/api/admin/chat/conversations/${id}/assign`).then((r) => r.data)
+  },
+
+  /** POST /api/admin/chat/conversations/{id}/close */
+  close(id: number): Promise<{ conversation: AdminConversationDetail }> {
+    return api.post(`/api/admin/chat/conversations/${id}/close`).then((r) => r.data)
+  },
+
+  /** POST /api/admin/chat/conversations/{id}/reopen */
+  reopen(id: number): Promise<{ conversation: AdminConversationDetail }> {
+    return api.post(`/api/admin/chat/conversations/${id}/reopen`).then((r) => r.data)
   },
 
   /** POST /api/admin/chat/conversations/{id}/typing */

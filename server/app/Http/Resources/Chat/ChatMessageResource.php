@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Chat;
 
+use App\Enums\Chat\ParticipantRole;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -22,7 +23,17 @@ class ChatMessageResource extends JsonResource
             'body'                => $this->body,
             'meta_json'           => $this->meta_json,
             'is_mine'             => $this->sender_id !== null && $this->sender_id === $request->user()?->id,
-            'sender_display_name' => $this->whenLoaded('sender', fn () => $this->sender?->name),
+            'sender_display_name' => $this->whenLoaded('sender', function () {
+                $senderRole = $this->sender_role instanceof \BackedEnum
+                    ? $this->sender_role->value
+                    : $this->sender_role;
+
+                if ($senderRole === ParticipantRole::ADMIN->value) {
+                    return $this->sender?->admin_chat_alias ?: $this->sender?->name;
+                }
+
+                return $this->sender?->name;
+            }),
             'attachments'         => ChatAttachmentResource::collection(
                 $this->whenLoaded('attachments', fn () => $this->attachments)
             ),

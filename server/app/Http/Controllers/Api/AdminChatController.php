@@ -9,6 +9,7 @@ use App\Http\Requests\Chat\SendMessageRequest;
 use App\Http\Resources\Chat\AdminChatConversationResource;
 use App\Http\Resources\Chat\ChatMessageResource;
 use App\Models\Chat\ChatConversation;
+use App\Models\Chat\ChatMessage;
 use App\Services\Chat\SupportChatService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,35 @@ class AdminChatController extends Controller
     public function __construct(
         private SupportChatService $chatService
     ) {}
+
+    public function profile(Request $request): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        return response()->json([
+            'admin_chat_alias' => $request->user()->admin_chat_alias,
+            'display_name' => $request->user()->admin_chat_alias ?: $request->user()->name,
+        ]);
+    }
+
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        $validated = $request->validate([
+            'admin_chat_alias' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $alias = trim((string) ($validated['admin_chat_alias'] ?? ''));
+        $request->user()->update([
+            'admin_chat_alias' => $alias !== '' ? $alias : null,
+        ]);
+
+        return response()->json([
+            'admin_chat_alias' => $request->user()->admin_chat_alias,
+            'display_name' => $request->user()->admin_chat_alias ?: $request->user()->name,
+        ]);
+    }
 
     /**
      * GET /api/admin/chat/conversations
@@ -116,7 +146,7 @@ class AdminChatController extends Controller
         // Clear typing indicator immediately so the user doesn't see a stale state
         \Illuminate\Support\Facades\Cache::forget("chat.typing.admin.{$conversation->id}");
 
-        $message->load(['sender:id,name', 'attachments']);
+        $message->load(['sender:id,name,admin_chat_alias', 'attachments']);
 
         return response()->json([
             'message' => new ChatMessageResource($message),
@@ -138,6 +168,41 @@ class AdminChatController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function deleteMessage(Request $request, ChatConversation $conversation, ChatMessage $message): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        $this->chatService->deleteAdminMessage($conversation, $message);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function close(Request $request, ChatConversation $conversation): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        $this->chatService->closeConversation($conversation);
+        $this->chatService->getWithDetails($conversation);
+        $conversation->unread_count = $this->chatService->getUnreadCount($conversation, $request->user());
+
+        return response()->json([
+            'conversation' => new AdminChatConversationResource($conversation),
+        ]);
+    }
+
+    public function reopen(Request $request, ChatConversation $conversation): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        $this->chatService->reopenConversation($conversation);
+        $this->chatService->getWithDetails($conversation);
+        $conversation->unread_count = $this->chatService->getUnreadCount($conversation, $request->user());
+
+        return response()->json([
+            'conversation' => new AdminChatConversationResource($conversation),
+        ]);
+    }
+
     /**
      * POST /api/admin/chat/conversations/{conversation}/assign
      *
@@ -150,12 +215,17 @@ class AdminChatController extends Controller
 
         $this->chatService->assignAdmin($conversation, $request->user());
 
-        $conversation->refresh()->load(['assignedAdmin:id,name']);
+        $conversation->refresh()->load(['assignedAdmin:id,name,admin_chat_alias']);
 
         return response()->json([
             'assigned_admin_id' => $conversation->assigned_admin_id,
             'assigned_admin'    => $conversation->assignedAdmin
-                ? ['id' => $conversation->assignedAdmin->id, 'name' => $conversation->assignedAdmin->name]
+                ? [
+                    'id' => $conversation->assignedAdmin->id,
+                    'name' => $conversation->assignedAdmin->name,
+                    'admin_chat_alias' => $conversation->assignedAdmin->admin_chat_alias,
+                    'display_name' => $conversation->assignedAdmin->admin_chat_alias ?: $conversation->assignedAdmin->name,
+                ]
                 : null,
         ]);
     }
