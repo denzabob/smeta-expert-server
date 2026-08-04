@@ -97,6 +97,8 @@ export interface AccountMenuItem {
   action?: 'logout' | 'support' | 'profile' | 'settings'
   /** Навигация на маршрут (закрывает меню) */
   route?: string
+  /** Внешняя или статическая ссылка вне Vue Router */
+  href?: string
   /** Показывать badge с кол-вом непрочитанных */
   badge?: boolean
   /** Визуальный разделитель перед элементом */
@@ -144,6 +146,12 @@ export const accountMenuItems: AccountMenuItem[] = [
     icon: 'mdi-help-circle-outline',
     action: 'support',
     dividerBefore: true,
+  },
+  {
+    id: 'knowledge-base',
+    title: 'База знаний',
+    icon: 'mdi-book-open-page-variant-outline',
+    href: '/docs',
   },
   {
     id: 'logout',

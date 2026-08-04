@@ -821,3 +821,6 @@ Route::middleware('auth:sanctum')->group(function () {
 // Старые маршруты (можно удалить позже)
 Route::apiResource('modules', FurnitureModuleController::class);
 Route::get('modules/{id}/cost', [FurnitureModuleController::class, 'getCost']);
+
+// Isolated Price Indices application routes.
+require __DIR__.'/price_indices.php';

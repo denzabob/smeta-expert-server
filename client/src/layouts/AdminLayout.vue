@@ -156,8 +156,14 @@ import { ref, computed, provide, shallowRef, onMounted, onUnmounted, type Compon
 import { useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import { adminChatApi } from '@/api/adminSupportChat'
+import { useAuthStore } from '@/stores/auth'
+import { getPriceIndicesCapabilityScope } from '@/modules/price-indices/application'
+import { buildAdminPriceIndicesNavigation } from '@/modules/price-indices/admin/navigation'
+import { usePriceIndicesCapabilitiesStore } from '@/modules/price-indices/stores/priceIndicesCapabilities'
 
 const route = useRoute()
+const authStore = useAuthStore()
+const priceIndicesCapabilities = usePriceIndicesCapabilitiesStore()
 const { smAndDown } = useDisplay()
 const mobile = computed(() => smAndDown.value)
 
@@ -176,6 +182,11 @@ const pageTitle = computed(() => {
 })
 
 // Navigation sections
+const priceIndicesNavigation = computed(() => buildAdminPriceIndicesNavigation(
+  priceIndicesCapabilities.status,
+  route.path,
+))
+
 const navSections = computed(() => [
   {
     title: 'Работа с материалами',
@@ -202,6 +213,7 @@ const navSections = computed(() => [
       { to: '/admin/system/logs', label: 'Журнал системы', icon: 'mdi-text-box-search-outline' },
     ]
   },
+  ...(priceIndicesNavigation.value ? [priceIndicesNavigation.value] : []),
   {
     title: 'Поддержка',
     items: [
@@ -225,6 +237,7 @@ async function fetchChatUnread(): Promise<void> {
 }
 
 onMounted(() => {
+  void priceIndicesCapabilities.load(getPriceIndicesCapabilityScope(authStore.user))
   fetchChatUnread()
   chatPollTimer = setInterval(fetchChatUnread, 30_000)
 })
