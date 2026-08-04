@@ -2,6 +2,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useBillingCapabilitiesStore } from '@/stores/billingCapabilities'
+import { usePriceIndicesCapabilitiesStore } from '@/modules/price-indices/stores/priceIndicesCapabilities'
+import {
+  getPriceIndicesCapabilityScope,
+  persistLastApplication,
+  resolveActiveApplication,
+  resolvePriceIndicesGuardDecision,
+} from '@/modules/price-indices/application'
+import { priceIndicesRoutes } from '@/modules/price-indices/router/routes'
+import { adminPriceIndicesRoutes } from '@/modules/price-indices/admin/routes'
 import api from '@/api/axios'
 import { setProjectsFlashMessage, storePrefetchedProject } from './projectAccess'
 
@@ -48,6 +57,7 @@ const router = createRouter({
           redirect: { name: 'projects' },
           meta: { title: 'Проекты' }
         },
+        ...priceIndicesRoutes,
         {
           path: 'materials',
           name: 'materials',
@@ -333,6 +343,7 @@ const router = createRouter({
           component: () => import('@/views/admin/AdminBillingView.vue'),
           meta: { title: 'Log-only лимиты' }
         },
+        ...adminPriceIndicesRoutes,
         {
           path: 'chat',
           name: 'admin-chat',
@@ -355,6 +366,7 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   const billingCapabilities = useBillingCapabilitiesStore()
+  const priceIndicesCapabilities = usePriceIndicesCapabilitiesStore()
 
   const isAdminUser = () => {
     const u = authStore.user as any
@@ -437,6 +449,26 @@ router.beforeEach(async (to, from, next) => {
     void billingCapabilities.load()
   }
 
+  if (to.meta.requiresPriceIndices) {
+    const capabilityStatus = await priceIndicesCapabilities.load(
+      getPriceIndicesCapabilityScope(authStore.user),
+    )
+    const decision = resolvePriceIndicesGuardDecision(capabilityStatus)
+
+    if (to.meta.requiresAdmin && decision !== 'allow') {
+      return next({ name: 'admin-panel', replace: true })
+    }
+
+    if (decision === 'forbidden') {
+      setProjectsFlashMessage('Приложение „Индексы“ недоступно для вашей учётной записи.')
+      return next({ name: 'projects', replace: true })
+    }
+
+    if (decision !== 'allow') {
+      return next({ name: 'projects', replace: true })
+    }
+  }
+
   if (to.name === 'ProjectEditorView') {
     const projectIdentifier = String(to.params.projectPublicId ?? to.params.id ?? '').trim()
 
@@ -468,6 +500,12 @@ router.beforeEach(async (to, from, next) => {
   }
 
   next()
+})
+
+router.afterEach((to, _from, failure) => {
+  if (!failure) {
+    persistLastApplication(resolveActiveApplication(to.path))
+  }
 })
 
 export default router

@@ -1,0 +1,137 @@
+{
+  "project": {
+    "backend": "Laravel / PHP",
+    "backend_version": "Laravel 12.43.1; PHP ^8.2 (Docker PHP 8.3 FPM)",
+    "frontend": "Vue 3 / TypeScript / Vuetify / Pinia / Vite",
+    "frontend_version": "Vue 3.5.25; Vuetify 3.11.4; Pinia 3.0.4; Vite 7.2.7",
+    "database": "MariaDB 10.6 in Docker Compose; Laravel supports additional configured drivers",
+    "architecture": "Monorepo with a central Laravel monolith, Vue SPA, Python parser, and Chrome extension"
+  },
+  "paths": {
+    "backend_routes": [
+      "server/routes/api.php",
+      "server/routes/web.php",
+      "server/bootstrap/app.php"
+    ],
+    "frontend_routes": [
+      "client/src/router/index.ts",
+      "client/src/router/parser.ts"
+    ],
+    "main_layout": [
+      "client/src/layouts/AppShell.vue",
+      "client/src/layouts/AdminLayout.vue",
+      "client/src/layouts/ParserLayout.vue"
+    ],
+    "sidebar": [
+      "client/src/layouts/shell/AppSidebarNew.vue",
+      "client/src/layouts/shell/sidebarConfig.ts",
+      "client/src/layouts/shell/AppMenu.vue"
+    ],
+    "auth": [
+      "server/app/Models/User.php",
+      "server/app/Http/Controllers/Api/AuthController.php",
+      "server/app/Http/Controllers/Api/PasswordResetController.php",
+      "server/config/auth.php",
+      "server/config/sanctum.php",
+      "client/src/stores/auth.ts",
+      "client/src/api/axios.ts"
+    ],
+    "profile": [
+      "server/app/Models/UserSettings.php",
+      "server/app/Http/Controllers/Api/UserSettingsController.php",
+      "client/src/components/settings/ProfileEditModal.vue",
+      "client/src/views/UserSettingsView.vue"
+    ],
+    "subscriptions": [
+      "server/config/billing.php",
+      "server/app/Models/BillingPlan.php",
+      "server/app/Models/BillingSubscription.php",
+      "server/app/Models/FeatureEntitlement.php",
+      "server/app/Services/Billing/BillingGateService.php",
+      "server/app/Services/Billing/FeatureGateService.php",
+      "server/database/migrations/2026_04_27_000001_create_billing_foundation_tables.php",
+      "client/src/stores/billingCapabilities.ts"
+    ],
+    "support": [
+      "server/app/Services/Chat/SupportChatService.php",
+      "server/app/Http/Controllers/Api/SupportChatController.php",
+      "server/app/Http/Controllers/Api/AdminChatController.php",
+      "client/src/components/support/SupportChatWidget.vue",
+      "client/src/views/admin/AdminChatView.vue"
+    ],
+    "documents": [
+      "server/app/Http/Controllers/Api/SmetaPdfController.php",
+      "server/app/Http/Controllers/Api/ProjectRevisionController.php",
+      "server/app/Http/Controllers/Api/EvidenceRunController.php",
+      "server/app/Service/ReportService.php",
+      "server/app/Services/SnapshotService.php",
+      "server/resources/views/reports/smeta.blade.php",
+      "server/resources/views/reports/price_justification.blade.php",
+      "server/resources/views/reports/evidence_run.blade.php"
+    ],
+    "verification": [
+      "server/app/Http/Controllers/PublicVerificationController.php",
+      "server/app/Models/RevisionPublication.php",
+      "server/app/Models/ProjectRevision.php",
+      "server/resources/views/verification/portal.blade.php",
+      "server/database/migrations/2026_01_20_180000_create_revision_publications_table.php"
+    ],
+    "tests": [
+      "server/tests",
+      "server/phpunit.xml",
+      "client/src",
+      "client/package.json",
+      "client/eslint.config.ts"
+    ]
+  },
+  "capabilities": {
+    "authentication": true,
+    "roles": true,
+    "subscriptions": true,
+    "feature_flags": true,
+    "support": true,
+    "pdf": true,
+    "docx": false,
+    "document_hash": true,
+    "public_verification": true,
+    "notifications": true
+  },
+  "recommended_integration": {
+    "frontend_prefix": "/app/indices",
+    "api_prefix": "/api/indices",
+    "backend_module_path": "server/app/Domain/PriceIndices",
+    "frontend_module_path": "client/src/modules/price-indices",
+    "feature_key": "price_indices.access",
+    "requires_migrations": true
+  },
+  "open_questions": [
+    "Final workspace names and switch placement",
+    "Beta audience and default-deny access policy",
+    "Tariffs, trial periods, and calculation/export/source limits",
+    "Whether last active workspace must sync across devices",
+    "Required legal requisites, signature, stamp, and numbering",
+    "Normative PDF and DOCX layouts",
+    "Rosstat source licensing, formats, update frequency, and correction policy",
+    "Index calculation formulas, rounding, classifiers, and territory versioning",
+    "Public verification domain, expiry, privacy projection, and source-file access",
+    "Retention, backups, and deletion rules for datasets and generated documents",
+    "Whether to build a shared document registry or isolated Price Indices exports"
+  ],
+  "risks": [
+    "The backend has no formal domain-module boundary",
+    "Existing document and public verification flows are coupled to ProjectRevision",
+    "DOCX generation is absent",
+    "FeatureGateService allows missing entitlements and defaults to fail-open",
+    "QuotaService enforcement is not implemented and several gate hooks ignore the result",
+    "Admin-authored notification HTML is rendered with v-html and no sanitizer was found",
+    "Nginx upload limit is 5 MB while backend validators allow 8-10 MB",
+    "No antivirus or upload quarantine mechanism was found",
+    "No neutral document/file registry exists",
+    "Admin authorization checks are distributed across controllers and policies",
+    "The schema dump lags behind later migrations",
+    "No CI workflow, PHP static analyzer, or configured browser E2E suite was found",
+    "Generated PDFs are synchronous and are not stored as immutable document records",
+    "A complete backup and tested restore policy for database plus files was not found",
+    "Legacy /api/modules routes are outside the authenticated route group and the controller is incomplete"
+  ]
+}

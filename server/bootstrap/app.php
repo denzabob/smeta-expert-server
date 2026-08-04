@@ -5,6 +5,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Auth\AuthenticationException;  // ← Обязательно импортируйте
 use Illuminate\Http\Request;                  // ← Для типа Request
+use App\Domain\PriceIndices\Http\Middleware\EnsurePriceIndicesAccess;
 use App\Http\Middleware\Authenticate;
 use App\Http\Middleware\EnforceSingleSession;
 
@@ -26,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Используем кастомный auth-мидлвар, чтобы API не пытался редиректить на login.
         $middleware->alias([
             'auth' => Authenticate::class,
+            'price_indices.access' => EnsurePriceIndicesAccess::class,
             'single_session' => EnforceSingleSession::class,
         ]);
 

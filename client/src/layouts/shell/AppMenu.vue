@@ -34,37 +34,23 @@
           <div class="menu-section">
             <div class="menu-section-title">Приложения</div>
             
-            <!-- Main App - always active -->
-            <button class="menu-item menu-item--active" @click="navigateTo('home')">
-              <div class="menu-item-icon menu-item-icon--app">
-                <v-icon icon="mdi-calculator-variant" size="20" />
-              </div>
-              <span class="menu-item-text">Сметы</span>
-              <v-icon icon="mdi-check" size="18" class="menu-item-check" />
-            </button>
-            
-            <!-- Admin Panel - only for admin -->
-            <button 
-              v-if="isAdmin" 
+            <button
+              v-for="item in applicationMenuItems"
+              :key="item.id"
               class="menu-item"
-              @click="navigateTo('admin-panel')"
+              :class="{ 'menu-item--active': activeApplication === item.id }"
+              @click="navigateTo(item)"
             >
-              <div class="menu-item-icon menu-item-icon--admin">
-                <v-icon icon="mdi-shield-crown-outline" size="20" />
+              <div class="menu-item-icon" :class="item.iconClass">
+                <v-icon :icon="item.icon" size="20" />
               </div>
-              <span class="menu-item-text">Админ панель</span>
-            </button>
-            
-            <!-- Parser - only for admin -->
-            <button 
-              v-if="isAdmin" 
-              class="menu-item"
-              @click="navigateTo('parser')"
-            >
-              <div class="menu-item-icon menu-item-icon--parser">
-                <v-icon icon="mdi-code-json" size="20" />
-              </div>
-              <span class="menu-item-text">Парсер</span>
+              <span class="menu-item-text">{{ item.label }}</span>
+              <v-icon
+                v-if="activeApplication === item.id"
+                icon="mdi-check"
+                size="18"
+                class="menu-item-check"
+              />
             </button>
           </div>
 
@@ -111,9 +97,17 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useTheme } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
+import { usePriceIndicesCapabilitiesStore } from '@/modules/price-indices/stores/priceIndicesCapabilities'
+import {
+  buildApplicationMenu,
+  getPriceIndicesCapabilityScope,
+  hasPriceIndicesRole,
+  resolveActiveApplication,
+} from '@/modules/price-indices/application'
+import type { ApplicationMenuItem } from '@/modules/price-indices/types'
 import logoLight from '@/assets/logo.svg'
 import logoDark from '@/assets/logo_wh.svg'
 
@@ -121,20 +115,26 @@ const props = defineProps<{
   rail?: boolean
 }>()
 
+const emit = defineEmits<{
+  (e: 'navigated'): void
+}>()
+
 const router = useRouter()
+const route = useRoute()
 const theme = useTheme()
 const authStore = useAuthStore()
+const priceIndicesCapabilities = usePriceIndicesCapabilitiesStore()
 
 const isOpen = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownStyle = ref<Record<string, string>>({})
 
-// Check if current user is admin by role, with id=1 fallback for legacy accounts.
-const isAdmin = computed(() => {
-  const role = String((authStore.user as any)?.role ?? (authStore.user as any)?.user_role ?? '').toLowerCase()
-  return Number(authStore.user?.id) === 1 || role === 'admin' || role === 'superadmin'
-})
+const activeApplication = computed(() => resolveActiveApplication(route.path))
+const applicationMenuItems = computed(() => buildApplicationMenu(
+  authStore.user,
+  priceIndicesCapabilities.status,
+))
 
 // Theme detection
 const isDark = computed(() => theme.global.current.value.dark)
@@ -163,25 +163,36 @@ function updateDropdownPosition() {
   if (!menuRef.value) return
   
   const rect = menuRef.value.getBoundingClientRect()
+  const desiredWidth = props.rail ? 240 : Math.max(rect.width, 240)
+  const width = Math.min(desiredWidth, window.innerWidth - 16)
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
   dropdownStyle.value = {
     position: 'fixed',
     top: `${rect.bottom + 8}px`,
-    left: `${rect.left}px`,
-    minWidth: props.rail ? '240px' : `${rect.width}px`,
+    left: `${left}px`,
+    width: `${width}px`,
+    maxWidth: 'calc(100vw - 16px)',
+    maxHeight: `calc(100vh - ${rect.bottom + 16}px)`,
+    overflowY: 'auto',
     zIndex: '2100',
   }
 }
 
-async function navigateTo(routeName: string) {
+async function navigateTo(item: ApplicationMenuItem) {
   try {
-    if (router.hasRoute(routeName)) {
-      await router.push({ name: routeName })
-    } else if (routeName === 'admin-panel') {
+    if (router.hasRoute(item.routeName)) {
+      await router.push({ name: item.routeName })
+    } else if (item.id === 'admin') {
       // Fallback for compatibility if route names are refactored again.
       await router.push('/admin')
+    } else if (item.id === 'parser') {
+      await router.push('/parser')
+    } else if (item.id === 'price_indices') {
+      await router.push('/app/indices')
     } else {
-      await router.push('/')
+      await router.push('/projects')
     }
+    emit('navigated')
   } catch (error) {
     console.error('Menu navigation failed:', error)
   } finally {
@@ -231,6 +242,9 @@ function handleResize() {
 }
 
 onMounted(() => {
+  if (hasPriceIndicesRole(authStore.user)) {
+    void priceIndicesCapabilities.load(getPriceIndicesCapabilityScope(authStore.user))
+  }
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleEscape)
   window.addEventListener('resize', handleResize)
@@ -393,6 +407,11 @@ onUnmounted(() => {
 .menu-item-icon--app {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
+}
+
+.menu-item-icon--indices {
+  background: rgb(var(--v-theme-tertiary-container));
+  color: rgb(var(--v-theme-on-tertiary-container));
 }
 
 .menu-item-icon--admin {

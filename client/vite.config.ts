@@ -27,6 +27,12 @@ export default defineConfig({
         secure: false,
         //cookieDomainRewrite: 'localhost',
       },
+      '^/docs': {
+        target: 'http://127.0.0.1:5174',
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+      },
     },
   },
   resolve: {

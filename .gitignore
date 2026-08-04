@@ -2,7 +2,14 @@ node_modules/
 client/dist/
 chrome-extension/
 vendor/
-docs/
+docs/node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+docs/.vitepress/.temp/
+docs/*.md
+!docs/index.md
+!docs/PRICE_INDICES_PHASE_1_IMPLEMENTATION.md
+server/public/docs/
 !client/docs/
 !client/docs/ui-foundation-standard.md
 !client/docs/dev-visual-acceptance.md
@@ -57,6 +64,8 @@ server/tests/Unit/*
 !server/tests/Unit/Services/*.php
 !server/tests/Feature/
 server/tests/Feature/*
+!server/tests/Feature/PriceIndices/
+!server/tests/Feature/PriceIndices/**
 !server/tests/Feature/ProjectPublicIdTest.php
 !server/tests/Feature/MaterialExactReuseTest.php
 !server/tests/Feature/MaterialCatalogVisibilityTest.php

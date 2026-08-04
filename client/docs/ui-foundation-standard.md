@@ -4,6 +4,64 @@
 
 Для локальной визуальной приемки защищенных pilot-экранов используется только dev-only режим из `client/docs/dev-visual-acceptance.md`. Он не является частью production auth flow и не должен использоваться для проверки бизнес-логики.
 
+## AppShell Toolbar Contract
+
+**Назначение:** верхний shell-слой для глобальных utility actions и компактного workspace-контекста. AppShell toolbar не заменяет page header и не заменяет table toolbar.
+
+**Зоны ответственности:**
+- `AppShell toolbar` - глобальные действия и ускорители: уведомления, идеи/feedback, аккаунт/settings entry, последний проект, будущий global search / command palette. Для workspace-экранов может показывать компактный context strip.
+- `PageHeader` - заголовок обычной страницы, подзаголовок и page-level actions: создать, импортировать, экспортировать, обновить всю страницу, открыть настройки страницы.
+- `TableToolbar` - search, filters, table/list actions и selected-state bulk actions над конкретной таблицей или реестром.
+- `Context strip` - компактная строка состояния текущего workspace-объекта или процесса внутри AppShell toolbar.
+
+**Routing rule:**
+- Если действие относится к таблице - оно остается в `TableToolbar`.
+- Если действие относится к странице - оно остается в `PageHeader`.
+- Если действие относится к глобальному shell или текущему workspace-контексту - оно может быть в `AppShell toolbar`.
+
+**Допускается в AppShell toolbar:**
+- global utility actions: уведомления, идеи/feedback, аккаунт/settings entry;
+- cross-page accelerators: последний проект, global search / command palette;
+- compact workspace status: название текущего workspace-объекта, счетчики, сумма, progress, warning/error count;
+- не более 2-3 основных workspace actions справа, например документы, обновить, настройки.
+
+**Запрещено переносить в AppShell toolbar:**
+- table search, table filters, column controls и bulk actions;
+- create/import/export actions конкретного реестра;
+- form submit/save/cancel actions;
+- row actions и drawer-specific actions;
+- destructive actions;
+- длинные page titles, subtitles и описательные helper texts;
+- локальные one-off actions конкретной страницы без shell-level или workspace-level причины.
+
+**Критерии допуска context strip:**
+- экран является долгоживущим workspace/editor/process screen, а не обычным registry/settings/admin list;
+- есть один текущий объект или процесс, контекст которого должен оставаться видимым при scroll или fullscreen layout;
+- есть компактный статус: count, total, progress, freshness, warnings/problems;
+- есть ограниченный набор workspace actions, применимых ко всему текущему объекту или процессу;
+- задача не решается обычным `PageHeader` без потери контекста.
+
+**Экраны, которые могут иметь context strip:**
+- редактор сметы / project workspace;
+- evidence run / revision run workspace;
+- pricing operation workspace;
+- parser active run dashboard.
+
+Обычные реестры, settings pages, admin lists, catalog pages и billing pages используют `PageHeader` + `TableToolbar` без context strip, если не доказана workspace-природа экрана.
+
+**Desktop rules:**
+- AppShell toolbar видим на desktop и держит global utility cluster справа;
+- context strip размещается слева или в основной части toolbar и должен сжиматься через ellipsis;
+- desktop actions могут быть icon + short label;
+- toolbar не должен расти по высоте из-за длинных labels или статусов.
+
+**Mobile rules:**
+- desktop toolbar заменяется compact mobile header;
+- действия в mobile shell должны быть icon-only с `aria-label`;
+- secondary labels, chips и длинные статусы скрываются или сворачиваются;
+- table controls остаются внутри content в `TableToolbar`, а не переезжают в mobile shell;
+- overlays shell-уровня должны не конфликтовать с navigation drawer и modal dialogs.
+
 ## 1. Page Container
 
 **Компонент:** `PageContainer`

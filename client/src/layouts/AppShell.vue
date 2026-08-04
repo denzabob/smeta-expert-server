@@ -158,6 +158,7 @@
     <!-- Sidebar (Mistral-style) -->
     <AppSidebar
       v-model="drawerOpen"
+      :sections="activeSidebarSections"
       @open-settings="openAccountSettings"
       @open-profile="openProfileEdit"
       @logout="handleLogout"
@@ -199,13 +200,14 @@
               <template #activator="{ props: menuProps }">
                 <v-btn
                   v-bind="menuProps"
-                  class="toolbar-action project-problem-chip"
+                  class="toolbar-action toolbar-action--icon project-problem-chip"
                   :class="`project-problem-chip--${projectToolbar.maxSeverity}`"
                   variant="tonal"
                   size="small"
+                  :aria-label="projectProblemsLabel"
                 >
                   <v-icon icon="mdi-alert-circle-outline" size="17" />
-                  <span class="toolbar-action__label">{{ projectProblemsLabel }}</span>
+                  <span class="project-problem-chip__count">{{ projectToolbar.issues.length }}</span>
                 </v-btn>
               </template>
               <v-card class="project-problems-popover" elevation="8">
@@ -381,6 +383,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { sidebarSections } from './shell/sidebarConfig'
+import { priceIndicesSidebarSections } from '@/modules/price-indices/navigation'
+import {
+  resolveActiveApplication,
+  selectSidebarConfig,
+} from '@/modules/price-indices/application'
 import api from '@/api/axios'
 import {
   isAppThemeMode,
@@ -401,6 +409,12 @@ const notificationsStore = useNotificationsStore()
 const { smAndDown } = useDisplay()
 const theme = useTheme()
 const compactNav = computed(() => smAndDown.value)
+const activeApplication = computed(() => resolveActiveApplication(route.path))
+const activeSidebarSections = computed(() => selectSidebarConfig(
+  activeApplication.value,
+  sidebarSections,
+  priceIndicesSidebarSections,
+))
 const isProjectEditorRoute = computed(() => route.name === 'ProjectEditorView')
 const isIdeasRoute = computed(() => String(route.path).startsWith('/ideas'))
 const showTopToolbar = computed(() => !compactNav.value)
@@ -810,6 +824,7 @@ watch(
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 36px;
   min-width: 0;
   flex: 1;
 }
@@ -820,6 +835,7 @@ watch(
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.95rem;
+  line-height: 36px;
   font-weight: 800;
   color: rgb(var(--v-theme-on-surface));
 }
@@ -834,6 +850,10 @@ watch(
   color: rgb(var(--v-theme-on-surface));
 }
 
+.project-problem-chip :deep(.v-btn__content) {
+  gap: 3px;
+}
+
 .project-problem-chip--mobile {
   width: auto;
   min-width: 42px;
@@ -841,9 +861,9 @@ watch(
 }
 
 .project-problem-chip__count {
-  margin-left: 3px;
   font-size: 0.75rem;
   font-weight: 800;
+  line-height: 1;
 }
 
 .project-problem-chip--error {
@@ -932,6 +952,17 @@ watch(
 
 .toolbar-action--notification {
   padding: 0;
+}
+
+.toolbar-action--notification :deep(.v-btn__content) {
+  width: 100%;
+  justify-content: center;
+}
+
+.toolbar-action--notification :deep(.v-badge) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Mobile */

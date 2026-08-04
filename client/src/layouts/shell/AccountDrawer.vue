@@ -131,6 +131,11 @@ function handleItemClick(item: AccountMenuItem) {
   if (item.route) {
     close()
     router.push(item.route)
+    return
+  }
+  if (item.href) {
+    close()
+    window.location.href = item.href
   }
 }
 

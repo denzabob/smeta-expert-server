@@ -23,7 +23,10 @@
       <!-- Header: App Menu + Toggle -->
       <div class="sidebar-header">
         <!-- App Menu (Mistral style) -->
-        <AppMenu :rail="isRail && !mobile" />
+        <AppMenu
+          :rail="isRail && !mobile"
+          @navigated="handleApplicationNavigated"
+        />
         
         <!-- Mobile close button -->
         <button 
@@ -193,9 +196,12 @@ const STORAGE_KEY = 'ui.sidebarMode'
 const WIDE_WIDTH = 260
 const RAIL_WIDTH = 68
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: boolean
-}>()
+  sections?: MenuSection[]
+}>(), {
+  sections: () => sidebarSections,
+})
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
@@ -235,7 +241,7 @@ const userInitial = computed(() => {
 
 // Фильтрация секций и пунктов по visibleIf
 const visibleSections = computed<MenuSection[]>(() => {
-  return sidebarSections.filter(section => {
+  return props.sections.filter(section => {
     if (section.visibleIf && !section.visibleIf(me.value)) {
       return false
     }
@@ -282,6 +288,12 @@ function handleSidebarClick(event: MouseEvent) {
 // Закрыть мобильный drawer при навигации
 function handleNavClick(navigate: () => void) {
   navigate()
+  if (mobile.value) {
+    emit('update:modelValue', false)
+  }
+}
+
+function handleApplicationNavigated() {
   if (mobile.value) {
     emit('update:modelValue', false)
   }
