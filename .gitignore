@@ -9,6 +9,7 @@ docs/.vitepress/.temp/
 docs/*.md
 !docs/index.md
 !docs/PRICE_INDICES_PHASE_1_IMPLEMENTATION.md
+!docs/PRICE_INDICES_PHASE_2_IMPLEMENTATION_PLAN.md
 server/public/docs/
 !client/docs/
 !client/docs/ui-foundation-standard.md
