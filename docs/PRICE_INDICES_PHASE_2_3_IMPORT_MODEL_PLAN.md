@@ -1003,3 +1003,164 @@ partial year January–June; canonical OKPD2 mapping, region import, admin/user 
 frontend, calculations, reports, downloader, remote HTTP, scheduler и production
 deploy не реализовывались. Benchmark не является production migration/deploy и не
 оставляет импортированные данные благодаря rollback.
+
+## 32. Фактическая реализация БЛОКА 2.3B-3
+
+Добавлен admin-only API workflow под существующими middleware `auth:sanctum` и
+`price_indices.access`. Exact roles `admin|superadmin` не менялись; legacy user ID не
+даёт обход. Все route bindings используют `public_id`, Resources не возвращают
+numeric IDs, `stored_path` или `successful_dedupe_key`.
+
+Добавлены девять routes:
+
+- `POST /api/indices/admin/source-files/{sourceFile}/preview`;
+- `POST /api/indices/admin/source-files/{sourceFile}/imports`;
+- `GET /api/indices/admin/imports`;
+- `GET /api/indices/admin/imports/{import}`;
+- `GET /api/indices/admin/imports/{import}/issues`;
+- `GET /api/indices/admin/imports/{import}/observations`;
+- `POST /api/indices/admin/imports/{import}/publish`;
+- `POST /api/indices/admin/imports/{import}/retry`;
+- `GET /api/indices/admin/datasets/{dataset}/active-import`.
+
+Preview остаётся stateless и synchronous: допускается только active source file,
+использует существующий importer registry и shared grammar БЛОКА 2.3B-2, не создаёт
+imports/issues/series/classifier items/observations. Structured fatal workbook даёт
+422 `unsupported_workbook`; inactive state — 409 `source_file_not_active`; missing
+binary — 404 `source_file_missing`; unsupported dataset — 422
+`unsupported_dataset`; unexpected failure скрывается за 500 `preview_failed` без
+пути/stack. Response содержит source-file UUID/reporting period, importer identity,
+sheet map, counts и bounded samples. Фактическое время real-workbook preview из B-2 —
+90.76 seconds при chunk 2000. Async preview не добавлялся, поскольку для него нет
+утверждённого persistence/status contract; production HTTP/proxy timeout для текущего
+synchronous admin endpoint должен быть согласован отдельно.
+
+Start import создаёт pending attempt в transaction после source-file row lock и
+dispatches `RunStatisticalImportJob` только после commit; HTTP возвращает 202 и
+`meta.queued=true` только после успешного принятия queue backend. Duplicate policy:
+pending/importing/validating → `import_already_running`, ready →
+`import_already_ready`, published → `import_already_published`, superseded →
+`import_already_completed`, failed → `import_retry_required`. Если dispatch throws,
+новый attempt переводится в failed с `job_dispatch_failed` и API возвращает 503. Для
+этого единственного сценария lifecycle расширен additive transition
+`pending → failed`; остальные transitions не менялись.
+
+Import list paginated и поддерживает whitelist filters dataset/source-file UUID,
+status, importer code/version, created date range и whitelist sorting. Detail Resource
+показывает lifecycle timestamps, counters, доступный progress, failure только для
+failed status, current publication state и actions. Issues endpoint paginated,
+фильтрует severity/code/sheet и не раскрывает `import_id`.
+
+Observations endpoint имеет default page size 100 и maximum 500. Поддержаны exact
+item code, trailing-dot prefix, normalized item-name LIKE, period range, missing и
+sheet filters; sorting ограничен period/item code/created. Query использует joins для
+classifier filtering/sort и eager loads series indicator/classifier/territory и source
+file без N+1. Существующие indexes `import_id+period_start`,
+`import_id+series_id`, series/classifier dimensions достаточны для bounded admin query;
+новая migration не потребовалась. `DECIMAL(20,10)` сериализуется строкой. Код
+`05.10.10.101.АГ` сохраняется и фильтруется без удаления suffix/transliteration.
+
+Publish endpoint допускает только ready import и делегирует transaction существующему
+`PublishStatisticalImport`. Response возвращает current import и meta предыдущего
+public UUID; observations superseded import сохраняются. Active-import endpoint
+возвращает published Resource либо `data=null`. Retry допускает только failed import,
+требует active source и доступную exact importer identity, создаёт новый pending
+attempt с `retry_of_import_id`, не изменяет original failed import и dispatches job.
+
+Stable conflict/error codes покрывают inactive source, unsupported dataset/workbook,
+duplicate start states, dispatch failure, invalid publish state/concurrency,
+non-failed retry, unavailable importer и existing later attempt. Unexpected preview
+errors не раскрывают internal path или stack.
+
+Проверки на MariaDB `smeta_test`:
+
+- baseline до реализации: 99 tests, 507 assertions;
+- targeted `PriceIndicesAdminImportApiTest`: 11 tests, 175 assertions;
+- полный PriceIndices regression: 110 tests, 682 assertions;
+- route list: 25 PriceIndices routes, из них 9 новых;
+- PHP syntax и `git diff --check` выполняются для финальной приёмки блока.
+
+Ограничения: worker heartbeat API не проверяет; наличие production queue worker и
+HTTP timeout для 90.76-second preview являются deployment requirements. Frontend,
+user search/calculation API, reports, PDF/DOCX, billing, downloader, remote HTTP,
+scheduler, CPI, region import, parser grammar, schema и production DB не изменялись.
+
+## 33. Фактическая реализация БЛОКА 2.3B-4
+
+Синхронный preview БЛОКА 2.3B-3 занимал на контрольном XLSX около 90.76 секунды,
+поэтому его HTTP-контракт заменён persistent async workflow. Предыдущий раздел
+сохраняет историческое описание B-3; начиная с B-4 `POST
+/api/indices/admin/source-files/{sourceFile}/preview` XLSX не сканирует, а быстро
+создаёт либо переиспользует preview request и отвечает `202 pending` или `200` для
+готового неистёкшего результата.
+
+Одна additive migration создаёт `statistical_import_previews`. DB row является source
+of truth и хранит UUID, dataset/source-file RESTRICT relations, importer identity,
+status, SHA-256 cache key, nullable requester, lifecycle timestamps, counters,
+bounded `result_json`, controlled failure и operational metadata. Добавлены требуемые
+indexes по cache key, source file/time, dataset/status, status/expiration и created
+time. Миграция проверена через `--pretend`, apply, изолированный rollback только
+`000009` и reapply на `smeta_test`; ранние Price Indices migrations не откатывались.
+
+Lifecycle централизован: `pending → running → ready|failed`, exceptional dispatch
+допускает `pending → failed`, а `ready|failed → expired`. Retry никогда не возвращает
+старую строку в running, а создаёт новый preview row. После `ready` изменение
+`result_json` запрещено model invariant. Expiration выполняется лениво при status,
+start или retry request; строки истории не удаляются. TTL по умолчанию — 24 часа,
+cleanup job и scheduler в блок не добавлялись.
+
+Cache identity вычисляется как SHA-256 от
+`lower(source_file.sha256)|importer_code|importer_version`. Distributed lock имеет
+точное имя `price-indices:preview:{cache_key}`, TTL 300 секунд и wait 5 секунд.
+Pending/running request reuse возвращает `202` без второго job; ready до expiration —
+`200` без повторного scanner; failed/expired позволяют новый attempt. Изменение binary
+SHA или importer version создаёт другой key. Application lock компенсирует отсутствие
+partial unique index в MariaDB, при этом история попыток сохраняется.
+
+`RunStatisticalImportPreviewJob` использует существующий
+`PreviewStatisticalSourceFile` и единую importer grammar, имеет timeout 180 секунд и
+`tries=1`. Job повторно проверяет pending под lock, фиксирует running/started time,
+сохраняет normalized bounded payload, counters, expiration и метрики. Controlled
+ошибка даёт failed row; unexpected throwable скрывается за
+`preview_internal_error` и rethrow для queue infrastructure. Ошибка dispatch сразу
+даёт `job_dispatch_failed` и не оставляет вечный pending.
+
+Admin API под прежними `auth:sanctum` и exact-role `price_indices.access` расширен до
+28 routes:
+
+- `GET /api/indices/admin/previews/{preview}` — status/counters/failure без полного
+  result;
+- `GET /api/indices/admin/previews/{preview}/result` — готовый
+  `ImportPreviewResource` либо стабильный 409 `preview_not_ready|preview_failed|
+  preview_expired`;
+- `POST /api/indices/admin/previews/{preview}/retry` — новый pending attempt только
+  для failed/expired.
+
+Resources возвращают только public UUID, безопасную source-file/importer информацию,
+timestamps, counters и разрешённые actions. Numeric IDs, `stored_path`, absolute path,
+stack trace и raw exception наружу не выдаются. Result содержит workbook summary,
+sheet map, detected dimensions, aggregate counts и samples, ограниченные существующим
+`preview_sample_limit`; все observation candidates не сериализуются.
+
+Ручной `--async-preview --assert-real-workbook` job выполнен внутри rollback
+transaction на `smeta_test` для XLSX SHA-256
+`f233b55e8c00ff378e4dfaf6d870d057f724dbe9ec0e3b49fca3ea8c27b0b691`, 25 217 390
+bytes. Результат: `ready`, 7 435 commodity occurrences, 1 327 identities, 81 582
+observation candidates, 81 580 numeric, 0 missing, 2 footnoted, 0 fatal. Время job —
+97.91 секунды, peak memory — 116 719 616 bytes, serialized `result_json` — 25 758
+bytes. После rollback в `smeta_test` осталось 0 benchmark preview/source-file rows;
+production DB не использовалась.
+
+Targeted проверки: model/lifecycle/cache key — 5 tests, 33 assertions; async
+preview API/job/dedupe/result/retry/auth — 8 tests, 127 assertions; совместимый admin
+import API regression — 11 tests, 178 assertions. Полный PriceIndices regression —
+123 tests, 845 assertions. Известно прежнее unrelated PHPUnit warning о deprecated
+doc-comment metadata.
+
+Ограничения: progress остаётся только optional metadata и scanner ради него не
+переписывался; expiration выполняется request-time, автоматического retention cleanup
+нет; distributed-lock поведение проверено детерминированными feature tests, но не
+multi-process load test; доступность production queue worker/lock backend остаётся
+deployment requirement. Parser, commodity `.АГ` grammar, full import job и import/
+source-file lifecycle не изменялись. Frontend, billing, downloader, remote HTTP,
+scheduler, calculations, reports и production deploy не затрагивались.

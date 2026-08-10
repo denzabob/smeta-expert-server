@@ -4,6 +4,7 @@ namespace App\Domain\PriceIndices\Http;
 
 use App\Domain\PriceIndices\Domain\Enums\SourceFileErrorCode;
 use App\Domain\PriceIndices\Domain\Exceptions\DatasetCodeImmutable;
+use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesApiException;
 use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesInvariantViolation;
 use App\Domain\PriceIndices\Domain\Exceptions\SourceFileActivationConflict;
 use App\Domain\PriceIndices\Domain\Exceptions\SourceFileDuplicate;
@@ -18,6 +19,13 @@ class PriceIndicesErrorResponder
 {
     public function respond(Throwable $exception): JsonResponse
     {
+        if ($exception instanceof PriceIndicesApiException) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->errorCode,
+            ], $exception->httpStatus);
+        }
+
         if ($exception instanceof SourceFileDuplicate) {
             return response()->json([
                 'message' => $exception->getMessage(),

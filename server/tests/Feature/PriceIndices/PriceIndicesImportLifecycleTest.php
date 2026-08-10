@@ -29,6 +29,7 @@ class PriceIndicesImportLifecycleTest extends TestCase
         $lifecycle = app(StatisticalImportLifecycle::class);
         $allowed = [
             'pending:importing',
+            'pending:failed',
             'importing:validating',
             'importing:failed',
             'validating:ready_for_publish',

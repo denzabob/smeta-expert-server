@@ -7,12 +7,16 @@ use App\Domain\PriceIndices\Application\Services\CreateStatisticalImport;
 use App\Domain\PriceIndices\Application\Services\MarkImportReadyForPublish;
 use App\Domain\PriceIndices\Application\Services\StartStatisticalImport;
 use App\Domain\PriceIndices\Application\Services\StatisticalImporterRegistry;
+use App\Domain\PriceIndices\Application\Services\StatisticalImportPreviewCacheKey;
 use App\Domain\PriceIndices\Domain\Datasets\StatisticalDataset;
 use App\Domain\PriceIndices\Domain\Enums\AcquisitionMethod;
 use App\Domain\PriceIndices\Domain\Enums\SourceFileStatus;
+use App\Domain\PriceIndices\Domain\Enums\StatisticalImportPreviewStatus;
 use App\Domain\PriceIndices\Domain\Enums\ValidationStatus;
 use App\Domain\PriceIndices\Domain\Imports\StatisticalImport;
+use App\Domain\PriceIndices\Domain\Previews\StatisticalImportPreview;
 use App\Domain\PriceIndices\Domain\SourceFiles\StatisticalSourceFile;
+use App\Jobs\RunStatisticalImportPreviewJob;
 use Database\Seeders\ProducerPriceIndicesDatasetSeeder;
 use Database\Seeders\ProducerPriceIndicesReferenceSeeder;
 use Illuminate\Console\Command;
@@ -28,6 +32,7 @@ class BenchmarkPriceIndicesImporter extends Command
         {path : Absolute or working-directory-relative XLSX path}
         {--chunks=1000,2000,5000 : Comma-separated row chunk sizes}
         {--preview-only : Run read-only preview once without benchmark imports}
+        {--async-preview : Run the persistent preview job once and roll back its DB row}
         {--assert-real-workbook : Enforce the audited workbook hash/counts/anchors}';
 
     protected $description = 'Run opt-in Price Indices XLSX regression/benchmark on a non-production database';
@@ -38,6 +43,7 @@ class BenchmarkPriceIndicesImporter extends Command
         CreateStatisticalImport $create,
         StartStatisticalImport $start,
         StatisticalImporterRegistry $registry,
+        StatisticalImportPreviewCacheKey $previewCacheKey,
         BeginImportValidation $beginValidation,
         MarkImportReadyForPublish $markReady,
     ): int {
@@ -83,6 +89,61 @@ class BenchmarkPriceIndicesImporter extends Command
         ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
 
         try {
+            if ($this->option('async-preview')) {
+                $metrics = $this->insideRollback(function (
+                    StatisticalDataset $dataset,
+                    StatisticalSourceFile $file,
+                ) use ($previewCacheKey): array {
+                    $importerCode = (string) config(
+                        'price_indices.imports.importers.producer_price_indices_by_product.code'
+                    );
+                    $importerVersion = (string) config(
+                        'price_indices.imports.importers.producer_price_indices_by_product.version'
+                    );
+                    $preview = StatisticalImportPreview::query()->create([
+                        'dataset_id' => $dataset->id,
+                        'source_file_id' => $file->id,
+                        'importer_code' => $importerCode,
+                        'importer_version' => $importerVersion,
+                        'status' => StatisticalImportPreviewStatus::Pending,
+                        'cache_key' => $previewCacheKey->forSourceFile(
+                            $file,
+                            $importerCode,
+                            $importerVersion,
+                        ),
+                    ]);
+
+                    app()->call([new RunStatisticalImportPreviewJob($preview->public_id), 'handle']);
+                    $preview = $preview->refresh();
+                    if ($preview->status !== StatisticalImportPreviewStatus::Ready) {
+                        throw new RuntimeException(
+                            "Async preview finished with status [{$preview->status->value}]."
+                        );
+                    }
+
+                    return [
+                        'status' => $preview->status->value,
+                        'commodity_occurrences' => $preview->commodity_occurrences,
+                        'unique_classifier_items' => $preview->unique_classifier_items,
+                        'observation_candidates' => $preview->observation_candidates,
+                        'numeric' => $preview->numeric_count,
+                        'missing' => $preview->missing_count,
+                        'footnoted' => $preview->footnoted_count,
+                        'fatal_errors' => $preview->fatal_errors_count,
+                        'result_json_bytes' => $preview->metadata_json['result_json_bytes'] ?? null,
+                        'elapsed_seconds' => $preview->metadata_json['elapsed_seconds'] ?? null,
+                        'peak_memory_bytes' => $preview->metadata_json['peak_memory_bytes'] ?? null,
+                    ];
+                }, $storedPath, $inputPath, $hash);
+
+                if ($this->option('assert-real-workbook')) {
+                    $this->assertRealAsyncPreview($metrics);
+                }
+                $this->line(json_encode($metrics, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+
+                return self::SUCCESS;
+            }
+
             if ($this->option('preview-only')) {
                 $preview = $this->insideRollback(function (StatisticalDataset $dataset, StatisticalSourceFile $file) use ($registry) {
                     return $registry->forSourceFile($file)->preview($file);
@@ -229,6 +290,26 @@ class BenchmarkPriceIndicesImporter extends Command
         foreach ($anchors as $period => $value) {
             if (($metrics['anchors'][$period] ?? null) !== $value) {
                 throw new RuntimeException("Control commodity regression mismatch for {$period}.");
+            }
+        }
+    }
+
+    /** @param array<string, mixed> $metrics */
+    private function assertRealAsyncPreview(array $metrics): void
+    {
+        $expected = [
+            'status' => 'ready',
+            'commodity_occurrences' => 7435,
+            'unique_classifier_items' => 1327,
+            'observation_candidates' => 81582,
+            'numeric' => 81580,
+            'missing' => 0,
+            'footnoted' => 2,
+            'fatal_errors' => 0,
+        ];
+        foreach ($expected as $key => $value) {
+            if (($metrics[$key] ?? null) !== $value) {
+                throw new RuntimeException("Real async preview regression mismatch for {$key}.");
             }
         }
     }

@@ -28,6 +28,11 @@ return [
         'chunk_rows' => (int) env('PRICE_INDICES_IMPORT_CHUNK_ROWS', 2_000),
         'db_batch_size' => 500,
         'preview_sample_limit' => 50,
+        'preview_cache_ttl_hours' => 24,
+        'preview_job_timeout' => 180,
+        'preview_job_tries' => 1,
+        'preview_lock_ttl' => 300,
+        'preview_lock_wait_seconds' => 5,
         'job_timeout' => 3_600,
         'job_tries' => 1,
         'job_backoff' => 60,
@@ -39,5 +44,12 @@ return [
                 'version' => '1.0.0',
             ],
         ],
+    ],
+
+    'api' => [
+        'imports_per_page' => 25,
+        'issues_per_page' => 100,
+        'observations_per_page' => 100,
+        'max_page_size' => 500,
     ],
 ];

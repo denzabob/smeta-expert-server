@@ -11,6 +11,7 @@ class StatisticalImportLifecycle
     private const TRANSITIONS = [
         StatisticalImportStatus::Pending->value => [
             StatisticalImportStatus::Importing->value,
+            StatisticalImportStatus::Failed->value,
         ],
         StatisticalImportStatus::Importing->value => [
             StatisticalImportStatus::Validating->value,
