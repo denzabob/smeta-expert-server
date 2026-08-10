@@ -1164,3 +1164,53 @@ multi-process load test; доступность production queue worker/lock bac
 deployment requirement. Parser, commodity `.АГ` grammar, full import job и import/
 source-file lifecycle не изменялись. Frontend, billing, downloader, remote HTTP,
 scheduler, calculations, reports и production deploy не затрагивались.
+
+## 34. Фактическая реализация БЛОКА 2.4A — Admin UI first working vertical flow
+
+Административный frontend получил первый рабочий вертикальный сценарий на уже
+существующих backend-контрактах. Страницы `/admin/indices/sources` и
+`/admin/indices/imports` реализованы внутри изолированного модуля Price Indices;
+глобальная тема, admin shell, навигация и backend не изменялись. Для плотного
+операционного интерфейса переиспользованы существующие `PageContainer`, `PageHeader`,
+`SectionCard`, Vuetify server tables и семантические theme colors.
+
+Страница источников поддерживает выбор dataset/source, загрузку XLSX с периодом и
+метаданными, список файлов, download, approve/reject/activate с подтверждениями,
+запуск и повтор preview. Async preview восстанавливается из route query, опрашивается
+без параллельных запросов и показывает workbook summary, поддержанные/игнорируемые
+листы, счётчики, предупреждения и ограниченные samples. Provider code
+`05.10.10.101.АГ` отображается без удаления suffix. Из успешного preview можно после
+подтверждения запустить import, наблюдать его статус, просмотреть issues, повторить
+failed attempt и опубликовать ready import. Карточка active import обновляется после
+publication.
+
+Страница импортов предоставляет server-side историю с dataset/status/importer/date
+filters, pagination, detail dialog, polling незавершённого import, issues, retry и
+publish с подтверждением. Dataset, preview/import и history filters сохраняются в
+query там, где это нужно для восстановления после reload. Mappings и import logs
+остались существующими placeholders и в этот блок не включались.
+
+Добавлены типизированный API adapter поверх общего Axios client, DTO для dataset,
+source, source file, preview/result, import/issues и pagination, русская карта
+стабильных backend error codes, форматтеры статусов и reusable polling composable.
+Polling использует последовательный `setTimeout` с интервалом 2.5 секунды, исключает
+overlap, допускает кратковременные network errors, останавливается на terminal status,
+timeout, смене контекста и scope disposal. Новые зависимости не добавлялись.
+
+Проверки frontend:
+
+- targeted Price Indices: 6 files, 43 tests passed;
+- полный unit regression: 13 files, 207 tests passed;
+- production `vite build`: успешно, 1 838 modules transformed;
+- общий `vue-tsc` type-check: 40 ранее существовавшихся ошибок вне Price Indices,
+  новых diagnostics в `src/modules/price-indices` нет;
+- локальный Playwright smoke с mock API: sources/imports открываются без console и
+  page errors; проверены 1440 px и 900 px, query recovery и sample `.АГ`.
+
+Известные ограничения: smoke не выполнял реальные mutating requests к локальной БД
+и queue worker; mobile viewport, dark theme и полный keyboard-only проход отдельно не
+проверялись. Горизонтально широкие operational tables на средней ширине сохраняют
+плотную структуру и могут требовать горизонтального просмотра. Observation explorer,
+mapping editor, полноценный import log, user search/calculation UI, reports и exports
+не входят в 2.4A. Backend, parser/importer, migrations, production DB, billing, remote
+HTTP, jobs и scheduler в этом блоке не изменялись.
