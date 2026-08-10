@@ -26,6 +26,13 @@ return [
 
     'imports' => [
         'chunk_rows' => (int) env('PRICE_INDICES_IMPORT_CHUNK_ROWS', 2_000),
+        'db_batch_size' => 500,
+        'preview_sample_limit' => 50,
+        'job_timeout' => 3_600,
+        'job_tries' => 1,
+        'job_backoff' => 60,
+        'max_sheets' => 64,
+        'max_rows_per_sheet' => 30_000,
         'importers' => [
             'producer_price_indices_by_product' => [
                 'code' => 'producer_price_indices_by_product',

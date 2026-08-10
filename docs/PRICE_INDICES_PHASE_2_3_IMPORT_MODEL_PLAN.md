@@ -195,7 +195,9 @@ Annual sheet 3 (`previous_december`) содержит значения 2017–20
    естественный порядок и отсутствие дыр внутри заявленного диапазона. Не считать C
    январём без header.
 6. **Commodity start.** Строка начинает block, если code cell соответствует
-   `^\d{2}(?:\.\d+)+$`, name cell непустая. Код хранится строкой, не числом.
+   Unicode-aware grammar `^\d{2}(?:\.\d+)+(?:\.АГ)?$`, name cell непустая. Numeric
+   code и локальный код Росстата с `.АГ` — самостоятельные classifier items. Суффикс
+   не удаляется, не наследует предыдущий товар и хранится в `item_code`.
 7. **Flat grammar (2021–2023).** Title обязан однозначно задавать РФ; month values
    находятся в commodity row. Следующая строка с code завершает предыдущую.
 8. **Regional grammar (2024–2026).** После commodity row читать строки с пустым code до
@@ -238,18 +240,14 @@ validation expectations конкретного importer version, а не уни�
 - service/footer rows;
 - иные datasets, CPI и средние цены.
 
-| Year | Supported sheet | Commodities | Candidate observations | Ordinary numeric | Special footnoted numeric | Missing |
-|---:|---:|---:|---:|---:|---:|---:|
-| 2021 | 4 | 1 145 | 13 740 | 13 740 | 0 | 0 |
-| 2022 | 8 | 1 157 | 13 884 | 13 882 | 2 | 0 |
-| 2023 | 12 | 1 154 | 13 848 | 13 848 | 0 | 0 |
-| 2024 | 16 | 1 164 | 13 968 | 13 968 | 0 | 0 |
-| 2025 | 20 | 1 197 | 14 364 | 14 364 | 0 | 0 |
-| 2026 | 24 | 1 200 | 7 200 | 7 200 | 0 | 0 |
-| **Total** | — | — | **77 004** | **77 002** | **2** | **0** |
+| Provider code kind | Commodity occurrences | Unique item codes | Candidate observations | Ordinary numeric | Special footnoted numeric | Missing |
+|---|---:|---:|---:|---:|---:|---:|
+| `numeric` | 7 017 | 1 251 | 77 004 | 77 002 | 2 | 0 |
+| `rosstat_local_ag` | 418 | 76 | 4 578 | 4 578 | 0 | 0 |
+| **Total** | **7 435** | **1 327** | **81 582** | **81 580** | **2** | **0** |
 
-Всего обнаружено 7 017 commodity occurrences и 1 256 уникальных item codes по union
-шести поддерживаемых листов. Внутри каждого года duplicate codes отсутствуют.
+Classifier identity остаётся `(dataset_id, classifier_code, item_code)`, поэтому base
+code и тот же code с `.АГ` являются разными items внутри `okpd2_based`.
 
 ## 7. Proposed entities
 
@@ -459,7 +457,7 @@ NULL. Пропуск нельзя незаметно исключать из com
 
 ## 11. Решение по `statistical_series`
 
-**Рекомендация: series нужна.** В текущем preview 77 004 observations повторяли бы один
+**Рекомендация: series нужна.** В текущем preview 81 582 observations повторяли бы один
 и тот же dimension tuple в каждой строке. Series:
 
 - даёт стабильный объект для поиска и chain query;
@@ -526,7 +524,7 @@ provenance сохраняются.
 «ячейка отсутствовала» от «importer её не увидел». Calculation chain с NULL завершается
 ошибкой `incomplete_observation_chain`, а не даёт неверный коэффициент.
 
-В фактических 77 004 supported candidates missing observations нет. Policy нужна для
+В фактических 81 582 supported candidates missing observations нет. Policy нужна для
 следующих файлов и уже наблюдаемых historical markers.
 
 ## 15. Provenance
@@ -638,8 +636,8 @@ Response:
   "supported_sheets": [],
   "ignored_sheets": [],
   "periods_detected": {"from": "2021-01", "to": "2026-06", "count": 66},
-  "commodities_detected": {"unique_codes": 1256, "sheet_occurrences": 7017},
-  "observations_candidate_count": 77004,
+  "commodities_detected": {"unique_codes": 1327, "sheet_occurrences": 7435},
+  "observations_candidate_count": 81582,
   "territories_detected": {"russian_federation": true, "ignored_regions_present": true},
   "warnings": [],
   "errors": [],
@@ -782,7 +780,7 @@ observation key и successful dedupe key. Для нового schema они до
 - admin observation browse/filter;
 - user classifier search и series/period availability.
 
-Full import для 25 MiB/77k observations рекомендуется исполнять асинхронно, сохраняя
+Full import для 25 MiB/82k observations рекомендуется исполнять асинхронно, сохраняя
 тот же lifecycle. Preview может быть bounded synchronous, если benchmark укладывается в
 HTTP timeout; иначе также становится task. Downloader/scheduler сюда не входят.
 
@@ -837,7 +835,7 @@ Integration:
 | Preview | stateless | import row на preview загрязняет lifecycle; cache допустим отдельно |
 | Publication | current import pointer | aggregate publication entity нужна только при multi-import releases |
 | Import items | не создавать | полезны лишь при отдельном row-review workflow |
-| Observation UUID | не создавать | UUID удобен для binding, но раздувает 77k+ rows; series/import UUID достаточно |
+| Observation UUID | не создавать | UUID удобен для binding, но раздувает 82k+ rows; series/import UUID достаточно |
 | Executor | async full import | synchronous проще, но риск timeout/memory для 25 MiB файла |
 
 ## 28. Risks и неподтверждённые предположения
@@ -861,7 +859,8 @@ Integration:
 
 1. Только dataset-specific importer `producer_price_indices_by_product@1.0.0`.
 2. Analyze/preview не пишут observations и возвращают фактическую sheet map/counts.
-3. Preview этого workbook сообщает 77 004 candidates и включает `31.02.10.140`.
+3. Preview этого workbook сообщает 81 582 candidates и включает `31.02.10.140` и
+   самостоятельные codes с `.АГ`.
 4. Импортируются только previous-month, years >=2021, РФ, coded commodities.
 5. 2021–2023 flat и 2024–2026 regional grammar покрыты tests.
 6. Две footnoted rich-text cells нормализуются контролируемо; formulas/external links и
@@ -942,6 +941,65 @@ Config содержит placeholder `imports.chunk_rows=2000` и semantic import
 
 Известные ограничения: XLSX/parser/preview/import job и chunk processing отсутствуют;
 нет API/routes, user search, calculations и reports; region/federal-district reference
-data и 1 256 classifier items не загружались; конкурентность проверена DB constraints
+data и 1 327 classifier items не загружались; конкурентность проверена DB constraints
 и transaction rollback test, но не multi-process load test; chunk size пока не
 benchmark. Frontend, billing, downloader, remote HTTP и scheduler не изменялись.
+
+## 31. Фактическая реализация БЛОКА 2.3B-2
+
+Реализован dataset-specific importer
+`producer_price_indices_by_product@1.0.0` без API и frontend-контрактов. Preview и
+full import используют один `ProducerPriceIndicesWorkbookScanner`: один ограниченный
+header pass классифицирует sheets по содержимому, затем поддерживаемые sheets читаются
+read-only/data-only chunks с переносом commodity context через границы chunk. Импорт
+принимает только previous-month sheets 2021–2026, flat topology 2021–2023 и regional
+topology 2024–2026; в regional blocks сохраняется только строка РФ.
+
+Commodity grammar реализована отдельными `CommodityCodeParser`,
+`ParsedCommodityCode` и `CommodityCodeKind`. Поддерживаются строго numeric codes и
+локальные codes Росстата с `.АГ`:
+`^\d{2}(?:\.\d+)+(?:\.АГ)?$` с Unicode-aware matching. Parser возвращает raw code,
+normalized code и kind `numeric|rosstat_local_ag`; выполняет trim, NBSP cleanup и
+Unicode uppercase suffix, но не меняет цифровую структуру. `.АГ` начинает собственный
+commodity block и остаётся частью `item_code`. Для такого classifier item добавляется
+metadata `provider_code_kind=rosstat_local_ag`; identity остаётся
+`(dataset_id, classifier_code, item_code)`. Canonical OKPD2 mapping не вводился.
+
+Numeric normalizer сохраняет raw cell provenance, детерминированно устраняет Excel
+IEEE tail по display precision, строго обрабатывает только известную сноску `1)` и
+missing markers. Formula/неизвестный rich text в supported cells дают fatal issue.
+Observation writes выполняются batches по 500; classifier items и series кэшируются,
+а filesystem/DB cleanup удаляет partial observations при ошибке. Async
+`RunStatisticalImportJob` применяет overlap lock, переводит lifecycle только до
+`ready_for_publish`, не публикует import и сохраняет controlled failure details.
+
+Фактический read-only preview workbook SHA-256
+`f233b55e8c00ff378e4dfaf6d870d057f724dbe9ec0e3b49fca3ea8c27b0b691` (25 217 390
+bytes) на `smeta_test`:
+
+- 28 sheets, 6 supported (`4`, `8`, `12`, `16`, `20`, `24`), 22 ignored;
+- 7 017 numeric и 418 `rosstat_local_ag` commodity occurrences;
+- 1 327 unique classifier identities;
+- 81 582 observations: 81 580 ordinary numeric, 2 footnoted, 0 missing;
+- fatal errors: 0; preview peak memory 116 719 616 bytes, 90.76 seconds при chunk 2000.
+
+Opt-in full-import benchmark выполнялся внутри rollback transaction на `smeta_test`;
+каждый прогон подтвердил 81 582 observations, 1 327 items, status
+`ready_for_publish`, 0 errors и контрольные anchors `31.02.10.140`:
+
+| Chunk rows | Full import seconds | Peak memory bytes | DB insert seconds |
+|---:|---:|---:|---:|
+| 1 000 | 149.23 | 129 302 528 | 8.27 |
+| 2 000 | 100.80 | 129 302 528 | 7.81 |
+| 5 000 | 69.13 | 150 798 336 | 7.57 |
+
+Default chunk остаётся 2 000 как более консервативный memory/performance balance.
+Targeted parser/normalizer/preview/import/job suite: 15 tests, 98 assertions. Полный
+PriceIndices regression: 99 tests, 507 assertions. Известно одно unrelated PHPUnit
+warning о deprecated doc-comment metadata в `BlockH12VerificationStatusTransitionTest`.
+
+Ограничения блока: grammar подтверждена одним workbook fingerprint; 2026 является
+partial year January–June; canonical OKPD2 mapping, region import, admin/user API,
+frontend, calculations, reports, downloader, remote HTTP, scheduler и production
+deploy не реализовывались. Benchmark не является production migration/deploy и не
+оставляет импортированные данные благодаря rollback.
