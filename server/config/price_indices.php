@@ -23,4 +23,14 @@ return [
             'application/octet-stream',
         ],
     ],
+
+    'imports' => [
+        'chunk_rows' => (int) env('PRICE_INDICES_IMPORT_CHUNK_ROWS', 2_000),
+        'importers' => [
+            'producer_price_indices_by_product' => [
+                'code' => 'producer_price_indices_by_product',
+                'version' => '1.0.0',
+            ],
+        ],
+    ],
 ];

@@ -771,3 +771,9 @@ schema/lifecycle/ingestion контракты БЛОКОВ 2.1–2.2 без от
   state и повторить rebuild/recreate;
 - production DB/migrations, frontend, billing, remote HTTP, jobs, scheduler, mapping и
   observations не изменялись; новые зависимости не добавлялись.
+
+## 25. Roadmap update after БЛОК 2.2
+
+Roadmap changed after Block 2.2: automatic source acquisition deferred until the manual
+import/calculation workflow is validated. Исторический план downloader сохранён выше;
+актуальный следующий шаг — отдельно утверждаемый manual XLSX import flow.

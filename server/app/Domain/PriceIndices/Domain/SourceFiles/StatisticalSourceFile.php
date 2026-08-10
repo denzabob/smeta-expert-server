@@ -8,6 +8,7 @@ use App\Domain\PriceIndices\Domain\Enums\AcquisitionMethod;
 use App\Domain\PriceIndices\Domain\Enums\SourceFileStatus;
 use App\Domain\PriceIndices\Domain\Enums\ValidationStatus;
 use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesInvariantViolation;
+use App\Domain\PriceIndices\Domain\Imports\StatisticalImport;
 use App\Domain\PriceIndices\Domain\Sources\StatisticalSource;
 use App\Models\User;
 use Database\Factories\StatisticalSourceFileFactory;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class StatisticalSourceFile extends Model
 {
@@ -126,6 +128,11 @@ class StatisticalSourceFile extends Model
     public function activePointer(): HasOne
     {
         return $this->hasOne(StatisticalDatasetActiveFile::class, 'source_file_id');
+    }
+
+    public function imports(): HasMany
+    {
+        return $this->hasMany(StatisticalImport::class, 'source_file_id');
     }
 
     protected static function newFactory(): Factory

@@ -3,6 +3,11 @@
 namespace App\Domain\PriceIndices\Domain\Datasets;
 
 use App\Domain\PriceIndices\Domain\Concerns\HasPublicId;
+use App\Domain\PriceIndices\Domain\Classifiers\StatisticalClassifierItem;
+use App\Domain\PriceIndices\Domain\Imports\StatisticalDatasetActiveImport;
+use App\Domain\PriceIndices\Domain\Imports\StatisticalImport;
+use App\Domain\PriceIndices\Domain\Indicators\StatisticalIndicator;
+use App\Domain\PriceIndices\Domain\Series\StatisticalSeries;
 use App\Domain\PriceIndices\Domain\SourceFiles\StatisticalDatasetActiveFile;
 use App\Domain\PriceIndices\Domain\SourceFiles\StatisticalSourceFile;
 use App\Domain\PriceIndices\Domain\Sources\StatisticalSource;
@@ -54,6 +59,31 @@ class StatisticalDataset extends Model
     public function activeFiles(): HasMany
     {
         return $this->hasMany(StatisticalDatasetActiveFile::class, 'dataset_id');
+    }
+
+    public function indicators(): HasMany
+    {
+        return $this->hasMany(StatisticalIndicator::class, 'dataset_id');
+    }
+
+    public function classifierItems(): HasMany
+    {
+        return $this->hasMany(StatisticalClassifierItem::class, 'dataset_id');
+    }
+
+    public function series(): HasMany
+    {
+        return $this->hasMany(StatisticalSeries::class, 'dataset_id');
+    }
+
+    public function imports(): HasMany
+    {
+        return $this->hasMany(StatisticalImport::class, 'dataset_id');
+    }
+
+    public function activeImport(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(StatisticalDatasetActiveImport::class, 'dataset_id');
     }
 
     protected static function newFactory(): Factory
