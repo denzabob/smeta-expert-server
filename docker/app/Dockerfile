@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y \
     libatk-bridge2.0-0 \
     libcups2 \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
-    && docker-php-ext-install pdo_mysql mbstring zip gd \
+    && docker-php-ext-install pdo_mysql mbstring zip gd bcmath \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
