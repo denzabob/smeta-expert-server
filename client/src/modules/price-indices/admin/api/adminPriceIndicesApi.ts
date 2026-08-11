@@ -2,6 +2,8 @@ import type { AxiosInstance, AxiosProgressEvent } from 'axios'
 import api from '@/api/axios'
 import type {
   ImportListParams,
+  ImportObservationListParams,
+  ImportSeriesListParams,
   PaginatedResponse,
   PreviewStartMeta,
   ResourceResponse,
@@ -11,6 +13,8 @@ import type {
   StatisticalImportIssue,
   StatisticalImportPreview,
   StatisticalImportPreviewResult,
+  StatisticalObservation,
+  StatisticalSeriesAdmin,
   StatisticalSource,
   StatisticalSourceFile,
   UploadSourceFilePayload,
@@ -100,6 +104,18 @@ export function createAdminPriceIndicesApi(client: AxiosInstance = api) {
     async getActiveImport(datasetPublicId: string) {
       return (await client.get<ResourceResponse<StatisticalImport | null>>(
         `${base}/datasets/${datasetPublicId}/active-import`,
+      )).data
+    },
+    async listImportSeries(importPublicId: string, params: ImportSeriesListParams) {
+      return (await client.get<PaginatedResponse<StatisticalSeriesAdmin>>(
+        `${base}/imports/${importPublicId}/series`,
+        { params },
+      )).data
+    },
+    async getImportObservations(importPublicId: string, params: ImportObservationListParams) {
+      return (await client.get<PaginatedResponse<StatisticalObservation>>(
+        `${base}/imports/${importPublicId}/observations`,
+        { params },
       )).data
     },
   }

@@ -18,6 +18,7 @@ export interface AdminPriceIndicesNavigationSection {
 const navigationItems = [
   { to: '/admin/indices/sources', label: 'Источники данных', icon: 'mdi-database-outline' },
   { to: '/admin/indices/imports', label: 'Импорты XLSX', icon: 'mdi-file-excel-outline' },
+  { to: '/admin/indices/data', label: 'Данные', icon: 'mdi-chart-timeline-variant' },
   { to: '/admin/indices/mappings', label: 'Шаблоны маппинга', icon: 'mdi-table-cog' },
   { to: '/admin/indices/logs', label: 'Журнал импорта', icon: 'mdi-history' },
 ] as const

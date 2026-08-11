@@ -1278,3 +1278,65 @@ deprecated doc-comment metadata.
 Миграции, frontend, parser/importer, import/preview jobs, lifecycle/publication,
 calculator, reports, billing, downloader, remote HTTP и scheduler не изменялись.
 Следующий отдельный блок после принятия контракта — 2.4B-UI Data Explorer.
+
+## 36. Фактическая реализация БЛОКА 2.4B-UI — Admin Data Explorer
+
+Добавлена административная страница `/admin/indices/data` и пункт «Данные» в
+существующую секцию «Индексы». Страница работает только с published/superseded
+imports: по умолчанию выбирает active import dataset, позволяет явно открыть
+историческую версию и показывает предупреждение, что она не используется для новых
+расчётов. Dataset, import, item code и период сохраняются в route query; reload
+восстанавливает контекст через exact item-code lookup. Переходы на Data Explorer
+добавлены из карточки active import и строк опубликованной истории импортов; failed и
+неопубликованные версии ссылку не получают.
+
+Поиск выполняется только через
+`GET /api/indices/admin/imports/{import}/series`: code-like ввод использует literal
+prefix, восстановление query — exact code, текстовый поиск начинается с двух
+символов. Unicode suffix `.АГ` приводится к верхнему регистру только для запроса и
+остаётся частью item identity. Результаты server-paginated; несколько dimensional
+series одного товара показываются отдельно и случайно не auto-select. При смене
+dataset/import предыдущие series, observations, drawer и pending request context
+сбрасываются. Latest-request guards не позволяют запоздавшему ответу перезаписать
+новый выбор.
+
+Наблюдения загружаются через существующий
+`GET /api/indices/admin/imports/{import}/observations` только с
+`series_public_id`, месячным `period_from/period_to`, server pagination и сортировкой
+по периоду. Decimal отображается из строки без преобразования во float и без ложного
+округления; null не превращается в zero, а получает missing reason. Отдельно видны
+footnote marker и исходная ячейка. Для полностью загруженного диапазона клиент
+проверяет ожидаемые месяцы, null periods и duplicate periods и показывает continuity
+status; неполная server page не выдаётся за полную диагностику.
+
+Drawer происхождения показывает import UUID/status, importer code/version, имя
+файла, SHA-256, series UUID, item/territory/indicator, period/value/missing reason,
+sheet, row/column, cell address, raw source value и footnote. Для import metadata
+переиспользуется уже загруженный detail: отдельного запроса на каждое observation нет.
+UUID и SHA можно копировать. UI использует существующие `PageContainer`,
+`PageHeader`, `SectionCard`, Vuetify compact tables и семантические theme colors;
+глобальная тема и shared primitives не изменялись.
+
+Добавлены unit tests для API query contract, exact/prefix/name/`.АГ` semantics,
+decimal/month formatting, stale-response guard и continuity с gaps/null/duplicates.
+Targeted Price Indices: 7 files, 48 tests passed. Полный frontend regression: 14
+files, 212 tests passed. Production Vite build успешен, 1 861 modules transformed;
+Data Explorer chunk — 26.35 kB (8.65 kB gzip). Штатный `vue-tsc --build` сохраняет
+40 ранее существовавшихся ошибок вне Price Indices, diagnostics в
+`src/modules/price-indices` — 0.
+
+Локальный Playwright smoke с полностью mock read-only API прошёл без console/page
+errors. Проверены 1440 px и 900 px, query recovery, control series 31.02.10.140 за
+66 из 66 месяцев, provenance drawer и отдельная identity `05.10.10.101.АГ` за 2 из 2
+месяцев. Smoke выявил и позволил исправить локальный runtime edge case: Vuetify мог
+передать строковый model value в `item-title`; dataset/import title formatters теперь
+безопасно принимают и объект, и строку.
+
+Ограничения: локальная БД не содержит реального published import, поэтому browser
+smoke использовал контрактные mock-ответы и не подтверждает реальные данные
+workbook. Continuity вычисляется только когда выбранный диапазон целиком помещается в
+загруженную первую страницу; для более длинного диапазона UI честно сообщает, что
+диагностика недоступна. График не добавлялся как необязательный. Отдельно не проверены
+dark theme, mobile viewport и полный keyboard-only проход. Backend, migrations,
+parser/importer, jobs, scheduler, calculator, user API, reports, billing, remote HTTP,
+production DB и production deploy в этом блоке не изменялись; новых зависимостей нет.

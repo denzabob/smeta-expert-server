@@ -10,7 +10,11 @@
       <template #item.status="{ item }"><v-chip :color="statusColor(item.status)" size="small" variant="tonal">{{ importStatusLabels[item.status] }}</v-chip></template>
       <template #item.observations="{ item }">{{ item.counters.observations_valid.toLocaleString('ru-RU') }}</template>
       <template #item.published_at="{ item }">{{ formatDate(item.timestamps.published_at) }}</template>
-      <template #item.actions="{ item }"><v-btn size="x-small" variant="text" icon="mdi-eye-outline" title="Открыть" @click="$emit('open', item)" /></template>
+      <template #item.actions="{ item }"><div class="d-flex justify-end ga-1">
+        <v-btn v-if="['published', 'superseded'].includes(item.status)" :to="{ path: '/admin/indices/data', query: { import: item.public_id } }"
+          size="x-small" variant="text" icon="mdi-chart-timeline-variant" title="Открыть данные" aria-label="Открыть данные" />
+        <v-btn size="x-small" variant="text" icon="mdi-eye-outline" title="Открыть импорт" aria-label="Открыть импорт" @click="$emit('open', item)" />
+      </div></template>
     </v-data-table-server>
   </SectionCard>
 </template>

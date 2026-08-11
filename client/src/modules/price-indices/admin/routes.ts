@@ -20,6 +20,12 @@ export const adminPriceIndicesRoutes: RouteRecordRaw[] = [
     meta: { ...adminPriceIndicesMeta, title: 'Импорты XLSX' },
   },
   {
+    path: 'indices/data',
+    name: 'admin-price-indices-data',
+    component: () => import('./pages/AdminPriceIndicesDataPage.vue'),
+    meta: { ...adminPriceIndicesMeta, title: 'Данные' },
+  },
+  {
     path: 'indices/mappings',
     name: 'admin-price-indices-mappings',
     component: () => import('./pages/AdminPriceIndicesMappingsPage.vue'),

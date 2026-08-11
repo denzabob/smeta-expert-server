@@ -217,10 +217,95 @@ export interface StatisticalImportIssue {
 
 export interface StatisticalObservation {
   public_id: string
+  series: {
+    public_id: string
+    item_code: string
+    item_name: string
+    territory_code: string
+    territory_name: string
+    indicator_code: string
+    indicator_name: string
+    frequency: string
+    comparison_basis: string
+    unit: string
+  }
   period_start: string
   value: string | null
   missing_reason: string | null
-  [key: string]: unknown
+  provenance: {
+    source_file_public_id: string
+    sheet_name: string
+    source_row: number
+    source_column: string
+    source_cell_address: string | null
+    source_value_raw: string | null
+    footnote_marker: string | null
+  }
+}
+
+export interface ClassifierItemAdmin {
+  public_id: string
+  classifier_code: string
+  item_code: string
+  item_name: string
+  provider_code_kind: 'numeric' | 'rosstat_local_ag' | string
+}
+
+export interface SeriesPeriodSummary {
+  from: string
+  to: string
+  observations_count: number
+}
+
+export interface StatisticalSeriesAdmin {
+  public_id: string
+  classifier_item: ClassifierItemAdmin
+  indicator: { code: string; name: string }
+  territory: { code: string; name: string }
+  frequency: string
+  comparison_basis: string
+  unit: string
+  period: SeriesPeriodSummary
+}
+
+export interface ImportSeriesListParams {
+  item_code?: string
+  item_code_prefix?: string
+  item_name?: string
+  page?: number
+  per_page?: number
+  sort?: 'item_code' | 'item_name'
+  direction?: 'asc' | 'desc'
+}
+
+export interface ImportObservationListParams {
+  series_public_id: string
+  period_from?: string
+  period_to?: string
+  missing?: boolean
+  sheet_name?: string
+  page?: number
+  per_page?: number
+  sort?: 'period_start' | 'item_code' | 'created_at'
+  direction?: 'asc' | 'desc'
+}
+
+export interface ContinuityDiagnostic {
+  isContinuous: boolean
+  expectedCount: number
+  actualCount: number
+  missingPeriods: string[]
+  nullPeriods: string[]
+  duplicatePeriods: string[]
+}
+
+export interface DataExplorerState {
+  datasetPublicId: string
+  importPublicId: string
+  searchQuery: string
+  selectedSeriesPublicId: string
+  periodFrom: string
+  periodTo: string
 }
 
 export interface UploadSourceFilePayload {

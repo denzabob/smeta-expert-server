@@ -32,9 +32,17 @@ describe('adminPriceIndicesApi', () => {
     await api.listSourceFiles({ dataset: 'dataset-uuid', source: 'source-uuid', page: 3, per_page: 25, sort: 'detected_at', direction: 'desc' })
     await api.listImports({ dataset_public_id: 'dataset-uuid', status: 'failed', page: 2, per_page: 50, sort: 'created_at', direction: 'desc' })
     await api.getImportIssues('import-uuid', 4, 20)
+    await api.listImportSeries('import-uuid', { item_code_prefix: '31.02', page: 2, per_page: 25, sort: 'item_code' })
+    await api.listImportSeries('import-uuid', { item_code: '05.10.10.101.АГ', per_page: 25 })
+    await api.listImportSeries('import-uuid', { item_name: 'кухонной мебели', per_page: 25 })
+    await api.getImportObservations('import-uuid', { series_public_id: 'series-uuid', period_from: '2024-01-01', period_to: '2026-06-01', page: 1, per_page: 100 })
     expect(client.get).toHaveBeenCalledWith('/api/indices/admin/source-files', { params: expect.objectContaining({ dataset: 'dataset-uuid', page: 3, per_page: 25 }) })
     expect(client.get).toHaveBeenCalledWith('/api/indices/admin/imports', { params: expect.objectContaining({ dataset_public_id: 'dataset-uuid', status: 'failed', page: 2 }) })
     expect(client.get).toHaveBeenCalledWith('/api/indices/admin/imports/import-uuid/issues', { params: { page: 4, per_page: 20, sort: 'created_at', direction: 'asc' } })
+    expect(client.get).toHaveBeenCalledWith('/api/indices/admin/imports/import-uuid/series', { params: expect.objectContaining({ item_code_prefix: '31.02', page: 2, per_page: 25 }) })
+    expect(client.get).toHaveBeenCalledWith('/api/indices/admin/imports/import-uuid/series', { params: expect.objectContaining({ item_code: '05.10.10.101.АГ' }) })
+    expect(client.get).toHaveBeenCalledWith('/api/indices/admin/imports/import-uuid/series', { params: expect.objectContaining({ item_name: 'кухонной мебели' }) })
+    expect(client.get).toHaveBeenCalledWith('/api/indices/admin/imports/import-uuid/observations', { params: expect.objectContaining({ series_public_id: 'series-uuid', period_from: '2024-01-01' }) })
   })
 
   it('builds multipart upload with backend field names and progress', async () => {

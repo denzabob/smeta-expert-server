@@ -9,10 +9,11 @@ import {
 import { adminPriceIndicesRoutes } from './routes'
 
 describe('Price Indices admin routes', () => {
-  it('declares four lazy admin routes with required access metadata', () => {
+  it('declares five lazy admin routes with required access metadata', () => {
     expect(adminPriceIndicesRoutes.map((route) => `/admin/${route.path}`)).toEqual([
       '/admin/indices/sources',
       '/admin/indices/imports',
+      '/admin/indices/data',
       '/admin/indices/mappings',
       '/admin/indices/logs',
     ])
@@ -27,7 +28,7 @@ describe('Price Indices admin routes', () => {
       expect(typeof route.component).toBe('function')
     }
 
-    expect(new Set(adminPriceIndicesRoutes.map((route) => route.name)).size).toBe(4)
+    expect(new Set(adminPriceIndicesRoutes.map((route) => route.name)).size).toBe(5)
   })
 
   it('requires both the existing admin gate and available capability', () => {
@@ -43,12 +44,13 @@ describe('Price Indices admin routes', () => {
 })
 
 describe('Price Indices admin navigation', () => {
-  it('contains the four items in the required order only when available', () => {
+  it('contains the five items in the required order only when available', () => {
     const section = buildAdminPriceIndicesNavigation('available', '/admin/indices/sources')
 
     expect(section?.items.map((item) => item.label)).toEqual([
       'Источники данных',
       'Импорты XLSX',
+      'Данные',
       'Шаблоны маппинга',
       'Журнал импорта',
     ])

@@ -10,7 +10,10 @@
         </template>
         <div v-else class="text-body-2 text-medium-emphasis">Для набора ещё нет опубликованного импорта.</div>
       </div>
-      <v-chip v-if="item" color="success" size="small" variant="tonal">{{ item.counters.observations_valid.toLocaleString('ru-RU') }} наблюдений</v-chip>
+      <div v-if="item" class="d-flex flex-wrap align-center ga-2">
+        <v-chip color="success" size="small" variant="tonal">{{ item.counters.observations_valid.toLocaleString('ru-RU') }} наблюдений</v-chip>
+        <v-btn :to="{ path: '/admin/indices/data', query: { import: item.public_id } }" size="small" variant="tonal" color="primary" prepend-icon="mdi-chart-timeline-variant">Просмотреть данные</v-btn>
+      </div>
     </div>
   </SectionCard>
 </template>
