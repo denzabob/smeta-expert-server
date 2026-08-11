@@ -38,6 +38,7 @@ final class StatisticalObservationIndexRequest extends FormRequest
                 'regex:/^(?:\d{2}(?:\.\d+)+(?:\.АГ)?|\d{2}(?:\.\d+)*\.)$/u',
             ],
             'item_name' => ['sometimes', 'string', 'max:255'],
+            'series_public_id' => ['sometimes', 'uuid'],
             'period_from' => ['sometimes', 'date_format:Y-m-d'],
             'period_to' => ['sometimes', 'date_format:Y-m-d', 'after_or_equal:period_from'],
             'missing' => ['sometimes', 'boolean'],

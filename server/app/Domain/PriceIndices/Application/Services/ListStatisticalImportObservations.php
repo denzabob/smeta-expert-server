@@ -34,6 +34,9 @@ final class ListStatisticalImportObservations
             $name = $this->escapeLike($this->nameNormalizer->normalize($filters['item_name']));
             $query->where('query_items.normalized_name', 'like', "%{$name}%");
         }
+        if (isset($filters['series_public_id'])) {
+            $query->where('query_series.public_id', $filters['series_public_id']);
+        }
         if (isset($filters['period_from'])) {
             $query->where('statistical_observations.period_start', '>=', $filters['period_from']);
         }

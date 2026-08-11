@@ -4,6 +4,7 @@ namespace App\Domain\PriceIndices\Http\Controllers;
 
 use App\Domain\PriceIndices\Application\Services\ListStatisticalImportIssues;
 use App\Domain\PriceIndices\Application\Services\ListStatisticalImportObservations;
+use App\Domain\PriceIndices\Application\Services\ListStatisticalImportSeries;
 use App\Domain\PriceIndices\Application\Services\ListStatisticalImports;
 use App\Domain\PriceIndices\Application\Services\PublishStatisticalImportForAdmin;
 use App\Domain\PriceIndices\Application\Services\RetryStatisticalImport;
@@ -13,9 +14,11 @@ use App\Domain\PriceIndices\Http\PriceIndicesErrorResponder;
 use App\Domain\PriceIndices\Http\Requests\StatisticalImportIndexRequest;
 use App\Domain\PriceIndices\Http\Requests\StatisticalImportIssueIndexRequest;
 use App\Domain\PriceIndices\Http\Requests\StatisticalObservationIndexRequest;
+use App\Domain\PriceIndices\Http\Requests\StatisticalSeriesIndexRequest;
 use App\Domain\PriceIndices\Http\Resources\StatisticalImportIssueResource;
 use App\Domain\PriceIndices\Http\Resources\StatisticalImportResource;
 use App\Domain\PriceIndices\Http\Resources\StatisticalObservationResource;
+use App\Domain\PriceIndices\Http\Resources\StatisticalSeriesAdminResource;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,6 +32,7 @@ final class StatisticalImportAdminController extends Controller
         private readonly ListStatisticalImports $imports,
         private readonly ListStatisticalImportIssues $issues,
         private readonly ListStatisticalImportObservations $observations,
+        private readonly ListStatisticalImportSeries $series,
         private readonly PublishStatisticalImportForAdmin $publish,
         private readonly RetryStatisticalImport $retry,
         private readonly PriceIndicesErrorResponder $errors,
@@ -60,6 +64,15 @@ final class StatisticalImportAdminController extends Controller
     ): AnonymousResourceCollection {
         return StatisticalObservationResource::collection(
             $this->observations->execute($import, $request->validated())
+        );
+    }
+
+    public function series(
+        StatisticalSeriesIndexRequest $request,
+        StatisticalImport $import,
+    ): AnonymousResourceCollection {
+        return StatisticalSeriesAdminResource::collection(
+            $this->series->execute($import, $request->validated())
         );
     }
 

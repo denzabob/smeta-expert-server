@@ -1214,3 +1214,67 @@ timeout, смене контекста и scope disposal. Новые завис�
 mapping editor, полноценный import log, user search/calculation UI, reports и exports
 не входят в 2.4A. Backend, parser/importer, migrations, production DB, billing, remote
 HTTP, jobs и scheduler в этом блоке не изменялись.
+
+## 35. Фактическая реализация БЛОКА 2.4B-API — series search contract
+
+Первоначальный аудит Data Explorer подтвердил, что существующий
+`GET /api/indices/admin/imports/{import}/observations` недостаточен для item-first
+поиска: одна строка представляла observation/month, distinct classifier items были
+неполными из-за pagination, а series не имела public UUID и отдельного filter. Поэтому
+до frontend добавлен минимальный backward-compatible Admin API contract.
+
+Новый `GET /api/indices/admin/imports/{import}/series` использует public UUID route
+binding и прежние `auth:sanctum` + `price_indices.access` exact-role rules. Поддержаны
+AND filters `item_code`, `item_code_prefix`, `item_name`, page/per_page, whitelist sort
+`item_code|item_name` и direction. Exact code не имеет implicit-prefix semantics;
+prefix является literal, не требует trailing dot, а `%`, `_` и backslash escaping не
+позволяют превратить ввод в SQL wildcard. Name query переиспользует централизованный
+`StatisticalNameNormalizer` с trim, NBSP/whitespace normalization и Unicode lowercase.
+Pagination по умолчанию 25, maximum 50.
+
+Одна строка ответа соответствует одной series. Resource возвращает только public
+series/classifier UUID, classifier code/item code/name/provider code kind, indicator,
+territory, frequency, comparison basis, unit и import-scoped period from/to/count.
+Numeric DB IDs отсутствуют. `05.10.10.101.АГ` сохраняется как отдельная identity и
+получает `rosstat_local_ag` из classifier metadata; legacy numeric metadata безопасно
+получает fallback `numeric`. Несколько dimensionally different series одного item
+возвращаются отдельными строками.
+
+Query service строится от SQL aggregate subquery observations выбранного import и
+вычисляет `MIN(period_start)`, `MAX(period_start)`, `COUNT(*)` в БД. Затем series
+соединяется с classifier item, а classifier/indicator/territory загружаются fixed-count
+eager loading без N+1. EXPLAIN MariaDB 10.6 на testing schema показал
+`stat_observations_import_series_period_unique` для import aggregate и
+`stat_classifier_item_code_idx` для exact/prefix. Name substring `%query%` остаётся
+обычным bounded scan/join без fulltext; миграция не потребовалась.
+
+Существующий observations endpoint additive расширен optional
+`series_public_id`. Он применяется вместе с import, period, missing, sheet и прежними
+item filters через AND; глобально существующая series без observations выбранного
+import возвращает `200` с пустой pagination. В observation `series` добавлен только
+`public_id`; decimal string и все прежние поля/provenance сохранены.
+
+Реальный published import в локальных БД отсутствовал: local DB не имела Price
+Indices schema, а `smeta_test` содержала 0 imports/observations. Поэтому read-only
+реальный smoke выполнить было невозможно. Вместо него одноразовый production-scale
+smoke создал внутри rollback transaction 1 327 classifier items/series и 80 952
+observations. Timings: exact `31.02.10.140` — 78.37 ms (1 result), prefix `31.02` —
+78.11 ms (664 total/25 returned), name `кухонной мебели` — 7.86 ms (1), exact
+`05.10.10.101.АГ` — 3.36 ms (1). После rollback `smeta_test` снова содержала 0 imports
+и 0 observations.
+
+Synthetic control series `31.02.10.140` вернула 66 observations за
+2021-01-01—2026-06-01. Проверены anchors: 2021-01 = 109.5100000000, 2024-01 =
+106.8100000000, 2025-03 = 104.9600000000, 2026-01 = 109.2400000000, 2026-06 =
+99.9900000000. Это проверка API на production-scale synthetic data, а не повторная
+валидация опубликованного workbook.
+
+Targeted `PriceIndicesSeriesAdminApiTest`: 6 tests, 73 assertions. Существующий
+`PriceIndicesAdminImportApiTest`: 11 tests, 178 assertions. Полный Price Indices
+regression: 129 tests, 918 assertions. Route list: 29 routes. PHP syntax всех новых и
+изменённых PHP-файлов успешен. Сохраняется прежнее unrelated PHPUnit warning о
+deprecated doc-comment metadata.
+
+Миграции, frontend, parser/importer, import/preview jobs, lifecycle/publication,
+calculator, reports, billing, downloader, remote HTTP и scheduler не изменялись.
+Следующий отдельный блок после принятия контракта — 2.4B-UI Data Explorer.

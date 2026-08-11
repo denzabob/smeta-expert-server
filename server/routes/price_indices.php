@@ -46,6 +46,7 @@ Route::prefix('indices')
             Route::get('imports', [StatisticalImportAdminController::class, 'index'])->name('imports.index');
             Route::get('imports/{import}', [StatisticalImportAdminController::class, 'show'])->name('imports.show');
             Route::get('imports/{import}/issues', [StatisticalImportAdminController::class, 'issues'])->name('imports.issues');
+            Route::get('imports/{import}/series', [StatisticalImportAdminController::class, 'series'])->name('imports.series');
             Route::get('imports/{import}/observations', [StatisticalImportAdminController::class, 'observations'])->name('imports.observations');
             Route::post('imports/{import}/publish', [StatisticalImportAdminController::class, 'publish'])->name('imports.publish');
             Route::post('imports/{import}/retry', [StatisticalImportAdminController::class, 'retry'])->name('imports.retry');

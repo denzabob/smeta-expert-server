@@ -12,6 +12,7 @@ final class StatisticalObservationResource extends JsonResource
         return [
             'public_id' => $this->public_id,
             'series' => $this->whenLoaded('series', fn () => [
+                'public_id' => $this->series->public_id,
                 'item_code' => $this->series->classifierItem->item_code,
                 'item_name' => $this->series->classifierItem->name,
                 'territory_code' => $this->series->territory->code,
