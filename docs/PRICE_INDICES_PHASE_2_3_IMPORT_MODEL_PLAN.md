@@ -1545,3 +1545,59 @@ series за раз; все 81 582 observations одновременно не з�
 Price Indices regression: 170 tests, 1 158 assertions. Новая migration применялась
 только к `smeta_test`; local main и production не мигрировались. Normal refresh и
 real-data initialization не запускались.
+
+## 40. Фактическая реализация БЛОКА 2.6B — Public SEO Pages
+
+Публичный SEO-контур реализован как server-rendered Laravel Blade на отдельном
+configured host. Source of truth для абсолютных URL —
+`price_indices.public_url` (`PRICE_INDICES_PUBLIC_URL`, production default
+`https://indices.prismcore.ru`); route host детерминированно извлекается из этого URL.
+Application URL для CTA остаётся отдельным `app.url`. Public host обслуживает только
+`GET /`, `GET /{slug}`, `GET /sitemap.xml` и `GET /robots.txt`; host-specific catch-all
+не позволяет Price Indices host случайно открыть SPA, verification или API routes.
+Зарезервированные sitemap/robots routes объявлены до dynamic slug. На других hosts
+новый каталог не доступен.
+
+Catalog выводит только `is_indexable=true`, использует server-side pagination по 50
+snapshot rows, eager loading и query-free canonical для первой страницы либо self
+canonical `?page=N` для последующих страниц. Поиск и дополнительные crawlable filter
+URLs не добавлялись. Detail lookup выполняется строго по stable slug и
+`is_indexable=true`; неизвестные и non-indexable snapshots отвечают 404.
+
+HTTP rendering не вызывает calculation services. Coefficient, change percent,
+factor count и min/max читаются из materialized snapshot. Таблица observations
+загружается отдельным read-only query строго по snapshot `import_id + series_id` и
+сортируется по `period_start`. Decimal display форматируется как строки без float:
+decimal comma, явный плюс/Unicode minus для процентов и сохранение 12 знаков
+coefficient. Русские названия месяцев, deterministic UTF-8 title/description,
+canonical и OpenGraph metadata формируются централизованно.
+
+Standalone Blade layout содержит catalog cards, detail metrics, monthly table,
+методику, provenance и CTA. Provenance показывает provider/dataset, исходное имя
+файла, SHA-256, публичный short import identifier, importer/version и timestamps;
+`stored_path`, storage disk и numeric IDs не выводятся. `.АГ` сохраняется в source
+identity (`05.10.10.101.АГ`) и использует stable URL `/05-10-10-101-ag`.
+
+CTA строится через configured `app.url`, передаёт series public UUID,
+`ref=public_index` и normalized `ref_content` (`31_02_10_140`,
+`05_10_10_101_ag`), без UTM. Existing calculator безопасно восстанавливает series
+при наличии неизвестных query params; frontend в 2.6B не изменялся.
+
+Sitemap использует только indexable snapshot slug/generated timestamp, абсолютные
+URL public host, XML escaping и `generated_at` как `lastmod`. Host-aware Laravel
+robots response разрешает crawl и указывает configured sitemap. В текущем local
+nginx физический `public/robots.txt` обслуживается через `try_files` раньше Laravel,
+поэтому production server block для `indices.prismcore.ru` должен отдельно направить
+`/robots.txt` в Laravel; существующий app-host robots не изменялся.
+
+Targeted 2.6B verification: 9 tests, 76 assertions. Catalog page с 50 rows:
+4 SQL queries / 27 ms; detail: 7 SQL queries / 183 ms в локальном Docker test run.
+Проверены SSR raw HTML, host isolation, pagination, exact observation scope, отсутствие
+HTTP recalculation, 404 contract, canonical/OG cross-host contract, CTA attribution,
+`.АГ`, sitemap, lastmod, XML escaping и robots. Новых migrations и publish hook нет.
+Main/local production-like DB не мигрировалась и не инициализировалась; browser smoke
+на real local data в этом блоке поэтому не выполнялся. Production nginx, DNS, TLS,
+deploy и Search Console не изменялись.
+
+Полный Price Indices regression после 2.6B: 179 tests, 1 234 assertions; в финальном
+прогоне catalog/detail отрисовались за 27/28 ms при тех же 4/7 SQL queries.

@@ -1,8 +1,12 @@
 <?php
 
+$publicUrl = rtrim((string) env('PRICE_INDICES_PUBLIC_URL', 'https://indices.prismcore.ru'), '/');
+
 return [
     'enabled' => env('PRICE_INDICES_ENABLED', false),
     'admin_only' => env('PRICE_INDICES_ADMIN_ONLY', true),
+    'public_url' => $publicUrl,
+    'public_host' => (string) (parse_url($publicUrl, PHP_URL_HOST) ?: ''),
 
     'source_files' => [
         'max_upload_bytes' => 67_108_864,
