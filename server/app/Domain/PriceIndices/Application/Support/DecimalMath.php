@@ -15,6 +15,11 @@ final class DecimalMath
         return bcmul($left, $right, $scale);
     }
 
+    public function subtract(string $left, string $right, int $scale = self::INTERNAL_SCALE): string
+    {
+        return bcsub($left, $right, $scale);
+    }
+
     public function divide(string $dividend, string $divisor, int $scale = self::INTERNAL_SCALE): string
     {
         if (bccomp($divisor, '0', $scale) === 0) {

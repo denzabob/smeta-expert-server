@@ -1487,3 +1487,61 @@ virtualization не добавлялись (backend MVP возвращает м�
 выполнен на local contract mocks, не на production workbook; real published-data smoke
 остаётся отдельным post-deploy read-only шагом. Backend PHP, migrations, parser/importer,
 Admin API/UI, saved calculations, billing, production DB и deploy в 2.5B не менялись.
+
+## 39. Фактическая реализация БЛОКА 2.6A — Public Index Snapshot Model
+
+Добавлен полностью восстанавливаемый materialized слой
+`statistical_public_series_pages`. Source of truth не изменён: refresh читает только
+enabled datasets с exact pointer из `statistical_dataset_active_imports`, exact
+published import и его observations. Существующие statistical tables не менялись;
+добавлена одна additive migration с симметричным rollback новой таблицы.
+
+Одна snapshot row соответствует `series_id` и сохраняет стабильный UUID. Связи с
+dataset, import, series, classifier item и source file заданы foreign keys с
+`restrictOnDelete`. Unique constraints защищают `series_id` и nullable `slug`;
+индексы покрывают `is_indexable`, `(dataset_id, is_indexable)` и `import_id`.
+Decimal metrics хранятся как DECIMAL и читаются model casts как строки, без float.
+
+Централизованный `PublicIndexSlug` строит URL identity только из provider item code:
+`31.02.10.140` → `31-02-10-140`, `05.10.10.101.АГ` →
+`05-10-10-101-ag`. Unicode case, NBSP и whitespace нормализуются детерминированно;
+query/percent/path characters отклоняются. Если несколько active series дают один
+slug либо slug уже принадлежит другой series, ни одна чужая page не перезаписывается:
+конфликтующая snapshot сохраняется non-indexable с `slug_collision` и nullable slug.
+
+Builder принимает exact import и exact series. Indexable допускается только для
+`monthly + previous_month + percent`, непустых classifier/item metadata и полного
+непрерывного ряда минимум из 12 положительных observations без NULL/missing reason.
+Контролируемые причины: `indexable`, `insufficient_history`, `incomplete_chain`,
+`unsupported_series`, `invalid_metadata`, `calculation_error`, `slug_collision`,
+`not_in_active_publication`. Snapshot сохраняет first/last period, observation/factor
+counts, coefficient raw scale 20/display scale 12, change percent raw/display scale 2,
+а также decimal-safe min/max monthly values и periods.
+
+Формула не дублировалась: существующий User calculator теперь делегирует неизменный
+payload shared `CalculateStatisticalIndexChain`; snapshot builder использует тот же
+BCMath core, `DecimalMath`, `MonthlyPeriod` и `MonthlyPeriodRange`. `(start,end]`
+сохраняется: synthetic `31.02.10.140` за 2021-01—2026-06 содержит 66 observations и
+65 factors. Change percent вычисляется как `(coefficient_raw - 1) × 100` через BCMath;
+уменьшение и отрицательный результат поддерживаются.
+
+`RefreshPublicStatisticalSeriesPages` перечисляет series текущей active publication
+через `lazyById(100)`, строит и записывает snapshot в per-row transaction, сохраняет
+public_id при повторном запуске, переключает provenance/calculation после смены
+publication и переводит отсутствующие в новой публикации pages в
+`not_in_active_publication`, не удаляя URL identity. Контролируемая плохая series не
+останавливает остальные; infrastructure/DB exceptions не поглощаются.
+
+Artisan command `price-indices:refresh-public-pages` поддерживает `--dataset`,
+`--series`, `--limit`, `--dry-run`. Dry-run выполняет eligibility/calculation и summary,
+но не пишет snapshot rows. Normal command идемпотентна. Автоматический publish hook,
+queue/job/scheduler и HTTP routes не добавлялись.
+
+Targeted synthetic performance на testing MariaDB в полном regression: 1 series —
+14 SQL queries / 16 ms; 100 series — 213 queries / 248 ms; измеренный memory delta
+0 bytes; линейная экстраполяция 1 327 series — 3 290 ms. Observations обрабатываются только для одной
+series за раз; все 81 582 observations одновременно не загружаются. Реальный workbook
+в этом блоке не использовался. Targeted 2.6A: 15 tests, 81 assertions. Полный
+Price Indices regression: 170 tests, 1 158 assertions. Новая migration применялась
+только к `smeta_test`; local main и production не мигрировались. Normal refresh и
+real-data initialization не запускались.
