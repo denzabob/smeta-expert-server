@@ -1418,7 +1418,72 @@ PHPUnit warning о deprecated doc-comment metadata.
 
 Ограничения: calculator поддерживает только monthly previous-month percent и один
 stateless coefficient/amount; result cache, saved calculations, formula engine,
-currency semantics, frontend 2.5B, reports/PDF/verification не добавлены. Реальный
+currency semantics, reports/PDF/verification не добавлены. Реальный
 published workbook не изменялся и production calculation smoke не выполнялся.
 Миграции/indexes, parser/importer, observation semantics, Admin API/UI, frontend,
 billing, jobs, scheduler, production DB и deploy не затрагивались.
+
+## 38. Фактическая реализация БЛОКА 2.5B — User Calculator UI
+
+Страница `/app/indices/new` заменена с placeholder на рабочий stateless calculator.
+Overview `/app/indices` получил компактный CTA «Новый расчёт»; существующие routes,
+sidebar и capability guard сохранены. При текущем `PRICE_INDICES_ADMIN_ONLY=true`
+доступ по-прежнему определяется backend/capabilities и фактически разрешён
+admin/superadmin; production env и billing не менялись.
+
+User adapter `priceIndicesApi` использует только `GET /api/indices/series`,
+`GET /api/indices/series/{seriesPublicId}` и `POST /api/indices/calculate`. Admin API,
+observations endpoint и import UUID в request не используются. DTO фиксируют все
+calculation decimals (`index`, `factor`, `running_coefficient`, `coefficient_raw`,
+`coefficient`, base/adjusted values) как TypeScript `string`.
+
+Поиск выполняется с debounce 300 ms и latest-request guard: code-like ввод передаётся
+как literal `item_code_prefix`, текст от двух символов — как `item_name`. Search result
+показывает indicator/territory/frequency/basis и не раскрывает UUID; после выбора
+authoritative availability обновляется через detail endpoint. Несколько series одного
+classifier item остаются отдельными результатами. Код `.АГ` сохраняется end-to-end и
+имеет нейтральную подпись «Локальный код Росстата».
+
+Периоды вводятся native monthly controls в API-формате `YYYY-MM` с `min/max` из active
+series availability. UI объясняет семантику previous-month: начальный месяц является
+базовым, в chain входят месяцы со следующего по конечный включительно. Same-period
+валиден и отображает coefficient 1, zero factors и empty-chain message. Query хранит
+только `series/start/end`; reload восстанавливает detail и периоды, очищает amount и не
+запускает расчёт автоматически.
+
+Optional amount нормализуется только строково: удаляются normal/NBSP/narrow spaces,
+одна comma заменяется точкой, затем проверяются positive value, до 18 integer и до 10
+fractional digits. `Number`, `parseFloat`, `Math.round`, frontend multiply/reduce для
+calculation path отсутствуют. Frontend отправляет input и показывает authoritative
+backend `coefficient`, `amount.adjusted`, `factors_count`, chain factors/running values.
+Любое изменение series/period/amount очищает предыдущий snapshot result; double submit
+блокируется loading state.
+
+Result summary показывает coefficient, optional base/adjusted amount, period и backend
+factor count. Expandable chain содержит period/index/factor/running coefficient и cell
+source. User-safe drawer показывает dataset, indicator, item code/name, period,
+filename, SHA-256, sheet/cell, raw/normalized value и footnote marker. Calculation-level
+provenance содержит publication UUID с copy action, importer/version и published time;
+numeric DB IDs, `stored_path`, server paths и internal metadata не отображаются.
+
+User error mapper покрывает `dataset_required`, `no_active_publication`,
+`series_not_available`, `unsupported_series_calculation`, `invalid_period_range`, обе
+availability boundaries, `incomplete_observation_chain`, `invalid_base_amount`,
+`calculation_integrity_error` и `calculation_failed`. Missing/NULL periods отображаются
+человекочитаемо; partial calculation не предлагается.
+
+Проверки: baseline frontend — 14 files, 212 tests passed. Targeted 2.5B — 2 files,
+25 tests passed. Full frontend regression — 16 files, 237 tests passed. Production Vite
+build (`vite build`) успешен. Clean `vue-tsc --build --force` сохраняет 40 ранее
+существовавших unrelated errors; во всех файлах БЛОКА 2.5B — 0 errors. Playwright
+1.59.1 contract-mock smoke прошёл на 1440×900 и 900×900: numeric search, amount
+`663 940,00` → request `663940.00`, 29-factor result, chain/provenance, query recovery,
+same-period, result invalidation и `.АГ` one-factor flow; horizontal overflow отсутствует,
+console errors/page errors/failed responses — 0.
+
+Ограничения: результат живёт только в текущем component state; localStorage, Pinia
+persistence, DB history, PDF/DOCX/report/verification отсутствуют. Chain pagination и
+virtualization не добавлялись (backend MVP возвращает максимум 65 factors). Smoke
+выполнен на local contract mocks, не на production workbook; real published-data smoke
+остаётся отдельным post-deploy read-only шагом. Backend PHP, migrations, parser/importer,
+Admin API/UI, saved calculations, billing, production DB и deploy в 2.5B не менялись.
