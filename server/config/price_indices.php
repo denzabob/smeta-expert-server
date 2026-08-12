@@ -7,6 +7,8 @@ return [
     'admin_only' => env('PRICE_INDICES_ADMIN_ONLY', true),
     'public_url' => $publicUrl,
     'public_host' => (string) (parse_url($publicUrl, PHP_URL_HOST) ?: ''),
+    'brand_url' => env('PRICE_INDICES_BRAND_URL'),
+    'yandex_metrika_id' => env('PRICE_INDICES_YANDEX_METRIKA_ID', '111537697'),
 
     'source_files' => [
         'max_upload_bytes' => 67_108_864,

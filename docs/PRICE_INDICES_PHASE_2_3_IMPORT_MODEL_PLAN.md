@@ -1601,3 +1601,61 @@ deploy и Search Console не изменялись.
 
 Полный Price Indices regression после 2.6B: 179 tests, 1 234 assertions; в финальном
 прогоне catalog/detail отрисовались за 27/28 ms при тех же 4/7 SQL queries.
+
+## 41. Фактическая реализация БЛОКА 2.6B.1 — Analytics и advanced SEO
+
+Public Blade layout централизованно подключает Yandex.Metrika counter `111537697`
+через `price_indices.yandex_metrika_id` / `PRICE_INDICES_YANDEX_METRIKA_ID`. Сохранены
+предоставленные параметры `ssr`, `trackHash`, `clickmap`, `ecommerce`, `referrer`,
+`url`, `accurateTrackBounce`, `trackLinks`; tag загружается async, добавлен noscript
+watch URL. Null/invalid/non-positive config полностью отключает counter. Production
+`.env` не изменялся. CTA остаётся обычной crawlable ссылкой и дополнительно отправляет
+goal `public_index_calculator_click` с безопасным source `item_code`, если `ym`
+доступен; без JavaScript переход работает как раньше.
+
+JSON-LD генерируется централизованным `PublicIndexStructuredData` как PHP arrays и
+сериализуется `json_encode` с Unicode/slash preservation и JSON_HEX escaping. Catalog
+публикует `WebSite`, `Organization` ПРИЗМА и `DataCatalog`; optional brand URL берётся
+только из `PRICE_INDICES_BRAND_URL`. Росстат обозначен provider данных, а не publisher
+сайта. ItemList не добавлялся.
+
+Detail публикует `WebPage`, совпадающий с visible breadcrumb `BreadcrumbList`, exact
+series `Dataset` и `StatisticalVariable`. Dataset содержит canonical, исходный
+classifier code (включая `.АГ`), ISO `YYYY-MM/YYYY-MM` temporal coverage, actual
+dataset provider, publisher reference, catalog reference, snapshot `generated_at`,
+measurement technique и actual territory из связанной series. Variable описывает
+индекс к предыдущему месяцу и `unitText=процент`. Observation graph намеренно не
+генерируется; помесячные значения остаются в HTML table.
+
+Технический audit подтвердил `lang=ru`, UTF-8, viewport, один title/description/
+canonical/H1, последовательную H1/H2 hierarchy, index/follow, OpenGraph, ordinary
+links, 404 для unknown/non-indexable, public-host canonical/schema, query-free
+sitemap URLs и отдельные title/description/canonical для page 2. Description page 2
+получил явный suffix `Страница N`. Detail title не перегружался classifier code:
+текущая UTF-8-safe граница 65 символов важнее дополнительного повторения кода, который
+уже видим на странице и присутствует в Dataset.identifier.
+
+CSP не найден ни в Laravel middleware, ни в repository nginx configs, поэтому policy
+не добавлялась и не ослаблялась. Если CSP будет введена при deploy, inline counter
+потребует request nonce; согласно Yandex также нужны как минимум `script-src` для
+`mc.yandex.ru`/`yastatic.net`, `img-src` и `connect-src` для `mc.yandex.ru`, а для
+clickmap/Webvisor — `child-src`/`frame-src blob: https://mc.yandex.ru` и отдельная
+проверка полного списка разрешённых адресов.
+
+Public routes всё ещё загружаются через Laravel `web` middleware group. Фактический
+testing response установил `XSRF-TOKEN` и `prismcore-session`: это следствие
+`StartSession`/`ValidateCsrfToken`/cookie middleware, а не потребность SSR-каталога.
+Для read-only public GET эти cookies не нужны. В будущем routes можно вынести в
+отдельную stateless middleware group, но 2.6B.1 middleware не меняет.
+
+Structured-data relations indicator/territory выбираются relational joins в основном
+snapshot query; дополнительных SQL нет и detail сохраняет 7 queries. Targeted 2.6B.1:
+11 tests, 118 assertions. Проверены Metrika/on-off/noscript/goal, valid JSON decode,
+script-safe metadata, все Schema.org entities и связи, breadcrumbs, Dataset fields,
+`.АГ`, pagination и полный raw SSR audit. Внешние Google/Yandex validators требуют
+публично доступный URL и остаются manual deploy checks; rich result не гарантируется.
+DB, migrations, publication/calculation/import semantics, frontend SPA, nginx,
+production env и deploy не менялись; publish hook 2.6C не добавлялся.
+
+Финальный Price Indices regression: 190 tests, 1 352 assertions за 72,44 s. В этом
+прогоне catalog сохранил 4 SQL / 27 ms, detail — 7 SQL / 29 ms.

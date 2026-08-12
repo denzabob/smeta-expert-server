@@ -39,7 +39,7 @@
             <section class="panel section cta">
                 <h2>Рассчитать стоимость</h2>
                 <p>Выберите собственные начальный и конечный месяцы и примените официальный коэффициент к вашей стоимости.</p>
-                <a class="button" href="{{ $calculatorUrl }}">Рассчитать стоимость</a>
+                <a class="button" href="{{ $calculatorUrl }}" data-metrika-goal="public_index_calculator_click" data-item-code="{{ $page->classifierItem->item_code }}">Рассчитать стоимость</a>
             </section>
 
             <section class="panel section">

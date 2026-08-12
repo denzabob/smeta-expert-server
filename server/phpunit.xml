@@ -32,6 +32,8 @@
              SANCTUM_STATEFUL_DOMAINS; SESSION_SECURE_COOKIE/DOMAIN kept HTTP-safe. -->
         <env name="APP_URL" value="http://localhost"/>
         <env name="PRICE_INDICES_PUBLIC_URL" value="https://indices.test"/>
+        <env name="PRICE_INDICES_BRAND_URL" value="https://prismcore.test"/>
+        <env name="PRICE_INDICES_YANDEX_METRIKA_ID" value="111537697"/>
         <env name="SANCTUM_STATEFUL_DOMAINS" value="localhost,127.0.0.1,localhost:5173"/>
         <env name="SESSION_SECURE_COOKIE" value="false"/>
         <env name="SESSION_DOMAIN" value=""/>

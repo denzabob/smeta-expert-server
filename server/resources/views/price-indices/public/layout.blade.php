@@ -1,3 +1,4 @@
+@php($metrikaId = filter_var(config('price_indices.yandex_metrika_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null)
 <!doctype html>
 <html lang="ru">
 <head>
@@ -13,6 +14,43 @@
     <meta property="og:title" content="{{ $title }}">
     <meta property="og:description" content="{{ $description }}">
     <meta property="og:url" content="{{ $canonical }}">
+    @if (! empty($structuredData))
+        <script type="application/ld+json">{!! json_encode($structuredData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
+    @endif
+    @if ($metrikaId !== null)
+        <!-- Yandex.Metrika counter -->
+        <script type="text/javascript">
+        (function(m,e,t,r,i,k,a){
+            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+            m[i].l=1*new Date();
+            for (var j = 0; j < document.scripts.length; j++) {
+                if (document.scripts[j].src === r) { return; }
+            }
+            k=e.createElement(t),a=e.getElementsByTagName(t)[0],
+            k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+        })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id={{ $metrikaId }}', 'ym');
+
+        ym({{ $metrikaId }}, 'init', {
+            ssr:true,
+            trackHash:true,
+            clickmap:true,
+            ecommerce:"dataLayer",
+            referrer: document.referrer,
+            url: location.href,
+            accurateTrackBounce:true,
+            trackLinks:true
+        });
+
+        document.addEventListener('click', function(event) {
+            var link = event.target.closest('[data-metrika-goal]');
+            if (!link || typeof ym !== 'function') { return; }
+            ym({{ $metrikaId }}, 'reachGoal', link.dataset.metrikaGoal, {
+                item_code: link.dataset.itemCode
+            });
+        });
+        </script>
+        <!-- /Yandex.Metrika counter -->
+    @endif
     <style>
         :root { color-scheme: light; --ink:#17222f; --muted:#5f6b78; --primary:#3156a3; --primary-soft:#e9efff; --surface:#fff; --surface-alt:#f4f6fa; --outline:#d7dde6; --positive:#196c45; --shadow:0 8px 28px rgba(23,34,47,.08); }
         * { box-sizing:border-box; }
@@ -67,6 +105,15 @@
     </style>
 </head>
 <body>
+@if ($metrikaId !== null)
+<noscript>
+<div>
+<img src="https://mc.yandex.ru/watch/{{ $metrikaId }}"
+     style="position:absolute; left:-9999px;"
+     alt="">
+</div>
+</noscript>
+@endif
 <header class="topbar"><div class="shell topbar__inner"><a class="brand" href="{{ $urls->catalog() }}">ПРИЗМА <span>Индексы</span></a><span>Данные Росстата</span></div></header>
 <main><div class="shell">@yield('content')</div></main>
 <footer><div class="shell">Публичный справочник официальных индексов. Для расчёта стоимости используйте калькулятор ПРИЗМА.</div></footer>
