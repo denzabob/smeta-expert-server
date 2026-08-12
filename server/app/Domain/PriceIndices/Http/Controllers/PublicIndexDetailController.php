@@ -25,9 +25,10 @@ final class PublicIndexDetailController extends Controller
         $provider = $page->dataset?->provider_name ?: 'Росстат';
         $change = $formatter->percent($page->change_percent);
         $coefficient = $formatter->coefficient($page->coefficient);
+        $latestDataYear = (int) $page->period_to->format('Y');
         $canonical = $urls->detail($slug);
         $heading = $formatter->heading((string) $item?->name);
-        $title = $formatter->detailTitle((string) $item?->name);
+        $title = $formatter->detailTitle((string) $item?->name, $latestDataYear);
         $description = $formatter->description(
             (string) $item?->name,
             $page->period_from,
@@ -46,6 +47,9 @@ final class PublicIndexDetailController extends Controller
             'calculatorUrl' => $urls->calculator((string) $page->series?->public_id, (string) $item?->item_code),
             'title' => $title,
             'description' => $description,
+            'latestDataYear' => $latestDataYear,
+            'change' => $change,
+            'coefficient' => $coefficient,
             'structuredData' => $structuredData->detail($page, $canonical, $heading, $description, $urls),
         ]);
     }

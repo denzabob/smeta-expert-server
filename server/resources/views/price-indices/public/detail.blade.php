@@ -4,7 +4,10 @@
     <nav class="crumbs"><a href="{{ $urls->catalog() }}">Индексы</a> → {{ $page->classifierItem->name }}</nav>
     <div class="code">{{ $page->classifierItem->item_code }}</div>
     <h1>{{ $formatter->heading($page->classifierItem->name) }}</h1>
-    <p class="lead">Официальный помесячный ряд {{ $page->dataset->provider_name ?: 'Росстата' }} с рассчитанным для полного периода коэффициентом.</p>
+    <div class="lead">
+        <p>По данным Росстата, для товарной группы «{{ $page->classifierItem->name }}» доступны индексы цен производителей с {{ $formatter->periodGenitive($page->period_from) }} по {{ $formatter->period($page->period_to) }}. Накопленный коэффициент изменения цен за этот период составляет {{ $coefficient }}, что соответствует изменению на {{ $change }}.</p>
+        <p>В таблице приведены официальные месячные индексы цен товара к предыдущему месяцу. Данные позволяют проследить изменение цен по периодам и использовать их для расчёта изменения стоимости.</p>
+    </div>
 
     <div class="detail-grid">
         <div>

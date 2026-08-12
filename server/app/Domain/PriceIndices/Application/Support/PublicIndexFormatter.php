@@ -59,9 +59,27 @@ final class PublicIndexFormatter
         return $prefix.$this->decimal($unsigned, 2).' %';
     }
 
-    public function detailTitle(string $itemName): string
+    public function detailTitle(string $itemName, int $latestDataYear): string
     {
-        return $this->truncate('Индекс цен на '.$this->lowerFirst($itemName).' — ПРИЗМА', 65);
+        $itemName = $this->lowerFirst($itemName);
+        $candidates = [
+            "Индекс цен производителей на {$itemName} {$latestDataYear} — Росстат | ПРИЗМА",
+            "Индекс цен на {$itemName} {$latestDataYear} — Росстат | ПРИЗМА",
+            "Индекс цен на {$itemName} {$latestDataYear} — Росстат",
+            "Индекс цен на {$itemName} {$latestDataYear}",
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (mb_strlen($candidate, 'UTF-8') <= 65) {
+                return $candidate;
+            }
+        }
+
+        $prefix = 'Индекс цен на ';
+        $suffix = ' '.$latestDataYear;
+        $available = 65 - mb_strlen($prefix.$suffix, 'UTF-8');
+
+        return $prefix.$this->truncate($itemName, $available).$suffix;
     }
 
     public function heading(string $itemName): string

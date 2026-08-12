@@ -51,7 +51,7 @@ class PublicSeoTechnicalAuditTest extends TestCase
 
         $pageTwoResponse->assertOk()
             ->assertSee('<link rel="canonical" href="https://indices.test/?page=2">', false)
-            ->assertSee('— страница 2</title>', false)
+            ->assertSee('— страница 2 | ПРИЗМА</title>', false)
             ->assertSee('Страница 2.', false);
         preg_match('/<title>(.*?)<\/title>/s', $pageOne, $titleOne);
         preg_match('/<title>(.*?)<\/title>/s', $pageTwo, $titleTwo);

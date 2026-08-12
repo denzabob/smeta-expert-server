@@ -21,4 +21,17 @@ final class ListPublicIndexPages
             ->orderBy('slug')
             ->paginate(self::PER_PAGE);
     }
+
+    public function latestDataYear(): ?int
+    {
+        $latestPeriod = StatisticalPublicSeriesPage::query()
+            ->where('is_indexable', true)
+            ->max('period_to');
+
+        if (! is_string($latestPeriod) || preg_match('/^(\d{4})-\d{2}-\d{2}$/D', $latestPeriod, $matches) !== 1) {
+            return null;
+        }
+
+        return (int) $matches[1];
+    }
 }

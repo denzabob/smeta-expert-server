@@ -15,9 +15,13 @@ trait BuildsPublicSeoFixture
     private function publicSeoFixture(
         string $itemCode = '31.02.10.140',
         string $itemName = 'Наборы кухонной мебели',
+        ?array $values = null,
     ): array {
-        $values = $this->monthlySnapshotValues('2025-01', '2025-12');
-        $values['2025-02'] = '163.4146829442';
+        $values ??= $this->monthlySnapshotValues('2025-01', '2025-12');
+        $periods = array_keys($values);
+        if (isset($periods[1])) {
+            $values[$periods[1]] = '163.4146829442';
+        }
         $fixture = $this->publicSnapshotFixture($values, $itemCode, $itemName);
 
         app(RefreshPublicStatisticalSeriesPages::class)->execute($fixture['dataset']->code);

@@ -24,7 +24,7 @@ class PublicIndexFormattingTest extends TestCase
             'Январь 2021 — июнь 2026',
             $formatter->periodRange(new DateTimeImmutable('2021-01-01'), new DateTimeImmutable('2026-06-01')),
         );
-        $this->assertLessThanOrEqual(65, mb_strlen($formatter->detailTitle(str_repeat('Очень длинное название ', 10))));
+        $this->assertLessThanOrEqual(65, mb_strlen($formatter->detailTitle(str_repeat('Очень длинное название ', 10), 2026)));
         $this->assertSame('31_02_10_140', $urls->refContent('31.02.10.140'));
         $this->assertSame('05_10_10_101_ag', $urls->refContent('05.10.10.101.АГ'));
     }

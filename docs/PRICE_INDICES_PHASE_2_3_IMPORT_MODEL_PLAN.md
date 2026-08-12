@@ -1659,3 +1659,42 @@ production env и deploy не менялись; publish hook 2.6C не доба�
 
 Финальный Price Indices regression: 190 tests, 1 352 assertions за 72,44 s. В этом
 прогоне catalog сохранил 4 SQL / 27 ms, detail — 7 SQL / 29 ms.
+
+## 42. Фактическая реализация БЛОКА 2.6B.1.2 — SEO Content и Dynamic Data Year
+
+SEO year больше нигде не зависит от системной даты. Catalog получает
+`latestDataYear` одним bounded aggregate `MAX(period_to)` только среди текущих
+`is_indexable=true` snapshots. Если indexable data отсутствует, год не выдумывается и
+yearless fallback title/description остаётся корректным. Detail использует только год
+собственного snapshot `period_to`, независимо от более новой catalog publication.
+
+Catalog title: `Индексы цен Росстата {YEAR} — индексы цен производителей | ПРИЗМА`;
+на page N: `Индексы цен Росстата {YEAR} — страница {N} | ПРИЗМА`. H1 установлен как
+`Индексы цен производителей Росстата по товарам`. Meta description включает data
+year, динамику, месячные индексы и коэффициенты; pagination сохраняет отдельный
+`Страница N` suffix. Перед cards добавлены два естественных информационных абзаца об
+официальных индексах Росстата, периодах, коэффициенте и переходе к индивидуальному
+расчёту. Meta keywords не добавлялся.
+
+Detail title строится UTF-8-safe formatter с лимитом 65 символов и приоритетами
+`Индекс цен` → item name → snapshot year → Росстат → ПРИЗМА. Полный вариант начинается
+с `Индекс цен производителей`; при превышении лимита formatter последовательно
+использует более компактные варианты, не разрезая multibyte character и не подменяя
+год. Visible intro показывает actual item, from/to, snapshot coefficient и change
+percent без HTTP recalculation. Второй абзац объясняет месячные индексы товара к
+предыдущему месяцу.
+
+PPI content использует естественные фразы `индексы цен производителей Росстата`,
+`индекс изменения цен`, `индекс цен товара`, `месячные индексы цен`. Формулировки CPI
+(`индекс потребительских цен`) и meta keywords отсутствуют. Existing JSON-LD identity,
+temporalCoverage, StatisticalVariable, provider/publisher и URLs не менялись;
+обновлённые title/description продолжают передаваться в WebPage/Dataset по прежнему
+контракту.
+
+Rollover tests подтверждают: `2026-06` → catalog 2026; `2027-01` → catalog 2027;
+system clock 2027 + latest indexable `2026-12` → 2026; detail `2025-12` при catalog
+latest 2026 → detail 2025. Более новый non-indexable snapshot исключён из aggregate.
+Targeted SEO/content/year suite: 16 tests, 145 assertions. Полный PriceIndices
+regression: 196 tests, 1 384 assertions за 64,74 s. Catalog: 5 SQL / 25 ms (ровно один
+новый aggregate query), detail: прежние 7 SQL / 28 ms. Routes, migrations, DB,
+calculation/import/publication semantics, frontend, production и 2.6C не менялись.

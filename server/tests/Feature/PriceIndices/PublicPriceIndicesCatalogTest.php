@@ -29,7 +29,7 @@ class PublicPriceIndicesCatalogTest extends TestCase
 
         $response->assertOk()
             ->assertHeader('content-type', 'text/html; charset=utf-8')
-            ->assertSee('<h1>Индексы цен производителей по товарам</h1>', false)
+            ->assertSee('<h1>Индексы цен производителей Росстата по товарам</h1>', false)
             ->assertSee($visible['item']->item_code)
             ->assertSee($visible['item']->name)
             ->assertSee('https://indices.test/'.$visible['page']->slug, false)
@@ -37,7 +37,7 @@ class PublicPriceIndicesCatalogTest extends TestCase
 
         $this->get('https://app.test/')
             ->assertOk()
-            ->assertDontSee('Индексы цен производителей по товарам');
+            ->assertDontSee('Индексы цен производителей Росстата по товарам');
     }
 
     public function test_catalog_paginates_fifty_rows_with_bounded_queries(): void

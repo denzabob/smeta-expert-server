@@ -20,9 +20,14 @@ final class PublicIndexCatalogController extends Controller
         $catalog = $pages->execute();
         $catalog->withPath($urls->catalog());
         $currentPage = $catalog->currentPage();
+        $latestDataYear = $pages->latestDataYear();
 
-        $title = 'Индексы цен производителей Росстата — ПРИЗМА'.($currentPage > 1 ? ' — страница '.$currentPage : '');
-        $description = 'Официальные индексы цен производителей Росстата по товарам: периоды, коэффициенты и изменения для расчёта стоимости.';
+        $year = $latestDataYear === null ? '' : ' '.$latestDataYear;
+        $title = $currentPage > 1
+            ? "Индексы цен Росстата{$year} — страница {$currentPage} | ПРИЗМА"
+            : "Индексы цен Росстата{$year} — индексы цен производителей | ПРИЗМА";
+        $descriptionYear = $latestDataYear === null ? '' : " на {$latestDataYear} год";
+        $description = "Индексы цен производителей Росстата по товарам{$descriptionYear}: динамика цен, месячные индексы и коэффициенты изменения стоимости. Официальные статистические данные.";
         if ($currentPage > 1) {
             $description .= ' Страница '.$currentPage.'.';
         }
@@ -34,6 +39,7 @@ final class PublicIndexCatalogController extends Controller
             'canonical' => $urls->catalog($currentPage),
             'title' => $title,
             'description' => $description,
+            'latestDataYear' => $latestDataYear,
             'structuredData' => $structuredData->catalog($title, $description, $urls),
         ]);
     }
