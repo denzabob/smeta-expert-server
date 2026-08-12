@@ -5,14 +5,14 @@
       subtitle="Расчёт изменения стоимости по официальным статистическим показателям."
     />
 
-    <SectionCard variant="outlined">
+    <SectionCard title="Расчёт по индексам" variant="outlined">
       <div class="d-flex flex-column align-start ga-4 py-4">
-        <v-chip color="primary" variant="tonal" prepend-icon="mdi-flask-outline">
-          Закрытое тестирование
-        </v-chip>
         <p class="text-body-1 text-medium-emphasis mb-0">
-          Подготавливаются источники статистических данных и расчётное ядро.
+          Выберите товар и период, чтобы получить коэффициент изменения стоимости и проверить каждое использованное статистическое значение.
         </p>
+        <v-btn color="primary" prepend-icon="mdi-calculator-variant-outline" :to="{ name: 'price-indices-new-calculation' }">
+          Новый расчёт
+        </v-btn>
       </div>
     </SectionCard>
   </PageContainer>

@@ -1,19 +1,10 @@
 <template>
-  <v-tooltip :text="copied ? 'Скопировано' : tooltip">
-    <template #activator="{ props: activatorProps }">
-      <v-btn v-bind="activatorProps" :icon="copied ? 'mdi-check' : 'mdi-content-copy'" size="x-small"
-        variant="text" :aria-label="copied ? 'Скопировано' : tooltip" @click="copy" />
-    </template>
-  </v-tooltip>
+  <SharedCopyValueButton :value="value" :tooltip="tooltip" @copied="$emit('copied')" />
 </template>
+
 <script setup lang="ts">
-import { ref } from 'vue'
-const props = defineProps<{ value: string; tooltip?: string }>()
-const emit = defineEmits<{ copied: [] }>()
-const copied = ref(false)
-async function copy() {
-  await navigator.clipboard.writeText(props.value)
-  copied.value = true; emit('copied')
-  window.setTimeout(() => { copied.value = false }, 1500)
-}
+import SharedCopyValueButton from '../../components/CopyValueButton.vue'
+
+defineProps<{ value: string; tooltip?: string }>()
+defineEmits<{ copied: [] }>()
 </script>
