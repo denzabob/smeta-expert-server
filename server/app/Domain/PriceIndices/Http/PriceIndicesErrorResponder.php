@@ -20,10 +20,15 @@ class PriceIndicesErrorResponder
     public function respond(Throwable $exception): JsonResponse
     {
         if ($exception instanceof PriceIndicesApiException) {
-            return response()->json([
+            $payload = [
                 'message' => $exception->getMessage(),
                 'code' => $exception->errorCode,
-            ], $exception->httpStatus);
+            ];
+            if ($exception->details !== []) {
+                $payload['details'] = $exception->details;
+            }
+
+            return response()->json($payload, $exception->httpStatus);
         }
 
         if ($exception instanceof SourceFileDuplicate) {

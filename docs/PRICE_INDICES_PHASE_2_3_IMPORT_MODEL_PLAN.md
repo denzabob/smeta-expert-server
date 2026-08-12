@@ -1340,3 +1340,85 @@ workbook. Continuity вычисляется только когда выбран
 dark theme, mobile viewport и полный keyboard-only проход. Backend, migrations,
 parser/importer, jobs, scheduler, calculator, user API, reports, billing, remote HTTP,
 production DB и production deploy в этом блоке не изменялись; новых зависимостей нет.
+
+## 37. Фактическая реализация БЛОКА 2.5A — User Search + Calculation API
+
+Добавлен stateless пользовательский backend-контур с тремя маршрутами:
+`GET /api/indices/series`, `GET /api/indices/series/{seriesPublicId}` и
+`POST /api/indices/calculate`. Всего под `/api/indices` теперь 32 route. User API
+использует отдельный `price_indices.user_access`: при текущем
+`PRICE_INDICES_ADMIN_ONLY=true` доступны только точные роли admin/superadmin,
+ordinary authenticated user получает 403, guest — 401. Admin middleware/routes не
+ослаблялись. При будущем `admin_only=false` user middleware сможет разрешить обычного
+authenticated пользователя без изменения calculator; production env в блоке не
+менялся.
+
+User series search является тонкой active-publication обёрткой над существующим
+`ListStatisticalImportSeries`. Exact code, literal escaped prefix, normalized name,
+pagination 25/max 50 и `.АГ` semantics не дублируются отдельным SQL engine. При
+явном `dataset_public_id` выбирается его active pointer; без dataset допускается
+единственная enabled active publication, а неоднозначность возвращает
+`dataset_required`. Dataset без active publication даёт пустую pagination. Detail
+доступен только если exact series имеет observations в active import; global или
+historical UUID скрывается стабильным `series_not_available`. User periods
+сериализуются как `YYYY-MM`, numeric IDs отсутствуют.
+
+Каждый detail/calculation request фиксирует active pointer один раз, далее использует
+exact import ID. Calculation принимает только series UUID, strict `YYYY-MM` start/end
+и optional positive decimal-string base amount (до 18 integer и 10 fractional
+digits); import UUID не принимается. Поддерживаются строго `monthly + previous_month
++ percent`. Availability требует `start >= period.from`, `end <= period.to`.
+`MonthlyPeriod` и `MonthlyPeriodRange` выполняют calendar month transition без
+`+30 days`; interval semantics — `(start,end]`. Поэтому same-period имеет 0 factors,
+2024-01→2024-02 использует только February, 2024-01→2026-06 — 29 factors, а
+2021-01→2026-06 — 65.
+
+Вся calculation arithmetic выполняется BCMath decimal strings. Platform contract
+зафиксирован в 2.5A-0: active `docker/app/Dockerfile` устанавливает ext-bcmath, а
+Composer требует `ext-bcmath: *`. `DecimalMath` использует explicit scale без
+глобального `bcscale`: internal coefficient/amount scale 20, response coefficient
+HALF_UP scale 12, final amount HALF_UP scale 2. Factor вычисляется `index / 100`,
+running coefficient — последовательным `bcmul` на scale 20; presentation rounding не
+участвует в следующем шаге. `adjusted_raw` умножается на internal coefficient, не на
+12-digit display coefficient. Float/double, `floatval`, PHP numeric multiply/divide и
+`round()` в calculation path отсутствуют.
+
+Observation chain загружается одним bounded query по exact import/series и
+`period_start > start AND <= end`. До арифметики expected calendar periods
+сравниваются с actual; gaps, duplicates, NULL и missing reason блокируют partial
+result через `incomplete_observation_chain` с period details. Неположительное или
+некорректное published decimal трактуется как safe server integrity error и
+логируется без paths/auth data. Дополнительные стабильные codes: `no_active_publication`,
+`series_not_available`, `unsupported_series_calculation`, `invalid_period_range`,
+`period_before_available_range`, `period_after_available_range`,
+`invalid_base_amount`, `calculation_integrity_error`, `calculation_failed`.
+
+Response возвращает series dimensions, `(start,end]`, factor count,
+`coefficient_raw` scale 20, rounded coefficient scale 12, optional base/
+adjusted_raw/adjusted, полный chain с index/factor/running coefficient и cell
+provenance. Calculation provenance фиксирует dataset public ID/code/name, exact import
+UUID/importer/version/published time, source-file UUID/filename/SHA-256 и series UUID.
+`stored_path`, storage disk, numeric IDs и internal metadata не выдаются. Stateless
+result не сохраняется.
+
+Synthetic control tests подтвердили: same-period coefficient
+`1.00000000000000000000`; one-factor 100.19 — `1.00190000000000000000`; 110×120 —
+`1.32000000000000000000` и 1000.00→1320.00; 105×95 —
+`0.99750000000000000000`. Synthetic 66-month control с единственным 100.19 anchor
+даёт 29 и 65 factors с coefficient `1.00190000000000000000`; это не утверждение о
+коэффициенте реального production workbook. `.АГ` проходит search/detail/calculation
+без специальной calculation branch.
+
+На testing MariaDB calculation с 29 factors выполнил 11 SQL queries; число запросов
+не растёт на один query за месяц. Измерения синхронного HTTP на synthetic data:
+same/1/12/29/65 factors — 20/9/12/8/10 ms в итоговом targeted run. Targeted 2.5A:
+26 tests, 159 assertions. Полный PriceIndices regression: 155 tests, 1 077 assertions,
+49.96 s. PHP syntax новых/изменённых файлов успешен; сохраняется прежнее unrelated
+PHPUnit warning о deprecated doc-comment metadata.
+
+Ограничения: calculator поддерживает только monthly previous-month percent и один
+stateless coefficient/amount; result cache, saved calculations, formula engine,
+currency semantics, frontend 2.5B, reports/PDF/verification не добавлены. Реальный
+published workbook не изменялся и production calculation smoke не выполнялся.
+Миграции/indexes, parser/importer, observation semantics, Admin API/UI, frontend,
+billing, jobs, scheduler, production DB и deploy не затрагивались.

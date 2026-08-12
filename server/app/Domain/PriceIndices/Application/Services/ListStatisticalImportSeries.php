@@ -46,6 +46,9 @@ final class ListStatisticalImportSeries
         if (isset($filters['item_code'])) {
             $query->where('query_items.item_code', $filters['item_code']);
         }
+        if (isset($filters['series_public_id'])) {
+            $query->where('statistical_series.public_id', $filters['series_public_id']);
+        }
         if (isset($filters['item_code_prefix'])) {
             $query->where(
                 'query_items.item_code',

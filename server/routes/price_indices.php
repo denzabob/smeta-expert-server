@@ -3,11 +3,13 @@
 use App\Domain\PriceIndices\Http\Controllers\DatasetAdminController;
 use App\Domain\PriceIndices\Http\Controllers\DatasetActiveImportAdminController;
 use App\Domain\PriceIndices\Http\Controllers\PriceIndicesCapabilitiesController;
+use App\Domain\PriceIndices\Http\Controllers\StatisticalIndexCalculationController;
 use App\Domain\PriceIndices\Http\Controllers\SourceAdminController;
 use App\Domain\PriceIndices\Http\Controllers\SourceFileAdminController;
 use App\Domain\PriceIndices\Http\Controllers\SourceFileImportAdminController;
 use App\Domain\PriceIndices\Http\Controllers\StatisticalImportAdminController;
 use App\Domain\PriceIndices\Http\Controllers\StatisticalImportPreviewAdminController;
+use App\Domain\PriceIndices\Http\Controllers\UserStatisticalSeriesController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('indices')
@@ -51,4 +53,13 @@ Route::prefix('indices')
             Route::post('imports/{import}/publish', [StatisticalImportAdminController::class, 'publish'])->name('imports.publish');
             Route::post('imports/{import}/retry', [StatisticalImportAdminController::class, 'retry'])->name('imports.retry');
         });
+    });
+
+Route::prefix('indices')
+    ->middleware(['auth:sanctum', 'price_indices.user_access'])
+    ->name('price-indices.user.')
+    ->group(function () {
+        Route::get('series', [UserStatisticalSeriesController::class, 'index'])->name('series.index');
+        Route::get('series/{seriesPublicId}', [UserStatisticalSeriesController::class, 'show'])->name('series.show');
+        Route::post('calculate', StatisticalIndexCalculationController::class)->name('calculate');
     });
