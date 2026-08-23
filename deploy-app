@@ -3,20 +3,99 @@ set -eu
 
 COMPOSE_FILES="-f docker-compose.yml -f docker-compose.prod.yml"
 
+if [ ! -f ./.deploy.env ]; then
+  echo "ERROR: .deploy.env not found"
+  exit 1
+fi
+
+set -a
+. ./.deploy.env
+set +a
+
 git pull --ff-only
 
 docker compose $COMPOSE_FILES up -d --build
 
-# Ensure Playwright browser binaries are present in runtime containers.
-# Without this step screenshot fallback may fail after image rebuilds.
-docker compose $COMPOSE_FILES exec -T worker sh -lc "cd /var/www/html && node node_modules/playwright/cli.js install chromium"
-docker compose $COMPOSE_FILES exec -T app sh -lc "cd /var/www/html && node node_modules/playwright/cli.js install chromium"
+# Ensure Playwright browser binaries are present in runtime container.
+# Install only Chromium, because that is usually enough for capture/automation tasks.
+docker compose $COMPOSE_FILES exec -T worker sh -lc '
+cd /var/www/html
 
-docker compose $COMPOSE_FILES exec -T app php artisan migrate --force
+if ! npm ls playwright @playwright/test >/dev/null 2>&1; then
+  echo "ERROR: Playwright package is not installed in worker container"
+  exit 1
+fi
+
+npx playwright install chromium --with-deps
+'
+
+# Backup DB before any schema changes.
+./backup-db.sh
+
+# Sanity check: critical tables must exist before running migrations.
+docker compose $COMPOSE_FILES exec -T db sh -lc '
+mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -Nse "
+SELECT COUNT(*)
+FROM information_schema.tables
+WHERE table_schema = '\''$MYSQL_DATABASE'\''
+  AND table_name IN ('\''users'\'','\''projects'\'','\''materials'\'');
+"
+' | {
+  read count
+  if [ "$count" -lt 3 ]; then
+    echo "ERROR: critical tables missing in database. Aborting deploy."
+    exit 1
+  fi
+}
+
+docker compose $COMPOSE_FILES exec -T app sh -lc "DB_USERNAME=$MIGRATION_DB_USERNAME DB_PASSWORD=$MIGRATION_DB_PASSWORD php artisan migrate --force"
 docker compose $COMPOSE_FILES exec -T app php artisan optimize:clear
 docker compose $COMPOSE_FILES exec -T app php artisan config:cache
 docker compose $COMPOSE_FILES exec -T app php artisan route:cache
 docker compose $COMPOSE_FILES exec -T app php artisan view:cache
 
-# Basic post-deploy check: the backend container must answer locally.
-docker compose $COMPOSE_FILES exec -T web sh -lc "wget -q -O /dev/null http://127.0.0.1/ && exit 0"
+echo "Waiting for smeta_app to become healthy..."
+APP_OK=0
+for i in $(seq 1 60); do
+  status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' smeta_app 2>/dev/null || true)
+  if [ "$status" = "healthy" ]; then
+    APP_OK=1
+    echo "smeta_app is healthy"
+    break
+  fi
+  echo "Attempt $i/60: smeta_app status = $status"
+  sleep 2
+done
+
+if [ "$APP_OK" -ne 1 ]; then
+  echo "ERROR: smeta_app did not become healthy in time"
+  exit 1
+fi
+
+echo "Giving services a few extra seconds..."
+sleep 5
+
+echo "Restarting web container..."
+docker compose $COMPOSE_FILES restart web
+
+echo "Checking site availability..."
+SITE_OK=0
+for i in $(seq 1 30); do
+  if docker compose $COMPOSE_FILES exec -T web sh -lc "wget -q -O /dev/null http://127.0.0.1/"; then
+    SITE_OK=1
+    echo "Site is up"
+    break
+  fi
+  echo "Attempt $i/30: waiting for site..."
+  sleep 2
+done
+
+if [ "$SITE_OK" -ne 1 ]; then
+  echo "ERROR: site did not become available in time"
+  exit 1
+fi
+
+echo "Cleaning Docker build cache..."
+docker builder prune -f || true
+
+echo "Deploy completed successfully"

@@ -2,6 +2,7 @@ services:
   web:
     ports:
       - "127.0.0.1:8000:80"
+
   spa:
     build:
       context: .
@@ -14,5 +15,8 @@ services:
       - web
     networks:
       - smeta-network
+
   phpmyadmin:
-    ports: []
+    profiles: ["admin"]
+    ports:
+      - "127.0.0.1:8080:80"
