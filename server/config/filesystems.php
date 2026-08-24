@@ -38,6 +38,14 @@ return [
             'report' => false,
         ],
 
+        'price_indices_classifier_artifacts' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/price-indices-classifiers'),
+            'serve' => false,
+            'throw' => true,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

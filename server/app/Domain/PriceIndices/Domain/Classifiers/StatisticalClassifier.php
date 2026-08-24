@@ -28,6 +28,16 @@ class StatisticalClassifier extends Model
         return $this->hasMany(StatisticalClassifierVersion::class, 'classifier_id');
     }
 
+    public function sourceFiles(): HasMany
+    {
+        return $this->hasMany(StatisticalClassifierSourceFile::class, 'classifier_id');
+    }
+
+    public function imports(): HasMany
+    {
+        return $this->hasMany(StatisticalClassifierImport::class, 'classifier_id');
+    }
+
     public function activeVersionPointer(): HasOne
     {
         return $this->hasOne(StatisticalClassifierActiveVersion::class, 'classifier_id');

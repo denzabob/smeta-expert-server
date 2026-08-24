@@ -23,6 +23,34 @@ return [
         'temp_directory' => 'price-indices/tmp',
     ],
 
+    'classifier_acquisition' => [
+        'storage_disk' => 'price_indices_classifier_artifacts',
+        'temp_directory' => '.tmp',
+        'max_size_bytes' => (int) env('PRICE_INDICES_CLASSIFIER_MAX_SIZE_BYTES', 20_971_520),
+        'timeout_seconds' => (int) env('PRICE_INDICES_CLASSIFIER_TIMEOUT_SECONDS', 60),
+        'connect_timeout_seconds' => (int) env('PRICE_INDICES_CLASSIFIER_CONNECT_TIMEOUT_SECONDS', 10),
+        'max_redirects' => (int) env('PRICE_INDICES_CLASSIFIER_MAX_REDIRECTS', 5),
+        'descriptors' => [
+            'okpd2' => [
+                'code' => 'okpd2',
+                'standard_code' => 'ОК 034-2014 (КПЕС 2008)',
+                'name' => 'Общероссийский классификатор продукции по видам экономической деятельности',
+                'issuing_authority' => 'Росстандарт',
+                'official_distributor' => 'Росстат',
+                'source_page_url' => 'https://rosstat.gov.ru/classification',
+                'download_url' => 'https://rosstat.gov.ru/storage/mediabank/OKPD2.zip',
+                'allowed_hosts' => ['rosstat.gov.ru'],
+                'artifact_type' => 'zip',
+                'original_filename' => 'OKPD2.zip',
+                'allowed_mime_types' => [
+                    'application/zip',
+                    'application/x-zip-compressed',
+                    'application/octet-stream',
+                ],
+            ],
+        ],
+    ],
+
     'xlsx' => [
         'max_zip_entries' => 5_000,
         'max_single_entry_uncompressed_bytes' => 67_108_864,

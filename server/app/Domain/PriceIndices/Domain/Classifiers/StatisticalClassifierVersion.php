@@ -18,6 +18,7 @@ class StatisticalClassifierVersion extends Model
 
     protected $fillable = [
         'classifier_id',
+        'classifier_import_id',
         'version_label',
         'effective_from',
         'effective_to',
@@ -44,6 +45,11 @@ class StatisticalClassifierVersion extends Model
     public function classifier(): BelongsTo
     {
         return $this->belongsTo(StatisticalClassifier::class, 'classifier_id');
+    }
+
+    public function classifierImport(): BelongsTo
+    {
+        return $this->belongsTo(StatisticalClassifierImport::class, 'classifier_import_id');
     }
 
     public function nodes(): HasMany

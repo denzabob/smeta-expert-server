@@ -2,23 +2,25 @@
 
 namespace App\Providers;
 
-use Illuminate\Database\Eloquent\Relations\Relation;
-use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Gate;
+use App\Domain\PriceIndices\Application\Contracts\ClassifierHttpTransport;
+use App\Domain\PriceIndices\Infrastructure\Http\LaravelClassifierHttpTransport;
+use App\Models\Chat\ChatConversation;
+use App\Models\Idea;
 use App\Models\MaterialDimensionParseFailure;
 use App\Models\MaterialDimensionRule;
 use App\Models\MaterialTypePattern;
-use App\Models\Idea;
 use App\Models\ProjectLaborWork;
 use App\Models\ProjectLaborWorkStep;
 use App\Observers\ProjectLaborWorkObserver;
 use App\Observers\ProjectLaborWorkStepObserver;
+use App\Policies\ChatConversationPolicy;
 use App\Policies\IdeaPolicy;
 use App\Policies\MaterialDimensionParseFailurePolicy;
 use App\Policies\MaterialDimensionRulePolicy;
 use App\Policies\MaterialTypePatternPolicy;
-use App\Policies\ChatConversationPolicy;
-use App\Models\Chat\ChatConversation;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -27,7 +29,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-
+        $this->app->bind(ClassifierHttpTransport::class, LaravelClassifierHttpTransport::class);
     }
 
     /**
@@ -36,17 +38,17 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Relation::morphMap([
-            'material'          => \App\Models\Material::class,
-            'project_position'  => \App\Models\ProjectPosition::class,
-            'project_fitting'   => \App\Models\ProjectFitting::class,
-            'operation'         => \App\Models\Operation::class,
-            'labor'             => \App\Models\ProjectProfileRate::class,
-            'product'           => \App\Models\Material::class,
+            'material' => \App\Models\Material::class,
+            'project_position' => \App\Models\ProjectPosition::class,
+            'project_fitting' => \App\Models\ProjectFitting::class,
+            'operation' => \App\Models\Operation::class,
+            'labor' => \App\Models\ProjectProfileRate::class,
+            'product' => \App\Models\Material::class,
             'project_labor_work' => \App\Models\ProjectLaborWork::class,
-            'expense'           => \App\Models\Expense::class,
-            'evidence_record'   => \App\Models\EvidenceRecord::class,
+            'expense' => \App\Models\Expense::class,
+            'evidence_record' => \App\Models\EvidenceRecord::class,
             'material_price_history' => \App\Models\MaterialPriceHistory::class,
-            'operation_price'   => \App\Models\OperationPrice::class,
+            'operation_price' => \App\Models\OperationPrice::class,
             'price_list_version' => \App\Models\PriceListVersion::class,
         ]);
 
