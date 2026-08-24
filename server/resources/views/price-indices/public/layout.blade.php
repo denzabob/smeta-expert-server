@@ -79,7 +79,9 @@
         .card:hover { border-color:#91a6d7; transform:translateY(-1px); }
         .card:focus-visible,.button:focus-visible,a:focus-visible { outline:3px solid #8faaf0; outline-offset:3px; }
         .card h2 { margin:8px 0 16px; font-size:20px; }
-        .search-form { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; margin:28px 0 12px; padding:20px; }
+        .search-form { margin:28px 0 12px; padding:20px; }
+        .search-controls { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:stretch; }
+        .search-controls .button { min-height:44px; margin-top:0; padding:9px 20px; border-radius:10px; white-space:nowrap; }
         .field { display:flex; flex-direction:column; gap:7px; }
         .field label { font-weight:700; }
         .field small,.search-summary,.form-help { color:var(--muted); }
@@ -128,7 +130,7 @@
         .provenance { margin-top:18px; color:var(--muted); font-size:14px; overflow-wrap:anywhere; }
         [hidden] { display:none !important; }
         footer { padding:28px 0; border-top:1px solid var(--outline); color:var(--muted); background:var(--surface); font-size:14px; }
-        @media (max-width:760px) { .grid,.detail-grid,.facts,.summary-grid,.related-list,.calculator-form,.search-form { grid-template-columns:1fr; } .calculator-form .amount-field,.calculator-form .form-actions { grid-column:auto; } main { padding-top:28px; } .section,.card { padding:20px; } .metrics { grid-template-columns:1fr 1fr; } }
+        @media (max-width:760px) { .grid,.detail-grid,.facts,.summary-grid,.related-list,.calculator-form,.search-controls { grid-template-columns:1fr; } .search-controls .button { width:100%; } .calculator-form .amount-field,.calculator-form .form-actions { grid-column:auto; } main { padding-top:28px; } .section,.card { padding:20px; } .metrics { grid-template-columns:1fr 1fr; } }
         @media (max-width:420px) { .shell { width:min(100% - 20px,1160px); } .metrics { grid-template-columns:1fr; } }
     </style>
 </head>

@@ -11,10 +11,12 @@
     <form class="panel search-form" method="get" action="{{ $urls->catalog() }}" role="search">
         <div class="field">
             <label for="public-index-search">Код или название продукции</label>
-            <input id="public-index-search" name="q" type="search" value="{{ $searchQuery }}" maxlength="120" placeholder="Например, 31.02.10.140 или кухонная мебель">
-            <small>Поиск выполняется только среди опубликованных индексов.</small>
+            <div class="search-controls">
+                <input id="public-index-search" name="q" type="search" value="{{ $searchQuery }}" maxlength="120" placeholder="Например, 31.02.10.140 или кухонная мебель" aria-describedby="public-index-search-help">
+                <button class="button" type="submit">Найти</button>
+            </div>
+            <small id="public-index-search-help">Поиск выполняется только среди опубликованных индексов.</small>
         </div>
-        <button class="button" type="submit">Найти</button>
     </form>
 
     @if ($isSearch)

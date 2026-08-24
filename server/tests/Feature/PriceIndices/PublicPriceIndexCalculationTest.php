@@ -40,6 +40,22 @@ class PublicPriceIndexCalculationTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_calculator_script_contains_the_required_in_page_transport_hooks(): void
+    {
+        $script = file_get_contents(public_path('price-indices-public-calculator.js'));
+
+        $this->assertIsString($script);
+        $this->assertStringContainsString("document.querySelector('[data-public-index-calculator]')", $script);
+        $this->assertStringContainsString("form.addEventListener('submit'", $script);
+        $this->assertStringContainsString('event.preventDefault();', $script);
+        $this->assertStringContainsString('window.fetch(form.action', $script);
+        $this->assertStringContainsString("'Accept': 'application/json'", $script);
+        $this->assertStringContainsString("'Content-Type': 'application/json'", $script);
+        $this->assertStringContainsString('result.hidden = false;', $script);
+        $this->assertStringNotContainsString('window.location', $script);
+        $this->assertStringNotContainsString('history.', $script);
+    }
+
     public function test_anonymous_calculation_is_decimal_safe_with_optional_amount_and_public_chain(): void
     {
         $fixture = $this->publicSeoFixture();
@@ -183,6 +199,27 @@ class PublicPriceIndexCalculationTest extends TestCase
             ->assertOk()
             ->assertSee('<link rel="canonical" href="https://indices.test/31-02-10-140">', false)
             ->assertSee('<meta name="robots" content="index,follow">', false);
+    }
+
+    public function test_browser_form_post_redirects_to_the_canonical_detail_without_session_state(): void
+    {
+        $fixture = $this->publicSeoFixture();
+
+        $response = $this->withHeader('Accept', 'text/html')->post(
+            'https://indices.test/'.$fixture['page']->slug.'/calculate',
+            [
+                'start_period' => '2025-01',
+                'end_period' => '2025-02',
+            ],
+        );
+
+        $response->assertStatus(303)
+            ->assertRedirect('https://indices.test/'.$fixture['page']->slug);
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('cache-control'));
+        $this->assertFalse($response->headers->has('set-cookie'));
+
+        $this->get('https://indices.test/'.$fixture['page']->slug.'/calculate')
+            ->assertNotFound();
     }
 
     private function calculate(

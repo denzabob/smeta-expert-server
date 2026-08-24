@@ -8,6 +8,7 @@ use App\Domain\PriceIndices\Http\Controllers\PublicIndexProductsController;
 use App\Domain\PriceIndices\Http\Controllers\PublicIndexRobotsController;
 use App\Domain\PriceIndices\Http\Controllers\PublicIndexSitemapController;
 use App\Domain\PriceIndices\Http\Middleware\CachePublicIndexResponse;
+use App\Domain\PriceIndices\Http\Middleware\EnsurePublicCalculationJsonTransport;
 use App\Http\Controllers\PublicPriceFileController;
 use App\Http\Controllers\PublicVerificationController;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -33,7 +34,10 @@ if ($priceIndicesPublicHost !== '') {
             });
         Route::post('/{slug}/calculate', PublicIndexCalculationController::class)
             ->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*')
-            ->middleware('throttle:'.config('price_indices.public_calculation.throttle_per_minute', 20).',1')
+            ->middleware([
+                EnsurePublicCalculationJsonTransport::class,
+                'throttle:'.config('price_indices.public_calculation.throttle_per_minute', 20).',1',
+            ])
             ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, ValidateCsrfToken::class])
             ->name('calculate');
         Route::any('/{path}', fn () => abort(404))->where('path', '.*')->name('fallback');

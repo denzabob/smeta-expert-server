@@ -30,6 +30,7 @@ services:
       - "127.0.0.1:8000:80"
     volumes:
       - ./docker/app/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./server/public/price-indices-public-calculator.js:/var/www/assets/price-indices-public-calculator.js:ro
     depends_on:
       app:
         condition: service_healthy

@@ -27,6 +27,11 @@ class PublicPriceIndicesSearchTest extends TestCase
             ->assertSee('<meta name="robots" content="index,follow">', false)
             ->assertSee('<link rel="canonical" href="https://indices.test/">', false)
             ->assertSee('<form class="panel search-form"', false)
+            ->assertSee('<div class="search-controls">', false)
+            ->assertSee('aria-describedby="public-index-search-help"', false)
+            ->assertSee('<button class="button" type="submit">', false)
+            ->assertSee('.search-controls .button { min-height:44px; margin-top:0; padding:9px 20px; border-radius:10px; white-space:nowrap; }', false)
+            ->assertSee('.search-controls .button { width:100%; }', false)
             ->assertSee($fixture['item']->name)
             ->assertSee('application/ld+json', false);
     }
