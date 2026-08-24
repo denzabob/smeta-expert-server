@@ -18,6 +18,21 @@ final class PublicPriceIndexUrl
         return $this->publicBaseUrl().'/'.rawurlencode($slug);
     }
 
+    public function catalogSearch(string $query, int $page = 1): string
+    {
+        $parameters = ['q' => $query];
+        if ($page > 1) {
+            $parameters['page'] = $page;
+        }
+
+        return $this->catalog().'?'.http_build_query($parameters, '', '&', PHP_QUERY_RFC3986);
+    }
+
+    public function calculation(string $slug): string
+    {
+        return $this->detail($slug).'/calculate';
+    }
+
     public function producerPrices(): string
     {
         return $this->publicBaseUrl().'/producer-prices/';

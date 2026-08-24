@@ -23,6 +23,7 @@ final class PublicIndexDetailController extends Controller
         PublicIndexStructuredData $structuredData,
     ): View {
         $page = $pages->execute($slug);
+        $publicObservations = $observations->execute($page);
         $item = $page->classifierItem;
         $provider = $page->dataset?->provider_name ?: 'Росстат';
         $change = $formatter->percent($page->change_percent);
@@ -57,14 +58,19 @@ final class PublicIndexDetailController extends Controller
             $coefficient,
             $provider,
         );
+        $calculatorSupported = $page->series?->frequency === 'monthly'
+            && $page->series?->comparison_basis === 'previous_month'
+            && $page->series?->unit === 'percent';
 
         return view('price-indices.public.detail', [
             'page' => $page,
-            'observations' => $observations->execute($page),
+            'observations' => $publicObservations,
             'relatedPages' => $relatedPages->execute($page),
             'urls' => $urls,
             'formatter' => $formatter,
             'canonical' => $canonical,
+            'calculationEndpoint' => $urls->calculation($slug),
+            'calculatorSupported' => $calculatorSupported,
             'calculatorUrl' => $urls->calculator((string) $page->series?->public_id, (string) $item?->item_code),
             'title' => $title,
             'description' => $description,

@@ -24,6 +24,54 @@
                 </dl>
             </section>
 
+            @if ($calculatorSupported)
+                <section class="panel section" aria-labelledby="public-calculator-title">
+                    <h2 id="public-calculator-title">Рассчитать изменение за период</h2>
+                    <p class="method">Расчёт применяет официальные месячные значения этого ряда из той же публикации, что и страница. Начальный месяц служит базой; используются факторы после него и по конечный месяц включительно.</p>
+                    <form id="public-index-calculator" class="calculator-form" method="post" action="{{ $calculationEndpoint }}" data-public-index-calculator>
+                        <div class="field">
+                            <label for="calculation-start-period">Начальный период</label>
+                            <select id="calculation-start-period" name="start_period" required>
+                                @foreach ($observations as $observation)
+                                    <option value="{{ $observation->period_start->format('Y-m') }}">{{ $formatter->period($observation->period_start, true) }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="calculation-end-period">Конечный период</label>
+                            <select id="calculation-end-period" name="end_period" required>
+                                @foreach ($observations as $observation)
+                                    <option value="{{ $observation->period_start->format('Y-m') }}" @selected($loop->last)>{{ $formatter->period($observation->period_start, true) }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field amount-field">
+                            <label for="calculation-amount">Сумма, ₽ <span class="method">(необязательно)</span></label>
+                            <input id="calculation-amount" name="amount" type="text" inputmode="decimal" maxlength="18" autocomplete="off" pattern="[0-9]+([.,][0-9]{1,2})?" aria-describedby="calculation-amount-help">
+                            <small id="calculation-amount-help">До двух знаков после запятой. Расчёт выполняется на сервере без округления в браузере.</small>
+                        </div>
+                        <div class="form-actions">
+                            <button class="button" type="submit">Рассчитать</button>
+                            <span class="form-help">Результат описывает математику выбранного статистического ряда и не является рекомендацией по выбору индекса.</span>
+                        </div>
+                    </form>
+                    <div id="calculation-error" class="form-error" role="alert" hidden></div>
+                    <div id="calculation-result" class="calculation-result" role="status" aria-live="polite" aria-atomic="true" tabindex="-1" hidden>
+                        <h3>Результат расчёта</h3>
+                        <p class="result-line">Период: <strong data-result-period></strong></p>
+                        <p class="result-line">Коэффициент: <strong data-result-coefficient></strong></p>
+                        <p class="result-line">Изменение: <strong data-result-change></strong></p>
+                        <p class="result-line" data-result-amount-row hidden>Сумма: <strong data-result-amount></strong></p>
+                        <details class="chain-details">
+                            <summary>Как рассчитано</summary>
+                            <div class="table-wrap"><table><thead><tr><th>Период</th><th>Месячный индекс</th><th>Фактор</th><th>Накопленный коэффициент</th></tr></thead><tbody data-result-chain></tbody></table></div>
+                        </details>
+                        <p class="provenance" data-result-provenance></p>
+                    </div>
+                    <noscript><p class="form-error">Для показа результата прямо на этой странице требуется JavaScript. Все статистические значения, периоды и источник выше и ниже доступны без JavaScript.</p></noscript>
+                </section>
+            @endif
+
             <section class="panel section">
                 <h2>Помесячные индексы</h2>
                 <div class="table-wrap"><table><thead><tr><th>Период</th><th>Индекс, % к предыдущему месяцу</th></tr></thead><tbody>
@@ -52,9 +100,9 @@
 
         <aside>
             <section class="panel section cta">
-                <h2>Рассчитать стоимость</h2>
-                <p>Выберите собственные начальный и конечный месяцы и примените официальный коэффициент к вашей стоимости.</p>
-                <a class="button" href="{{ $calculatorUrl }}" data-metrika-goal="public_index_calculator_click" data-item-code="{{ $page->classifierItem->item_code }}">Рассчитать стоимость</a>
+                <h2>Профессиональные инструменты</h2>
+                <p>Войдите в ПРИЗМУ, чтобы продолжить работу с индексом в профессиональном калькуляторе.</p>
+                <a class="button" href="{{ $calculatorUrl }}" data-metrika-goal="public_index_calculator_click" data-item-code="{{ $page->classifierItem->item_code }}">Войти в ПРИЗМУ</a>
             </section>
 
             <section class="panel section">
@@ -76,3 +124,9 @@
         </aside>
     </div>
 @endsection
+
+@if ($calculatorSupported)
+    @push('scripts')
+        <script defer src="/price-indices-public-calculator.js"></script>
+    @endpush
+@endif

@@ -8,16 +8,21 @@ use App\Domain\PriceIndices\Application\Support\PublicIndexStructuredData;
 use App\Domain\PriceIndices\Application\Support\PublicPriceIndexUrl;
 use App\Http\Controllers\Controller;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\Request;
 
 final class PublicIndexCatalogController extends Controller
 {
     public function __invoke(
+        Request $request,
         ListPublicIndexPages $pages,
         PublicPriceIndexUrl $urls,
         PublicIndexFormatter $formatter,
         PublicIndexStructuredData $structuredData,
     ): View {
-        $catalog = $pages->execute();
+        $isSearch = $request->query->has('q');
+        $rawQuery = $request->query('q');
+        $searchQuery = is_string($rawQuery) ? $pages->normalizedQuery($rawQuery) : '';
+        $catalog = $pages->execute($isSearch ? $searchQuery : null);
         $catalog->withPath($urls->catalog());
         $currentPage = $catalog->currentPage();
         if ($currentPage > $catalog->lastPage()) {
@@ -26,9 +31,11 @@ final class PublicIndexCatalogController extends Controller
         $latestDataYear = $pages->latestDataYear();
 
         $year = $latestDataYear === null ? '' : ' '.$latestDataYear;
-        $title = $currentPage > 1
-            ? "Индексы цен Росстата{$year} — страница {$currentPage} | ПРИЗМА"
-            : "Индексы цен Росстата{$year} — индексы цен производителей | ПРИЗМА";
+        $title = $isSearch
+            ? 'Поиск опубликованных индексов Росстата'.($searchQuery === '' ? '' : ': '.$searchQuery).' | ПРИЗМА'
+            : ($currentPage > 1
+                ? "Индексы цен Росстата{$year} — страница {$currentPage} | ПРИЗМА"
+                : "Индексы цен Росстата{$year} — индексы цен производителей | ПРИЗМА");
         $descriptionYear = $latestDataYear === null ? '' : " на {$latestDataYear} год";
         $description = "Индексы цен производителей Росстата по товарам{$descriptionYear}: динамика цен, месячные индексы и коэффициенты изменения стоимости. Официальные статистические данные.";
         if ($currentPage > 1) {
@@ -39,11 +46,14 @@ final class PublicIndexCatalogController extends Controller
             'pages' => $catalog,
             'urls' => $urls,
             'formatter' => $formatter,
-            'canonical' => $urls->catalog($currentPage),
+            'canonical' => $isSearch ? $urls->catalog() : $urls->catalog($currentPage),
+            'robots' => $isSearch ? 'noindex,follow' : 'index,follow',
             'title' => $title,
             'description' => $description,
             'latestDataYear' => $latestDataYear,
-            'structuredData' => $structuredData->catalog($title, $description, $urls),
+            'structuredData' => $isSearch ? null : $structuredData->catalog($title, $description, $urls),
+            'isSearch' => $isSearch,
+            'searchQuery' => $searchQuery,
         ]);
     }
 }

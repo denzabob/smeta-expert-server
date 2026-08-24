@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $title }}</title>
     <meta name="description" content="{{ $description }}">
-    <meta name="robots" content="index,follow">
+    <meta name="robots" content="{{ $robots ?? 'index,follow' }}">
     <link rel="canonical" href="{{ $canonical }}">
     <meta property="og:type" content="{{ $ogType ?? 'website' }}">
     <meta property="og:locale" content="ru_RU">
@@ -79,6 +79,15 @@
         .card:hover { border-color:#91a6d7; transform:translateY(-1px); }
         .card:focus-visible,.button:focus-visible,a:focus-visible { outline:3px solid #8faaf0; outline-offset:3px; }
         .card h2 { margin:8px 0 16px; font-size:20px; }
+        .search-form { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; margin:28px 0 12px; padding:20px; }
+        .field { display:flex; flex-direction:column; gap:7px; }
+        .field label { font-weight:700; }
+        .field small,.search-summary,.form-help { color:var(--muted); }
+        input,select { width:100%; min-height:44px; padding:9px 12px; border:1px solid var(--outline); border-radius:10px; background:var(--surface); color:var(--ink); font:inherit; }
+        input:focus-visible,select:focus-visible,button:focus-visible { outline:3px solid #8faaf0; outline-offset:2px; }
+        button.button { border:0; cursor:pointer; }
+        button.button:disabled { cursor:wait; opacity:.65; }
+        .empty-state { margin-top:28px; padding:28px; }
         .metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:18px; }
         .metric { padding:16px; background:var(--surface-alt); border-radius:14px; }
         .metric__label { display:block; color:var(--muted); font-size:13px; }
@@ -106,8 +115,20 @@
         .summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:28px 0; }
         .summary-grid .metric { border:1px solid var(--outline); background:var(--surface); }
         .related-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 24px; margin:0; padding-left:20px; }
+        .calculator-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+        .calculator-form .amount-field,.calculator-form .form-actions { grid-column:1 / -1; }
+        .form-actions { display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
+        .form-error { margin-top:16px; padding:14px; border:1px solid #bd3d3d; border-radius:12px; background:#fff3f3; }
+        .calculation-result { margin-top:22px; padding-top:22px; border-top:1px solid var(--outline); }
+        .calculation-result:focus { outline:0; }
+        .result-line { margin:7px 0; font-size:18px; }
+        .result-line strong { font-variant-numeric:tabular-nums; }
+        .chain-details { margin-top:20px; }
+        .chain-details summary { cursor:pointer; font-weight:700; }
+        .provenance { margin-top:18px; color:var(--muted); font-size:14px; overflow-wrap:anywhere; }
+        [hidden] { display:none !important; }
         footer { padding:28px 0; border-top:1px solid var(--outline); color:var(--muted); background:var(--surface); font-size:14px; }
-        @media (max-width:760px) { .grid,.detail-grid,.facts,.summary-grid,.related-list { grid-template-columns:1fr; } main { padding-top:28px; } .section,.card { padding:20px; } .metrics { grid-template-columns:1fr 1fr; } }
+        @media (max-width:760px) { .grid,.detail-grid,.facts,.summary-grid,.related-list,.calculator-form,.search-form { grid-template-columns:1fr; } .calculator-form .amount-field,.calculator-form .form-actions { grid-column:auto; } main { padding-top:28px; } .section,.card { padding:20px; } .metrics { grid-template-columns:1fr 1fr; } }
         @media (max-width:420px) { .shell { width:min(100% - 20px,1160px); } .metrics { grid-template-columns:1fr; } }
     </style>
 </head>
@@ -125,5 +146,6 @@
 <header class="topbar"><div class="shell topbar__inner"><a class="brand" href="{{ $urls->catalog() }}">ПРИЗМА <span>Индексы</span></a><span>Данные Росстата</span></div></header>
 <main id="main-content"><div class="shell">@yield('content')</div></main>
 <footer><div class="shell">Публичный справочник официальных индексов. Для расчёта стоимости используйте калькулятор ПРИЗМА.</div></footer>
+@stack('scripts')
 </body>
 </html>

@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\PriceIndices\Http\Controllers\PublicIndexCalculationController;
 use App\Domain\PriceIndices\Http\Controllers\PublicIndexCatalogController;
 use App\Domain\PriceIndices\Http\Controllers\PublicIndexDetailController;
 use App\Domain\PriceIndices\Http\Controllers\PublicIndexFamilyController;
@@ -30,6 +31,11 @@ if ($priceIndicesPublicHost !== '') {
                     ->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*')
                     ->name('detail');
             });
+        Route::post('/{slug}/calculate', PublicIndexCalculationController::class)
+            ->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*')
+            ->middleware('throttle:'.config('price_indices.public_calculation.throttle_per_minute', 20).',1')
+            ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, ValidateCsrfToken::class])
+            ->name('calculate');
         Route::any('/{path}', fn () => abort(404))->where('path', '.*')->name('fallback');
     });
 }

@@ -10,6 +10,12 @@ return [
     'brand_url' => env('PRICE_INDICES_BRAND_URL'),
     'yandex_metrika_id' => env('PRICE_INDICES_YANDEX_METRIKA_ID', '111537697'),
 
+    'public_calculation' => [
+        'max_period_months' => 120,
+        'max_amount' => '999999999999999.99',
+        'throttle_per_minute' => 20,
+    ],
+
     'source_files' => [
         'max_upload_bytes' => 67_108_864,
         'max_download_bytes' => 67_108_864,
