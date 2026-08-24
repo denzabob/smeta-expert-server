@@ -49,7 +49,7 @@ class PublicSeoDynamicDataYearTest extends TestCase
         }
     }
 
-    public function test_detail_uses_its_own_2025_snapshot_year_when_catalog_latest_is_2026(): void
+    public function test_detail_metadata_uses_its_own_2025_snapshot_period_when_catalog_latest_is_2026(): void
     {
         $detail = $this->fixtureForRange('2025-01', '2025-12');
         $this->fixtureForRange('2026-01', '2026-12', '31.02.10.141');
@@ -59,11 +59,11 @@ class PublicSeoDynamicDataYearTest extends TestCase
         preg_match('/<title>(.*?)<\/title>/s', $html, $title);
 
         $response->assertOk()
-            ->assertSee('2025 — Росстат | ПРИЗМА</title>', false)
+            ->assertSee('<title>ОКПД2 31.02.10.140 — Наборы кухонной мебели: индекс цен производителей Росстата | ПРИЗМА</title>', false)
             ->assertSee('по декабрь 2025')
             ->assertSee('temporalCoverage":"2025-01/2025-12', false);
-        $this->assertStringContainsString('2025', $title[1]);
-        $this->assertStringNotContainsString('2026', $title[1]);
+        $this->assertStringContainsString('31.02.10.140', $title[1]);
+        $this->assertStringContainsString('Наборы кухонной мебели', $title[1]);
     }
 
     /** @return array<string, mixed> */

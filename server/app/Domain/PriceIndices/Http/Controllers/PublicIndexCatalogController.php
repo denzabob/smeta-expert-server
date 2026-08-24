@@ -4,8 +4,8 @@ namespace App\Domain\PriceIndices\Http\Controllers;
 
 use App\Domain\PriceIndices\Application\Services\ListPublicIndexPages;
 use App\Domain\PriceIndices\Application\Support\PublicIndexFormatter;
-use App\Domain\PriceIndices\Application\Support\PublicPriceIndexUrl;
 use App\Domain\PriceIndices\Application\Support\PublicIndexStructuredData;
+use App\Domain\PriceIndices\Application\Support\PublicPriceIndexUrl;
 use App\Http\Controllers\Controller;
 use Illuminate\Contracts\View\View;
 
@@ -20,6 +20,9 @@ final class PublicIndexCatalogController extends Controller
         $catalog = $pages->execute();
         $catalog->withPath($urls->catalog());
         $currentPage = $catalog->currentPage();
+        if ($currentPage > $catalog->lastPage()) {
+            abort(404);
+        }
         $latestDataYear = $pages->latestDataYear();
 
         $year = $latestDataYear === null ? '' : ' '.$latestDataYear;

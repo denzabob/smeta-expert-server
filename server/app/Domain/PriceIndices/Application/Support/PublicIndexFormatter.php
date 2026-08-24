@@ -59,32 +59,48 @@ final class PublicIndexFormatter
         return $prefix.$this->decimal($unsigned, 2).' %';
     }
 
-    public function detailTitle(string $itemName, int $latestDataYear): string
-    {
-        $itemName = $this->lowerFirst($itemName);
-        $candidates = [
-            "Индекс цен производителей на {$itemName} {$latestDataYear} — Росстат | ПРИЗМА",
-            "Индекс цен на {$itemName} {$latestDataYear} — Росстат | ПРИЗМА",
-            "Индекс цен на {$itemName} {$latestDataYear} — Росстат",
-            "Индекс цен на {$itemName} {$latestDataYear}",
-        ];
+    public function detailTitle(
+        string $itemCode,
+        string $itemName,
+        string $indicatorType,
+        ?string $classifierLabel,
+    ): string {
+        $code = trim(($classifierLabel === null ? '' : $classifierLabel.' ').$itemCode);
+        $indicator = $this->lowerFirst(trim($indicatorType));
+        $prefix = $code.' — ';
+        $suffix = ': '.$indicator.' | ПРИЗМА';
+        $available = max(12, 95 - mb_strlen($prefix.$suffix, 'UTF-8'));
 
-        foreach ($candidates as $candidate) {
-            if (mb_strlen($candidate, 'UTF-8') <= 65) {
-                return $candidate;
-            }
-        }
-
-        $prefix = 'Индекс цен на ';
-        $suffix = ' '.$latestDataYear;
-        $available = 65 - mb_strlen($prefix.$suffix, 'UTF-8');
-
-        return $prefix.$this->truncate($itemName, $available).$suffix;
+        return $prefix.$this->truncate(trim($itemName), $available).$suffix;
     }
 
-    public function heading(string $itemName): string
+    public function heading(string $itemCode, string $itemName, ?string $classifierLabel): string
     {
-        return 'Индекс цен производителей на '.$this->lowerFirst($itemName);
+        $code = trim(($classifierLabel === null ? '' : $classifierLabel.' ').$itemCode);
+
+        return $code.' — '.trim($itemName);
+    }
+
+    public function classifierLabel(string $classifierCode, ?string $providerCodeKind): ?string
+    {
+        if ($providerCodeKind === 'rosstat_local_ag') {
+            return null;
+        }
+
+        return in_array($classifierCode, ['okpd2', 'okpd2_based'], true) ? 'ОКПД2' : null;
+    }
+
+    public function indicatorType(string $indicatorName, string $provider): string
+    {
+        $indicatorName = trim($indicatorName) ?: 'Индекс цен производителей';
+        $provider = trim($provider);
+        if ($provider === 'Росстат') {
+            $provider = 'Росстата';
+        }
+
+        return $provider === '' || mb_stripos($indicatorName, $provider, 0, 'UTF-8') !== false
+            ? $indicatorName
+            : $indicatorName.' '.$provider;
     }
 
     public function description(
@@ -96,8 +112,8 @@ final class PublicIndexFormatter
         string $provider,
     ): string {
         return $this->truncate(sprintf(
-            'Индекс цен производителей на %s: изменение %s с %s по %s, коэффициент %s. Данные %s.',
-            $this->lowerFirst($itemName),
+            '%s — индекс цен производителей: изменение %s за период с %s по %s, коэффициент %s. Данные %s.',
+            trim($itemName),
             $changePercent,
             $this->periodGenitive($from),
             $this->period($to),

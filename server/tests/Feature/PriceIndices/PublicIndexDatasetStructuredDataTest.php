@@ -43,7 +43,7 @@ class PublicIndexDatasetStructuredDataTest extends TestCase
         $this->assertSame('Индекс цен производителей', $variable['name']);
         $this->assertSame('процент', $variable['unitText']);
         $this->assertSame(['@id' => $variable['@id']], $dataset['variableMeasured']);
-        $this->assertLessThanOrEqual(7, $queries);
+        $this->assertLessThanOrEqual(8, $queries);
 
         $encoded = json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $this->assertStringNotContainsString($fixture['sourceFile']->stored_path, $encoded);

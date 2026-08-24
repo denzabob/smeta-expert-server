@@ -54,7 +54,9 @@ class PublicPriceIndexPageTest extends TestCase
 
         fwrite(STDERR, "Public detail rendering: {$elapsedMs} ms, {$queries} queries\n");
         $response->assertOk()
-            ->assertSee('<h1>Индекс цен производителей на наборы кухонной мебели</h1>', false)
+            ->assertSee('<h1>ОКПД2 31.02.10.140 — Наборы кухонной мебели</h1>', false)
+            ->assertSee('<p class="eyebrow">Индекс цен производителей Росстата</p>', false)
+            ->assertDontSee('Индекс цен производителей на Наборы кухонной мебели', false)
             ->assertSee('31.02.10.140')
             ->assertSee('1,634146829442')
             ->assertSee('+63,41 %')
@@ -66,7 +68,7 @@ class PublicPriceIndexPageTest extends TestCase
             ->assertDontSee('999,00')
             ->assertDontSee($fixture['sourceFile']->stored_path)
             ->assertDontSee('storage_disk');
-        $this->assertLessThanOrEqual(10, $queries);
+        $this->assertLessThanOrEqual(11, $queries);
         $this->assertLessThan(1500, $elapsedMs);
     }
 

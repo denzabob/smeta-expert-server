@@ -32,14 +32,19 @@ trait BuildsPublicSeoFixture
         return $fixture;
     }
 
-    private function addPublicSeoPage(array $fixture, int $ordinal): StatisticalPublicSeriesPage
-    {
-        $code = sprintf('31.99.%02d.%03d', intdiv($ordinal, 100), $ordinal % 1000);
+    private function addPublicSeoPage(
+        array $fixture,
+        int $ordinal,
+        ?string $itemCode = null,
+        ?string $itemName = null,
+    ): StatisticalPublicSeriesPage {
+        $code = $itemCode ?? sprintf('31.99.%02d.%03d', intdiv($ordinal, 100), $ordinal % 1000);
+        $name = $itemName ?? 'Тестовый товар '.$ordinal;
         $item = StatisticalClassifierItem::factory()->create([
             'dataset_id' => $fixture['dataset']->id,
             'item_code' => $code,
-            'name' => 'Тестовый товар '.$ordinal,
-            'normalized_name' => 'тестовый товар '.$ordinal,
+            'name' => $name,
+            'normalized_name' => mb_strtolower($name, 'UTF-8'),
         ]);
         $series = $this->addSeriesForItem($fixture, $item);
 

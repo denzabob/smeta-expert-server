@@ -24,7 +24,7 @@ final class GetPublicIndexPage
                 'dataset:id,name,provider_name',
                 'import:id,public_id,importer_code,importer_version,published_at',
                 'series:id,public_id',
-                'classifierItem:id,item_code,name',
+                'classifierItem:id,classifier_code,item_code,name,metadata_json',
                 'sourceFile:id,source_id,original_filename,sha256,source_url',
                 'sourceFile.source:id,name,source_page_url',
             ])

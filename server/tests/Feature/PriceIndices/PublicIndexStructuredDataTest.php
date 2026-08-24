@@ -43,6 +43,6 @@ class PublicIndexStructuredDataTest extends TestCase
         $schema = $this->structuredData($response);
         $this->assertSame(1, substr_count($response->getContent(), 'application/ld+json'));
         $this->assertStringNotContainsString('</script><script>alert', $response->getContent());
-        $this->assertSame($fixture['item']->name, $this->graphEntity($schema, 'BreadcrumbList')['itemListElement'][1]['name']);
+        $this->assertSame($fixture['item']->name, $this->graphEntity($schema, 'BreadcrumbList')['itemListElement'][3]['name']);
     }
 }

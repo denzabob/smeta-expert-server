@@ -18,6 +18,16 @@ final class PublicPriceIndexUrl
         return $this->publicBaseUrl().'/'.rawurlencode($slug);
     }
 
+    public function producerPrices(): string
+    {
+        return $this->publicBaseUrl().'/producer-prices/';
+    }
+
+    public function producerPriceProducts(): string
+    {
+        return $this->publicBaseUrl().'/producer-prices/products/';
+    }
+
     public function sitemap(): string
     {
         return $this->publicBaseUrl().'/sitemap.xml';

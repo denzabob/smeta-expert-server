@@ -109,12 +109,24 @@ final class PublicIndexStructuredData
                         [
                             '@type' => 'ListItem',
                             'position' => 1,
-                            'name' => 'Индексы',
+                            'name' => 'Главная',
                             'item' => $root,
                         ],
                         [
                             '@type' => 'ListItem',
                             'position' => 2,
+                            'name' => 'Индексы цен производителей',
+                            'item' => $urls->producerPrices(),
+                        ],
+                        [
+                            '@type' => 'ListItem',
+                            'position' => 3,
+                            'name' => 'По товарам и товарным группам',
+                            'item' => $urls->producerPriceProducts(),
+                        ],
+                        [
+                            '@type' => 'ListItem',
+                            'position' => 4,
                             'name' => $itemName,
                             'item' => $canonical,
                         ],
@@ -128,6 +140,77 @@ final class PublicIndexStructuredData
                     'description' => 'Индекс цен производителей по отношению к предыдущему месяцу',
                     'unitText' => 'процент',
                     'measurementTechnique' => 'Индекс цен производителей к предыдущему месяцу',
+                ],
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function familyLanding(
+        string $title,
+        string $description,
+        string $canonical,
+        PublicPriceIndexUrl $urls,
+    ): array {
+        return $this->landingPage($title, $description, $canonical, [
+            ['name' => 'Главная', 'url' => $urls->catalog()],
+            ['name' => 'Индексы цен производителей', 'url' => $canonical],
+        ], $urls);
+    }
+
+    /** @return array<string, mixed> */
+    public function productsLanding(
+        string $title,
+        string $description,
+        string $canonical,
+        PublicPriceIndexUrl $urls,
+    ): array {
+        return $this->landingPage($title, $description, $canonical, [
+            ['name' => 'Главная', 'url' => $urls->catalog()],
+            ['name' => 'Индексы цен производителей', 'url' => $urls->producerPrices()],
+            ['name' => 'По товарам и товарным группам', 'url' => $canonical],
+        ], $urls);
+    }
+
+    /**
+     * @param  list<array{name:string,url:string}>  $breadcrumbs
+     * @return array<string, mixed>
+     */
+    private function landingPage(
+        string $title,
+        string $description,
+        string $canonical,
+        array $breadcrumbs,
+        PublicPriceIndexUrl $urls,
+    ): array {
+        $breadcrumbId = $canonical.'#breadcrumb';
+
+        return [
+            '@context' => 'https://schema.org',
+            '@graph' => [
+                [
+                    '@type' => 'WebPage',
+                    '@id' => $canonical.'#webpage',
+                    'url' => $canonical,
+                    'name' => $title,
+                    'description' => $description,
+                    'isPartOf' => ['@id' => $urls->catalog().'#website'],
+                    'breadcrumb' => ['@id' => $breadcrumbId],
+                    'inLanguage' => 'ru-RU',
+                ],
+                [
+                    '@type' => 'BreadcrumbList',
+                    '@id' => $breadcrumbId,
+                    'itemListElement' => array_map(
+                        fn (array $item, int $position): array => [
+                            '@type' => 'ListItem',
+                            'position' => $position + 1,
+                            'name' => $item['name'],
+                            'item' => $item['url'],
+                        ],
+                        $breadcrumbs,
+                        array_keys($breadcrumbs),
+                    ),
                 ],
             ],
         ];

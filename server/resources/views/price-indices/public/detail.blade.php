@@ -1,9 +1,10 @@
 @extends('price-indices.public.layout', ['ogType' => 'article'])
 
 @section('content')
-    <nav class="crumbs"><a href="{{ $urls->catalog() }}">Индексы</a> → {{ $page->classifierItem->name }}</nav>
+    <nav class="crumbs" aria-label="Хлебные крошки"><a href="{{ $urls->catalog() }}">Главная</a> → <a href="{{ $urls->producerPrices() }}">Индексы цен производителей</a> → <a href="{{ $urls->producerPriceProducts() }}">По товарам и товарным группам</a> → <span aria-current="page">{{ $page->classifierItem->name }}</span></nav>
     <div class="code">{{ $page->classifierItem->item_code }}</div>
-    <h1>{{ $formatter->heading($page->classifierItem->name) }}</h1>
+    <h1>{{ $heading }}</h1>
+    <p class="eyebrow">{{ $indicatorType }}</p>
     <div class="lead">
         <p>По данным Росстата, для товарной группы «{{ $page->classifierItem->name }}» доступны индексы цен производителей с {{ $formatter->periodGenitive($page->period_from) }} по {{ $formatter->period($page->period_to) }}. Накопленный коэффициент изменения цен за этот период составляет {{ $coefficient }}, что соответствует изменению на {{ $change }}.</p>
         <p>В таблице приведены официальные месячные индексы цен товара к предыдущему месяцу. Данные позволяют проследить изменение цен по периодам и использовать их для расчёта изменения стоимости.</p>
@@ -36,6 +37,17 @@
                 <h2>Как рассчитан коэффициент</h2>
                 <p>Коэффициент отражает последовательное применение официальных месячных индексов после базового месяца и до конца выбранного диапазона. Агрегат заранее зафиксирован в публичном snapshot; при открытии страницы он не пересчитывается.</p>
             </section>
+
+            @if ($relatedPages->isNotEmpty())
+                <section class="panel section">
+                    <h2>Связанные индексы</h2>
+                    <ul class="related-list">
+                        @foreach ($relatedPages as $relatedPage)
+                            <li><a href="{{ $urls->detail($relatedPage->slug) }}">{{ $relatedPage->classifierItem->item_code }} — {{ $relatedPage->classifierItem->name }}</a></li>
+                        @endforeach
+                    </ul>
+                </section>
+            @endif
         </div>
 
         <aside>

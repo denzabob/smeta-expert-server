@@ -20,7 +20,7 @@ use Laravel\Sanctum\Sanctum;
 trait BuildsUserCalculationFixture
 {
     /**
-     * @param array<string, string|null> $values
+     * @param  array<string, string|null>  $values
      * @return array<string, mixed>
      */
     private function calculationFixture(
@@ -33,6 +33,8 @@ trait BuildsUserCalculationFixture
         $dataset = StatisticalDataset::factory()->create([
             'code' => 'producer_price_indices_'.bin2hex(random_bytes(4)),
             'name' => 'Индексы цен производителей',
+            'provider_code' => 'rosstat',
+            'provider_name' => 'Росстат',
         ]);
         $sourceFile = StatisticalSourceFile::factory()->create([
             'dataset_id' => $dataset->id,

@@ -13,8 +13,11 @@ final class PublicIndexSitemapController extends Controller
         ListPublicIndexSitemapEntries $entries,
         PublicPriceIndexUrl $urls,
     ): Response {
+        $sitemapEntries = $entries->execute();
+
         return response()->view('price-indices.public.sitemap', [
-            'entries' => $entries->execute(),
+            'entries' => $sitemapEntries,
+            'lastModifiedAt' => $sitemapEntries->max('generated_at'),
             'urls' => $urls,
         ], 200, ['Content-Type' => 'application/xml; charset=UTF-8']);
     }

@@ -24,7 +24,18 @@ class PublicIndexFormattingTest extends TestCase
             'Январь 2021 — июнь 2026',
             $formatter->periodRange(new DateTimeImmutable('2021-01-01'), new DateTimeImmutable('2026-06-01')),
         );
-        $this->assertLessThanOrEqual(65, mb_strlen($formatter->detailTitle(str_repeat('Очень длинное название ', 10), 2026)));
+        $this->assertLessThanOrEqual(95, mb_strlen($formatter->detailTitle(
+            '31.02.10.140',
+            str_repeat('Очень длинное название ', 10),
+            'Индекс цен производителей Росстата',
+            'ОКПД2',
+        )));
+        $this->assertSame('ОКПД2', $formatter->classifierLabel('okpd2_based', null));
+        $this->assertNull($formatter->classifierLabel('okpd2_based', 'rosstat_local_ag'));
+        $this->assertSame(
+            '05.10.10.101.АГ — Уголь местной классификации',
+            $formatter->heading('05.10.10.101.АГ', 'Уголь местной классификации', null),
+        );
         $this->assertSame('31_02_10_140', $urls->refContent('31.02.10.140'));
         $this->assertSame('05_10_10_101_ag', $urls->refContent('05.10.10.101.АГ'));
     }

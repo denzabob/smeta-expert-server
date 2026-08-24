@@ -57,6 +57,8 @@
         body { margin:0; background:var(--surface-alt); color:var(--ink); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
         a { color:var(--primary); text-underline-offset:3px; }
         .shell { width:min(1160px,calc(100% - 32px)); margin:0 auto; }
+        .skip-link { position:absolute; left:16px; top:-80px; z-index:10; padding:10px 14px; border-radius:10px; background:var(--ink); color:#fff; }
+        .skip-link:focus { top:12px; }
         .topbar { background:var(--surface); border-bottom:1px solid var(--outline); }
         .topbar__inner { min-height:64px; display:flex; align-items:center; justify-content:space-between; gap:24px; }
         .brand { color:var(--ink); font-size:18px; font-weight:750; letter-spacing:.03em; text-decoration:none; }
@@ -66,6 +68,8 @@
         h1 { margin:0 0 16px; font-size:clamp(30px,4vw,48px); }
         h2 { margin:0 0 16px; font-size:24px; }
         .lead { max-width:800px; margin:0; color:var(--muted); font-size:18px; }
+        .actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:24px; }
+        .actions + .panel { margin-top:32px; }
         .eyebrow,.code { color:var(--primary); font-weight:700; letter-spacing:.04em; }
         .panel { background:var(--surface); border:1px solid var(--outline); border-radius:20px; box-shadow:var(--shadow); }
         .crumbs { margin-bottom:24px; color:var(--muted); font-size:14px; }
@@ -99,12 +103,16 @@
         .pagination a,.pagination span { min-width:40px; padding:8px 11px; border:1px solid var(--outline); border-radius:10px; background:var(--surface); text-align:center; text-decoration:none; }
         .pagination .current { border-color:var(--primary); background:var(--primary); color:#fff; }
         .method { color:var(--muted); }
+        .summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:28px 0; }
+        .summary-grid .metric { border:1px solid var(--outline); background:var(--surface); }
+        .related-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 24px; margin:0; padding-left:20px; }
         footer { padding:28px 0; border-top:1px solid var(--outline); color:var(--muted); background:var(--surface); font-size:14px; }
-        @media (max-width:760px) { .grid,.detail-grid,.facts { grid-template-columns:1fr; } main { padding-top:28px; } .section,.card { padding:20px; } .metrics { grid-template-columns:1fr 1fr; } }
+        @media (max-width:760px) { .grid,.detail-grid,.facts,.summary-grid,.related-list { grid-template-columns:1fr; } main { padding-top:28px; } .section,.card { padding:20px; } .metrics { grid-template-columns:1fr 1fr; } }
         @media (max-width:420px) { .shell { width:min(100% - 20px,1160px); } .metrics { grid-template-columns:1fr; } }
     </style>
 </head>
 <body>
+<a class="skip-link" href="#main-content">К основному содержанию</a>
 @if ($metrikaId !== null)
 <noscript>
 <div>
@@ -115,7 +123,7 @@
 </noscript>
 @endif
 <header class="topbar"><div class="shell topbar__inner"><a class="brand" href="{{ $urls->catalog() }}">ПРИЗМА <span>Индексы</span></a><span>Данные Росстата</span></div></header>
-<main><div class="shell">@yield('content')</div></main>
+<main id="main-content"><div class="shell">@yield('content')</div></main>
 <footer><div class="shell">Публичный справочник официальных индексов. Для расчёта стоимости используйте калькулятор ПРИЗМА.</div></footer>
 </body>
 </html>

@@ -21,9 +21,13 @@ class PublicPriceIndicesSitemapTest extends TestCase
         $sitemap->assertOk()
             ->assertHeader('content-type', 'application/xml; charset=UTF-8')
             ->assertSee('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', false)
+            ->assertSee('<loc>https://indices.test/</loc>', false)
+            ->assertSee('<loc>https://indices.test/producer-prices/</loc>', false)
+            ->assertSee('<loc>https://indices.test/producer-prices/products/</loc>', false)
             ->assertSee('<loc>https://indices.test/'.$visible['page']->slug.'</loc>', false)
             ->assertSee('<lastmod>', false)
             ->assertDontSee($hidden['page']->slug)
+            ->assertDontSee('?page=', false)
             ->assertDontSee('app.test')
             ->assertDontSee('verify.prismcore.ru');
 

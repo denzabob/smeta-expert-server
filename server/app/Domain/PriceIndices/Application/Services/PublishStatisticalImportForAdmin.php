@@ -9,13 +9,12 @@ use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesInvariantViolation;
 use App\Domain\PriceIndices\Domain\Exceptions\StatisticalImportConflict;
 use App\Domain\PriceIndices\Domain\Exceptions\StatisticalImportTransitionNotAllowed;
 use App\Domain\PriceIndices\Domain\Imports\StatisticalImport;
+use App\Jobs\RefreshPriceIndicesPublicPagesJob;
 use App\Models\User;
 
 final class PublishStatisticalImportForAdmin
 {
-    public function __construct(private readonly PublishStatisticalImport $publish)
-    {
-    }
+    public function __construct(private readonly PublishStatisticalImport $publish) {}
 
     public function execute(StatisticalImport $import, User $actor): StatisticalImportPublicationResult
     {
@@ -50,6 +49,12 @@ final class PublishStatisticalImportForAdmin
                 $exception,
             );
         }
+
+        $published->loadMissing('dataset:id,public_id');
+        RefreshPriceIndicesPublicPagesJob::dispatch(
+            (string) $published->dataset->public_id,
+            (string) $published->public_id,
+        );
 
         return new StatisticalImportPublicationResult(
             $published,
