@@ -34,6 +34,14 @@ class TrustedClassifierCandidateDescriptorTest extends TestCase
         $this->assertSame('Наборы кухонной мебели', $descriptor->controlNodeName);
         $this->assertSame(ClassifierSemanticLevel::Category, $descriptor->controlNodeLevel);
         $this->assertSame('31.02.10', $descriptor->controlNodeParentCode);
+        $this->assertSame([
+            'C' => null,
+            '31' => 'C',
+            '31.0' => '31',
+            '31.02' => '31.0',
+            '31.02.1' => '31.02',
+            '31.02.10' => '31.02.1',
+        ], $descriptor->controlAncestorParents);
     }
 
     public function test_unknown_candidate_is_a_controlled_failure(): void
@@ -57,6 +65,21 @@ class TrustedClassifierCandidateDescriptorTest extends TestCase
         $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $first->fingerprint());
         $this->assertArrayNotHasKey('created_at', $first->fingerprintPayload());
         $this->assertArrayNotHasKey('updated_at', $first->fingerprintPayload());
+
+        $oldPayload = $first->fingerprintPayload();
+        $oldPayload['expected_profile']['control_node']['ancestor_parents'] = [
+            '31' => null,
+            '31.0' => '31',
+            '31.02' => '31.0',
+            '31.02.1' => '31.02',
+            '31.02.10' => '31.02.1',
+        ];
+        $oldFingerprint = hash('sha256', json_encode(
+            $oldPayload,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        ));
+
+        $this->assertNotSame($oldFingerprint, $first->fingerprint());
     }
 
     public function test_exact_candidate_snapshot_passes(): void
@@ -145,7 +168,8 @@ class TrustedClassifierCandidateDescriptorTest extends TestCase
         }
 
         $nodes = [
-            $this->node('31', null, ClassifierSemanticLevel::ClassLevel),
+            $this->node('C', null, ClassifierSemanticLevel::Section),
+            $this->node('31', 'C', ClassifierSemanticLevel::ClassLevel),
             $this->node('31.0', '31', ClassifierSemanticLevel::Subclass),
             $this->node('31.02', '31.0', ClassifierSemanticLevel::Group),
             $this->node('31.02.1', '31.02', ClassifierSemanticLevel::Subgroup),

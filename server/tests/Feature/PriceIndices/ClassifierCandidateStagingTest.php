@@ -127,6 +127,39 @@ class ClassifierCandidateStagingTest extends TestCase
         $this->assertNegativePersistenceAssertions();
     }
 
+    public function test_historical_ready_fingerprint_is_preserved_while_corrected_attempt_is_staged_and_reused(): void
+    {
+        [$classifier, $source] = $this->createTrustedSource();
+        $historicalSummary = $this->summary();
+        $historicalSummary['candidate_fingerprint'] = $this->historicalFingerprint();
+        $historical = $this->readyImport($classifier, $source, [
+            'validation_summary_json' => $historicalSummary,
+        ]);
+        $historicalSummaryBefore = $historical->validation_summary_json;
+        $this->mockIntegrity(2);
+        $this->mockParser($this->snapshot(), 1);
+        $service = app(StageTrustedClassifierCandidate::class);
+
+        $corrected = $service->stage('okpd2_145_2026');
+        $reused = $service->stage('okpd2_145_2026');
+        $correctedImport = StatisticalClassifierImport::query()
+            ->whereKeyNot($historical->id)
+            ->sole();
+
+        $this->assertFalse($corrected->reused);
+        $this->assertSame(2, $corrected->attempt);
+        $this->assertSame($correctedImport->public_id, $corrected->importPublicId);
+        $this->assertSame(ClassifierImportStatus::Ready, $correctedImport->status);
+        $this->assertSame($this->descriptor()->fingerprint(), $correctedImport->validation_summary_json['candidate_fingerprint']);
+        $this->assertTrue($reused->reused);
+        $this->assertSame($corrected->importPublicId, $reused->importPublicId);
+        $this->assertSame(2, StatisticalClassifierImport::query()->count());
+        $this->assertSame(ClassifierImportStatus::Ready, $historical->fresh()->status);
+        $this->assertSame($historicalSummaryBefore, $historical->fresh()->validation_summary_json);
+        $this->assertSame($this->historicalFingerprint(), $historical->fresh()->validation_summary_json['candidate_fingerprint']);
+        $this->assertNegativePersistenceAssertions();
+    }
+
     public function test_failed_import_is_never_reused_and_next_attempt_is_created(): void
     {
         [$classifier, $source] = $this->createTrustedSource();
@@ -246,13 +279,13 @@ class ClassifierCandidateStagingTest extends TestCase
     {
         [$classifier, $source] = $this->createTrustedSource();
         $summary = $this->summary();
-        $summary['candidate_fingerprint'] = str_repeat('0', 64);
+        $summary['candidate_fingerprint'] = $this->historicalFingerprint();
         $import = $this->readyImport($classifier, $source, ['validation_summary_json' => $summary]);
         $this->createVersion($classifier, $import);
         $this->mockIntegrity(1);
 
         $this->assertStageError('candidate_version_conflict');
-        $this->assertSame(str_repeat('0', 64), $import->fresh()->validation_summary_json['candidate_fingerprint']);
+        $this->assertSame($this->historicalFingerprint(), $import->fresh()->validation_summary_json['candidate_fingerprint']);
         $this->assertSame(1, StatisticalClassifierImport::query()->count());
     }
 
@@ -383,7 +416,8 @@ class ClassifierCandidateStagingTest extends TestCase
     {
         $descriptor = $this->descriptor();
         $nodes = [
-            $this->node('31', null, ClassifierSemanticLevel::ClassLevel),
+            $this->node('C', null, ClassifierSemanticLevel::Section),
+            $this->node('31', 'C', ClassifierSemanticLevel::ClassLevel),
             $this->node('31.0', '31', ClassifierSemanticLevel::Subclass),
             $this->node('31.02', '31.0', ClassifierSemanticLevel::Group),
             $this->node('31.02.1', '31.02', ClassifierSemanticLevel::Subgroup),
@@ -438,6 +472,23 @@ class ClassifierCandidateStagingTest extends TestCase
     private function descriptor(): TrustedClassifierCandidateDescriptor
     {
         return app(TrustedClassifierCandidateRegistry::class)->get('okpd2_145_2026');
+    }
+
+    private function historicalFingerprint(): string
+    {
+        $payload = $this->descriptor()->fingerprintPayload();
+        $payload['expected_profile']['control_node']['ancestor_parents'] = [
+            '31' => null,
+            '31.0' => '31',
+            '31.02' => '31.0',
+            '31.02.1' => '31.02',
+            '31.02.10' => '31.02.1',
+        ];
+
+        return hash('sha256', json_encode(
+            $payload,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        ));
     }
 
     private function assertStageError(string $expectedCode): void

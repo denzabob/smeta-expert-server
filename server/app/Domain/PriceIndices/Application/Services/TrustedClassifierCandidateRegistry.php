@@ -52,7 +52,8 @@ class TrustedClassifierCandidateRegistry
             controlNodeLevel: ClassifierSemanticLevel::Category,
             controlNodeParentCode: '31.02.10',
             controlAncestorParents: [
-                '31' => null,
+                'C' => null,
+                '31' => 'C',
                 '31.0' => '31',
                 '31.02' => '31.0',
                 '31.02.1' => '31.02',
