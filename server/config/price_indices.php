@@ -51,6 +51,31 @@ return [
         ],
     ],
 
+    'classifier_parsers' => [
+        'okpd2_rosstat_docx' => [
+            'version' => 1,
+            'parts' => [
+                ['filename' => 'TIZ_OKPD2_1.docx', 'sections' => range('A', 'D')],
+                ['filename' => 'TIZ_OKPD2_2.docx', 'sections' => range('E', 'U')],
+            ],
+            'minimum_digital_nodes' => 10_000,
+            'outer_zip' => [
+                'max_entries' => 8,
+                'max_single_entry_uncompressed_bytes' => 20_971_520,
+                'max_total_uncompressed_bytes' => 41_943_040,
+                'max_compression_ratio' => 200,
+            ],
+            'docx_zip' => [
+                'max_entries' => 256,
+                'max_single_entry_uncompressed_bytes' => 67_108_864,
+                'max_total_uncompressed_bytes' => 134_217_728,
+                'max_compression_ratio' => 200,
+            ],
+            'max_document_xml_bytes' => 50_331_648,
+            'max_control_xml_bytes' => 1_048_576,
+        ],
+    ],
+
     'xlsx' => [
         'max_zip_entries' => 5_000,
         'max_single_entry_uncompressed_bytes' => 67_108_864,
