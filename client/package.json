@@ -9,10 +9,12 @@
   "scripts": {
     "dev": "vite",
     "build": "run-p type-check \"build-only {@}\" --",
+    "build:public-price-indices": "vite build --config vite.config.public-price-indices.ts --mode public-price-indices-calculator && vite build --config vite.config.public-price-indices.ts --mode public-price-indices-chart",
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "test:unit": "vitest run",
+    "test:public-price-indices": "vitest run src/public-price-indices/public-price-indices.spec.ts",
     "lint": "eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/"
   },

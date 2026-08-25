@@ -2,9 +2,11 @@
 
 namespace App\Domain\PriceIndices\Http\Controllers;
 
+use App\Domain\PriceIndices\Application\Services\BuildPublicPriceIndexChartData;
 use App\Domain\PriceIndices\Application\Services\GetPublicIndexPage;
 use App\Domain\PriceIndices\Application\Services\ListPublicIndexObservations;
 use App\Domain\PriceIndices\Application\Services\ListRelatedPublicIndexPages;
+use App\Domain\PriceIndices\Application\Services\ResolvePublicClassifierContext;
 use App\Domain\PriceIndices\Application\Support\PublicIndexFormatter;
 use App\Domain\PriceIndices\Application\Support\PublicIndexStructuredData;
 use App\Domain\PriceIndices\Application\Support\PublicPriceIndexUrl;
@@ -17,13 +19,16 @@ final class PublicIndexDetailController extends Controller
         string $slug,
         GetPublicIndexPage $pages,
         ListPublicIndexObservations $observations,
+        BuildPublicPriceIndexChartData $chartData,
         ListRelatedPublicIndexPages $relatedPages,
+        ResolvePublicClassifierContext $classifierContexts,
         PublicPriceIndexUrl $urls,
         PublicIndexFormatter $formatter,
         PublicIndexStructuredData $structuredData,
     ): View {
         $page = $pages->execute($slug);
         $publicObservations = $observations->execute($page);
+        $classifierContext = $classifierContexts->execute($page);
         $item = $page->classifierItem;
         $provider = $page->dataset?->provider_name ?: 'Росстат';
         $change = $formatter->percent($page->change_percent);
@@ -61,16 +66,21 @@ final class PublicIndexDetailController extends Controller
         $calculatorSupported = $page->series?->frequency === 'monthly'
             && $page->series?->comparison_basis === 'previous_month'
             && $page->series?->unit === 'percent';
+        $publicChartData = $calculatorSupported
+            ? $chartData->execute($page, $publicObservations)
+            : null;
 
         return view('price-indices.public.detail', [
             'page' => $page,
             'observations' => $publicObservations,
-            'relatedPages' => $relatedPages->execute($page),
+            'relatedPages' => $classifierContext === null ? $relatedPages->execute($page) : collect(),
+            'classifierContext' => $classifierContext,
             'urls' => $urls,
             'formatter' => $formatter,
             'canonical' => $canonical,
             'calculationEndpoint' => $urls->calculation($slug),
             'calculatorSupported' => $calculatorSupported,
+            'chartData' => $publicChartData,
             'calculatorUrl' => $urls->calculator((string) $page->series?->public_id, (string) $item?->item_code),
             'title' => $title,
             'description' => $description,

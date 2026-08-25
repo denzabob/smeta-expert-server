@@ -40,20 +40,28 @@ class PublicPriceIndexCalculationTest extends TestCase
         $this->assertGuest();
     }
 
-    public function test_calculator_script_contains_the_required_in_page_transport_hooks(): void
+    public function test_public_assets_keep_calculator_transport_separate_from_the_chart_bundle(): void
     {
-        $script = file_get_contents(public_path('price-indices-public-calculator.js'));
+        $calculator = file_get_contents(public_path('price-indices-public-calculator.js'));
+        $chart = file_get_contents(public_path('price-indices-public-chart.js'));
 
-        $this->assertIsString($script);
-        $this->assertStringContainsString("document.querySelector('[data-public-index-calculator]')", $script);
-        $this->assertStringContainsString("form.addEventListener('submit'", $script);
-        $this->assertStringContainsString('event.preventDefault();', $script);
-        $this->assertStringContainsString('window.fetch(form.action', $script);
-        $this->assertStringContainsString("'Accept': 'application/json'", $script);
-        $this->assertStringContainsString("'Content-Type': 'application/json'", $script);
-        $this->assertStringContainsString('result.hidden = false;', $script);
-        $this->assertStringNotContainsString('window.location', $script);
-        $this->assertStringNotContainsString('history.', $script);
+        $this->assertIsString($calculator);
+        $this->assertIsString($chart);
+        $this->assertStringContainsString('data-public-index-calculator', $calculator);
+        $this->assertStringContainsString('application/json', $calculator);
+        $this->assertStringContainsString('price-indices:calculation-succeeded', $calculator);
+        $this->assertStringNotContainsString('window.location', $calculator);
+        $this->assertStringNotContainsString('history.', $calculator);
+        $this->assertLessThan(20_000, strlen($calculator));
+
+        $this->assertStringContainsString('data-public-index-chart', $chart);
+        $this->assertStringContainsString('price-indices:calculation-succeeded', $chart);
+        $this->assertStringNotContainsString('window.fetch', $chart);
+        $this->assertStringNotContainsString('createApp', $chart);
+        $this->assertStringNotContainsString('vuetify', mb_strtolower($chart));
+        $this->assertGreaterThan(500_000, strlen($chart));
+        $this->assertLessThan(650_000, strlen($chart));
+        $this->assertLessThan(180_000, strlen(gzencode($chart, 9)));
     }
 
     public function test_anonymous_calculation_is_decimal_safe_with_optional_amount_and_public_chain(): void

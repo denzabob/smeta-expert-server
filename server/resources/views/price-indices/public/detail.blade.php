@@ -25,50 +25,67 @@
             </section>
 
             @if ($calculatorSupported)
-                <section class="panel section" aria-labelledby="public-calculator-title">
-                    <h2 id="public-calculator-title">Рассчитать изменение за период</h2>
-                    <p class="method">Расчёт применяет официальные месячные значения этого ряда из той же публикации, что и страница. Начальный месяц служит базой; используются факторы после него и по конечный месяц включительно.</p>
-                    <form id="public-index-calculator" class="calculator-form" method="post" action="{{ $calculationEndpoint }}" data-public-index-calculator>
-                        <div class="field">
-                            <label for="calculation-start-period">Начальный период</label>
-                            <select id="calculation-start-period" name="start_period" required>
-                                @foreach ($observations as $observation)
-                                    <option value="{{ $observation->period_start->format('Y-m') }}">{{ $formatter->period($observation->period_start, true) }}</option>
-                                @endforeach
-                            </select>
+                <section class="panel section chart-section" aria-labelledby="public-chart-title">
+                    <div class="chart-heading">
+                        <div>
+                            <h2 id="public-chart-title">Динамика индекса цен</h2>
+                            <p id="public-chart-description" class="method">График показывает официальные месячные значения из той же публикации, что и таблица. 100 % — уровень без изменения к предыдущему периоду.</p>
                         </div>
-                        <div class="field">
-                            <label for="calculation-end-period">Конечный период</label>
-                            <select id="calculation-end-period" name="end_period" required>
-                                @foreach ($observations as $observation)
-                                    <option value="{{ $observation->period_start->format('Y-m') }}" @selected($loop->last)>{{ $formatter->period($observation->period_start, true) }}</option>
-                                @endforeach
-                            </select>
+                        <div class="chart-mode-control" role="group" aria-label="Режим графика">
+                            <button class="chart-mode-button chart-mode-button--active" type="button" data-chart-mode="monthly" aria-pressed="true">Индекс за месяц</button>
+                            <button class="chart-mode-button" type="button" data-chart-mode="cumulative" aria-pressed="false">Накопленное изменение</button>
                         </div>
-                        <div class="field amount-field">
-                            <label for="calculation-amount">Сумма, ₽ <span class="method">(необязательно)</span></label>
-                            <input id="calculation-amount" name="amount" type="text" inputmode="decimal" maxlength="18" autocomplete="off" pattern="[0-9]+([.,][0-9]{1,2})?" aria-describedby="calculation-amount-help">
-                            <small id="calculation-amount-help">До двух знаков после запятой. Расчёт выполняется на сервере без округления в браузере.</small>
-                        </div>
-                        <div class="form-actions">
-                            <button class="button" type="submit">Рассчитать</button>
-                            <span class="form-help">Результат описывает математику выбранного статистического ряда и не является рекомендацией по выбору индекса.</span>
-                        </div>
-                    </form>
-                    <div id="calculation-error" class="form-error" role="alert" hidden></div>
-                    <div id="calculation-result" class="calculation-result" role="status" aria-live="polite" aria-atomic="true" tabindex="-1" hidden>
-                        <h3>Результат расчёта</h3>
-                        <p class="result-line">Период: <strong data-result-period></strong></p>
-                        <p class="result-line">Коэффициент: <strong data-result-coefficient></strong></p>
-                        <p class="result-line">Изменение: <strong data-result-change></strong></p>
-                        <p class="result-line" data-result-amount-row hidden>Сумма: <strong data-result-amount></strong></p>
-                        <details class="chain-details">
-                            <summary>Как рассчитано</summary>
-                            <div class="table-wrap"><table><thead><tr><th>Период</th><th>Месячный индекс</th><th>Фактор</th><th>Накопленный коэффициент</th></tr></thead><tbody data-result-chain></tbody></table></div>
-                        </details>
-                        <p class="provenance" data-result-provenance></p>
                     </div>
-                    <noscript><p class="form-error">Для показа результата прямо на этой странице требуется JavaScript. Все статистические значения, периоды и источник выше и ниже доступны без JavaScript.</p></noscript>
+                    <div class="price-chart" data-public-index-chart role="img" aria-label="Динамика месячного индекса цен" aria-describedby="public-chart-description"></div>
+                    <p class="chart-status method" data-chart-status aria-live="polite">График загружается. Все значения доступны в таблице ниже.</p>
+                    <script id="public-price-index-chart-data" type="application/json">{!! Illuminate\Support\Js::encode($chartData) !!}</script>
+                    <noscript><p class="form-error">Интерактивный график требует JavaScript. Все статистические значения, периоды и источник доступны в таблице и тексте страницы.</p></noscript>
+
+                    <div class="calculator-block" aria-labelledby="public-calculator-title">
+                        <h3 id="public-calculator-title">Рассчитать изменение за период</h3>
+                        <p class="method">Начальный месяц служит базой; сервер применяет факторы после него и по конечный месяц включительно.</p>
+                        @php($defaultStartIndex = max(0, $observations->count() - ($chartData->limits['calculator_max_range_months'] + 1)))
+                        <form id="public-index-calculator" class="calculator-form" method="post" action="{{ $calculationEndpoint }}" data-public-index-calculator data-max-range-months="{{ $chartData->limits['calculator_max_range_months'] }}">
+                            <div class="field">
+                                <label for="calculation-start-period">Начальный период</label>
+                                <select id="calculation-start-period" name="start_period" required>
+                                    @foreach ($observations as $observation)
+                                        <option value="{{ $observation->period_start->format('Y-m') }}" @selected($loop->index === $defaultStartIndex)>{{ $formatter->period($observation->period_start, true) }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="calculation-end-period">Конечный период</label>
+                                <select id="calculation-end-period" name="end_period" required>
+                                    @foreach ($observations as $observation)
+                                        <option value="{{ $observation->period_start->format('Y-m') }}" @selected($loop->last)>{{ $formatter->period($observation->period_start, true) }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="field amount-field">
+                                <label for="calculation-amount">Сумма, ₽ <span class="method">(необязательно)</span></label>
+                                <input id="calculation-amount" name="amount" type="text" inputmode="decimal" maxlength="18" autocomplete="off" pattern="[0-9]+([.,][0-9]{1,2})?" aria-describedby="calculation-amount-help">
+                                <small id="calculation-amount-help">До двух знаков после запятой. Расчёт выполняется на сервере без округления в браузере.</small>
+                            </div>
+                            <div class="form-actions">
+                                <button class="button" type="submit">Рассчитать</button>
+                                <span class="form-help">Результат описывает математику выбранного статистического ряда и не является рекомендацией по выбору индекса.</span>
+                            </div>
+                        </form>
+                        <div id="calculation-error" class="form-error" role="alert" hidden></div>
+                        <div id="calculation-result" class="calculation-result" role="status" aria-live="polite" aria-atomic="true" tabindex="-1" hidden>
+                            <h3>За выбранный период</h3>
+                            <p class="result-line">Период: <strong data-result-period></strong></p>
+                            <p class="result-line">Коэффициент: <strong data-result-coefficient></strong></p>
+                            <p class="result-line">Изменение: <strong data-result-change></strong></p>
+                            <p class="result-line" data-result-amount-row hidden>Сумма: <strong data-result-amount></strong></p>
+                            <details class="chain-details">
+                                <summary>Как рассчитано</summary>
+                                <div class="table-wrap"><table><thead><tr><th>Период</th><th>Месячный индекс</th><th>Фактор</th><th>Накопленный коэффициент</th></tr></thead><tbody data-result-chain></tbody></table></div>
+                            </details>
+                            <p class="provenance" data-result-provenance></p>
+                        </div>
+                    </div>
                 </section>
             @endif
 
@@ -83,8 +100,60 @@
 
             <section class="panel section method">
                 <h2>Как рассчитан коэффициент</h2>
-                <p>Коэффициент отражает последовательное применение официальных месячных индексов после базового месяца и до конца выбранного диапазона. Агрегат заранее зафиксирован в публичном snapshot; при открытии страницы он не пересчитывается.</p>
+                <p>Коэффициент отражает последовательное применение официальных месячных индексов после базового месяца и до конца выбранного диапазона. Агрегат заранее зафиксирован в опубликованных данных; при открытии страницы он не пересчитывается.</p>
             </section>
+
+            @if ($classifierContext !== null)
+                <section class="panel section classifier-context" aria-labelledby="official-classifier-title">
+                    <div class="classifier-context__header">
+                        <div>
+                            <span class="classifier-label">ОКПД2</span>
+                            <h2 id="official-classifier-title">Официальная классификация</h2>
+                        </div>
+                        <dl class="classifier-version">
+                            <div><dt>Версия</dt><dd>{{ $classifierContext->versionLabel }}</dd></div>
+                            <div><dt>Действует с</dt><dd>{{ $classifierContext->effectiveFrom->format('d.m.Y') }}</dd></div>
+                        </dl>
+                    </div>
+
+                    <ol class="classifier-lineage" aria-label="Иерархия ОКПД2">
+                        @foreach ($classifierContext->lineage as $position)
+                            <li @class(['classifier-position', 'classifier-position--current' => $position->isCurrent]) @if ($position->isCurrent) aria-current="true" @endif>
+                                @if (! $position->isCurrent && $position->statisticalSlug !== null)
+                                    <a class="classifier-position__content" href="{{ $urls->detail($position->statisticalSlug) }}"><span class="classifier-code">{{ $position->code }}</span><span>{{ $position->name }}</span></a>
+                                @else
+                                    <span class="classifier-position__content"><span class="classifier-code">{{ $position->code }}</span><span>{{ $position->name }}</span></span>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ol>
+
+                    @if ($classifierContext->children !== [])
+                        <div class="classifier-children">
+                            <h3>Дочерние позиции</h3>
+                            <ul class="classifier-children__list">
+                                @foreach ($classifierContext->children as $child)
+                                    <li>
+                                        <div>
+                                            @if ($child->statisticalSlug !== null)
+                                                <a href="{{ $urls->detail($child->statisticalSlug) }}"><span class="classifier-code">{{ $child->code }}</span> — {{ $child->name }}</a>
+                                            @else
+                                                <span><span class="classifier-code">{{ $child->code }}</span> — {{ $child->name }}</span>
+                                            @endif
+                                        </div>
+                                        @if ($child->hasRosstatData)
+                                            <span class="classifier-data-marker">Есть данные Росстата</span>
+                                        @endif
+                                    </li>
+                                @endforeach
+                            </ul>
+                            @if ($classifierContext->hasMoreChildren)
+                                <p class="classifier-more"><a href="{{ $urls->catalogSearch($classifierContext->current->code) }}">Найти все позиции этого раздела</a></p>
+                            @endif
+                        </div>
+                    @endif
+                </section>
+            @endif
 
             @if ($relatedPages->isNotEmpty())
                 <section class="panel section">
@@ -114,7 +183,7 @@
                     <li><span>SHA-256</span>{{ $page->sourceFile->sha256 }}</li>
                     <li><span>Импорт</span>{{ $formatter->shortPublicId($page->import->public_id) }} · {{ $page->import->importer_code }} v{{ $page->import->importer_version }}</li>
                     <li><span>Опубликовано</span>{{ $page->source_published_at ? $page->source_published_at->format('d.m.Y H:i') : '—' }}</li>
-                    <li><span>Snapshot обновлён</span>{{ $page->generated_at->format('d.m.Y H:i') }}</li>
+                    <li><span>Данные обновлены</span>{{ $page->generated_at->format('d.m.Y H:i') }}</li>
                 </ul>
                 @php($sourceUrl = $page->sourceFile->source?->source_page_url ?: $page->sourceFile->source_url)
                 @if ($sourceUrl && filter_var($sourceUrl, FILTER_VALIDATE_URL))
@@ -128,5 +197,6 @@
 @if ($calculatorSupported)
     @push('scripts')
         <script defer src="/price-indices-public-calculator.js"></script>
+        <script defer src="/price-indices-public-chart.js"></script>
     @endpush
 @endif

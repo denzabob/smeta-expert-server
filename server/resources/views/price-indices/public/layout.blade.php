@@ -117,6 +117,35 @@
         .summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:28px 0; }
         .summary-grid .metric { border:1px solid var(--outline); background:var(--surface); }
         .related-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 24px; margin:0; padding-left:20px; }
+        .chart-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
+        .chart-heading h2 { margin-bottom:8px; }
+        .chart-heading .method { max-width:620px; margin:0; }
+        .chart-mode-control { display:inline-flex; flex:0 0 auto; padding:3px; border:1px solid var(--outline); border-radius:12px; background:var(--surface-alt); }
+        .chart-mode-button { min-height:40px; padding:7px 12px; border:0; border-radius:9px; background:transparent; color:var(--muted); font:inherit; font-size:14px; font-weight:700; cursor:pointer; }
+        .chart-mode-button--active { background:var(--surface); color:var(--primary); box-shadow:0 1px 4px rgba(25,39,71,.12); }
+        .price-chart { width:100%; min-width:0; min-height:300px; margin-top:18px; overflow:hidden; }
+        .chart-status { min-height:20px; margin:4px 0 0; font-size:14px; }
+        .price-chart-tooltip { display:grid; gap:5px; min-width:170px; padding:10px 12px; color:var(--ink); font-size:13px; }
+        .price-chart-tooltip strong { margin-bottom:2px; }
+        .calculator-block { margin-top:22px; padding-top:22px; border-top:1px solid var(--outline); }
+        .calculator-block h3 { margin:0 0 8px; font-size:19px; }
+        .classifier-context__header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; }
+        .classifier-label { display:inline-block; margin-bottom:6px; color:var(--primary); font-size:13px; font-weight:800; letter-spacing:.08em; }
+        .classifier-version { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px 20px; margin:0; }
+        .classifier-version div { min-width:112px; }
+        .classifier-version dt { color:var(--muted); font-size:12px; }
+        .classifier-version dd { margin:2px 0 0; font-weight:700; font-variant-numeric:tabular-nums; }
+        .classifier-lineage { display:grid; gap:2px; margin:20px 0 0; padding:0 0 0 14px; border-left:2px solid var(--outline); list-style:none; }
+        .classifier-position { border-radius:10px; }
+        .classifier-position__content { display:grid; grid-template-columns:minmax(86px,auto) minmax(0,1fr); gap:12px; padding:7px 10px; color:inherit; text-decoration:none; }
+        .classifier-position--current { background:var(--primary-soft); color:var(--ink); font-weight:700; }
+        .classifier-code { color:var(--primary); font-weight:750; font-variant-numeric:tabular-nums; }
+        .classifier-children { margin-top:24px; padding-top:22px; border-top:1px solid var(--outline); }
+        .classifier-children h3 { margin:0 0 12px; font-size:18px; }
+        .classifier-children__list { display:grid; gap:0; margin:0; padding:0; list-style:none; }
+        .classifier-children__list li { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:9px 0; border-bottom:1px solid var(--outline); }
+        .classifier-data-marker { flex:0 0 auto; padding:3px 8px; border-radius:999px; background:var(--primary-soft); color:var(--primary); font-size:12px; font-weight:700; }
+        .classifier-more { margin:16px 0 0; }
         .calculator-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
         .calculator-form .amount-field,.calculator-form .form-actions { grid-column:1 / -1; }
         .form-actions { display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
@@ -130,8 +159,8 @@
         .provenance { margin-top:18px; color:var(--muted); font-size:14px; overflow-wrap:anywhere; }
         [hidden] { display:none !important; }
         footer { padding:28px 0; border-top:1px solid var(--outline); color:var(--muted); background:var(--surface); font-size:14px; }
-        @media (max-width:760px) { .grid,.detail-grid,.facts,.summary-grid,.related-list,.calculator-form,.search-controls { grid-template-columns:1fr; } .search-controls .button { width:100%; } .calculator-form .amount-field,.calculator-form .form-actions { grid-column:auto; } main { padding-top:28px; } .section,.card { padding:20px; } .metrics { grid-template-columns:1fr 1fr; } }
-        @media (max-width:420px) { .shell { width:min(100% - 20px,1160px); } .metrics { grid-template-columns:1fr; } }
+        @media (max-width:760px) { .grid,.detail-grid,.facts,.summary-grid,.related-list,.calculator-form,.search-controls { grid-template-columns:1fr; } .search-controls .button { width:100%; } .calculator-form .amount-field,.calculator-form .form-actions { grid-column:auto; } .chart-heading { display:block; } .chart-mode-control { display:grid; grid-template-columns:1fr 1fr; width:100%; margin-top:16px; } .classifier-context__header { display:block; } .classifier-version { justify-content:flex-start; margin-top:14px; } .classifier-position__content { grid-template-columns:1fr; gap:2px; } .classifier-children__list li { display:block; } .classifier-data-marker { display:inline-block; margin-top:5px; } main { padding-top:28px; } .section,.card { padding:20px; } .metrics { grid-template-columns:1fr 1fr; } }
+        @media (max-width:420px) { .shell { width:min(100% - 20px,1160px); } .metrics { grid-template-columns:1fr; } .chart-mode-control { grid-template-columns:1fr; } .chart-mode-button { width:100%; } }
     </style>
 </head>
 <body>
