@@ -40,7 +40,9 @@ class PublicPriceIndicesInformationArchitectureTest extends TestCase
             ->assertSee('декабрь 2025')
             ->assertSee('01.07.2026')
             ->assertSee('https://indices.test/31-02-10-140', false)
-            ->assertSee('https://rosstat.gov.ru/statistics/price', false);
+            ->assertSee('https://rosstat.gov.ru/statistics/price', false)
+            ->assertDontSee('Значения, периоды и ссылки ниже сформированы из текущего публичного snapshot.')
+            ->assertDontSee('<div class="lead"></div>', false);
 
         $schema = $this->structuredData($response);
         $this->assertSame('https://indices.test/producer-prices/', $this->graphEntity($schema, 'WebPage')['url']);
@@ -60,7 +62,8 @@ class PublicPriceIndicesInformationArchitectureTest extends TestCase
             ->assertSee('<link rel="canonical" href="https://indices.test/producer-prices/products/">', false)
             ->assertSee('https://indices.test/'.$first['page']->slug, false)
             ->assertSee('https://indices.test/'.$related->slug, false)
-            ->assertSee('Это обзор и навигационная страница')
+            ->assertDontSee('Это обзор и навигационная страница: полный пагинируемый список не дублируется и остаётся в основном каталоге.')
+            ->assertDontSee('<div class="lead"></div>', false)
             ->assertDontSee('<nav class="pagination"', false);
     }
 

@@ -75,6 +75,11 @@ class StatisticalClassifierNode extends Model
         return $this->hasMany(self::class, 'parent_node_id');
     }
 
+    public function itemMappings(): HasMany
+    {
+        return $this->hasMany(StatisticalClassifierItemMapping::class, 'classifier_node_id');
+    }
+
     protected static function newFactory(): Factory
     {
         return StatisticalClassifierNodeFactory::new();

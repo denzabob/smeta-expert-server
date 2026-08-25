@@ -76,6 +76,12 @@ return [
         ],
     ],
 
+    'classifier_mappings' => [
+        'dataset_classifier_aliases' => [
+            'okpd2_based' => 'okpd2',
+        ],
+    ],
+
     'xlsx' => [
         'max_zip_entries' => 5_000,
         'max_single_entry_uncompressed_bytes' => 67_108_864,

@@ -75,6 +75,11 @@ class StatisticalClassifierItem extends Model
         return $this->hasMany(StatisticalSeries::class, 'classifier_item_id');
     }
 
+    public function canonicalMappings(): HasMany
+    {
+        return $this->hasMany(StatisticalClassifierItemMapping::class, 'statistical_classifier_item_id');
+    }
+
     protected static function newFactory(): Factory
     {
         return StatisticalClassifierItemFactory::new();

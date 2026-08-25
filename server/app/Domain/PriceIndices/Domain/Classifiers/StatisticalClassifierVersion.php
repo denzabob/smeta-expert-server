@@ -62,6 +62,11 @@ class StatisticalClassifierVersion extends Model
         return $this->hasOne(StatisticalClassifierActiveVersion::class, 'classifier_version_id');
     }
 
+    public function itemMappings(): HasMany
+    {
+        return $this->hasMany(StatisticalClassifierItemMapping::class, 'classifier_version_id');
+    }
+
     protected static function newFactory(): Factory
     {
         return StatisticalClassifierVersionFactory::new();

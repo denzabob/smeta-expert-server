@@ -15,14 +15,14 @@
                 <input id="public-index-search" name="q" type="search" value="{{ $searchQuery }}" maxlength="120" placeholder="Например, 31.02.10.140 или кухонная мебель" aria-describedby="public-index-search-help">
                 <button class="button" type="submit">Найти</button>
             </div>
-            <small id="public-index-search-help">Поиск выполняется только среди опубликованных индексов.</small>
+            <small id="public-index-search-help">Поиск по опубликованным данным Росстата и официальному ОКПД2.</small>
         </div>
     </form>
 
     @if ($isSearch)
         <p class="search-summary">
             @if ($pages->total() > 0)
-                Найдено опубликованных рядов: {{ $pages->total() }}@if ($searchQuery !== '') по запросу «{{ $searchQuery }}»@endif.
+                Найдено результатов: {{ $pages->total() }}@if ($searchQuery !== '') по запросу «{{ $searchQuery }}»@endif.
             @endif
             <a href="{{ $urls->catalog() }}">Все индексы</a>
         </p>
@@ -30,25 +30,56 @@
 
     @if ($pages->isNotEmpty())
     <div class="grid">
-        @foreach ($pages as $page)
-            <a class="panel card" href="{{ $urls->detail($page->slug) }}">
-                @php($providerCodeKind = $page->classifierItem->metadata_json['provider_code_kind'] ?? null)
-                @php($classifierLabel = $formatter->classifierLabel($page->classifierItem->classifier_code, is_string($providerCodeKind) ? $providerCodeKind : null))
-                <span class="code">{{ $classifierLabel ? $classifierLabel.' ' : '' }}{{ $page->classifierItem->item_code }}</span>
-                <h2>{{ $page->classifierItem->name }}</h2>
-                <div>Индекс цен производителей</div>
-                <div>{{ $formatter->periodRange($page->period_from, $page->period_to) }}</div>
-                <div class="metrics">
-                    <div class="metric"><span class="metric__label">Изменение</span><span class="metric__value">{{ $formatter->percent($page->change_percent) }}</span></div>
-                    <div class="metric"><span class="metric__label">Коэффициент</span><span class="metric__value">{{ $formatter->coefficient($page->coefficient) }}</span></div>
-                </div>
-            </a>
-        @endforeach
+        @if ($isCombinedSearch)
+            @foreach ($pages as $result)
+                @if ($result->isStatisticalSeries())
+                    <a class="panel card" href="{{ $urls->detail($result->statisticalSlug) }}">
+                        @php($classifierLabel = $result->classifierLabel ?? $formatter->classifierLabel((string) $result->localClassifierCode, $result->providerCodeKind))
+                        <span class="code">{{ $classifierLabel ? $classifierLabel.' ' : '' }}{{ $result->code }}</span>
+                        <h2>{{ $result->name }}</h2>
+                        @if ($result->hasRosstatData)
+                            <div>Есть опубликованные данные Росстата</div>
+                            <div>Открыть данные</div>
+                        @else
+                            <div>Индекс цен производителей</div>
+                        @endif
+                        @if ($result->periodFrom && $result->periodTo)
+                            <div>{{ $formatter->periodRange($result->periodFrom, $result->periodTo) }}</div>
+                        @endif
+                        <div class="metrics">
+                            <div class="metric"><span class="metric__label">Изменение</span><span class="metric__value">{{ $formatter->percent($result->changePercent) }}</span></div>
+                            <div class="metric"><span class="metric__label">Коэффициент</span><span class="metric__value">{{ $formatter->coefficient($result->coefficient) }}</span></div>
+                        </div>
+                    </a>
+                @else
+                    <article class="panel card">
+                        <span class="code">ОКПД2 {{ $result->code }}</span>
+                        <h2>{{ $result->name }}</h2>
+                        <div>Отдельный опубликованный ряд Росстата не найден</div>
+                    </article>
+                @endif
+            @endforeach
+        @else
+            @foreach ($pages as $page)
+                <a class="panel card" href="{{ $urls->detail($page->slug) }}">
+                    @php($providerCodeKind = $page->classifierItem->metadata_json['provider_code_kind'] ?? null)
+                    @php($classifierLabel = $formatter->classifierLabel($page->classifierItem->classifier_code, is_string($providerCodeKind) ? $providerCodeKind : null))
+                    <span class="code">{{ $classifierLabel ? $classifierLabel.' ' : '' }}{{ $page->classifierItem->item_code }}</span>
+                    <h2>{{ $page->classifierItem->name }}</h2>
+                    <div>Индекс цен производителей</div>
+                    <div>{{ $formatter->periodRange($page->period_from, $page->period_to) }}</div>
+                    <div class="metrics">
+                        <div class="metric"><span class="metric__label">Изменение</span><span class="metric__value">{{ $formatter->percent($page->change_percent) }}</span></div>
+                        <div class="metric"><span class="metric__label">Коэффициент</span><span class="metric__value">{{ $formatter->coefficient($page->coefficient) }}</span></div>
+                    </div>
+                </a>
+            @endforeach
+        @endif
     </div>
     @elseif ($isSearch)
         <section class="panel empty-state">
             <h2>Ничего не найдено</h2>
-            <p>По запросу «{{ $searchQuery }}» ничего не найдено среди опубликованных индексов Росстата.</p>
+            <p>По запросу «{{ $searchQuery }}» ничего не найдено в опубликованных данных Росстата и ОКПД2.</p>
             <ul>
                 <li>Проверьте код продукции.</li>
                 <li>Попробуйте более короткое название.</li>
