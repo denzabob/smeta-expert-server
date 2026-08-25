@@ -10,7 +10,6 @@ use App\Domain\PriceIndices\Domain\Classifiers\ClassifierImportLifecycle;
 use App\Domain\PriceIndices\Domain\Classifiers\StatisticalClassifier;
 use App\Domain\PriceIndices\Domain\Classifiers\StatisticalClassifierImport;
 use App\Domain\PriceIndices\Domain\Classifiers\StatisticalClassifierSourceFile;
-use App\Domain\PriceIndices\Domain\Classifiers\StatisticalClassifierVersion;
 use App\Domain\PriceIndices\Domain\Enums\ClassifierImportStatus;
 use App\Domain\PriceIndices\Domain\Exceptions\ClassifierAcquisitionException;
 use App\Domain\PriceIndices\Domain\Exceptions\ClassifierCandidateStagingException;
@@ -26,6 +25,7 @@ class StageTrustedClassifierCandidate
         private readonly ResolveTrustedClassifierCandidateSource $sources,
         private readonly ClassifierArtifactStorage $storage,
         private readonly FindEquivalentReadyClassifierImport $readyImports,
+        private readonly FindEquivalentClassifierVersion $versions,
         private readonly AllocateClassifierImportAttempt $attempts,
         private readonly ClassifierImportLifecycle $lifecycle,
         private readonly ParseOkpd2ClassifierArtifact $parser,
@@ -39,7 +39,12 @@ class StageTrustedClassifierCandidate
         [$classifier, $source] = $this->sources->resolve($descriptor);
         $this->verifyArtifact($descriptor, $source);
 
-        $existingVersion = $this->findExistingVersion($descriptor, $classifier, $source);
+        $existingVersion = $this->versions->find(
+            $descriptor,
+            $classifier,
+            $source,
+            requireSameImport: false,
+        );
 
         if ($existingVersion !== null) {
             return $this->result(
@@ -184,42 +189,6 @@ class StageTrustedClassifierCandidate
             'The exact classifier source artifact failed immutable integrity verification.',
             'artifact_integrity',
         );
-    }
-
-    private function findExistingVersion(
-        TrustedClassifierCandidateDescriptor $descriptor,
-        StatisticalClassifier $classifier,
-        StatisticalClassifierSourceFile $source,
-    ): ?StatisticalClassifierVersion {
-        $version = StatisticalClassifierVersion::query()
-            ->with('classifierImport')
-            ->where('classifier_id', $classifier->id)
-            ->where('version_label', $descriptor->versionLabel)
-            ->first();
-
-        if ($version === null) {
-            return null;
-        }
-
-        $import = $version->classifierImport;
-        $matches = $version->effective_from?->toDateString() === $descriptor->effectiveFrom
-            && $import instanceof StatisticalClassifierImport
-            && $import->status === ClassifierImportStatus::Ready
-            && $import->source_file_id === $source->id
-            && $import->parser_code === $descriptor->parserCode
-            && $import->parser_version === (string) $descriptor->parserVersion
-            && $this->readyImports->hasCandidateProvenance($import, $descriptor);
-
-        if (! $matches) {
-            throw new ClassifierCandidateStagingException(
-                'candidate_version_conflict',
-                'An existing classifier version label has conflicting candidate provenance.',
-                'version_preflight',
-                ['version_label' => $descriptor->versionLabel],
-            );
-        }
-
-        return $version;
     }
 
     /**
