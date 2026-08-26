@@ -51,7 +51,7 @@ class PriceIndicesImportLifecycleTest extends TestCase
 
     public function test_import_creation_requires_active_source_and_tracks_attempts_and_retry(): void
     {
-        $dataset = StatisticalDataset::factory()->create();
+        $dataset = StatisticalDataset::factory()->create(['code' => 'producer_price_indices_by_product']);
         $active = StatisticalSourceFile::factory()->create([
             'dataset_id' => $dataset->id,
             'status' => SourceFileStatus::Active,

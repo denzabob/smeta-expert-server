@@ -7,6 +7,7 @@ use App\Domain\PriceIndices\Domain\Datasets\StatisticalDataset;
 use App\Domain\PriceIndices\Domain\Enums\StatisticalImportStatus;
 use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesInvariantViolation;
 use App\Domain\PriceIndices\Domain\Imports\StatisticalDatasetActiveImport;
+use App\Domain\PriceIndices\Domain\Imports\StatisticalImport;
 use App\Domain\PriceIndices\Domain\Observations\StatisticalObservation;
 use App\Jobs\RunStatisticalImportJob;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -69,7 +70,13 @@ class PriceIndicesImportJobTest extends TestCase
     {
         $dataset = StatisticalDataset::factory()->create(['code' => 'unsupported_dataset']);
         $file = $this->sourceFileForWorkbook($dataset, $this->writeRepresentativeWorkbook());
-        $import = app(CreateStatisticalImport::class)->execute($dataset, $file);
+        $import = StatisticalImport::factory()->create([
+            'dataset_id' => $dataset->id,
+            'source_file_id' => $file->id,
+            'importer_code' => 'unsupported_importer',
+            'importer_version' => '1.0.0',
+            'status' => StatisticalImportStatus::Pending,
+        ]);
 
         try {
             $this->app->call([new RunStatisticalImportJob($import->public_id), 'handle']);

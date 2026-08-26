@@ -3,10 +3,10 @@
 namespace App\Domain\PriceIndices\Application\Services;
 
 use App\Domain\PriceIndices\Application\Contracts\StatisticalSourceImporter;
-use App\Domain\PriceIndices\Domain\Datasets\StatisticalDataset;
 use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesInvariantViolation;
 use App\Domain\PriceIndices\Domain\Imports\StatisticalImport;
 use App\Domain\PriceIndices\Domain\SourceFiles\StatisticalSourceFile;
+use App\Domain\PriceIndices\Infrastructure\Import\ConsumerPriceIndicesRfMonthlyImporter;
 use App\Domain\PriceIndices\Infrastructure\Import\ProducerPriceIndicesByProductImporter;
 
 class StatisticalImporterRegistry
@@ -14,9 +14,14 @@ class StatisticalImporterRegistry
     /** @var array<string, StatisticalSourceImporter> */
     private array $importers;
 
-    public function __construct(ProducerPriceIndicesByProductImporter $producerPriceIndices)
-    {
-        $this->importers = ['producer_price_indices_by_product' => $producerPriceIndices];
+    public function __construct(
+        ProducerPriceIndicesByProductImporter $producerPriceIndices,
+        ConsumerPriceIndicesRfMonthlyImporter $consumerPriceIndices,
+    ) {
+        $this->importers = [
+            'producer_price_indices_by_product' => $producerPriceIndices,
+            'consumer_price_indices_rf_monthly' => $consumerPriceIndices,
+        ];
     }
 
     public function forSourceFile(StatisticalSourceFile $file): StatisticalSourceImporter

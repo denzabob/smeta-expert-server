@@ -13,26 +13,27 @@ use Illuminate\Support\Facades\DB;
 
 class CreateStatisticalImport
 {
+    public function __construct(private readonly StatisticalImporterRegistry $registry) {}
+
     public function execute(
         StatisticalDataset $dataset,
         StatisticalSourceFile $sourceFile,
         ?User $actor = null,
         ?StatisticalImport $retryOf = null
     ): StatisticalImport {
-        $identity = config('price_indices.imports.importers.producer_price_indices_by_product');
-        $code = is_array($identity) ? ($identity['code'] ?? null) : null;
-        $version = is_array($identity) ? ($identity['version'] ?? null) : null;
-
-        if (! is_string($code) || $code === '' || ! is_string($version) || $version === '') {
-            throw new PriceIndicesInvariantViolation('Statistical importer identity is not configured.');
-        }
-
         if ($sourceFile->dataset_id !== $dataset->id
             || $sourceFile->status !== SourceFileStatus::Active
         ) {
             throw new PriceIndicesInvariantViolation(
                 'A statistical import can only be created for an active source file from its dataset.'
             );
+        }
+
+        $importer = $this->registry->forSourceFile($sourceFile);
+        $code = $importer->code();
+        $version = $importer->version();
+        if ($code === '' || $version === '') {
+            throw new PriceIndicesInvariantViolation('Statistical importer identity is not configured.');
         }
 
         if ($retryOf !== null

@@ -114,6 +114,10 @@ return [
                 'code' => 'producer_price_indices_by_product',
                 'version' => '1.0.0',
             ],
+            'consumer_price_indices_rf_monthly' => [
+                'code' => 'consumer_price_indices_rf_monthly',
+                'version' => '1.0.0',
+            ],
         ],
     ],
 

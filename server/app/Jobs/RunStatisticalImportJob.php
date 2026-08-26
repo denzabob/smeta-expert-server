@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Domain\PriceIndices\Application\Contracts\CompletesStatisticalImportAtomically;
 use App\Domain\PriceIndices\Application\Services\BeginImportValidation;
 use App\Domain\PriceIndices\Application\Services\CleanupFailedStatisticalImport;
 use App\Domain\PriceIndices\Application\Services\FailStatisticalImport;
@@ -9,6 +10,7 @@ use App\Domain\PriceIndices\Application\Services\MarkImportReadyForPublish;
 use App\Domain\PriceIndices\Application\Services\StartStatisticalImport;
 use App\Domain\PriceIndices\Application\Services\StatisticalImporterRegistry;
 use App\Domain\PriceIndices\Domain\Enums\StatisticalImportStatus;
+use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesInvariantViolation;
 use App\Domain\PriceIndices\Domain\Exceptions\StatisticalImportParsingFailed;
 use App\Domain\PriceIndices\Domain\Imports\StatisticalImport;
 use Illuminate\Bus\Queueable;
@@ -25,7 +27,9 @@ class RunStatisticalImportJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries;
+
     public int $timeout;
+
     public int $backoff;
 
     public function __construct(public readonly string $importPublicId)
@@ -54,13 +58,28 @@ class RunStatisticalImportJob implements ShouldQueue
         $import = StatisticalImport::query()->where('public_id', $this->importPublicId)->firstOrFail();
         if ($import->status !== StatisticalImportStatus::Pending) {
             Log::warning('Price indices import job skipped because import is not pending.', $this->context($import));
+
             return;
         }
 
         Log::info('Price indices import started.', $this->context($import));
         try {
             $import = $start->execute($import);
-            $registry->forImport($import)->import($import);
+            $importer = $registry->forImport($import);
+            $importer->import($import);
+
+            if ($importer instanceof CompletesStatisticalImportAtomically) {
+                $import = $import->refresh();
+                if ($import->status !== StatisticalImportStatus::ReadyForPublish) {
+                    throw new PriceIndicesInvariantViolation(
+                        'An atomic statistical importer did not complete its lifecycle.'
+                    );
+                }
+                Log::info('Price indices import ready for publication.', $this->context($import));
+
+                return;
+            }
+
             $import = $beginValidation->execute($import->refresh());
             Log::info('Price indices import validation started.', $this->context($import));
             $import = $markReady->execute($import);
