@@ -4,7 +4,6 @@ namespace App\Domain\PriceIndices\Application\Services;
 
 use App\Domain\PriceIndices\Application\Data\PublicSeriesRefreshResult;
 use App\Domain\PriceIndices\Application\Data\PublicStatisticalSeriesSnapshot;
-use App\Domain\PriceIndices\Application\Support\PublicIndexSlug;
 use App\Domain\PriceIndices\Domain\Enums\PublicSeriesIndexabilityStatus;
 use App\Domain\PriceIndices\Domain\Enums\StatisticalImportStatus;
 use App\Domain\PriceIndices\Domain\Imports\StatisticalDatasetActiveImport;
@@ -20,9 +19,8 @@ final class RefreshPublicStatisticalSeriesPages
 
     public function __construct(
         private readonly BuildPublicStatisticalSeriesSnapshot $builder,
-        private readonly PublicIndexSlug $slugs,
-    ) {
-    }
+        private readonly PublicIndexFamilyRegistry $families,
+    ) {}
 
     public function execute(
         ?string $datasetSelector = null,
@@ -80,14 +78,16 @@ final class RefreshPublicStatisticalSeriesPages
             $activeSeriesIds = $membership->pluck('id')->map(fn ($id): int => (int) $id)->all();
             $slugCounts = [];
             foreach ($membership as $member) {
-                $slug = $this->slugs->fromItemCode((string) $member->classifierItem?->item_code);
+                $slug = $this->families->slugForDataset(
+                    $pointer->dataset,
+                    (string) $member->classifierItem?->item_code,
+                );
                 if ($slug !== null) {
                     $slugCounts[$slug] = ($slugCounts[$slug] ?? 0) + 1;
                 }
             }
 
             $slugOwners = StatisticalPublicSeriesPage::query()
-                ->where('dataset_id', $pointer->dataset_id)
                 ->whereNotNull('slug')
                 ->pluck('series_id', 'slug')
                 ->map(fn ($id): int => (int) $id)

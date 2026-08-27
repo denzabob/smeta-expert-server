@@ -92,4 +92,21 @@ class PublicSeriesSnapshotBuilderTest extends TestCase
             $builder->execute($invalid['import'], $invalid['series']->refresh())->status
         );
     }
+
+    public function test_future_annual_kipc_shape_is_default_denied(): void
+    {
+        $fixture = $this->publicSnapshotFixture(
+            $this->monthlySnapshotValues('2025-01', '2025-12'),
+            'food_products',
+            'КИПЦ: продовольственные товары',
+        );
+        $fixture['dataset']->update(['code' => 'consumer_price_indices_rf_monthly']);
+        $fixture['import']->unsetRelation('dataset');
+        $fixture['series']->update(['frequency' => 'annual']);
+
+        $snapshot = app(BuildPublicStatisticalSeriesSnapshot::class)
+            ->execute($fixture['import'], $fixture['series']->refresh());
+
+        $this->assertSame(PublicSeriesIndexabilityStatus::UnsupportedSeries, $snapshot->status);
+    }
 }

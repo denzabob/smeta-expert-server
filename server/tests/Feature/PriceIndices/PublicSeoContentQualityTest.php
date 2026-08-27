@@ -11,7 +11,7 @@ class PublicSeoContentQualityTest extends TestCase
     use BuildsPublicSeoFixture;
     use DatabaseTransactions;
 
-    public function test_catalog_content_uses_natural_ppi_phrases_dynamic_year_and_no_meta_keywords(): void
+    public function test_catalog_content_describes_both_public_families_with_dynamic_year_and_no_meta_keywords(): void
     {
         $this->publicSeoFixture(
             values: $this->monthlySnapshotValues('2025-07', '2026-06'),
@@ -19,14 +19,13 @@ class PublicSeoContentQualityTest extends TestCase
 
         $response = $this->get('https://indices.test/');
         $response->assertOk()
-            ->assertSee('<h1>Индексы цен производителей Росстата по товарам</h1>', false)
-            ->assertSee('индекс изменения цен')
-            ->assertSee('Индекс цен товара')
-            ->assertSee('Актуальные данные представлены по 2026 год включительно.')
-            ->assertSee('Индексы цен производителей Росстата по товарам на 2026 год:', false)
+            ->assertSee('<h1>Индексы цен Росстата</h1>', false)
+            ->assertSee('Индексы цен производителей')
+            ->assertSee('Индексы потребительских цен')
+            ->assertSee('Данные представлены по 2026 год включительно.')
+            ->assertSee('https://indices.test/producer-prices/', false)
+            ->assertSee('https://indices.test/consumer-prices/', false)
             ->assertDontSee('<meta name="keywords"', false);
-
-        $this->assertCpiPhrasesAreAbsent($response->getContent());
     }
 
     public function test_detail_intro_uses_snapshot_metrics_and_natural_monthly_index_phrases(): void

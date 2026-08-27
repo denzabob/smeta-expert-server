@@ -8,7 +8,7 @@ use JsonSerializable;
 final readonly class PublicPriceIndexChartData implements JsonSerializable
 {
     /**
-     * @param  array{slug: string, title: string, code: string}  $series
+     * @param  array{slug: string, title: string, code: ?string}  $series
      * @param  list<array{period: string, display_period: string, value: ?string, sequence: int}>  $points
      * @param  array{first_available_period: ?string, last_available_period: ?string, calculator_max_range_months: int}  $limits
      */

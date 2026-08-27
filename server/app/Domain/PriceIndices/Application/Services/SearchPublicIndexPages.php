@@ -14,7 +14,10 @@ final class SearchPublicIndexPages
 {
     private const PER_PAGE = 20;
 
-    public function __construct(private readonly StatisticalNameNormalizer $names) {}
+    public function __construct(
+        private readonly StatisticalNameNormalizer $names,
+        private readonly PublicIndexFamilyRegistry $families,
+    ) {}
 
     public function execute(string $searchQuery): LengthAwarePaginator
     {
@@ -24,7 +27,8 @@ final class SearchPublicIndexPages
         }
 
         $activeVersion = $this->activeOkpd2Version();
-        $statistical = $this->statisticalResultsQuery($normalized, $activeVersion);
+        $aliasFamily = $this->families->matchingSearchAlias($normalized);
+        $statistical = $this->statisticalResultsQuery($normalized, $activeVersion, $aliasFamily);
         $combined = $activeVersion === null
             ? $statistical
             : $statistical->unionAll($this->classifierOnlyResultsQuery($normalized, $activeVersion));
@@ -64,16 +68,29 @@ final class SearchPublicIndexPages
             ->first();
     }
 
-    private function statisticalResultsQuery(string $normalized, ?object $activeVersion): Builder
-    {
+    private function statisticalResultsQuery(
+        string $normalized,
+        ?object $activeVersion,
+        ?\App\Domain\PriceIndices\Application\Data\PublicIndexFamilyDescriptor $aliasFamily,
+    ): Builder {
         $query = DB::table('statistical_public_series_pages as pages')
             ->join('statistical_classifier_items as items', 'items.id', '=', 'pages.classifier_item_id')
+            ->join('statistical_datasets as datasets', 'datasets.id', '=', 'pages.dataset_id')
             ->where('pages.is_indexable', true)
             ->whereNotNull('pages.slug');
+        $query->where(function ($families): void {
+            foreach ($this->families->all() as $family) {
+                $datasetSql = $this->families->datasetSql($family, 'datasets.code');
+                $families->orWhereRaw($datasetSql['sql'], $datasetSql['bindings']);
+            }
+        });
 
         if ($activeVersion !== null) {
-            $query->leftJoin('statistical_classifier_item_mappings as mappings', function ($join) use ($activeVersion): void {
+            $producer = $this->families->get(PublicIndexFamilyRegistry::PRODUCER_PRICES);
+            $producerSql = $this->families->datasetSql($producer, 'datasets.code');
+            $query->leftJoin('statistical_classifier_item_mappings as mappings', function ($join) use ($activeVersion, $producerSql): void {
                 $join->on('mappings.statistical_classifier_item_id', '=', 'items.id')
+                    ->whereRaw($producerSql['sql'], $producerSql['bindings'])
                     ->where('mappings.classifier_version_id', $activeVersion->id)
                     ->where('mappings.review_status', 'confirmed')
                     ->whereNotNull('mappings.classifier_node_id');
@@ -88,10 +105,12 @@ final class SearchPublicIndexPages
             $name = 'items.normalized_name';
         }
 
-        $this->applySearch($query, $code, $name, $normalized);
+        $this->applySearch($query, $code, $name, $normalized, $aliasFamily);
+        [$rankSql, $rankBindings] = $this->rankExpression($code, $name, $normalized, $aliasFamily);
         $select = [
             DB::raw("'statistical_series' AS result_type"),
             'pages.id as stable_id',
+            'datasets.code as dataset_code',
             DB::raw("{$code} AS code"),
             DB::raw($activeVersion === null ? 'items.name AS name' : 'COALESCE(nodes.name, items.name) AS name'),
             'items.classifier_code as local_classifier_code',
@@ -105,10 +124,10 @@ final class SearchPublicIndexPages
             'pages.period_to',
             'pages.change_percent',
             'pages.coefficient',
-            DB::raw($this->rankSql($code, $name).' AS relevance_rank'),
+            DB::raw($rankSql.' AS relevance_rank'),
         ];
 
-        return $query->select($select)->addBinding($this->rankBindings($normalized), 'select');
+        return $query->select($select)->addBinding($rankBindings, 'select');
     }
 
     private function classifierOnlyResultsQuery(string $normalized, object $activeVersion): Builder
@@ -130,6 +149,7 @@ final class SearchPublicIndexPages
         return $query->select([
             DB::raw("'classifier_node' AS result_type"),
             'nodes.id as stable_id',
+            DB::raw('NULL AS dataset_code'),
             'nodes.code',
             'nodes.name',
             DB::raw('NULL AS local_classifier_code'),
@@ -147,13 +167,18 @@ final class SearchPublicIndexPages
         ])->addBinding($this->rankBindings($normalized), 'select');
     }
 
-    private function applySearch(Builder $query, string $code, string $name, string $normalized): void
-    {
+    private function applySearch(
+        Builder $query,
+        string $code,
+        string $name,
+        string $normalized,
+        ?\App\Domain\PriceIndices\Application\Data\PublicIndexFamilyDescriptor $aliasFamily = null,
+    ): void {
         $prefix = $this->likePattern($normalized).'%';
         $contains = '%'.$this->likePattern($normalized).'%';
         $terms = $this->searchTerms($normalized);
 
-        $query->where(function ($search) use ($code, $name, $normalized, $prefix, $contains, $terms): void {
+        $query->where(function ($search) use ($code, $name, $normalized, $prefix, $contains, $terms, $aliasFamily): void {
             $search->whereRaw("{$code} = ?", [$normalized])
                 ->orWhereRaw("{$code} LIKE ? ESCAPE '!'", [$prefix])
                 ->orWhereRaw("{$name} LIKE ? ESCAPE '!'", [$prefix])
@@ -166,7 +191,37 @@ final class SearchPublicIndexPages
                     }
                 });
             }
+
+            if ($aliasFamily !== null) {
+                $datasetSql = $this->families->datasetSql($aliasFamily, 'datasets.code');
+                $search->orWhereRaw($datasetSql['sql'], $datasetSql['bindings']);
+            }
         });
+    }
+
+    /** @return array{string, list<string>} */
+    private function rankExpression(
+        string $code,
+        string $name,
+        string $normalized,
+        ?\App\Domain\PriceIndices\Application\Data\PublicIndexFamilyDescriptor $aliasFamily,
+    ): array {
+        if ($aliasFamily === null) {
+            return [$this->rankSql($code, $name), $this->rankBindings($normalized)];
+        }
+
+        $datasetSql = $this->families->datasetSql($aliasFamily, 'datasets.code');
+        $sql = 'CASE '
+            .'WHEN '.$datasetSql['sql'].' AND items.item_code = ? THEN 0 '
+            .'WHEN '.$datasetSql['sql'].' THEN 1 '
+            .'ELSE 10 + '.$this->rankSql($code, $name).' END';
+
+        return [$sql, [
+            ...$datasetSql['bindings'],
+            (string) $aliasFamily->primaryItemCode,
+            ...$datasetSql['bindings'],
+            ...$this->rankBindings($normalized),
+        ]];
     }
 
     private function rankSql(string $code, string $name): string
@@ -226,8 +281,14 @@ final class SearchPublicIndexPages
             ? $metadata['provider_code_kind']
             : null;
 
+        $family = $row->dataset_code === null
+            ? null
+            : $this->families->findForDataset((string) $row->dataset_code);
+
         return new PublicIndexSearchResult(
             (string) $row->result_type,
+            $family?->code,
+            $family?->searchLabel,
             (string) $row->code,
             (string) $row->name,
             $row->classifier_version_public_id === null ? null : 'ОКПД2',

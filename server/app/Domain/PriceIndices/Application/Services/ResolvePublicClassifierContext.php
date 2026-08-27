@@ -18,10 +18,25 @@ final class ResolvePublicClassifierContext
     /** @var list<string> */
     private const PUBLIC_MAPPING_TYPES = ['exact', 'parent_aggregate'];
 
-    public function __construct(private readonly DatabaseManager $database) {}
+    private readonly PublicIndexFamilyRegistry $families;
+
+    public function __construct(
+        private readonly DatabaseManager $database,
+        ?PublicIndexFamilyRegistry $families = null,
+    ) {
+        $this->families = $families ?? app(PublicIndexFamilyRegistry::class);
+    }
 
     public function execute(StatisticalPublicSeriesPage $page): ?PublicClassifierContext
     {
+        $dataset = $page->dataset;
+        if ($dataset !== null) {
+            $family = $this->families->findForDataset($dataset);
+            if ($family === null || ! $family->supportsOkpd2((string) $dataset->classifier_code)) {
+                return null;
+            }
+        }
+
         try {
             $activeVersion = $this->activeVersion();
             if ($activeVersion === null) {

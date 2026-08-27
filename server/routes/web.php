@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry;
 use App\Domain\PriceIndices\Http\Controllers\PublicIndexCalculationController;
 use App\Domain\PriceIndices\Http\Controllers\PublicIndexCatalogController;
 use App\Domain\PriceIndices\Http\Controllers\PublicIndexDetailController;
@@ -24,14 +25,33 @@ if ($priceIndicesPublicHost !== '') {
             ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, ValidateCsrfToken::class])
             ->group(function (): void {
                 Route::get('/', PublicIndexCatalogController::class)->name('catalog');
-                Route::get('/producer-prices', PublicIndexFamilyController::class)->name('producer-prices');
+                Route::get('/producer-prices', PublicIndexFamilyController::class)
+                    ->defaults('family', PublicIndexFamilyRegistry::PRODUCER_PRICES)
+                    ->name('producer-prices');
                 Route::get('/producer-prices/products', PublicIndexProductsController::class)->name('producer-prices.products');
+                Route::get('/consumer-prices', PublicIndexFamilyController::class)
+                    ->defaults('family', PublicIndexFamilyRegistry::CONSUMER_PRICES)
+                    ->name('consumer-prices');
+                Route::get('/consumer-prices/{slug}', PublicIndexDetailController::class)
+                    ->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*')
+                    ->defaults('family', PublicIndexFamilyRegistry::CONSUMER_PRICES)
+                    ->name('consumer-prices.detail');
                 Route::get('/sitemap.xml', PublicIndexSitemapController::class)->name('sitemap');
                 Route::get('/robots.txt', PublicIndexRobotsController::class)->name('robots');
                 Route::get('/{slug}', PublicIndexDetailController::class)
                     ->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*')
+                    ->defaults('family', PublicIndexFamilyRegistry::PRODUCER_PRICES)
                     ->name('detail');
             });
+        Route::post('/consumer-prices/{slug}/calculate', PublicIndexCalculationController::class)
+            ->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*')
+            ->defaults('family', PublicIndexFamilyRegistry::CONSUMER_PRICES)
+            ->middleware([
+                EnsurePublicCalculationJsonTransport::class,
+                'throttle:'.config('price_indices.public_calculation.throttle_per_minute', 20).',1',
+            ])
+            ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, ValidateCsrfToken::class])
+            ->name('consumer-prices.calculate');
         Route::post('/{slug}/calculate', PublicIndexCalculationController::class)
             ->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*')
             ->middleware([
@@ -39,6 +59,7 @@ if ($priceIndicesPublicHost !== '') {
                 'throttle:'.config('price_indices.public_calculation.throttle_per_minute', 20).',1',
             ])
             ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, ValidateCsrfToken::class])
+            ->defaults('family', PublicIndexFamilyRegistry::PRODUCER_PRICES)
             ->name('calculate');
         Route::any('/{path}', fn () => abort(404))->where('path', '.*')->name('fallback');
     });

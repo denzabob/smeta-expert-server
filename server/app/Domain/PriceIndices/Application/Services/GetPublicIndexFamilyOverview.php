@@ -2,6 +2,7 @@
 
 namespace App\Domain\PriceIndices\Application\Services;
 
+use App\Domain\PriceIndices\Domain\Observations\StatisticalObservation;
 use App\Domain\PriceIndices\Domain\PublicPages\StatisticalPublicSeriesPage;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
@@ -21,9 +22,13 @@ final class GetPublicIndexFamilyOverview
      *     source_url:?string
      * }
      */
-    public function execute(int $examplesLimit = 8): array
+    public function __construct(private readonly PublicIndexFamilyRegistry $families) {}
+
+    public function execute(string $familyCode, int $examplesLimit = 8): array
     {
-        $summary = $this->indexablePages()
+        $family = $this->families->get($familyCode);
+        $summary = $this->indexablePages($familyCode)
+            ->select([])
             ->selectRaw('COUNT(*) as series_count')
             ->selectRaw('MIN(period_from) as period_from')
             ->selectRaw('MAX(period_to) as period_to')
@@ -31,8 +36,16 @@ final class GetPublicIndexFamilyOverview
             ->selectRaw('MAX(generated_at) as last_modified_at')
             ->firstOrFail();
 
-        $examples = $this->indexablePages()
-            ->with('classifierItem:id,item_code,name')
+        $examples = $this->indexablePages($familyCode)
+            ->addSelect([
+                'latest_value' => StatisticalObservation::query()
+                    ->select('value')
+                    ->whereColumn('statistical_observations.import_id', 'statistical_public_series_pages.import_id')
+                    ->whereColumn('statistical_observations.series_id', 'statistical_public_series_pages.series_id')
+                    ->whereColumn('statistical_observations.period_start', 'statistical_public_series_pages.period_to')
+                    ->limit(1),
+            ])
+            ->with(['classifierItem:id,item_code,name', 'dataset:id,code'])
             ->orderBy('slug')
             ->limit(max(1, min($examplesLimit, 12)))
             ->get();
@@ -44,20 +57,27 @@ final class GetPublicIndexFamilyOverview
             'source_published_at' => $this->date($summary->getAttribute('source_published_at')),
             'last_modified_at' => $this->date($summary->getAttribute('last_modified_at')),
             'examples' => $examples,
-            'source_url' => $this->sourceUrl(),
+            'source_url' => $this->sourceUrl($familyCode),
+            'family' => $family,
         ];
     }
 
-    private function indexablePages(): Builder
+    private function indexablePages(string $familyCode): Builder
     {
+        $family = $this->families->get($familyCode);
+        $datasetSql = $this->families->datasetSql($family, 'family_datasets.code');
+
         return StatisticalPublicSeriesPage::query()
-            ->where('is_indexable', true)
-            ->whereNotNull('slug');
+            ->join('statistical_datasets as family_datasets', 'family_datasets.id', '=', 'statistical_public_series_pages.dataset_id')
+            ->select('statistical_public_series_pages.*')
+            ->whereRaw($datasetSql['sql'], $datasetSql['bindings'])
+            ->where('statistical_public_series_pages.is_indexable', true)
+            ->whereNotNull('statistical_public_series_pages.slug');
     }
 
-    private function sourceUrl(): ?string
+    private function sourceUrl(string $familyCode): ?string
     {
-        $pages = $this->indexablePages()
+        $pages = $this->indexablePages($familyCode)
             ->with('sourceFile.source:id,source_page_url')
             ->whereHas('sourceFile', function (Builder $files): void {
                 $files->whereNotNull('source_url')

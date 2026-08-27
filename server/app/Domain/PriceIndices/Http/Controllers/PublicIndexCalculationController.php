@@ -20,6 +20,7 @@ final class PublicIndexCalculationController extends Controller
 
     public function __invoke(
         string $slug,
+        string $family,
         CalculatePublicStatisticalIndexRequest $request,
     ): JsonResponse {
         $validated = $request->validated();
@@ -27,6 +28,7 @@ final class PublicIndexCalculationController extends Controller
         try {
             $response = response()->json([
                 'data' => $this->calculator->execute(
+                    $family,
                     $slug,
                     $validated['start_period'],
                     $validated['end_period'],

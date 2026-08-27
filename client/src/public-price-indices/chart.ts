@@ -8,7 +8,7 @@ import {
 } from './shared'
 
 export type PublicPriceIndexChartPayload = {
-  series: { slug: string; title: string; code: string }
+  series: { slug: string; title: string; code: string | null }
   points: Array<{ period: string; display_period: string; value: string | null; sequence: number }>
   limits: {
     first_available_period: string | null

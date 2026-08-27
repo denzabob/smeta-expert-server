@@ -2,6 +2,8 @@
 
 namespace App\Domain\PriceIndices\Application\Support;
 
+use App\Domain\PriceIndices\Application\Data\PublicIndexFamilyDescriptor;
+use App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry;
 use App\Domain\PriceIndices\Domain\PublicPages\StatisticalPublicSeriesPage;
 
 final class PublicIndexStructuredData
@@ -27,7 +29,7 @@ final class PublicIndexStructuredData
                 [
                     '@type' => 'DataCatalog',
                     '@id' => $root.'#catalog',
-                    'name' => 'Индексы цен производителей по товарам',
+                    'name' => 'Индексы цен Росстата',
                     'description' => $description,
                     'url' => $root,
                     'inLanguage' => 'ru-RU',
@@ -47,6 +49,7 @@ final class PublicIndexStructuredData
         string $canonical,
         string $heading,
         string $description,
+        PublicIndexFamilyDescriptor $family,
         PublicPriceIndexUrl $urls,
     ): array {
         $root = $urls->catalog();
@@ -64,7 +67,9 @@ final class PublicIndexStructuredData
             'name' => $heading,
             'description' => $description,
             'url' => $canonical,
-            'identifier' => $itemCode,
+            'identifier' => $family->code === PublicIndexFamilyRegistry::CONSUMER_PRICES
+                ? (string) $page->slug
+                : $itemCode,
             'inLanguage' => 'ru-RU',
             'temporalCoverage' => $page->period_from->format('Y-m').'/'.$page->period_to->format('Y-m'),
             'provider' => [
@@ -75,7 +80,7 @@ final class PublicIndexStructuredData
             'includedInDataCatalog' => ['@id' => $root.'#catalog'],
             'variableMeasured' => ['@id' => $variableId],
             'dateModified' => $page->generated_at->toAtomString(),
-            'measurementTechnique' => 'Индекс цен производителей к предыдущему месяцу',
+            'measurementTechnique' => $family->structuredDataContext['measurement_technique'],
         ];
 
         $territoryName = $page->getAttribute('structured_territory_name');
@@ -105,41 +110,16 @@ final class PublicIndexStructuredData
                 [
                     '@type' => 'BreadcrumbList',
                     '@id' => $breadcrumbId,
-                    'itemListElement' => [
-                        [
-                            '@type' => 'ListItem',
-                            'position' => 1,
-                            'name' => 'Главная',
-                            'item' => $root,
-                        ],
-                        [
-                            '@type' => 'ListItem',
-                            'position' => 2,
-                            'name' => 'Индексы цен производителей',
-                            'item' => $urls->producerPrices(),
-                        ],
-                        [
-                            '@type' => 'ListItem',
-                            'position' => 3,
-                            'name' => 'По товарам и товарным группам',
-                            'item' => $urls->producerPriceProducts(),
-                        ],
-                        [
-                            '@type' => 'ListItem',
-                            'position' => 4,
-                            'name' => $itemName,
-                            'item' => $canonical,
-                        ],
-                    ],
+                    'itemListElement' => $this->detailBreadcrumbs($family, $itemName, $canonical, $urls),
                 ],
                 $dataset,
                 [
                     '@type' => 'StatisticalVariable',
                     '@id' => $variableId,
-                    'name' => $indicatorName,
-                    'description' => 'Индекс цен производителей по отношению к предыдущему месяцу',
+                    'name' => $family->structuredDataContext['variable_name'] ?: $indicatorName,
+                    'description' => $family->structuredDataContext['measurement_technique'],
                     'unitText' => 'процент',
-                    'measurementTechnique' => 'Индекс цен производителей к предыдущему месяцу',
+                    'measurementTechnique' => $family->structuredDataContext['measurement_technique'],
                 ],
             ],
         ];
@@ -150,12 +130,45 @@ final class PublicIndexStructuredData
         string $title,
         string $description,
         string $canonical,
+        PublicIndexFamilyDescriptor $family,
         PublicPriceIndexUrl $urls,
     ): array {
         return $this->landingPage($title, $description, $canonical, [
             ['name' => 'Главная', 'url' => $urls->catalog()],
-            ['name' => 'Индексы цен производителей', 'url' => $canonical],
+            ['name' => $family->publicLabel, 'url' => $canonical],
         ], $urls);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function detailBreadcrumbs(
+        PublicIndexFamilyDescriptor $family,
+        string $itemName,
+        string $canonical,
+        PublicPriceIndexUrl $urls,
+    ): array {
+        $items = [
+            ['name' => 'Главная', 'item' => $urls->catalog()],
+            [
+                'name' => $family->publicLabel,
+                'item' => $family->code === PublicIndexFamilyRegistry::CONSUMER_PRICES
+                    ? $urls->consumerPrices()
+                    : $urls->producerPrices(),
+            ],
+        ];
+        if ($family->code === PublicIndexFamilyRegistry::PRODUCER_PRICES) {
+            $items[] = ['name' => 'По товарам и товарным группам', 'item' => $urls->producerPriceProducts()];
+        }
+        $items[] = ['name' => $itemName, 'item' => $canonical];
+
+        return array_map(
+            fn (array $item, int $position): array => [
+                '@type' => 'ListItem',
+                'position' => $position + 1,
+                ...$item,
+            ],
+            $items,
+            array_keys($items),
+        );
     }
 
     /** @return array<string, mixed> */

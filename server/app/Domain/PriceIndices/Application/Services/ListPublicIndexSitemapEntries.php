@@ -10,10 +10,11 @@ final class ListPublicIndexSitemapEntries
     public function execute(): Collection
     {
         return StatisticalPublicSeriesPage::query()
-            ->select(['slug', 'generated_at'])
+            ->select(['dataset_id', 'slug', 'generated_at'])
             ->where('is_indexable', true)
             ->whereNotNull('slug')
             ->orderBy('slug')
+            ->with('dataset:id,code')
             ->get();
     }
 }

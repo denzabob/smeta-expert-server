@@ -7,7 +7,9 @@ use App\Domain\PriceIndices\Domain\Series\StatisticalSeries;
 
 final class GetPublicIndexPage
 {
-    public function execute(string $slug): StatisticalPublicSeriesPage
+    public function __construct(private readonly PublicIndexFamilyRegistry $families) {}
+
+    public function execute(string $familyCode, string $slug): StatisticalPublicSeriesPage
     {
         $page = StatisticalPublicSeriesPage::query()
             ->leftJoin('statistical_series as public_series', 'public_series.id', '=', 'statistical_public_series_pages.series_id')
@@ -26,13 +28,17 @@ final class GetPublicIndexPage
             ->where('slug', $slug)
             ->where('is_indexable', true)
             ->with([
-                'dataset:id,name,provider_name',
-                'import:id,public_id,importer_code,importer_version,published_at',
+                'dataset:id,code,name,provider_name,classifier_code',
+                'import:id,public_id,importer_code,importer_version,published_at,metadata_json',
                 'classifierItem:id,classifier_code,item_code,name,metadata_json',
                 'sourceFile:id,source_id,original_filename,sha256,source_url',
                 'sourceFile.source:id,name,source_page_url',
             ])
             ->firstOrFail();
+
+        if ($this->families->forDataset($page->dataset)->code !== $familyCode) {
+            abort(404);
+        }
 
         $page->setRelation('series', (new StatisticalSeries)->newFromBuilder([
             'id' => $page->series_id,

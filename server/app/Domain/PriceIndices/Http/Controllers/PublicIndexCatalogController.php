@@ -3,6 +3,7 @@
 namespace App\Domain\PriceIndices\Http\Controllers;
 
 use App\Domain\PriceIndices\Application\Services\ListPublicIndexPages;
+use App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry;
 use App\Domain\PriceIndices\Application\Services\SearchPublicIndexPages;
 use App\Domain\PriceIndices\Application\Support\PublicIndexFormatter;
 use App\Domain\PriceIndices\Application\Support\PublicIndexStructuredData;
@@ -20,6 +21,7 @@ final class PublicIndexCatalogController extends Controller
         PublicPriceIndexUrl $urls,
         PublicIndexFormatter $formatter,
         PublicIndexStructuredData $structuredData,
+        PublicIndexFamilyRegistry $families,
     ): View {
         $isSearch = $request->query->has('q');
         $rawQuery = $request->query('q');
@@ -40,9 +42,9 @@ final class PublicIndexCatalogController extends Controller
             ? 'Поиск по данным Росстата и ОКПД2'.($searchQuery === '' ? '' : ': '.$searchQuery).' | ПРИЗМА'
             : ($currentPage > 1
                 ? "Индексы цен Росстата{$year} — страница {$currentPage} | ПРИЗМА"
-                : "Индексы цен Росстата{$year} — индексы цен производителей | ПРИЗМА");
+                : "Индексы цен Росстата{$year} — производители и потребители | ПРИЗМА");
         $descriptionYear = $latestDataYear === null ? '' : " на {$latestDataYear} год";
-        $description = "Индексы цен производителей Росстата по товарам{$descriptionYear}: динамика цен, месячные индексы и коэффициенты изменения стоимости. Официальные статистические данные.";
+        $description = "Индексы цен Росстата{$descriptionYear}: цены производителей и индекс потребительских цен, месячная динамика и расчёт изменения за период.";
         if ($currentPage > 1) {
             $description .= ' Страница '.$currentPage.'.';
         }
@@ -60,6 +62,7 @@ final class PublicIndexCatalogController extends Controller
             'isSearch' => $isSearch,
             'searchQuery' => $searchQuery,
             'isCombinedSearch' => $isCombinedSearch,
+            'families' => $families,
         ]);
     }
 }

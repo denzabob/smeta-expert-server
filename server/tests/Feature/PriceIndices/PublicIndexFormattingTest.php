@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\PriceIndices;
 
+use App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry;
 use App\Domain\PriceIndices\Application\Support\PublicIndexFormatter;
 use App\Domain\PriceIndices\Application\Support\PublicPriceIndexUrl;
 use DateTimeImmutable;
@@ -38,5 +39,10 @@ class PublicIndexFormattingTest extends TestCase
         );
         $this->assertSame('31_02_10_140', $urls->refContent('31.02.10.140'));
         $this->assertSame('05_10_10_101_ag', $urls->refContent('05.10.10.101.АГ'));
+        $this->assertSame(
+            'https://indices.test/consumer-prices/food-products',
+            $urls->detail('food-products', PublicIndexFamilyRegistry::CONSUMER_PRICES),
+        );
+        $this->assertSame('https://indices.test/consumer-prices/', $urls->consumerPrices());
     }
 }

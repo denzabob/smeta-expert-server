@@ -4,7 +4,6 @@ namespace App\Domain\PriceIndices\Application\Services;
 
 use App\Domain\PriceIndices\Application\Data\PublicStatisticalSeriesSnapshot;
 use App\Domain\PriceIndices\Application\Support\DecimalMath;
-use App\Domain\PriceIndices\Application\Support\PublicIndexSlug;
 use App\Domain\PriceIndices\Application\ValueObjects\MonthlyPeriod;
 use App\Domain\PriceIndices\Application\ValueObjects\MonthlyPeriodRange;
 use App\Domain\PriceIndices\Domain\Enums\PublicSeriesIndexabilityStatus;
@@ -16,19 +15,20 @@ use App\Domain\PriceIndices\Domain\Series\StatisticalSeries;
 final class BuildPublicStatisticalSeriesSnapshot
 {
     public function __construct(
-        private readonly PublicIndexSlug $slugs,
+        private readonly PublicIndexFamilyRegistry $families,
         private readonly DecimalMath $decimal,
         private readonly MonthlyPeriodRange $periodRange,
         private readonly CalculateStatisticalIndexChain $calculator,
-    ) {
-    }
+    ) {}
 
     public function execute(StatisticalImport $import, StatisticalSeries $series): PublicStatisticalSeriesSnapshot
     {
         $series->loadMissing(['classifierItem', 'indicator', 'territory']);
         $import->loadMissing(['dataset', 'sourceFile']);
         $item = $series->classifierItem;
-        $slug = $item === null ? null : $this->slugs->fromItemCode((string) $item->item_code);
+        $slug = $item === null
+            ? null
+            : $this->families->slugForDataset($import->dataset, (string) $item->item_code);
 
         $observations = StatisticalObservation::query()
             ->where('import_id', $import->id)

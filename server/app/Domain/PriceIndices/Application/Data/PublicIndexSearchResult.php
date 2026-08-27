@@ -12,6 +12,8 @@ final readonly class PublicIndexSearchResult
 
     public function __construct(
         public string $type,
+        public ?string $familyCode,
+        public ?string $familyLabel,
         public string $code,
         public string $name,
         public ?string $classifierLabel,

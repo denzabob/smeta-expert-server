@@ -2,6 +2,8 @@
 
 namespace App\Domain\PriceIndices\Application\Support;
 
+use App\Domain\PriceIndices\Application\Data\PublicIndexFamilyDescriptor;
+use App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry;
 use DateTimeInterface;
 
 final class PublicIndexFormatter
@@ -79,6 +81,57 @@ final class PublicIndexFormatter
         $code = trim(($classifierLabel === null ? '' : $classifierLabel.' ').$itemCode);
 
         return $code.' — '.trim($itemName);
+    }
+
+    public function familyHeading(
+        PublicIndexFamilyDescriptor $family,
+        string $itemCode,
+        string $itemName,
+        ?string $classifierLabel,
+    ): string {
+        if ($family->code === PublicIndexFamilyRegistry::CONSUMER_PRICES) {
+            return 'Индекс потребительских цен на '.$this->lowerFirst(trim($itemName));
+        }
+
+        return $this->heading($itemCode, $itemName, $classifierLabel);
+    }
+
+    public function familyDetailTitle(
+        PublicIndexFamilyDescriptor $family,
+        string $itemCode,
+        string $itemName,
+        string $indicatorType,
+        ?string $classifierLabel,
+    ): string {
+        if ($family->code === PublicIndexFamilyRegistry::CONSUMER_PRICES) {
+            return $this->truncate($this->familyHeading($family, $itemCode, $itemName, null).' — Росстат | ПРИЗМА', 95);
+        }
+
+        return $this->detailTitle($itemCode, $itemName, $indicatorType, $classifierLabel);
+    }
+
+    public function familyDescription(
+        PublicIndexFamilyDescriptor $family,
+        string $itemName,
+        DateTimeInterface $from,
+        DateTimeInterface $to,
+        string $changePercent,
+        string $coefficient,
+        string $provider,
+    ): string {
+        if ($family->code === PublicIndexFamilyRegistry::CONSUMER_PRICES) {
+            return $this->truncate(sprintf(
+                'Индекс потребительских цен на %s: динамика с %s по %s, изменение %s и коэффициент %s. Официальные данные %s.',
+                $this->lowerFirst(trim($itemName)),
+                $this->periodGenitive($from),
+                $this->period($to),
+                $changePercent,
+                $coefficient,
+                $provider,
+            ), 190);
+        }
+
+        return $this->description($itemName, $from, $to, $changePercent, $coefficient, $provider);
     }
 
     public function classifierLabel(string $classifierCode, ?string $providerCodeKind): ?string

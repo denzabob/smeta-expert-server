@@ -29,7 +29,7 @@ class PublicPriceIndicesCatalogTest extends TestCase
 
         $response->assertOk()
             ->assertHeader('content-type', 'text/html; charset=utf-8')
-            ->assertSee('<h1>Индексы цен производителей Росстата по товарам</h1>', false)
+            ->assertSee('<h1>Индексы цен Росстата</h1>', false)
             ->assertSee($visible['item']->item_code)
             ->assertSee($visible['item']->name)
             ->assertSee('https://indices.test/'.$visible['page']->slug, false)

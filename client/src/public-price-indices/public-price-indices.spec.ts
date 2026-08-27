@@ -52,6 +52,28 @@ const result: PublicCalculationResult = {
 }
 
 describe('public PriceIndices chart', () => {
+  it('keeps all 427 CPI monthly points without annual aggregation', () => {
+    const cpiPayload: PublicPriceIndexChartPayload = {
+      ...payload,
+      series: { slug: 'food-products', title: 'Продовольственные товары', code: null },
+      points: Array.from({ length: 427 }, (_, index) => ({
+        period: `${1991 + Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`,
+        display_period: `Период ${index + 1}`,
+        value: '100.0000000000',
+        sequence: index + 1,
+      })),
+      limits: {
+        first_available_period: '1991-01',
+        last_available_period: '2026-07',
+        calculator_max_range_months: 120,
+      },
+    }
+
+    expect(monthlyPoints(cpiPayload)).toHaveLength(427)
+    expect(chartPointsForMode(cpiPayload, 'monthly', null)).toHaveLength(427)
+    expect(cpiPayload.limits.calculator_max_range_months).toBe(120)
+  })
+
   it('initializes monthly mode with every ordered point and preserves a missing value', () => {
     expect(monthlyPoints(payload)).toEqual([
       { x: 'Январь 2025', y: 100, period: '2025-01' },

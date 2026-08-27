@@ -1,13 +1,22 @@
 @extends('price-indices.public.layout', ['ogType' => 'article'])
 
 @section('content')
-    <nav class="crumbs" aria-label="Хлебные крошки"><a href="{{ $urls->catalog() }}">Главная</a> → <a href="{{ $urls->producerPrices() }}">Индексы цен производителей</a> → <a href="{{ $urls->producerPriceProducts() }}">По товарам и товарным группам</a> → <span aria-current="page">{{ $page->classifierItem->name }}</span></nav>
-    <div class="code">{{ $page->classifierItem->item_code }}</div>
+    @if ($family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::CONSUMER_PRICES)
+        <nav class="crumbs" aria-label="Хлебные крошки"><a href="{{ $urls->catalog() }}">Индексы</a> → <a href="{{ $urls->consumerPrices() }}">Индексы потребительских цен</a> → <span aria-current="page">{{ $page->classifierItem->name }}</span></nav>
+    @else
+        <nav class="crumbs" aria-label="Хлебные крошки"><a href="{{ $urls->catalog() }}">Главная</a> → <a href="{{ $urls->producerPrices() }}">Индексы цен производителей</a> → <a href="{{ $urls->producerPriceProducts() }}">По товарам и товарным группам</a> → <span aria-current="page">{{ $page->classifierItem->name }}</span></nav>
+        <div class="code">{{ $page->classifierItem->item_code }}</div>
+    @endif
     <h1>{{ $heading }}</h1>
     <p class="eyebrow">{{ $indicatorType }}</p>
     <div class="lead">
-        <p>По данным Росстата, для товарной группы «{{ $page->classifierItem->name }}» доступны индексы цен производителей с {{ $formatter->periodGenitive($page->period_from) }} по {{ $formatter->period($page->period_to) }}. Накопленный коэффициент изменения цен за этот период составляет {{ $coefficient }}, что соответствует изменению на {{ $change }}.</p>
-        <p>В таблице приведены официальные месячные индексы цен товара к предыдущему месяцу. Данные позволяют проследить изменение цен по периодам и использовать их для расчёта изменения стоимости.</p>
+        @if ($family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::CONSUMER_PRICES)
+            <p>По данным Росстата, для категории «{{ $page->classifierItem->name }}» доступны месячные индексы потребительских цен по Российской Федерации с {{ $formatter->periodGenitive($page->period_from) }} по {{ $formatter->period($page->period_to) }}. Накопленный коэффициент за весь период составляет {{ $coefficient }}, изменение — {{ $change }}.</p>
+            <p>Каждое значение показывает изменение к предыдущему месяцу: 100 % означает отсутствие изменения. График содержит всю опубликованную историю, а калькулятор рассчитывает произвольный диапазон длиной не более {{ $chartData->limits['calculator_max_range_months'] }} месяцев.</p>
+        @else
+            <p>По данным Росстата, для товарной группы «{{ $page->classifierItem->name }}» доступны индексы цен производителей с {{ $formatter->periodGenitive($page->period_from) }} по {{ $formatter->period($page->period_to) }}. Накопленный коэффициент изменения цен за этот период составляет {{ $coefficient }}, что соответствует изменению на {{ $change }}.</p>
+            <p>В таблице приведены официальные месячные индексы цен товара к предыдущему месяцу. Данные позволяют проследить изменение цен по периодам и использовать их для расчёта изменения стоимости.</p>
+        @endif
     </div>
 
     <div class="detail-grid">
@@ -157,10 +166,10 @@
 
             @if ($relatedPages->isNotEmpty())
                 <section class="panel section">
-                    <h2>Связанные индексы</h2>
+                    <h2>{{ $family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::CONSUMER_PRICES ? 'Другие индексы потребительских цен' : 'Связанные индексы' }}</h2>
                     <ul class="related-list">
                         @foreach ($relatedPages as $relatedPage)
-                            <li><a href="{{ $urls->detail($relatedPage->slug) }}">{{ $relatedPage->classifierItem->item_code }} — {{ $relatedPage->classifierItem->name }}</a></li>
+                            <li><a href="{{ $urls->detail($relatedPage->slug, $family->code) }}">@if ($family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::PRODUCER_PRICES){{ $relatedPage->classifierItem->item_code }} — @endif{{ $relatedPage->classifierItem->name }}</a></li>
                         @endforeach
                     </ul>
                 </section>
@@ -171,7 +180,7 @@
             <section class="panel section cta">
                 <h2>Профессиональные инструменты</h2>
                 <p>Войдите в ПРИЗМУ, чтобы продолжить работу с индексом в профессиональном калькуляторе.</p>
-                <a class="button" href="{{ $calculatorUrl }}" data-metrika-goal="public_index_calculator_click" data-item-code="{{ $page->classifierItem->item_code }}">Войти в ПРИЗМУ</a>
+                <a class="button" href="{{ $calculatorUrl }}" data-metrika-goal="public_index_calculator_click" data-item-code="{{ $family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::CONSUMER_PRICES ? $page->slug : $page->classifierItem->item_code }}">Войти в ПРИЗМУ</a>
             </section>
 
             <section class="panel section">
@@ -185,6 +194,14 @@
                     <li><span>Опубликовано</span>{{ $page->source_published_at ? $page->source_published_at->format('d.m.Y H:i') : '—' }}</li>
                     <li><span>Данные обновлены</span>{{ $page->generated_at->format('d.m.Y H:i') }}</li>
                 </ul>
+                @if ($sourceNotes->isNotEmpty())
+                    <div class="method">
+                        <h3>Примечания источника</h3>
+                        @foreach ($sourceNotes as $note)
+                            <p>{{ $note['text'] }}</p>
+                        @endforeach
+                    </div>
+                @endif
                 @php($sourceUrl = $page->sourceFile->source?->source_page_url ?: $page->sourceFile->source_url)
                 @if ($sourceUrl && filter_var($sourceUrl, FILTER_VALIDATE_URL))
                     <p><a href="{{ $sourceUrl }}" rel="nofollow noopener">Страница источника</a></p>

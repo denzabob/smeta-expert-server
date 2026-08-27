@@ -10,7 +10,10 @@ use Illuminate\Database\Eloquent\Collection;
 
 final readonly class BuildPublicPriceIndexChartData
 {
-    public function __construct(private PublicIndexFormatter $formatter) {}
+    public function __construct(
+        private PublicIndexFormatter $formatter,
+        private PublicIndexFamilyRegistry $families,
+    ) {}
 
     /** @param Collection<int, StatisticalObservation> $observations */
     public function execute(
@@ -24,11 +27,15 @@ final readonly class BuildPublicPriceIndexChartData
             'sequence' => $index + 1,
         ])->all();
 
+        $family = $this->families->forDataset($page->dataset);
+
         return new PublicPriceIndexChartData(
             series: [
                 'slug' => (string) $page->slug,
                 'title' => (string) $page->classifierItem?->name,
-                'code' => (string) $page->classifierItem?->item_code,
+                'code' => $family->code === PublicIndexFamilyRegistry::PRODUCER_PRICES
+                    ? (string) $page->classifierItem?->item_code
+                    : null,
             ],
             points: $points,
             limits: [

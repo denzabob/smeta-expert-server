@@ -2,20 +2,26 @@
 
 @section('content')
     <div class="eyebrow">Официальная статистика</div>
-    <h1>Индексы цен производителей Росстата по товарам</h1>
+    <h1>Индексы цен Росстата</h1>
     <div class="lead">
-        <p>ПРИЗМА Индексы содержит официальные индексы цен производителей Росстата по товарам и товарным группам. Здесь можно посмотреть индекс изменения цен, динамику по месяцам и накопленный коэффициент за весь доступный период.@if ($latestDataYear !== null) Актуальные данные представлены по {{ $latestDataYear }} год включительно.@endif</p>
-        <p>Для каждой товарной позиции доступны месячные индексы цен, период наблюдений и рассчитанный коэффициент изменения стоимости. Индекс цен товара можно применить к собственному периоду и исходной стоимости с помощью индивидуального расчёта в сервисе ПРИЗМА.</p>
+        <p>Общий каталог объединяет две статистические семьи: индексы цен производителей и индексы потребительских цен. Для опубликованных рядов доступны месячная динамика, график и расчёт изменения за выбранный период.@if ($latestDataYear !== null) Данные представлены по {{ $latestDataYear }} год включительно.@endif</p>
     </div>
+
+    @unless ($isSearch)
+        <section class="grid" aria-label="Статистические семьи">
+            <a class="panel card" href="{{ $urls->producerPrices() }}"><span class="code">ИЦП</span><h2>Индексы цен производителей</h2><div>Цены производителей по продукции и товарным группам</div></a>
+            <a class="panel card" href="{{ $urls->consumerPrices() }}"><span class="code">ИПЦ</span><h2>Индексы потребительских цен</h2><div>Инфляция и динамика потребительских цен с 1991 года</div></a>
+        </section>
+    @endunless
 
     <form class="panel search-form" method="get" action="{{ $urls->catalog() }}" role="search">
         <div class="field">
-            <label for="public-index-search">Код или название продукции</label>
+            <label for="public-index-search">Код, название или вид индекса</label>
             <div class="search-controls">
-                <input id="public-index-search" name="q" type="search" value="{{ $searchQuery }}" maxlength="120" placeholder="Например, 31.02.10.140 или кухонная мебель" aria-describedby="public-index-search-help">
+                <input id="public-index-search" name="q" type="search" value="{{ $searchQuery }}" maxlength="120" placeholder="Например, ИПЦ, инфляция или 31.02.10.140" aria-describedby="public-index-search-help">
                 <button class="button" type="submit">Найти</button>
             </div>
-            <small id="public-index-search-help">Поиск по опубликованным данным Росстата и официальному ОКПД2.</small>
+            <small id="public-index-search-help">Поиск по индексам цен производителей, потребительским ценам и официальному ОКПД2.</small>
         </div>
     </form>
 
@@ -33,15 +39,18 @@
         @if ($isCombinedSearch)
             @foreach ($pages as $result)
                 @if ($result->isStatisticalSeries())
-                    <a class="panel card" href="{{ $urls->detail($result->statisticalSlug) }}">
+                    <a class="panel card" href="{{ $urls->detail($result->statisticalSlug, $result->familyCode) }}">
                         @php($classifierLabel = $result->classifierLabel ?? $formatter->classifierLabel((string) $result->localClassifierCode, $result->providerCodeKind))
-                        <span class="code">{{ $classifierLabel ? $classifierLabel.' ' : '' }}{{ $result->code }}</span>
+                        <span class="code">{{ $result->familyLabel }}</span>
+                        @if ($result->familyCode === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::PRODUCER_PRICES)
+                            <div>{{ $classifierLabel ? $classifierLabel.' ' : '' }}{{ $result->code }}</div>
+                        @endif
                         <h2>{{ $result->name }}</h2>
                         @if ($result->hasRosstatData)
                             <div>Есть опубликованные данные Росстата</div>
                             <div>Открыть данные</div>
                         @else
-                            <div>Индекс цен производителей</div>
+                            <div>{{ $result->familyLabel }}</div>
                         @endif
                         @if ($result->periodFrom && $result->periodTo)
                             <div>{{ $formatter->periodRange($result->periodFrom, $result->periodTo) }}</div>
@@ -61,12 +70,16 @@
             @endforeach
         @else
             @foreach ($pages as $page)
-                <a class="panel card" href="{{ $urls->detail($page->slug) }}">
+                @php($family = $families->forDataset((string) $page->getAttribute('public_dataset_code')))
+                <a class="panel card" href="{{ $urls->detail($page->slug, $family->code) }}">
                     @php($providerCodeKind = $page->classifierItem->metadata_json['provider_code_kind'] ?? null)
                     @php($classifierLabel = $formatter->classifierLabel($page->classifierItem->classifier_code, is_string($providerCodeKind) ? $providerCodeKind : null))
-                    <span class="code">{{ $classifierLabel ? $classifierLabel.' ' : '' }}{{ $page->classifierItem->item_code }}</span>
+                    <span class="code">{{ $family->searchLabel }}</span>
+                    @if ($family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::PRODUCER_PRICES)
+                        <div>{{ $classifierLabel ? $classifierLabel.' ' : '' }}{{ $page->classifierItem->item_code }}</div>
+                    @endif
                     <h2>{{ $page->classifierItem->name }}</h2>
-                    <div>Индекс цен производителей</div>
+                    <div>{{ $family->publicLabel }}</div>
                     <div>{{ $formatter->periodRange($page->period_from, $page->period_to) }}</div>
                     <div class="metrics">
                         <div class="metric"><span class="metric__label">Изменение</span><span class="metric__value">{{ $formatter->percent($page->change_percent) }}</span></div>

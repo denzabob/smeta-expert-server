@@ -20,19 +20,22 @@ final class ListRelatedPublicIndexPages
             $bindings[] = $this->escapeLike($prefix).'%';
         }
 
-        $case = $caseParts === []
-            ? '0'
-            : 'CASE '.implode(' ', $caseParts).' ELSE '.count($caseParts).' END';
-
-        return StatisticalPublicSeriesPage::query()
+        $query = StatisticalPublicSeriesPage::query()
             ->join('statistical_classifier_items as related_items', 'related_items.id', '=', 'statistical_public_series_pages.classifier_item_id')
             ->select('statistical_public_series_pages.*')
             ->where('statistical_public_series_pages.dataset_id', $page->dataset_id)
             ->where('statistical_public_series_pages.is_indexable', true)
             ->whereNotNull('statistical_public_series_pages.slug')
             ->where('statistical_public_series_pages.id', '!=', $page->getKey())
-            ->with('classifierItem:id,item_code,name')
-            ->orderByRaw($case, $bindings)
+            ->with('classifierItem:id,item_code,name');
+        if ($caseParts !== []) {
+            $query->orderByRaw(
+                'CASE '.implode(' ', $caseParts).' ELSE '.count($caseParts).' END',
+                $bindings,
+            );
+        }
+
+        return $query
             ->orderBy('related_items.item_code')
             ->limit(max(1, min($limit, 10)))
             ->get();

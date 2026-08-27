@@ -2,10 +2,14 @@
 
 namespace App\Domain\PriceIndices\Application\Support;
 
+use App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry;
+use App\Domain\PriceIndices\Domain\PublicPages\StatisticalPublicSeriesPage;
 use InvalidArgumentException;
 
 final class PublicPriceIndexUrl
 {
+    public function __construct(private readonly PublicIndexFamilyRegistry $families) {}
+
     public function catalog(int $page = 1): string
     {
         $url = $this->publicBaseUrl().'/';
@@ -13,9 +17,16 @@ final class PublicPriceIndexUrl
         return $page > 1 ? $url.'?page='.$page : $url;
     }
 
-    public function detail(string $slug): string
+    public function detail(string $slug, string $familyCode = PublicIndexFamilyRegistry::PRODUCER_PRICES): string
     {
-        return $this->publicBaseUrl().'/'.rawurlencode($slug);
+        $family = $this->families->get($familyCode);
+
+        return $this->publicBaseUrl().$family->detailPathPrefix.'/'.rawurlencode($slug);
+    }
+
+    public function detailForPage(StatisticalPublicSeriesPage $page): string
+    {
+        return $this->detail((string) $page->slug, $this->families->forDataset($page->dataset)->code);
     }
 
     public function catalogSearch(string $query, int $page = 1): string
@@ -28,9 +39,9 @@ final class PublicPriceIndexUrl
         return $this->catalog().'?'.http_build_query($parameters, '', '&', PHP_QUERY_RFC3986);
     }
 
-    public function calculation(string $slug): string
+    public function calculation(string $slug, string $familyCode = PublicIndexFamilyRegistry::PRODUCER_PRICES): string
     {
-        return $this->detail($slug).'/calculate';
+        return $this->detail($slug, $familyCode).'/calculate';
     }
 
     public function producerPrices(): string
@@ -41,6 +52,11 @@ final class PublicPriceIndexUrl
     public function producerPriceProducts(): string
     {
         return $this->publicBaseUrl().'/producer-prices/products/';
+    }
+
+    public function consumerPrices(): string
+    {
+        return $this->publicBaseUrl().$this->families->get(PublicIndexFamilyRegistry::CONSUMER_PRICES)->landingPath;
     }
 
     public function sitemap(): string

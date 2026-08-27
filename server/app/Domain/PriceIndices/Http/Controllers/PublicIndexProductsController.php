@@ -3,6 +3,7 @@
 namespace App\Domain\PriceIndices\Http\Controllers;
 
 use App\Domain\PriceIndices\Application\Services\GetPublicIndexFamilyOverview;
+use App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry;
 use App\Domain\PriceIndices\Application\Support\PublicIndexFormatter;
 use App\Domain\PriceIndices\Application\Support\PublicIndexStructuredData;
 use App\Domain\PriceIndices\Application\Support\PublicPriceIndexUrl;
@@ -20,7 +21,7 @@ final class PublicIndexProductsController extends Controller
         $canonical = $urls->producerPriceProducts();
         $title = 'Индексы цен производителей по товарам и товарным группам | ПРИЗМА';
         $description = 'Обзор опубликованных индексов цен производителей Росстата по товарам и товарным группам с переходом к отдельным статистическим рядам.';
-        $summary = $overview->execute(12);
+        $summary = $overview->execute(PublicIndexFamilyRegistry::PRODUCER_PRICES, 12);
 
         return view('price-indices.public.producer-price-products', [
             'summary' => $summary,

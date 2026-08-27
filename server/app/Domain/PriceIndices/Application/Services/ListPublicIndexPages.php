@@ -13,6 +13,7 @@ final class ListPublicIndexPages
 
     public function __construct(
         private readonly StatisticalNameNormalizer $names,
+        private readonly PublicIndexFamilyRegistry $families,
     ) {}
 
     public function execute(?string $searchQuery = null): LengthAwarePaginator
@@ -24,13 +25,24 @@ final class ListPublicIndexPages
                 '=',
                 'statistical_public_series_pages.classifier_item_id'
             )
-            ->select('statistical_public_series_pages.*')
+            ->join('statistical_datasets as public_datasets', 'public_datasets.id', '=', 'statistical_public_series_pages.dataset_id')
+            ->select([
+                'statistical_public_series_pages.*',
+                'public_datasets.code as public_dataset_code',
+            ])
             ->where('is_indexable', true)
             ->whereNotNull('slug')
             ->with([
                 'classifierItem:id,classifier_code,item_code,name,metadata_json',
                 'series:id,public_id',
             ]);
+
+        $query->where(function ($families): void {
+            foreach ($this->families->all() as $family) {
+                $datasetSql = $this->families->datasetSql($family, 'public_datasets.code');
+                $families->orWhereRaw($datasetSql['sql'], $datasetSql['bindings']);
+            }
+        });
 
         $normalized = $searchQuery === null ? '' : $this->normalizedQuery($searchQuery);
         if ($normalized !== '') {

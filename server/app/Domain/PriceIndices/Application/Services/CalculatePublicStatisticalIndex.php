@@ -16,10 +16,12 @@ final class CalculatePublicStatisticalIndex
         private readonly CalculateStatisticalIndexChain $calculator,
         private readonly DecimalMath $decimal,
         private readonly PublicIndexFormatter $formatter,
+        private readonly PublicIndexFamilyRegistry $families,
     ) {}
 
     /** @return array<string, mixed> */
     public function execute(
+        string $familyCode,
         string $slug,
         string $startPeriod,
         string $endPeriod,
@@ -30,6 +32,16 @@ final class CalculatePublicStatisticalIndex
             ->where('is_indexable', true)
             ->first();
         if ($page === null) {
+            throw new PriceIndicesApiException(
+                'public_series_not_available',
+                404,
+                'The published statistical series is not available.'
+            );
+        }
+
+        $page->loadMissing('dataset:id,code,name,provider_name');
+        $family = $this->families->forDataset($page->dataset);
+        if ($family->code !== $familyCode) {
             throw new PriceIndicesApiException(
                 'public_series_not_available',
                 404,
@@ -105,12 +117,15 @@ final class CalculatePublicStatisticalIndex
                 'slug' => $page->slug,
                 'title' => $item?->name,
                 'classifier' => [
-                    'code' => $item?->item_code,
-                    'type' => $this->formatter->classifierLabel(
-                        (string) $item?->classifier_code,
-                        is_string($providerCodeKind) ? $providerCodeKind : null,
-                    ),
+                    'code' => $family->code === PublicIndexFamilyRegistry::PRODUCER_PRICES ? $item?->item_code : null,
+                    'type' => $family->supportsOkpd2((string) $item?->classifier_code)
+                        ? $this->formatter->classifierLabel(
+                            (string) $item?->classifier_code,
+                            is_string($providerCodeKind) ? $providerCodeKind : null,
+                        )
+                        : null,
                 ],
+                'family' => ['code' => $family->code, 'label' => $family->searchLabel],
                 'series_type' => $this->formatter->indicatorType(
                     (string) $series->indicator?->name,
                     $provider,

@@ -18,8 +18,8 @@ class PublicSeoDynamicDataYearTest extends TestCase
 
         $this->get('https://indices.test/')
             ->assertOk()
-            ->assertSee('<title>Индексы цен Росстата 2026 — индексы цен производителей | ПРИЗМА</title>', false)
-            ->assertSee('Актуальные данные представлены по 2026 год включительно.');
+            ->assertSee('<title>Индексы цен Росстата 2026 — производители и потребители | ПРИЗМА</title>', false)
+            ->assertSee('Данные представлены по 2026 год включительно.');
     }
 
     public function test_catalog_year_rolls_over_to_2027_from_snapshot_data(): void
@@ -28,7 +28,7 @@ class PublicSeoDynamicDataYearTest extends TestCase
 
         $this->get('https://indices.test/')
             ->assertOk()
-            ->assertSee('<title>Индексы цен Росстата 2027 — индексы цен производителей | ПРИЗМА</title>', false)
+            ->assertSee('<title>Индексы цен Росстата 2027 — производители и потребители | ПРИЗМА</title>', false)
             ->assertSee('на 2027 год');
     }
 
@@ -42,7 +42,7 @@ class PublicSeoDynamicDataYearTest extends TestCase
 
             $response = $this->get('https://indices.test/');
             $response->assertOk()
-                ->assertSee('<title>Индексы цен Росстата 2026 — индексы цен производителей | ПРИЗМА</title>', false)
+                ->assertSee('<title>Индексы цен Росстата 2026 — производители и потребители | ПРИЗМА</title>', false)
                 ->assertDontSee('Индексы цен Росстата 2027', false);
         } finally {
             CarbonImmutable::setTestNow();
