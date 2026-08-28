@@ -89,6 +89,7 @@ final class PublicIndexDetailController extends Controller
         return view('price-indices.public.detail', [
             'page' => $page,
             'observations' => $publicObservations,
+            'latestObservation' => $publicObservations->last(),
             'relatedPages' => $classifierContext === null ? $relatedPages->execute($page) : collect(),
             'classifierContext' => $classifierContext,
             'family' => $descriptor,

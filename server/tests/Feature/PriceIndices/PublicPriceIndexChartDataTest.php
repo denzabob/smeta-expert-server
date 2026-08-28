@@ -81,6 +81,7 @@ class PublicPriceIndexChartDataTest extends TestCase
         $this->assertSame('2020-01', $payload['limits']['first_available_period']);
         $this->assertSame('2025-06', $payload['limits']['last_available_period']);
         $this->assertSame(120, $payload['limits']['calculator_max_range_months']);
+        $this->assertSame('producer_prices', $payload['series']['family']);
 
         $encodedStarted = hrtime(true);
         $encoded = json_encode($payload, JSON_THROW_ON_ERROR);

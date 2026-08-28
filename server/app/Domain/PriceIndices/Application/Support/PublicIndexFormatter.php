@@ -8,6 +8,8 @@ use DateTimeInterface;
 
 final class PublicIndexFormatter
 {
+    public function __construct(private readonly DecimalMath $decimalMath) {}
+
     private const MONTHS = [
         1 => 'январь', 2 => 'февраль', 3 => 'март', 4 => 'апрель',
         5 => 'май', 6 => 'июнь', 7 => 'июль', 8 => 'август',
@@ -59,6 +61,17 @@ final class PublicIndexFormatter
         $prefix = $isZero ? '' : ($negative ? '−' : '+');
 
         return $prefix.$this->decimal($unsigned, 2).' %';
+    }
+
+    public function monthlyChangeFromIndex(?string $value): string
+    {
+        if ($value === null || preg_match('/^[+-]?\d+(?:\.\d+)?$/D', $value) !== 1) {
+            return '—';
+        }
+
+        $change = $this->decimalMath->subtract($value, '100');
+
+        return $this->percent($this->decimalMath->roundHalfUp($change, 2));
     }
 
     public function detailTitle(

@@ -66,7 +66,18 @@ class ConsumerPriceIndexPublicPublicationTest extends TestCase
             ->assertSee('https://indices.test/consumer-prices/all-items-and-services', false)
             ->assertSee('https://indices.test/consumer-prices/food-products', false)
             ->assertSee('https://indices.test/consumer-prices/non-food-products', false)
-            ->assertSee('https://indices.test/consumer-prices/services', false);
+            ->assertSee('https://indices.test/consumer-prices/services', false)
+            ->assertSee('Индекс к предыдущему месяцу')
+            ->assertSee('Изменение за месяц')
+            ->assertSee('−1,00 %')
+            ->assertSee('Открыть ряд');
+        $this->assertSame(4, substr_count($landing->getContent(), 'class="panel card cpi-card"'));
+        foreach (['all-items-and-services', 'food-products', 'non-food-products', 'services'] as $slug) {
+            $this->assertMatchesRegularExpression(
+                sprintf('/<a class="panel card cpi-card" href="https:\/\/indices\.test\/consumer-prices\/%s">/', preg_quote($slug, '/')),
+                $landing->getContent(),
+            );
+        }
         $this->assertLessThanOrEqual(8, $landingMeasurement['queries']);
         $this->assertLessThan(3000, $landingMeasurement['elapsed_ms']);
 
@@ -83,6 +94,20 @@ class ConsumerPriceIndexPublicPublicationTest extends TestCase
             ->assertSee('Российская Федерация')
             ->assertSee('Индекс за месяц')
             ->assertSee('Накопленное изменение')
+            ->assertSee('Последнее официальное значение')
+            ->assertSee('Индекс к предыдущему месяцу')
+            ->assertSee('99,00 %')
+            ->assertSee('Изменение цен за месяц')
+            ->assertSee('−1,00 %')
+            ->assertSee('data-chart-range="1y"', false)
+            ->assertSee('data-chart-range="3y"', false)
+            ->assertSee('data-chart-range="5y" aria-pressed="true"', false)
+            ->assertSee('data-chart-range="10y"', false)
+            ->assertSee('data-chart-range="all"', false)
+            ->assertSee('Последние 24 месяца')
+            ->assertSee('Показать всю историю с января 1991 года — 427 месяцев')
+            ->assertSee('Январь 1991')
+            ->assertSee('Июль 2026')
             ->assertSee('Другие индексы потребительских цен')
             ->assertSee('Без учета статистической информации')
             ->assertSee('январе 1998 г. была проведена деноминация')
@@ -90,12 +115,15 @@ class ConsumerPriceIndexPublicPublicationTest extends TestCase
             ->assertDontSee('Официальная классификация')
             ->assertDontSee('ОКПД2')
             ->assertDontSee('food_products');
+        $this->assertSame(24, $this->tableRowCount($detail->getContent(), '/<tbody data-recent-observations>(.*?)<\/tbody>/s'));
+        $this->assertSame(427, $this->tableRowCount($detail->getContent(), '/<table data-full-history>(.*?)<\/table>/s'));
         $payload = $this->chartPayload($detail->getContent());
         $this->assertCount(427, $payload['points']);
         $this->assertNull($payload['series']['code']);
         $this->assertSame('1991-01', $payload['limits']['first_available_period']);
         $this->assertSame('2026-07', $payload['limits']['last_available_period']);
         $this->assertSame(120, $payload['limits']['calculator_max_range_months']);
+        $this->assertSame(PublicIndexFamilyRegistry::CONSUMER_PRICES, $payload['series']['family']);
         $chartPayloadBytes = strlen(json_encode($payload, JSON_THROW_ON_ERROR));
         $this->assertLessThan(150_000, $chartPayloadBytes);
         $this->assertLessThanOrEqual(11, $detailMeasurement['queries']);
@@ -107,7 +135,10 @@ class ConsumerPriceIndexPublicPublicationTest extends TestCase
         }
         $this->get('https://indices.test/'.$ppi['page']->slug)
             ->assertOk()
-            ->assertSee('<link rel="canonical" href="https://indices.test/31-02-10-140">', false);
+            ->assertSee('<link rel="canonical" href="https://indices.test/31-02-10-140">', false)
+            ->assertSee('Помесячные индексы')
+            ->assertDontSee('data-chart-range=', false)
+            ->assertDontSee('data-full-history', false);
 
         $this->get('https://indices.test/?q=ипц')->assertOk()
             ->assertSeeInOrder(['Товары и услуги', 'Продовольственные товары', 'Непродовольственные товары', 'Услуги'])
@@ -221,5 +252,13 @@ class ConsumerPriceIndexPublicPublicationTest extends TestCase
         $this->assertSame(1, $matched);
 
         return json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    private function tableRowCount(string $html, string $tablePattern): int
+    {
+        $matched = preg_match($tablePattern, $html, $matches);
+        $this->assertSame(1, $matched, 'Expected table fragment was not found.');
+
+        return preg_match_all('/<tr><td>/', $matches[1]);
     }
 }

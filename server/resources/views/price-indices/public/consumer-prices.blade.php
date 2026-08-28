@@ -12,14 +12,16 @@
     @if ($summary['examples']->isNotEmpty())
         <section class="grid" aria-label="Опубликованные индексы потребительских цен">
             @foreach ($summary['examples'] as $page)
-                <a class="panel card" href="{{ $urls->detail($page->slug, $family->code) }}">
+                <a class="panel card cpi-card" href="{{ $urls->detail($page->slug, $family->code) }}">
                     <span class="code">{{ $family->shortLabel }} · Росстат</span>
                     <h2>@if ($page->classifierItem->item_code === 'all_items_and_services')Индекс потребительских цен — товары и услуги@else{{ $page->classifierItem->name }}@endif</h2>
                     <div>{{ $formatter->periodRange($page->period_from, $page->period_to) }}</div>
                     <div class="metrics">
-                        <div class="metric"><span class="metric__label">Последний период</span><span class="metric__value">{{ $formatter->period($page->period_to, true) }}</span></div>
-                        <div class="metric"><span class="metric__label">Значение</span><span class="metric__value">{{ $formatter->indexValue($page->getAttribute('latest_value')) }} %</span></div>
+                        <div class="metric metric--period"><span class="metric__label">Последний период</span><span class="metric__value">{{ $formatter->period($page->period_to, true) }}</span></div>
+                        <div class="metric"><span class="metric__label">Индекс к предыдущему месяцу</span><span class="metric__value">{{ $formatter->indexValue($page->getAttribute('latest_value')) }} %</span></div>
+                        <div class="metric"><span class="metric__label">Изменение за месяц</span><span class="metric__value">{{ $formatter->monthlyChangeFromIndex($page->getAttribute('latest_value')) }}</span></div>
                     </div>
+                    <span class="card__link-hint" aria-hidden="true">Открыть ряд <span>→</span></span>
                 </a>
             @endforeach
         </section>

@@ -21,6 +21,9 @@ class PublicIndexFormattingTest extends TestCase
         $this->assertSame('−5,20 %', $formatter->percent('-5.20'));
         $this->assertSame('0,00 %', $formatter->percent('0.00'));
         $this->assertSame('105,82', $formatter->indexValue('105.8200000000'));
+        $this->assertSame('+0,54 %', $formatter->monthlyChangeFromIndex('100.5400000000'));
+        $this->assertSame('−0,13 %', $formatter->monthlyChangeFromIndex('99.8700000000'));
+        $this->assertSame('0,00 %', $formatter->monthlyChangeFromIndex('100.0000000000'));
         $this->assertSame(
             'Январь 2021 — июнь 2026',
             $formatter->periodRange(new DateTimeImmutable('2021-01-01'), new DateTimeImmutable('2026-06-01')),

@@ -12,7 +12,7 @@
     <div class="lead">
         @if ($family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::CONSUMER_PRICES)
             <p>По данным Росстата, для категории «{{ $page->classifierItem->name }}» доступны месячные индексы потребительских цен по Российской Федерации с {{ $formatter->periodGenitive($page->period_from) }} по {{ $formatter->period($page->period_to) }}. Накопленный коэффициент за весь период составляет {{ $coefficient }}, изменение — {{ $change }}.</p>
-            <p>Каждое значение показывает изменение к предыдущему месяцу: 100 % означает отсутствие изменения. График содержит всю опубликованную историю, а калькулятор рассчитывает произвольный диапазон длиной не более {{ $chartData->limits['calculator_max_range_months'] }} месяцев.</p>
+            <p>Каждое значение показывает изменение к предыдущему месяцу: 100 % означает отсутствие изменения. По умолчанию график показывает последние пять лет, а калькулятор независимо рассчитывает произвольный диапазон длиной не более {{ $chartData->limits['calculator_max_range_months'] }} месяцев.</p>
         @else
             <p>По данным Росстата, для товарной группы «{{ $page->classifierItem->name }}» доступны индексы цен производителей с {{ $formatter->periodGenitive($page->period_from) }} по {{ $formatter->period($page->period_to) }}. Накопленный коэффициент изменения цен за этот период составляет {{ $coefficient }}, что соответствует изменению на {{ $change }}.</p>
             <p>В таблице приведены официальные месячные индексы цен товара к предыдущему месяцу. Данные позволяют проследить изменение цен по периодам и использовать их для расчёта изменения стоимости.</p>
@@ -21,6 +21,18 @@
 
     <div class="detail-grid">
         <div>
+            @if ($family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::CONSUMER_PRICES)
+                <section class="panel section latest-index" aria-labelledby="latest-index-title">
+                    <h2 id="latest-index-title">Последнее официальное значение</h2>
+                    <dl class="facts latest-index__facts">
+                        <div class="fact"><dt>Последний период</dt><dd>{{ $latestObservation ? $formatter->period($latestObservation->period_start, true) : '—' }}</dd></div>
+                        <div class="fact latest-index__official"><dt>Индекс к предыдущему месяцу</dt><dd>{{ $formatter->indexValue($latestObservation?->value) }} %</dd></div>
+                        <div class="fact"><dt>Изменение цен за месяц</dt><dd>{{ $formatter->monthlyChangeFromIndex($latestObservation?->value) }}</dd></div>
+                    </dl>
+                    <p class="method latest-index__note">Изменение за месяц — поясняющее отображение, рассчитанное как официальный индекс минус 100. Это не годовая инфляция и не отдельный показатель Росстата.</p>
+                </section>
+            @endif
+
             <section class="panel section">
                 <h2>Показатели за период</h2>
                 <dl class="facts">
@@ -45,6 +57,16 @@
                             <button class="chart-mode-button" type="button" data-chart-mode="cumulative" aria-pressed="false">Накопленное изменение</button>
                         </div>
                     </div>
+                    @if ($family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::CONSUMER_PRICES)
+                        <div class="chart-range-control" role="group" aria-label="Период графика">
+                            <button class="chart-range-button" type="button" data-chart-range="1y" aria-pressed="false">1 год</button>
+                            <button class="chart-range-button" type="button" data-chart-range="3y" aria-pressed="false">3 года</button>
+                            <button class="chart-range-button chart-range-button--active" type="button" data-chart-range="5y" aria-pressed="true">5 лет</button>
+                            <button class="chart-range-button" type="button" data-chart-range="10y" aria-pressed="false">10 лет</button>
+                            <button class="chart-range-button" type="button" data-chart-range="all" aria-pressed="false">Вся история</button>
+                        </div>
+                        <p class="chart-range-note method" data-chart-range-note>Накопленное изменение считается с начала выбранного диапазона. Диапазон графика не изменяет периоды калькулятора.</p>
+                    @endif
                     <div class="price-chart" data-public-index-chart role="img" aria-label="Динамика месячного индекса цен" aria-describedby="public-chart-description"></div>
                     <p class="chart-status method" data-chart-status aria-live="polite">График загружается. Все значения доступны в таблице ниже.</p>
                     <script id="public-price-index-chart-data" type="application/json">{!! Illuminate\Support\Js::encode($chartData) !!}</script>
@@ -53,7 +75,9 @@
                     <div class="calculator-block" aria-labelledby="public-calculator-title">
                         <h3 id="public-calculator-title">Рассчитать изменение за период</h3>
                         <p class="method">Начальный месяц служит базой; сервер применяет факторы после него и по конечный месяц включительно.</p>
-                        @php($defaultStartIndex = max(0, $observations->count() - ($chartData->limits['calculator_max_range_months'] + 1)))
+                        @php
+                            $defaultStartIndex = max(0, $observations->count() - ($chartData->limits['calculator_max_range_months'] + 1));
+                        @endphp
                         <form id="public-index-calculator" class="calculator-form" method="post" action="{{ $calculationEndpoint }}" data-public-index-calculator data-max-range-months="{{ $chartData->limits['calculator_max_range_months'] }}">
                             <div class="field">
                                 <label for="calculation-start-period">Начальный период</label>
@@ -98,14 +122,45 @@
                 </section>
             @endif
 
-            <section class="panel section">
-                <h2>Помесячные индексы</h2>
-                <div class="table-wrap"><table><thead><tr><th>Период</th><th>Индекс, % к предыдущему месяцу</th></tr></thead><tbody>
-                @foreach ($observations as $observation)
-                    <tr><td>{{ $formatter->period($observation->period_start, true) }}</td><td>{{ $formatter->indexValue($observation->value) }}</td></tr>
-                @endforeach
-                </tbody></table></div>
-            </section>
+            @if ($family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::CONSUMER_PRICES)
+                @php
+                    $recentObservations = $observations->take(-24)->reverse()->values();
+                    $historyByYear = $observations->reverse()->groupBy(fn ($observation) => $observation->period_start->format('Y'));
+                    $firstObservation = $observations->first();
+                @endphp
+                <section class="panel section">
+                    <h2>Последние 24 месяца</h2>
+                    <p class="method">Официальные месячные индексы текущего опубликованного ряда — от новых данных к более старым.</p>
+                    <div class="table-wrap"><table><thead><tr><th>Период</th><th>Индекс, % к предыдущему месяцу</th></tr></thead><tbody data-recent-observations>
+                    @foreach ($recentObservations as $observation)
+                        <tr><td>{{ $formatter->period($observation->period_start, true) }}</td><td>{{ $formatter->indexValue($observation->value) }}</td></tr>
+                    @endforeach
+                    </tbody></table></div>
+
+                    <details class="history-details">
+                        <summary>Показать всю историю с {{ $firstObservation ? $formatter->periodGenitive($firstObservation->period_start).' года' : 'первого доступного периода' }} — {{ $observations->count() }} месяцев</summary>
+                        <div class="table-wrap history-table"><table data-full-history><thead><tr><th>Период</th><th>Индекс, % к предыдущему месяцу</th></tr></thead>
+                        @foreach ($historyByYear as $year => $yearObservations)
+                            <tbody aria-label="{{ $year }} год">
+                                <tr class="history-year"><th colspan="2" scope="rowgroup">{{ $year }}</th></tr>
+                                @foreach ($yearObservations as $observation)
+                                    <tr><td>{{ $formatter->period($observation->period_start, true) }}</td><td>{{ $formatter->indexValue($observation->value) }}</td></tr>
+                                @endforeach
+                            </tbody>
+                        @endforeach
+                        </table></div>
+                    </details>
+                </section>
+            @else
+                <section class="panel section">
+                    <h2>Помесячные индексы</h2>
+                    <div class="table-wrap"><table><thead><tr><th>Период</th><th>Индекс, % к предыдущему месяцу</th></tr></thead><tbody>
+                    @foreach ($observations as $observation)
+                        <tr><td>{{ $formatter->period($observation->period_start, true) }}</td><td>{{ $formatter->indexValue($observation->value) }}</td></tr>
+                    @endforeach
+                    </tbody></table></div>
+                </section>
+            @endif
 
             <section class="panel section method">
                 <h2>Как рассчитан коэффициент</h2>
@@ -202,7 +257,9 @@
                         @endforeach
                     </div>
                 @endif
-                @php($sourceUrl = $page->sourceFile->source?->source_page_url ?: $page->sourceFile->source_url)
+                @php
+                    $sourceUrl = $page->sourceFile->source?->source_page_url ?: $page->sourceFile->source_url;
+                @endphp
                 @if ($sourceUrl && filter_var($sourceUrl, FILTER_VALIDATE_URL))
                     <p><a href="{{ $sourceUrl }}" rel="nofollow noopener">Страница источника</a></p>
                 @endif

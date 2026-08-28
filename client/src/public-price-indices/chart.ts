@@ -8,7 +8,7 @@ import {
 } from './shared'
 
 export type PublicPriceIndexChartPayload = {
-  series: { slug: string; title: string; code: string | null }
+  series: { slug: string; title: string; code: string | null; family: string }
   points: Array<{ period: string; display_period: string; value: string | null; sequence: number }>
   limits: {
     first_available_period: string | null
@@ -18,9 +18,45 @@ export type PublicPriceIndexChartPayload = {
 }
 
 export type ChartPoint = { x: string; y: number | null; period: string }
+export type ChartRange = '1y' | '3y' | '5y' | '10y' | 'all'
 
-export function monthlyPoints(payload: PublicPriceIndexChartPayload): ChartPoint[] {
-  return payload.points.map((point) => ({
+const RANGE_MONTHS: Record<Exclude<ChartRange, 'all'>, number> = {
+  '1y': 12,
+  '3y': 36,
+  '5y': 60,
+  '10y': 120,
+}
+
+function periodNumber(period: string): number | null {
+  const match = /^(\d{4})-(\d{2})$/.exec(period)
+  if (!match) return null
+  const month = Number(match[2])
+  if (month < 1 || month > 12) return null
+
+  return Number(match[1]) * 12 + month - 1
+}
+
+export function pointsForRange(
+  payload: PublicPriceIndexChartPayload,
+  range: ChartRange,
+): PublicPriceIndexChartPayload['points'] {
+  if (range === 'all' || payload.points.length === 0) return payload.points
+
+  const lastPeriod = periodNumber(payload.points[payload.points.length - 1]?.period ?? '')
+  if (lastPeriod === null) return payload.points
+  const firstPeriod = lastPeriod - RANGE_MONTHS[range] + 1
+
+  return payload.points.filter((point) => {
+    const period = periodNumber(point.period)
+    return period !== null && period >= firstPeriod && period <= lastPeriod
+  })
+}
+
+export function monthlyPoints(
+  payload: PublicPriceIndexChartPayload,
+  range: ChartRange = 'all',
+): ChartPoint[] {
+  return pointsForRange(payload, range).map((point) => ({
     x: point.display_period,
     y: point.value === null ? null : Number(point.value),
     period: point.period,
@@ -38,12 +74,43 @@ export function cumulativePoints(result: PublicCalculationResult): ChartPoint[] 
   ]
 }
 
+export function cumulativePointsForRange(
+  payload: PublicPriceIndexChartPayload,
+  range: ChartRange,
+): ChartPoint[] {
+  const points = pointsForRange(payload, range)
+  let runningCoefficient = 1
+  let chainIsComplete = true
+
+  return points.map((point, index) => {
+    if (index === 0) {
+      return { x: point.display_period, y: 100, period: point.period }
+    }
+    if (point.value === null || !chainIsComplete) {
+      chainIsComplete = false
+      return { x: point.display_period, y: null, period: point.period }
+    }
+
+    runningCoefficient = Math.round(runningCoefficient * (Number(point.value) / 100) * 1e12) / 1e12
+
+    return {
+      x: point.display_period,
+      y: Math.round(runningCoefficient * 100 * 1e10) / 1e10,
+      period: point.period,
+    }
+  })
+}
+
 export function chartPointsForMode(
   payload: PublicPriceIndexChartPayload,
   mode: 'monthly' | 'cumulative',
   result: PublicCalculationResult | null,
+  range: ChartRange = 'all',
 ): ChartPoint[] {
-  return mode === 'monthly' ? monthlyPoints(payload) : result ? cumulativePoints(result) : []
+  if (mode === 'monthly') return monthlyPoints(payload, range)
+  if (payload.series.family === 'consumer_prices') return cumulativePointsForRange(payload, range)
+
+  return result ? cumulativePoints(result) : []
 }
 
 export function chartHeight(viewportWidth: number): number {
@@ -143,6 +210,7 @@ export function initializePublicPriceIndexChart(): boolean {
   const payloadNode = document.getElementById('public-price-index-chart-data')
   const form = document.querySelector<HTMLFormElement>('[data-public-index-calculator]')
   const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-chart-mode]'))
+  const rangeButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-chart-range]'))
   const status = document.querySelector<HTMLElement>('[data-chart-status]')
   if (!container || !payloadNode || !form || buttons.length !== 2 || !status) return false
 
@@ -158,12 +226,19 @@ export function initializePublicPriceIndexChart(): boolean {
   const end = form.elements.namedItem('end_period') as HTMLSelectElement | null
   if (!start || !end) return false
 
+  const isConsumer = payload.series.family === 'consumer_prices'
   let mode: 'monthly' | 'cumulative' = 'monthly'
+  let range: ChartRange = isConsumer ? '5y' : 'all'
   let lastResult: PublicCalculationResult | null = null
   const startedAt = performance.now()
   const chart = new ApexCharts(
     container,
-    options(monthlyPoints(payload), mode, window.innerWidth, { start: start.value, end: end.value }),
+    options(
+      monthlyPoints(payload, range),
+      mode,
+      window.innerWidth,
+      isConsumer ? undefined : { start: start.value, end: end.value },
+    ),
   )
   void chart.render().then(() => {
     container.dataset.initializationMs = (performance.now() - startedAt).toFixed(1)
@@ -171,15 +246,22 @@ export function initializePublicPriceIndexChart(): boolean {
   })
 
   const renderMode = (): void => {
-    const points = chartPointsForMode(payload, mode, lastResult)
-    const selectedRange = mode === 'monthly' ? { start: start.value, end: end.value } : undefined
+    const points = chartPointsForMode(payload, mode, lastResult, range)
+    const selectedRange = !isConsumer && mode === 'monthly' ? { start: start.value, end: end.value } : undefined
     void chart.updateOptions(options(points, mode, window.innerWidth, selectedRange), true, false)
     buttons.forEach((button) => {
       const active = button.dataset.chartMode === mode
       button.setAttribute('aria-pressed', String(active))
       button.classList.toggle('chart-mode-button--active', active)
     })
-    status.textContent = mode === 'cumulative' && !lastResult ? 'Получаем расчёт для выбранного периода…' : ''
+    rangeButtons.forEach((button) => {
+      const active = button.dataset.chartRange === range
+      button.setAttribute('aria-pressed', String(active))
+      button.classList.toggle('chart-range-button--active', active)
+    })
+    status.textContent = !isConsumer && mode === 'cumulative' && !lastResult
+      ? 'Получаем расчёт для выбранного периода…'
+      : ''
   }
 
   buttons.forEach((button) => {
@@ -188,11 +270,21 @@ export function initializePublicPriceIndexChart(): boolean {
       if (nextMode !== 'monthly' && nextMode !== 'cumulative') return
       mode = nextMode
       renderMode()
-      if (mode === 'cumulative' && !lastResult) form.requestSubmit()
+      if (!isConsumer && mode === 'cumulative' && !lastResult) form.requestSubmit()
+    })
+  })
+
+  rangeButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const nextRange = button.dataset.chartRange
+      if (!nextRange || !['1y', '3y', '5y', '10y', 'all'].includes(nextRange)) return
+      range = nextRange as ChartRange
+      renderMode()
     })
   })
 
   const updateRange = (): void => {
+    if (isConsumer) return
     lastResult = null
     if (mode === 'monthly') renderMode()
   }
@@ -200,13 +292,15 @@ export function initializePublicPriceIndexChart(): boolean {
   end.addEventListener('change', updateRange)
 
   document.addEventListener(CALCULATION_STARTED_EVENT, () => {
-    if (mode === 'cumulative') status.textContent = 'Получаем расчёт для выбранного периода…'
+    if (!isConsumer && mode === 'cumulative') status.textContent = 'Получаем расчёт для выбранного периода…'
   })
   document.addEventListener(CALCULATION_SUCCEEDED_EVENT, (event) => {
+    if (isConsumer) return
     lastResult = (event as CustomEvent<PublicCalculationResult>).detail
     if (mode === 'cumulative') renderMode()
   })
   document.addEventListener(CALCULATION_FAILED_EVENT, () => {
+    if (isConsumer) return
     lastResult = null
     if (mode === 'cumulative') {
       renderMode()

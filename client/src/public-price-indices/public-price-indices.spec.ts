@@ -13,14 +13,16 @@ import {
   chartHeight,
   chartPointsForMode,
   cumulativePoints,
+  cumulativePointsForRange,
   escapeHtml,
   formatIndexChange,
   monthlyPoints,
+  pointsForRange,
   type PublicPriceIndexChartPayload,
 } from './chart'
 
 const payload: PublicPriceIndexChartPayload = {
-  series: { slug: '31-02-10-140', title: 'Наборы кухонной мебели', code: '31.02.10.140' },
+  series: { slug: '31-02-10-140', title: 'Наборы кухонной мебели', code: '31.02.10.140', family: 'producer_prices' },
   points: [
     { period: '2025-01', display_period: 'Январь 2025', value: '100.0000000000', sequence: 1 },
     { period: '2025-02', display_period: 'Февраль 2025', value: null, sequence: 2 },
@@ -55,7 +57,7 @@ describe('public PriceIndices chart', () => {
   it('keeps all 427 CPI monthly points without annual aggregation', () => {
     const cpiPayload: PublicPriceIndexChartPayload = {
       ...payload,
-      series: { slug: 'food-products', title: 'Продовольственные товары', code: null },
+      series: { slug: 'food-products', title: 'Продовольственные товары', code: null, family: 'consumer_prices' },
       points: Array.from({ length: 427 }, (_, index) => ({
         period: `${1991 + Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`,
         display_period: `Период ${index + 1}`,
@@ -72,6 +74,48 @@ describe('public PriceIndices chart', () => {
     expect(monthlyPoints(cpiPayload)).toHaveLength(427)
     expect(chartPointsForMode(cpiPayload, 'monthly', null)).toHaveLength(427)
     expect(cpiPayload.limits.calculator_max_range_months).toBe(120)
+  })
+
+  it('filters CPI ranges by calendar periods and defaults are independent from the calculator', () => {
+    const cpiPayload: PublicPriceIndexChartPayload = {
+      ...payload,
+      series: { slug: 'services', title: 'Услуги', code: null, family: 'consumer_prices' },
+      points: [
+        { period: '2020-01', display_period: 'Январь 2020', value: '100', sequence: 1 },
+        { period: '2021-08', display_period: 'Август 2021', value: '101', sequence: 2 },
+        { period: '2026-06', display_period: 'Июнь 2026', value: '102', sequence: 3 },
+        { period: '2026-07', display_period: 'Июль 2026', value: '99', sequence: 4 },
+      ],
+      limits: { ...payload.limits, first_available_period: '2020-01', last_available_period: '2026-07' },
+    }
+
+    expect(pointsForRange(cpiPayload, '5y').map((point) => point.period)).toEqual([
+      '2021-08',
+      '2026-06',
+      '2026-07',
+    ])
+    expect(pointsForRange(cpiPayload, '1y').map((point) => point.period)).toEqual(['2026-06', '2026-07'])
+    expect(pointsForRange(cpiPayload, 'all')).toHaveLength(4)
+  })
+
+  it('rebases cumulative CPI values to 100 at the first period in each selected range', () => {
+    const cpiPayload: PublicPriceIndexChartPayload = {
+      ...payload,
+      series: { slug: 'food-products', title: 'Продовольственные товары', code: null, family: 'consumer_prices' },
+      points: [
+        { period: '2024-12', display_period: 'Декабрь 2024', value: '150', sequence: 1 },
+        { period: '2025-01', display_period: 'Январь 2025', value: '101', sequence: 2 },
+        { period: '2025-02', display_period: 'Февраль 2025', value: '102', sequence: 3 },
+      ],
+      limits: { ...payload.limits, first_available_period: '2024-12', last_available_period: '2025-02' },
+    }
+
+    expect(cumulativePointsForRange(cpiPayload, 'all')).toEqual([
+      { x: 'Декабрь 2024', y: 100, period: '2024-12' },
+      { x: 'Январь 2025', y: 101, period: '2025-01' },
+      { x: 'Февраль 2025', y: 103.02, period: '2025-02' },
+    ])
+    expect(chartPointsForMode(cpiPayload, 'cumulative', result, '1y')[0]?.y).toBe(100)
   })
 
   it('initializes monthly mode with every ordered point and preserves a missing value', () => {

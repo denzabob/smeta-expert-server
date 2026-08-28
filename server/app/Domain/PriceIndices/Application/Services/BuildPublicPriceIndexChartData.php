@@ -36,6 +36,7 @@ final readonly class BuildPublicPriceIndexChartData
                 'code' => $family->code === PublicIndexFamilyRegistry::PRODUCER_PRICES
                     ? (string) $page->classifierItem?->item_code
                     : null,
+                'family' => $family->code,
             ],
             points: $points,
             limits: [
