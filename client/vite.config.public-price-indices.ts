@@ -2,6 +2,11 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 
 const entries = {
+  'public-price-indices-analytics': {
+    source: './src/public-price-indices/analytics.ts',
+    output: 'price-indices-public-analytics.js',
+    name: 'PriceIndicesPublicAnalytics',
+  },
   'public-price-indices-calculator': {
     source: './src/public-price-indices/calculator.ts',
     output: 'price-indices-public-calculator.js',

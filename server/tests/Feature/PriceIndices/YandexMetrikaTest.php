@@ -3,12 +3,14 @@
 namespace Tests\Feature\PriceIndices;
 
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Tests\Feature\PriceIndices\Support\BuildsConsumerPublicFixture;
 use Tests\Feature\PriceIndices\Support\BuildsPublicSeoFixture;
 use Tests\TestCase;
 
 class YandexMetrikaTest extends TestCase
 {
     use BuildsPublicSeoFixture;
+    use BuildsConsumerPublicFixture;
     use DatabaseTransactions;
 
     public function test_counter_is_rendered_once_with_exact_configuration_and_noscript(): void
@@ -53,6 +55,34 @@ class YandexMetrikaTest extends TestCase
             ->assertSee('href="https://app.test/app/indices/new?', false)
             ->assertSee('data-metrika-goal="public_index_calculator_click"', false)
             ->assertSee('data-item-code="31.02.10.140"', false)
+            ->assertSee('data-indices-event="indices_login_cta"', false)
+            ->assertSee('data-index-family="producer_prices"', false)
+            ->assertSee('data-index-series="'.$fixture['series']->public_id.'"', false)
             ->assertSee("'reachGoal'", false);
+    }
+
+    public function test_public_analytics_uses_only_whitelisted_context_and_sanitized_page_url(): void
+    {
+        $fixture = $this->publicSeoFixture();
+        $fixture['sourceFile']->update(['source_url' => 'https://rosstat.gov.ru/statistics/price']);
+        $consumerFixture = $this->consumerPublicFamilyFixture();
+        $response = $this->get('https://indices.test/?q=');
+        $resultResponse = $this->get('https://indices.test/');
+        $detail = $this->get('https://indices.test/'.$fixture['page']->slug)->getContent();
+        $consumerDetail = $this->get('https://indices.test/consumer-prices/'.$consumerFixture['pages']['all_items_and_services']->slug)->getContent();
+
+        $response->assertOk()
+            ->assertSee('data-indices-search-form', false)
+            ->assertSee('data-indices-search-state="results"', false)
+            ->assertSee('data-search-result-count="', false);
+        $resultResponse->assertOk()
+            ->assertSee('data-indices-event="indices_result_open"', false);
+        $this->assertStringContainsString('data-indices-event="indices_source_open"', $detail);
+        $this->assertStringContainsString('data-indices-event="full_history_open"', $consumerDetail);
+        $this->assertStringContainsString('data-index-family="producer_prices"', $detail);
+        $this->assertStringContainsString('data-index-series="'.$fixture['series']->public_id.'"', $detail);
+        $this->assertStringContainsString('url: location.origin + location.pathname', $detail);
+        $this->assertStringNotContainsString('url: location.href', $detail);
+        $this->assertStringNotContainsString('item_code:', $detail);
     }
 }

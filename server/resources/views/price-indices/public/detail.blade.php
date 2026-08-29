@@ -78,7 +78,7 @@
                         @php
                             $defaultStartIndex = max(0, $observations->count() - ($chartData->limits['calculator_max_range_months'] + 1));
                         @endphp
-                        <form id="public-index-calculator" class="calculator-form" method="post" action="{{ $calculationEndpoint }}" data-public-index-calculator data-max-range-months="{{ $chartData->limits['calculator_max_range_months'] }}">
+                        <form id="public-index-calculator" class="calculator-form" method="post" action="{{ $calculationEndpoint }}" data-public-index-calculator data-index-family="{{ $family->code }}" data-index-series="{{ $page->series?->public_id }}" data-max-range-months="{{ $chartData->limits['calculator_max_range_months'] }}">
                             <div class="field">
                                 <label for="calculation-start-period">Начальный период</label>
                                 <select id="calculation-start-period" name="start_period" required>
@@ -137,7 +137,7 @@
                     @endforeach
                     </tbody></table></div>
 
-                    <details class="history-details">
+                    <details class="history-details" data-indices-event="full_history_open" data-index-family="{{ $family->code }}" data-index-series="{{ $page->series?->public_id }}">
                         <summary>Показать всю историю с {{ $firstObservation ? $formatter->periodGenitive($firstObservation->period_start).' года' : 'первого доступного периода' }} — {{ $observations->count() }} месяцев</summary>
                         <div class="table-wrap history-table"><table data-full-history><thead><tr><th>Период</th><th>Индекс, % к предыдущему месяцу</th></tr></thead>
                         @foreach ($historyByYear as $year => $yearObservations)
@@ -235,7 +235,7 @@
             <section class="panel section cta">
                 <h2>Профессиональные инструменты</h2>
                 <p>Войдите в ПРИЗМУ, чтобы продолжить работу с индексом в профессиональном калькуляторе.</p>
-                <a class="button" href="{{ $calculatorUrl }}" data-metrika-goal="public_index_calculator_click" data-item-code="{{ $family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::CONSUMER_PRICES ? $page->slug : $page->classifierItem->item_code }}">Войти в ПРИЗМУ</a>
+                <a class="button" href="{{ $calculatorUrl }}" data-indices-event="indices_login_cta" data-index-family="{{ $family->code }}" data-index-series="{{ $page->series?->public_id }}" data-metrika-goal="public_index_calculator_click" data-item-code="{{ $family->code === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::CONSUMER_PRICES ? $page->slug : $page->classifierItem->item_code }}">Войти в ПРИЗМУ</a>
             </section>
 
             <section class="panel section">
@@ -261,7 +261,7 @@
                     $sourceUrl = $page->sourceFile->source?->source_page_url ?: $page->sourceFile->source_url;
                 @endphp
                 @if ($sourceUrl && filter_var($sourceUrl, FILTER_VALIDATE_URL))
-                    <p><a href="{{ $sourceUrl }}" rel="nofollow noopener">Страница источника</a></p>
+                    <p><a href="{{ $sourceUrl }}" rel="nofollow noopener" data-indices-event="indices_source_open" data-index-family="{{ $family->code }}" data-index-series="{{ $page->series?->public_id }}">Страница источника</a></p>
                 @endif
             </section>
         </aside>

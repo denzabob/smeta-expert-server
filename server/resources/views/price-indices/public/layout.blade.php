@@ -35,8 +35,7 @@
             trackHash:true,
             clickmap:true,
             ecommerce:"dataLayer",
-            referrer: document.referrer,
-            url: location.href,
+            url: location.origin + location.pathname,
             accurateTrackBounce:true,
             trackLinks:true
         });
@@ -44,9 +43,7 @@
         document.addEventListener('click', function(event) {
             var link = event.target.closest('[data-metrika-goal]');
             if (!link || typeof ym !== 'function') { return; }
-            ym({{ $metrikaId }}, 'reachGoal', link.dataset.metrikaGoal, {
-                item_code: link.dataset.itemCode
-            });
+            ym({{ $metrikaId }}, 'reachGoal', link.dataset.metrikaGoal);
         });
         </script>
         <!-- /Yandex.Metrika counter -->
@@ -183,7 +180,7 @@
         @media (max-width:420px) { .shell { width:min(100% - 20px,1160px); } .metrics { grid-template-columns:1fr; } .chart-mode-control { grid-template-columns:1fr; } .chart-mode-button { width:100%; } }
     </style>
 </head>
-<body>
+<body data-indices-metrika-id="{{ $metrikaId ?? '' }}">
 <a class="skip-link" href="#main-content">К основному содержанию</a>
 @if ($metrikaId !== null)
 <noscript>
@@ -197,6 +194,7 @@
 <header class="topbar"><div class="shell topbar__inner"><a class="brand" href="{{ $urls->catalog() }}">ПРИЗМА <span>Индексы</span></a><span>Данные Росстата</span></div></header>
 <main id="main-content"><div class="shell">@yield('content')</div></main>
 <footer><div class="shell">Публичный справочник официальных индексов. Для расчёта стоимости используйте калькулятор ПРИЗМА.</div></footer>
+<script defer src="/price-indices-public-analytics.js"></script>
 @stack('scripts')
 </body>
 </html>

@@ -6,6 +6,7 @@ import {
   formatPeriod,
   type PublicCalculationResult,
 } from './shared'
+import { trackPublicIndicesEvent, type PublicIndicesAnalyticsParams } from './analytics'
 
 export type PublicPriceIndexChartPayload = {
   series: { slug: string; title: string; code: string | null; family: string }
@@ -230,6 +231,10 @@ export function initializePublicPriceIndexChart(): boolean {
   let mode: 'monthly' | 'cumulative' = 'monthly'
   let range: ChartRange = isConsumer ? '5y' : 'all'
   let lastResult: PublicCalculationResult | null = null
+  const analyticsContext = (): PublicIndicesAnalyticsParams => ({
+    family: form.dataset.indexFamily,
+    series: form.dataset.indexSeries,
+  })
   const startedAt = performance.now()
   const chart = new ApexCharts(
     container,
@@ -270,6 +275,7 @@ export function initializePublicPriceIndexChart(): boolean {
       if (nextMode !== 'monthly' && nextMode !== 'cumulative') return
       mode = nextMode
       renderMode()
+      trackPublicIndicesEvent('chart_mode_change', { ...analyticsContext(), mode: nextMode })
       if (!isConsumer && mode === 'cumulative' && !lastResult) form.requestSubmit()
     })
   })
@@ -280,6 +286,7 @@ export function initializePublicPriceIndexChart(): boolean {
       if (!nextRange || !['1y', '3y', '5y', '10y', 'all'].includes(nextRange)) return
       range = nextRange as ChartRange
       renderMode()
+      trackPublicIndicesEvent('chart_range_change', { ...analyticsContext(), range })
     })
   })
 

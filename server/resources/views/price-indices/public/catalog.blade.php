@@ -14,7 +14,7 @@
         </section>
     @endunless
 
-    <form class="panel search-form" method="get" action="{{ $urls->catalog() }}" role="search">
+    <form class="panel search-form" method="get" action="{{ $urls->catalog() }}" role="search" data-indices-search-form data-indices-search-state="{{ $isSearch ? 'results' : 'idle' }}" data-search-result-count="{{ $isSearch ? $pages->total() : '' }}">
         <div class="field">
             <label for="public-index-search">Код, название или вид индекса</label>
             <div class="search-controls">
@@ -39,7 +39,7 @@
         @if ($isCombinedSearch)
             @foreach ($pages as $result)
                 @if ($result->isStatisticalSeries())
-                    <a class="panel card" href="{{ $urls->detail($result->statisticalSlug, $result->familyCode) }}">
+                    <a class="panel card" href="{{ $urls->detail($result->statisticalSlug, $result->familyCode) }}" data-indices-event="indices_result_open" data-index-family="{{ $result->familyCode }}" data-index-series="{{ $result->statisticalSlug }}">
                         @php($classifierLabel = $result->classifierLabel ?? $formatter->classifierLabel((string) $result->localClassifierCode, $result->providerCodeKind))
                         <span class="code">{{ $result->familyLabel }}</span>
                         @if ($result->familyCode === App\Domain\PriceIndices\Application\Services\PublicIndexFamilyRegistry::PRODUCER_PRICES)
@@ -71,7 +71,7 @@
         @else
             @foreach ($pages as $page)
                 @php($family = $families->forDataset((string) $page->getAttribute('public_dataset_code')))
-                <a class="panel card" href="{{ $urls->detail($page->slug, $family->code) }}">
+                <a class="panel card" href="{{ $urls->detail($page->slug, $family->code) }}" data-indices-event="indices_result_open" data-index-family="{{ $family->code }}" data-index-series="{{ $page->series?->public_id }}">
                     @php($providerCodeKind = $page->classifierItem->metadata_json['provider_code_kind'] ?? null)
                     @php($classifierLabel = $formatter->classifierLabel($page->classifierItem->classifier_code, is_string($providerCodeKind) ? $providerCodeKind : null))
                     <span class="code">{{ $family->searchLabel }}</span>

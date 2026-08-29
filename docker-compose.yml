@@ -32,6 +32,7 @@ services:
       - ./docker/app/nginx.conf:/etc/nginx/conf.d/default.conf
       - ./server/public/price-indices-public-calculator.js:/var/www/assets/price-indices-public-calculator.js:ro
       - ./server/public/price-indices-public-chart.js:/var/www/assets/price-indices-public-chart.js:ro
+      - ./server/public/price-indices-public-analytics.js:/var/www/assets/price-indices-public-analytics.js:ro
     depends_on:
       app:
         condition: service_healthy
