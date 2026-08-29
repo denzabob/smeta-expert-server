@@ -111,7 +111,7 @@ export function setupAxiosInterceptors(options: AxiosAuthInterceptorOptions) {
       const status = error.response?.status
       const config = error.config || {}
       const url = typeof config.url === 'string' ? config.url : ''
-      const devMockData = getDevVisualApiMock(config.method, url)
+      const devMockData = getDevVisualApiMock(config.method, url, config.data)
 
       if (devMockData !== undefined) {
         console.warn('[AXIOS] DEV visual API mock response:', config.method?.toUpperCase(), url)

@@ -1093,6 +1093,103 @@ function normalizeApiPath(url: string): string {
   return url.replace(/^https?:\/\/[^/]+/i, '').split('?')[0] || '/'
 }
 
+const demoPriceIndicesSeries = [
+  {
+    public_id: '01900000-0000-7000-8000-000000000001',
+    classifier_item: {
+      public_id: '01900000-0000-7000-8000-000000000101',
+      classifier_code: 'okpd2_based',
+      item_code: '31.02.10.140',
+      item_name: 'Наборы кухонной мебели',
+      provider_code_kind: 'numeric',
+    },
+    indicator: { code: 'producer_price_index', name: 'Индекс цен производителей' },
+    territory: { code: 'RU', name: 'Российская Федерация' },
+    frequency: 'monthly',
+    comparison_basis: 'previous_month',
+    unit: 'percent',
+    period: { from: '2021-01', to: '2026-06', observations_count: 66 },
+    active_import: {
+      public_id: '01900000-0000-7000-8000-000000000901',
+      importer_code: 'rosstat_producer_price_indices',
+      importer_version: '2.3B-4',
+      published_at: '2026-06-30T10:00:00.000Z',
+    },
+  },
+  {
+    public_id: '01900000-0000-7000-8000-000000000002',
+    classifier_item: {
+      public_id: '01900000-0000-7000-8000-000000000102',
+      classifier_code: 'okpd2_based',
+      item_code: '05.10.10.101.АГ',
+      item_name: 'Уголь каменный локальной группировки Росстата',
+      provider_code_kind: 'rosstat_local_ag',
+    },
+    indicator: { code: 'producer_price_index', name: 'Индекс цен производителей' },
+    territory: { code: 'RU', name: 'Российская Федерация' },
+    frequency: 'monthly',
+    comparison_basis: 'previous_month',
+    unit: 'percent',
+    period: { from: '2024-01', to: '2026-06', observations_count: 30 },
+    active_import: {
+      public_id: '01900000-0000-7000-8000-000000000901',
+      importer_code: 'rosstat_producer_price_indices',
+      importer_version: '2.3B-4',
+      published_at: '2026-06-30T10:00:00.000Z',
+    },
+  },
+]
+
+function demoPriceIndicesCalculation(requestData: unknown) {
+  let payload: Record<string, unknown> = {}
+  try {
+    payload = typeof requestData === 'string' ? JSON.parse(requestData) : (requestData as Record<string, unknown>)
+  } catch {
+    payload = {}
+  }
+  const selected = demoPriceIndicesSeries.find((item) => item.public_id === payload.series_public_id) ?? demoPriceIndicesSeries[0]!
+  const start = typeof payload.start_period === 'string' ? payload.start_period : '2024-01'
+  const end = typeof payload.end_period === 'string' ? payload.end_period : '2026-06'
+  const base = typeof payload.base_amount === 'string' ? payload.base_amount : null
+  const samePeriod = start === end
+  const isAg = selected.classifier_item.provider_code_kind === 'rosstat_local_ag'
+  const factorCount = samePeriod ? 0 : start === '2024-01' && end === '2024-02' ? 1 : start === '2021-01' ? 65 : 29
+  const coefficient = samePeriod ? '1.000000000000' : isAg ? '1.010000000000' : '1.123456789012'
+  const coefficientRaw = samePeriod ? '1.00000000000000000000' : isAg ? '1.01000000000000000000' : '1.12345678901234567890'
+  const chain = samePeriod ? [] : [
+    {
+      period: start === '2024-01' ? '2024-02' : '2021-02',
+      index: isAg ? '101.0000000000' : '100.1900000000',
+      factor: isAg ? '1.01000000000000000000' : '1.00190000000000000000',
+      running_coefficient: isAg ? '1.010000000000' : '1.001900000000',
+      source: { sheet: '16', row: 20374, column: 'D', cell: 'D20374', raw_value: isAg ? '101.0 1)' : '100.19', footnote_marker: isAg ? '1)' : null },
+    },
+    ...(factorCount > 1 ? [{
+      period: end,
+      index: '99.8700000000',
+      factor: '0.99870000000000000000',
+      running_coefficient: coefficient,
+      source: { sheet: '16', row: 20402, column: 'D', cell: 'D20402', raw_value: '99.87', footnote_marker: null },
+    }] : []),
+  ]
+  return {
+    data: {
+      series: selected,
+      period: { start, end, interval_semantics: '(start,end]', factors_count: factorCount },
+      coefficient_raw: coefficientRaw,
+      coefficient,
+      amount: base ? { base, adjusted_raw: samePeriod ? base : '745999.16639458999999999999', adjusted: samePeriod ? base : '745999.17' } : null,
+      chain,
+      provenance: {
+        dataset: { public_id: '01900000-0000-7000-8000-000000000801', code: 'rosstat_producer_prices', name: 'Индексы цен производителей по товарам и товарным группам' },
+        import: { public_id: selected.active_import.public_id, importer_code: selected.active_import.importer_code, importer_version: selected.active_import.importer_version, published_at: selected.active_import.published_at },
+        source_file: { public_id: '01900000-0000-7000-8000-000000000701', original_filename: 'Proizvoditeli_Ind_tov_06-2026.xlsx', sha256: 'f233b55e5d45ef092dd48a3be6574791aa8480104336ffb85f2a423cafb6b691' },
+        series: { public_id: selected.public_id },
+      },
+    },
+  }
+}
+
 function getSupportChatScenario(url: string): 'default' | 'empty' | 'closed' {
   try {
     const pageSearch = typeof window !== 'undefined' ? window.location.search : ''
@@ -1106,7 +1203,7 @@ function getSupportChatScenario(url: string): 'default' | 'empty' | 'closed' {
   return 'default'
 }
 
-export function getDevVisualApiMock(method?: string, url?: string): unknown | undefined {
+export function getDevVisualApiMock(method?: string, url?: string, requestData?: unknown): unknown | undefined {
   const methodName = method?.toLowerCase()
 
   if (!isDevVisualAuthEnabled || !methodName || !url) {
@@ -1117,6 +1214,7 @@ export function getDevVisualApiMock(method?: string, url?: string): unknown | un
   const supportChatScenario = getSupportChatScenario(url)
 
   if (methodName !== 'get') {
+    if (methodName === 'post' && path === '/api/indices/calculate') return demoPriceIndicesCalculation(requestData)
     if (/^\/api\/support-chat\/conversations\/\d+\/read$/.test(path)) return {}
     if (/^\/api\/support-chat\/conversations\/\d+\/typing$/.test(path)) return {}
     if (/^\/api\/support-chat\/conversations\/\d+\/messages$/.test(path)) {
@@ -1164,6 +1262,27 @@ export function getDevVisualApiMock(method?: string, url?: string): unknown | un
   }
 
   if (path === '/api/me') return devVisualUser
+  if (path === '/api/indices/capabilities') {
+    return { data: { application: 'price_indices', enabled: true, access: true, admin_only: true, stage: 'skeleton' } }
+  }
+  if (path === '/api/indices/series') {
+    const params = new URL(url, window.location.origin).searchParams
+    const code = (params.get('item_code_prefix') ?? params.get('item_code') ?? '').toLocaleUpperCase('ru-RU')
+    const name = (params.get('item_name') ?? '').toLocaleLowerCase('ru-RU')
+    const filtered = demoPriceIndicesSeries.filter((item) => {
+      return (!code || item.classifier_item.item_code.startsWith(code))
+        && (!name || item.classifier_item.item_name.toLocaleLowerCase('ru-RU').includes(name))
+    })
+    return {
+      data: filtered,
+      meta: { current_page: 1, from: filtered.length ? 1 : null, last_page: 1, path, per_page: 25, to: filtered.length || null, total: filtered.length },
+    }
+  }
+  if (/^\/api\/indices\/series\/[0-9a-f-]+$/i.test(path)) {
+    const publicId = path.split('/').pop()
+    const selected = demoPriceIndicesSeries.find((item) => item.public_id === publicId)
+    return selected ? { data: selected } : undefined
+  }
   if (path === '/api/support-chat/conversation') {
     const conversation =
       supportChatScenario === 'empty'
