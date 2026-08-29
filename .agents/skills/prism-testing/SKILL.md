@@ -7,6 +7,20 @@ description: "Use for Prism validation planning and execution: choose the minimu
 
 Выбирай минимально достаточную validation matrix по фактическому diff. Не запускай весь suite автоматически для маленького изменения и не называй работу проверенной без реального выполнения команды.
 
+## Skill routing
+
+- Backend diff: `prism-backend` + targeted backend checks.
+- Database/persistence diff: `prism-backend` + `prism-database` + targeted migration/data checks.
+- Frontend diff: `prism-frontend`; при visual behavior добавь `prism-ui`.
+- Public rendering diff: `prism-public-rendering` + `prism-public-seo` по фактическому SEO scope.
+- Существенный UI/public diff: добавь `prism-visual-acceptance`, если Browser доступен и browser validation оправдана.
+
+```text
+automated validation != visual acceptance
+```
+
+PHPUnit passed != Blade/SEO rendering verified; TypeScript build passed != UI visually correct; browser rendering passed != crawler HTML correct.
+
 ## Frontend commands
 
 Из `client/package.json` доступны:

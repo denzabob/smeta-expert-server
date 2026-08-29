@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prism Git Workflow"
+  short_description: "Prism Git sync and deployment workflow"
+  default_prompt: "Use $prism-git-workflow to prepare a safe Prism Git or deployment workflow."

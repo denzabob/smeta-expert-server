@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prism Database"
+  short_description: "Safe Prism database schema and persistence"
+  default_prompt: "Use $prism-database to plan a safe Prism database or persistence change."

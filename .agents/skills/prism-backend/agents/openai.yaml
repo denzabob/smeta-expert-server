@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prism Backend"
+  short_description: "Prism Laravel/PHP backend conventions"
+  default_prompt: "Use $prism-backend to trace and safely change a Prism backend flow."

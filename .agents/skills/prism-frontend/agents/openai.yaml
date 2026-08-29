@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prism Frontend"
+  short_description: "Prism Vue/TypeScript implementation rules"
+  default_prompt: "Use $prism-frontend to implement a typed Prism Vue or TypeScript change."

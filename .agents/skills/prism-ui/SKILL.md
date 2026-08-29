@@ -23,3 +23,10 @@ Operational UI для estimates, admin, evidence, settings и data-heavy screens
 Public/marketing/SEO UI для public PriceIndices, landing и discoverability pages может использовать больше whitespace, narrative sections и conversion hierarchy, но должен оставаться в общем visual language PrismCore.
 
 Перед изменением shared primitive перечисли затронутые косвенно экраны и регрессии. Для foundation-изменений планируй build и ручной smoke-check desktop/mobile, hover, focus, error, disabled, loading и light/dark theme, если тема применима.
+
+## Cross-skill routing
+
+- Техническую Vue/TypeScript implementation маршрутизируй в `prism-frontend`.
+- Public server rendering маршрутизируй в `prism-public-rendering`.
+- Browser verification выполняй через `prism-visual-acceptance`, если Browser реально доступен.
+- SEO semantics и indexability маршрутизируй в `prism-public-seo`.

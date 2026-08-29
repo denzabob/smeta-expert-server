@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prism Public Rendering"
+  short_description: "Prism server-rendered public page rules"
+  default_prompt: "Use $prism-public-rendering to change a Prism public server-rendered page."

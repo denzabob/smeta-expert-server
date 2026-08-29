@@ -26,13 +26,29 @@ Small local tasks should not automatically start the whole pipeline.
 
 Use the most specific Skill available:
 
+- `prism-backend` — Laravel/PHP backend execution paths, contracts, services, validation and compatibility.
+- `prism-database` — MariaDB/MySQL schema, persistence safety, backfills, constraints and rollback planning.
+- `prism-frontend` — Vue 3/TypeScript/Vite implementation and frontend state/API mechanics.
+- `prism-public-rendering` — Blade, server-rendered public HTML, bootstrap data and progressive enhancement.
 - `prism-price-indices` — PriceIndices, CPI/PPI, OKPD2, Rosstat data, provenance, imports, datasets, classifiers, calculations and admin/public contracts.
 - `prism-public-seo` — public PriceIndices pages, SSR/crawler HTML, metadata, canonical/robots, sitemap, structured data and legacy public URLs.
 - `prism-ui` — Vue/Vuetify UI, responsive behavior, public landing/calculator/chart/table work, accessibility and visual states.
 - `prism-testing` — select and report the minimum validation matrix for the actual diff.
+- `prism-visual-acceptance` — Browser-based visual acceptance for substantial UI/public changes when Browser is available.
+- `prism-git-workflow` — safe multi-workstation Git synchronization and Git-based deployment workflow.
 - `large-change-scope` — analysis-first planning and bounded cross-layer delivery.
 
-Retain and use existing system/plugin Skills when available: `material-3` for material/evidence/pricing/document coverage, `laravel-expert` for Laravel implementation, `database-architect` for schema and migration safety, `performance-optimizer` for measured bottlenecks, `code-reviewer` for review-only work and `backend-architect` for higher-level service/API architecture.
+External/general Skills are optional and conditional: use `material-3`, `laravel-expert`, `database-architect`, `performance-optimizer`, `code-reviewer` or `backend-architect` only when that Skill is actually available in the current Codex environment.
+
+## Skill combinations
+
+- Backend: `prism-backend` + `prism-testing`.
+- Database: `prism-backend` + `prism-database` + `prism-testing`.
+- Vue: `prism-frontend` + `prism-ui` when visual behavior changes + `prism-testing`.
+- Public PriceIndices/landing: `prism-public-rendering` + `prism-public-seo` + `prism-frontend` + `prism-ui` when visual scope exists + `prism-testing` + `prism-visual-acceptance` when Browser validation is justified.
+- Cross-layer: `large-change-scope` + relevant domain/engineering Skills; use read-only architecture/exploration support when useful.
+
+Do not activate every Skill mechanically.
 
 ## Agent routing and write concurrency
 

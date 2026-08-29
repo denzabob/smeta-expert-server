@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prism Visual Acceptance"
+  short_description: "Prism browser-based visual acceptance"
+  default_prompt: "Use $prism-visual-acceptance to verify a Prism UI or public page in Browser."
