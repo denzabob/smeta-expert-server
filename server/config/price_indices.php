@@ -16,6 +16,11 @@ return [
         'throttle_per_minute' => 20,
     ],
 
+    'public_tools' => [
+        'search_throttle_per_minute' => 60,
+        'calculate_throttle_per_minute' => 30,
+    ],
+
     'source_files' => [
         'max_upload_bytes' => 67_108_864,
         'max_download_bytes' => 67_108_864,

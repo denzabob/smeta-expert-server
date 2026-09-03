@@ -19,6 +19,8 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 $priceIndicesPublicHost = (string) config('price_indices.public_host');
 
+require __DIR__.'/price_indices_public_tools.php';
+
 if ($priceIndicesPublicHost !== '') {
     Route::domain($priceIndicesPublicHost)->name('price-indices.public.')->group(function (): void {
         Route::middleware(CachePublicIndexResponse::class)
