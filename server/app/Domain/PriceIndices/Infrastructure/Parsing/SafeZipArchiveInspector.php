@@ -38,6 +38,7 @@ class SafeZipArchiveInspector
             }
 
             $totalUncompressed = 0;
+            $totalCompressed = 0;
             $canonicalNames = [];
             $entries = [];
             $entriesByName = [];
@@ -81,11 +82,19 @@ class SafeZipArchiveInspector
                 }
 
                 $totalUncompressed += $size;
+                $totalCompressed += $compressedSize;
 
                 if ($totalUncompressed > $limits->maxTotalUncompressedBytes) {
                     throw ClassifierParserException::fatal(
                         'zip_total_size_limit',
                         'The classifier archive exceeds its total uncompressed size limit.'
+                    );
+                }
+
+                if ($totalCompressed > $limits->maxTotalCompressedBytes) {
+                    throw ClassifierParserException::fatal(
+                        'zip_total_compressed_size_limit',
+                        'The classifier archive exceeds its total compressed size limit.'
                     );
                 }
 

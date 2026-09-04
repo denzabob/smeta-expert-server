@@ -20,6 +20,14 @@ class ValidateClassifierCandidateSnapshot
             $this->mismatch('candidate_source_sha_mismatch', 'source SHA-256');
         }
 
+        $rawArtifactType = $source->metadata_json['artifact_type']
+            ?? pathinfo($source->storage_path, PATHINFO_EXTENSION);
+        $actualArtifactType = strtolower((string) $rawArtifactType);
+
+        if ($actualArtifactType !== '' && $actualArtifactType !== strtolower($descriptor->expectedArtifactType)) {
+            $this->mismatch('candidate_artifact_type_mismatch', 'artifact type');
+        }
+
         if ($snapshot->parserCode !== $descriptor->parserCode
             || $snapshot->parserVersion !== $descriptor->parserVersion
         ) {

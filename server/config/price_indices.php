@@ -35,6 +35,7 @@ return [
         'timeout_seconds' => (int) env('PRICE_INDICES_CLASSIFIER_TIMEOUT_SECONDS', 60),
         'connect_timeout_seconds' => (int) env('PRICE_INDICES_CLASSIFIER_CONNECT_TIMEOUT_SECONDS', 10),
         'max_redirects' => (int) env('PRICE_INDICES_CLASSIFIER_MAX_REDIRECTS', 5),
+        'source_page_max_bytes' => (int) env('PRICE_INDICES_CLASSIFIER_SOURCE_PAGE_MAX_BYTES', 2_097_152),
         'descriptors' => [
             'okpd2' => [
                 'code' => 'okpd2',
@@ -43,13 +44,12 @@ return [
                 'issuing_authority' => 'Росстандарт',
                 'official_distributor' => 'Росстат',
                 'source_page_url' => 'https://rosstat.gov.ru/classification',
-                'download_url' => 'https://rosstat.gov.ru/storage/mediabank/OKPD2.zip',
                 'allowed_hosts' => ['rosstat.gov.ru'],
-                'artifact_type' => 'zip',
-                'original_filename' => 'OKPD2.zip',
+                'artifact_type' => 'rar',
+                'original_filename' => 'OKPD2.rar',
                 'allowed_mime_types' => [
-                    'application/zip',
-                    'application/x-zip-compressed',
+                    'application/vnd.rar',
+                    'application/x-rar-compressed',
                     'application/octet-stream',
                 ],
             ],
@@ -62,6 +62,21 @@ return [
             'parts' => [
                 ['filename' => 'TIZ_OKPD2_1.docx', 'sections' => range('A', 'D')],
                 ['filename' => 'TIZ_OKPD2_2.docx', 'sections' => range('E', 'U')],
+            ],
+            'outer_rar' => [
+                'parts' => [
+                    ['filename' => 'OKPD2 01-35.docx', 'sections' => range('A', 'D')],
+                    ['filename' => 'OKPD2 36-99.docx', 'sections' => range('E', 'U')],
+                ],
+                'inspector_binary' => env('PRICE_INDICES_RAR_INSPECTOR_BINARY', 'lsar'),
+                'extractor_binary' => env('PRICE_INDICES_RAR_EXTRACTOR_BINARY', 'unar'),
+                'max_entries' => 8,
+                'max_single_entry_uncompressed_bytes' => 20_971_520,
+                'max_total_uncompressed_bytes' => 41_943_040,
+                'max_total_compressed_bytes' => 20_971_520,
+                'max_compression_ratio' => 200,
+                'max_listing_bytes' => 2_097_152,
+                'command_timeout_seconds' => 120,
             ],
             'minimum_digital_nodes' => 10_000,
             'outer_zip' => [

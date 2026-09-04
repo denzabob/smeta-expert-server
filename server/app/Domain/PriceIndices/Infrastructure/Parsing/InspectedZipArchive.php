@@ -5,13 +5,13 @@ namespace App\Domain\PriceIndices\Infrastructure\Parsing;
 use App\Domain\PriceIndices\Domain\Exceptions\ClassifierParserException;
 use ZipArchive;
 
-final class InspectedZipArchive
+final class InspectedZipArchive implements ClassifierOuterArchive
 {
     private bool $closed = false;
 
     /**
-     * @param  list<InspectedZipEntry>  $entries
-     * @param  array<string, InspectedZipEntry>  $entriesByName
+     * @param  list<ClassifierArchiveEntry>  $entries
+     * @param  array<string, ClassifierArchiveEntry>  $entriesByName
      */
     public function __construct(
         private readonly ZipArchive $archive,
@@ -19,12 +19,23 @@ final class InspectedZipArchive
         private readonly array $entriesByName,
     ) {}
 
+    public function type(): string
+    {
+        return 'zip';
+    }
+
+    /** @return list<ClassifierArchiveEntry> */
+    public function entries(): array
+    {
+        return $this->entries;
+    }
+
     /** @return list<string> */
     public function fileNames(): array
     {
         return array_values(array_map(
-            fn (InspectedZipEntry $entry): string => $entry->name,
-            array_filter($this->entries, fn (InspectedZipEntry $entry): bool => ! $entry->directory),
+            fn (ClassifierArchiveEntry $entry): string => $entry->name,
+            array_filter($this->entries, fn (ClassifierArchiveEntry $entry): bool => ! $entry->directory),
         ));
     }
 
@@ -33,7 +44,7 @@ final class InspectedZipArchive
         return isset($this->entriesByName[$name]);
     }
 
-    public function entry(string $name): InspectedZipEntry
+    public function entry(string $name): ClassifierArchiveEntry
     {
         return $this->entriesByName[$name] ?? throw ClassifierParserException::fatal(
             'required_archive_entry_missing',
@@ -120,6 +131,7 @@ final class InspectedZipArchive
         }
 
         if ($bytes !== $entry->uncompressedBytes
+            || ! is_string($entry->crc32)
             || ! hash_equals($entry->crc32, hash_final($crc))
         ) {
             $temporary->close();

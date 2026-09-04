@@ -26,6 +26,7 @@ class ParseOkpd2ClassifierArtifact
     public function parse(
         StatisticalClassifierSourceFile $sourceArtifact,
         ?ClassifierExpectedProfile $expectedProfile = null,
+        ?string $expectedArtifactType = null,
     ): ParsedClassifierSnapshot {
         try {
             $this->storage->verify(
@@ -46,6 +47,10 @@ class ParseOkpd2ClassifierArtifact
             );
         }
 
-        return $this->parser->parse($absolutePath, $expectedProfile);
+        $artifactType = $expectedArtifactType
+            ?? ($sourceArtifact->metadata_json['artifact_type'] ?? null)
+            ?? strtolower((string) pathinfo($sourceArtifact->storage_path, PATHINFO_EXTENSION));
+
+        return $this->parser->parse($absolutePath, $expectedProfile, $artifactType !== '' ? $artifactType : null);
     }
 }

@@ -24,9 +24,20 @@ class DownloadTrustedClassifierArtifact
         private readonly ClassifierArtifactStorage $storage,
     ) {}
 
-    public function download(TrustedClassifierDescriptor $descriptor): DownloadedClassifierArtifact
-    {
-        $url = $this->urlPolicy->validate($descriptor->downloadUrl, $descriptor->allowedHosts);
+    public function download(
+        TrustedClassifierDescriptor $descriptor,
+        ?string $downloadUrl = null,
+    ): DownloadedClassifierArtifact {
+        $downloadUrl ??= $descriptor->downloadUrl;
+
+        if ($downloadUrl === null) {
+            throw new ClassifierAcquisitionException(
+                'download_url_not_discovered',
+                'A trusted classifier artifact URL must be discovered from the official source page.',
+            );
+        }
+
+        $url = $this->urlPolicy->validate($downloadUrl, $descriptor->allowedHosts);
         $visited = [$url];
         $redirectCount = 0;
 
@@ -117,8 +128,8 @@ class DownloadTrustedClassifierArtifact
                     throw new ClassifierAcquisitionException('artifact_too_large', 'Classifier artifact exceeds the configured size limit.');
                 }
 
-                if (strlen($magic) < 4) {
-                    $magic .= substr($chunk, 0, 4 - strlen($magic));
+                if (strlen($magic) < 8) {
+                    $magic .= substr($chunk, 0, 8 - strlen($magic));
                 }
 
                 hash_update($hash, $chunk);
@@ -133,8 +144,12 @@ class DownloadTrustedClassifierArtifact
                 throw new ClassifierAcquisitionException('partial_download', 'Classifier bytes do not match Content-Length.');
             }
 
-            if (! in_array($magic, ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"], true)) {
-                throw new ClassifierAcquisitionException('invalid_zip_signature', 'Classifier artifact does not have a valid ZIP signature.');
+            if (! $this->hasExpectedSignature($descriptor, $magic)) {
+                $code = $descriptor->artifactType === 'rar'
+                    ? 'invalid_rar_signature'
+                    : 'invalid_zip_signature';
+
+                throw new ClassifierAcquisitionException($code, "Classifier artifact does not have a valid {$descriptor->artifactType} signature.");
             }
 
             fclose($output);
@@ -168,6 +183,15 @@ class DownloadTrustedClassifierArtifact
                 $this->storage->deleteTemporary($descriptor->storageDisk, $temporaryPath);
             }
         }
+    }
+
+    private function hasExpectedSignature(TrustedClassifierDescriptor $descriptor, string $magic): bool
+    {
+        return match ($descriptor->artifactType) {
+            'zip' => in_array(substr($magic, 0, 4), ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"], true),
+            'rar' => substr($magic, 0, 8) === "Rar!\x1a\x07\x01\x00",
+            default => false,
+        };
     }
 
     /** @param resource $output */

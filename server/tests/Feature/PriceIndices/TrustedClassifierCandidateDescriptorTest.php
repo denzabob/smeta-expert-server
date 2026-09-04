@@ -44,6 +44,22 @@ class TrustedClassifierCandidateDescriptorTest extends TestCase
         ], $descriptor->controlAncestorParents);
     }
 
+    public function test_current_rar_candidate_has_the_measured_148_2026_profile(): void
+    {
+        $descriptor = app(TrustedClassifierCandidateRegistry::class)->get('okpd2_148_2026');
+
+        $this->assertSame('148/2026', $descriptor->versionLabel);
+        $this->assertSame('2026-08-26', $descriptor->effectiveFrom);
+        $this->assertSame('586ea967cda82eaee7651e0f9f920bcb1cb39db93901932be2d130869b39952c', $descriptor->sourceSha256);
+        $this->assertSame('rar', $descriptor->expectedArtifactType);
+        $this->assertSame(['OKPD2 01-35.docx', 'OKPD2 36-99.docx'], $descriptor->expectedPartFilenames);
+        $this->assertSame(21_595, $descriptor->expectedDigitalNodesCount);
+        $this->assertSame(21_616, $descriptor->expectedTotalNodesCount);
+        $this->assertSame(1_327, $descriptor->expectedNotesCount);
+        $this->assertSame(8_587, $descriptor->expectedLevelCounts['category']);
+        $this->assertSame(7_354, $descriptor->expectedLevelCounts['subcategory']);
+    }
+
     public function test_unknown_candidate_is_a_controlled_failure(): void
     {
         try {

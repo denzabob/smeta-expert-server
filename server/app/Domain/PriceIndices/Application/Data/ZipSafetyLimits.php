@@ -9,5 +9,6 @@ final readonly class ZipSafetyLimits
         public int $maxSingleEntryUncompressedBytes,
         public int $maxTotalUncompressedBytes,
         public float $maxCompressionRatio,
+        public int $maxTotalCompressedBytes = PHP_INT_MAX,
     ) {}
 }

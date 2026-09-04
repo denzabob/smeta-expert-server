@@ -28,7 +28,7 @@ class TrustedClassifierDescriptorRegistry
             issuingAuthority: $this->requiredString($descriptor, 'issuing_authority'),
             officialDistributor: $this->requiredString($descriptor, 'official_distributor'),
             sourcePageUrl: $this->requiredString($descriptor, 'source_page_url'),
-            downloadUrl: $this->requiredString($descriptor, 'download_url'),
+            downloadUrl: $this->optionalString($descriptor, 'download_url'),
             allowedHosts: $this->requiredStringList($descriptor, 'allowed_hosts'),
             artifactType: $this->requiredString($descriptor, 'artifact_type'),
             originalFilename: $this->requiredString($descriptor, 'original_filename'),
@@ -40,6 +40,22 @@ class TrustedClassifierDescriptorRegistry
             storageDisk: $this->requiredString($config, 'storage_disk'),
             tempDirectory: $this->requiredString($config, 'temp_directory'),
         );
+    }
+
+    /** @param array<string, mixed> $values */
+    private function optionalString(array $values, string $key): ?string
+    {
+        $value = $values[$key] ?? null;
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (! is_string($value) || trim($value) === '') {
+            $this->invalidConfiguration($key);
+        }
+
+        return $value;
     }
 
     /** @param array<string, mixed> $values */

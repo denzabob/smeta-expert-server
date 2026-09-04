@@ -10,6 +10,7 @@ final readonly class TrustedClassifierCandidateDescriptor
     /**
      * @param  array<string, int>  $expectedLevelCounts
      * @param  array<string, string|null>  $controlAncestorParents
+     * @param  list<string>  $expectedPartFilenames
      */
     public function __construct(
         public string $candidateKey,
@@ -30,6 +31,8 @@ final readonly class TrustedClassifierCandidateDescriptor
         public ClassifierSemanticLevel $controlNodeLevel,
         public string $controlNodeParentCode,
         public array $controlAncestorParents,
+        public string $expectedArtifactType = 'zip',
+        public array $expectedPartFilenames = [],
     ) {}
 
     public function fingerprint(): string
@@ -54,7 +57,7 @@ final readonly class TrustedClassifierCandidateDescriptor
     /** @return array<string, mixed> */
     public function fingerprintPayload(): array
     {
-        return [
+        $payload = [
             'candidate_key' => $this->candidateKey,
             'classifier_code' => $this->classifierCode,
             'version_label' => $this->versionLabel,
@@ -81,5 +84,12 @@ final readonly class TrustedClassifierCandidateDescriptor
                 ],
             ],
         ];
+
+        if ($this->expectedArtifactType !== 'zip' || $this->expectedPartFilenames !== []) {
+            $payload['artifact_type'] = $this->expectedArtifactType;
+            $payload['part_filenames'] = $this->expectedPartFilenames;
+        }
+
+        return $payload;
     }
 }

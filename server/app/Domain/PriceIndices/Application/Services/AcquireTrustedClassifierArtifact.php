@@ -17,6 +17,7 @@ class AcquireTrustedClassifierArtifact
     public function __construct(
         private readonly TrustedClassifierDescriptorRegistry $descriptors,
         private readonly ResolveTrustedStatisticalClassifier $classifiers,
+        private readonly DiscoverTrustedClassifierArtifact $discovery,
         private readonly DownloadTrustedClassifierArtifact $downloader,
         private readonly ClassifierArtifactStorage $storage,
         private readonly ClassifierSourceFileRepository $sourceFiles,
@@ -26,7 +27,8 @@ class AcquireTrustedClassifierArtifact
     {
         $descriptor = $this->descriptors->get($classifierCode);
         $classifier = $this->classifiers->resolve($descriptor);
-        $download = $this->downloader->download($descriptor);
+        $discovered = $this->discovery->discover($descriptor);
+        $download = $this->downloader->download($descriptor, $discovered->url);
 
         try {
             $existing = $this->sourceFiles->findByClassifierAndHash($classifier->id, $download->sha256);
@@ -49,9 +51,9 @@ class AcquireTrustedClassifierArtifact
                     'classifier_id' => $classifier->id,
                     'trust_tier' => ClassifierSourceTrustTier::OfficialAuthoritative,
                     'source_page_url' => $descriptor->sourcePageUrl,
-                    'download_url' => $descriptor->downloadUrl,
+                    'download_url' => $discovered->url,
                     'resolved_url' => $download->resolvedUrl,
-                    'original_filename' => $descriptor->originalFilename,
+                    'original_filename' => $discovered->originalFilename,
                     'storage_disk' => $descriptor->storageDisk,
                     'storage_path' => $storagePath,
                     'mime_type' => $download->mimeType,
@@ -60,8 +62,12 @@ class AcquireTrustedClassifierArtifact
                     'etag' => $download->etag,
                     'last_modified_at' => $download->lastModifiedAt,
                     'downloaded_at' => now(),
-                    'declared_version_label' => null,
-                    'metadata_json' => null,
+                    'declared_version_label' => $discovered->versionLabel,
+                    'metadata_json' => [
+                        'artifact_type' => $discovered->artifactType,
+                        'source_section_title' => $discovered->sectionTitle,
+                        'publication_date' => $discovered->publicationDate?->format('Y-m-d'),
+                    ],
                 ]);
             } catch (QueryException $exception) {
                 if (! $this->isExpectedDuplicateRace($exception)) {

@@ -40,12 +40,12 @@ class ClassifierArtifactStorage
     {
         if (preg_match('/^[a-z0-9][a-z0-9_-]{0,63}$/', $descriptor->code) !== 1
             || preg_match('/^[a-f0-9]{64}$/', $sha256) !== 1
-            || $descriptor->artifactType !== 'zip'
+            || ! in_array($descriptor->artifactType, ['zip', 'rar'], true)
         ) {
             throw new ClassifierAcquisitionException('storage_failure', 'Classifier artifact identity is unsafe for storage.');
         }
 
-        return "classifiers/{$descriptor->code}/artifacts/{$sha256}.zip";
+        return "classifiers/{$descriptor->code}/artifacts/{$sha256}.{$descriptor->artifactType}";
     }
 
     public function finalize(

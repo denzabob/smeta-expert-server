@@ -79,7 +79,7 @@ class StageTrustedClassifierCandidate
             }
 
             // Block 2C remains generic. Candidate-exact checks run only after parsing.
-            $snapshot = $this->parser->parse($source);
+            $snapshot = $this->parser->parse($source, null, $descriptor->expectedArtifactType);
         } catch (ClassifierParserException $exception) {
             $controlled = new ClassifierCandidateStagingException(
                 $exception->errorCode,
@@ -156,6 +156,15 @@ class StageTrustedClassifierCandidate
             $this->integrityFailure();
         }
 
+        $artifactType = strtolower((string) (
+            $source->metadata_json['artifact_type']
+            ?? pathinfo($source->storage_path, PATHINFO_EXTENSION)
+        ));
+
+        if ($artifactType !== '' && $artifactType !== strtolower($descriptor->expectedArtifactType)) {
+            $this->integrityFailure('candidate_artifact_type_mismatch');
+        }
+
         try {
             $this->storage->verify(
                 $source->storage_disk,
@@ -205,6 +214,8 @@ class StageTrustedClassifierCandidate
             'version_label' => $descriptor->versionLabel,
             'effective_from' => $descriptor->effectiveFrom,
             'source' => ['sha256' => $descriptor->sourceSha256],
+            'artifact_type' => $descriptor->expectedArtifactType,
+            'part_filenames' => $descriptor->expectedPartFilenames,
             'parser' => [
                 'code' => $descriptor->parserCode,
                 'version' => $descriptor->parserVersion,

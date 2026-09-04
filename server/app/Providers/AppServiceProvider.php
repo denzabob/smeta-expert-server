@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Domain\PriceIndices\Application\Contracts\ClassifierHttpTransport;
 use App\Domain\PriceIndices\Infrastructure\Http\LaravelClassifierHttpTransport;
+use App\Domain\PriceIndices\Infrastructure\Parsing\ClassifierArchiveCommandRunner;
+use App\Domain\PriceIndices\Infrastructure\Parsing\ProcessClassifierArchiveCommandRunner;
 use App\Models\Chat\ChatConversation;
 use App\Models\Idea;
 use App\Models\MaterialDimensionParseFailure;
@@ -30,6 +32,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(ClassifierHttpTransport::class, LaravelClassifierHttpTransport::class);
+        $this->app->bind(ClassifierArchiveCommandRunner::class, ProcessClassifierArchiveCommandRunner::class);
     }
 
     /**

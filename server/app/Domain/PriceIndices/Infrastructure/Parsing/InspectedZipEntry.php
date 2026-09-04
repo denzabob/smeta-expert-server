@@ -2,14 +2,23 @@
 
 namespace App\Domain\PriceIndices\Infrastructure\Parsing;
 
-final readonly class InspectedZipEntry
+final readonly class InspectedZipEntry extends ClassifierArchiveEntry
 {
     public function __construct(
-        public int $index,
-        public string $name,
-        public int $uncompressedBytes,
-        public int $compressedBytes,
-        public string $crc32,
-        public bool $directory,
-    ) {}
+        int $index,
+        string $name,
+        int $uncompressedBytes,
+        int $compressedBytes,
+        string $crc32,
+        bool $directory,
+    ) {
+        parent::__construct(
+            index: $index,
+            name: $name,
+            uncompressedBytes: $uncompressedBytes,
+            compressedBytes: $compressedBytes,
+            directory: $directory,
+            crc32: $crc32,
+        );
+    }
 }

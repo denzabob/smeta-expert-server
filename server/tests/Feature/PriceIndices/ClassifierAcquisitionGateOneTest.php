@@ -25,9 +25,15 @@ class ClassifierAcquisitionGateOneTest extends TestCase
         $this->assertSame('Росстандарт', $descriptor->issuingAuthority);
         $this->assertSame('Росстат', $descriptor->officialDistributor);
         $this->assertSame('https://rosstat.gov.ru/classification', $descriptor->sourcePageUrl);
-        $this->assertSame('https://rosstat.gov.ru/storage/mediabank/OKPD2.zip', $descriptor->downloadUrl);
+        $this->assertNull($descriptor->downloadUrl);
         $this->assertSame(['rosstat.gov.ru'], $descriptor->allowedHosts);
-        $this->assertSame('zip', $descriptor->artifactType);
+        $this->assertSame('rar', $descriptor->artifactType);
+        $this->assertSame('OKPD2.rar', $descriptor->originalFilename);
+        $this->assertSame([
+            'application/vnd.rar',
+            'application/x-rar-compressed',
+            'application/octet-stream',
+        ], $descriptor->allowedMimeTypes);
     }
 
     public function test_unknown_descriptor_and_arbitrary_url_are_rejected(): void

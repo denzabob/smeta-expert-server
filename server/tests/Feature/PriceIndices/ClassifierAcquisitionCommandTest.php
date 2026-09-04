@@ -76,7 +76,7 @@ class ClassifierAcquisitionCommandTest extends TestCase
 
     public function test_success_output_uses_public_identity_and_omits_private_or_numeric_identity(): void
     {
-        $bytes = "PK\x03\x04command-success";
+        $bytes = "Rar!\x1a\x07\x01\x00command-success";
         $transport = new CommandFakeClassifierTransport($bytes);
         $this->app->instance(ClassifierHttpTransport::class, $transport);
 
@@ -94,13 +94,16 @@ class ClassifierAcquisitionCommandTest extends TestCase
         $this->assertStringNotContainsString($sourceFile->storage_path, $output);
         $this->assertStringNotContainsString('storage_path', $output);
         $this->assertStringNotContainsString('classifier_id', $output);
-        $this->assertSame(['https://rosstat.gov.ru/storage/mediabank/OKPD2.zip'], $transport->requestedUrls);
+        $this->assertSame([
+            'https://rosstat.gov.ru/classification',
+            'https://rosstat.gov.ru/storage/mediabank/OKPD2.rar',
+        ], $transport->requestedUrls);
         $this->assertNoDownstreamLifecycle();
     }
 
     public function test_repeated_command_reports_reused_without_creating_downstream_rows(): void
     {
-        $transport = new CommandFakeClassifierTransport("PK\x03\x04same-command-bytes");
+        $transport = new CommandFakeClassifierTransport("Rar!\x1a\x07\x01\x00same-command-bytes");
         $this->app->instance(ClassifierHttpTransport::class, $transport);
 
         $this->assertSame(SymfonyCommand::SUCCESS, Artisan::call('price-indices:classifier:acquire', ['classifier' => 'okpd2']));
@@ -141,8 +144,17 @@ class CommandFakeClassifierTransport implements ClassifierHttpTransport
     {
         $this->requestedUrls[] = $url;
 
+        if (str_ends_with($url, '/classification')) {
+            $html = '<section class="toggle-section"><h2>Общероссийский классификатор продукции по видам экономической деятельности ОК 034-2014 (КПЕС 2008)</h2><div class="document-list__item">ОКПД2 с учетом изменений с 1/2015 по 148/2026, 02.09.2026 <a href="/storage/mediabank/OKPD2.rar">RAR</a></div></section>';
+
+            return new ClassifierHttpResponse(200, [
+                'Content-Type' => ['text/html'],
+                'Content-Length' => [(string) strlen($html)],
+            ], Utils::streamFor($html));
+        }
+
         return new ClassifierHttpResponse(200, [
-            'Content-Type' => ['application/zip'],
+            'Content-Type' => ['application/x-rar-compressed'],
             'Content-Length' => [(string) strlen($this->bytes)],
             'ETag' => ['"command-etag"'],
             'Last-Modified' => ['Sun, 23 Aug 2026 10:20:30 GMT'],

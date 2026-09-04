@@ -18,6 +18,7 @@ class Okpd2RosstatDocxParser
 
     public function __construct(
         private readonly SafeZipArchiveInspector $archives,
+        private readonly ClassifierOuterArchiveFactory $outerArchives,
         private readonly Okpd2DocxSecurityInspector $docxSecurity,
         private readonly Okpd2WordprocessingMlReader $wordprocessingMl,
         private readonly ClassifierHierarchyResolver $hierarchy,
@@ -32,12 +33,20 @@ class Okpd2RosstatDocxParser
     public function parse(
         string $absoluteArtifactPath,
         ?ClassifierExpectedProfile $expectedProfile = null,
+        ?string $expectedArtifactType = null,
     ): ParsedClassifierSnapshot {
         $startedAt = hrtime(true);
         $peakMemoryBefore = memory_get_peak_usage(true);
-        $config = $this->configuration();
+        $outerType = strtolower($expectedArtifactType ?? ($this->outerArchives->detectType($absoluteArtifactPath) ?? ''));
+        $config = $this->configuration($outerType);
         $parts = $config['parts'];
-        $outer = $this->archives->open($absoluteArtifactPath, $this->limits($config['outer_zip']));
+        $outerLimits = $outerType === 'rar' ? $config['outer_rar'] : $config['outer_zip'];
+        $outer = $this->outerArchives->open(
+            $absoluteArtifactPath,
+            $outerType,
+            $this->limits($outerLimits),
+            $config['outer_rar'],
+        );
         $rawNodes = [];
         $rawRowsCount = 0;
         $notesCount = 0;
@@ -45,21 +54,21 @@ class Okpd2RosstatDocxParser
         try {
             $expectedPartNames = array_column($parts, 'filename');
 
-            foreach ($outer->entries as $entry) {
+            foreach ($outer->entries() as $entry) {
                 if (! $entry->directory
                     && strtolower(pathinfo($entry->name, PATHINFO_EXTENSION)) !== 'docx'
                 ) {
                     throw ClassifierParserException::fatal(
-                        'unexpected_outer_zip_entry',
-                        'The outer classifier ZIP contains an unexpected non-DOCX entry.'
+                        $outerType === 'zip' ? 'unexpected_outer_zip_entry' : 'unexpected_outer_rar_entry',
+                        'The outer classifier archive contains an unexpected non-DOCX entry.'
                     );
                 }
             }
 
             if ($outer->fileNames() !== $expectedPartNames) {
                 throw ClassifierParserException::fatal(
-                    'incompatible_outer_zip_layout',
-                    'The outer classifier ZIP part order is incompatible with parser version 1.'
+                    $outerType === 'zip' ? 'incompatible_outer_zip_layout' : 'incompatible_outer_rar_layout',
+                    'The outer classifier archive part order is incompatible with parser version 1.'
                 );
             }
 
@@ -175,19 +184,19 @@ class Okpd2RosstatDocxParser
         return [$deduplicated, $warnings, $duplicates];
     }
 
-    /** @return array{version: int, parts: list<array{filename: string, sections: list<string>}>, minimum_digital_nodes: int, outer_zip: array<string, int|float>, docx_zip: array<string, int|float>, max_document_xml_bytes: int, max_control_xml_bytes: int} */
-    private function configuration(): array
+    /** @return array{version: int, parts: list<array{filename: string, sections: list<string>}>, minimum_digital_nodes: int, outer_zip: array<string, int|float>, outer_rar: array<string, mixed>, docx_zip: array<string, int|float>, max_document_xml_bytes: int, max_control_xml_bytes: int} */
+    private function configuration(string $outerType): array
     {
         $config = config('price_indices.classifier_parsers.'.self::PARSER_CODE);
 
         if (! is_array($config)
             || ($config['version'] ?? null) !== self::PARSER_VERSION
-            || ! is_array($config['parts'] ?? null)
-            || count($config['parts']) !== 2
+            || ! in_array($outerType, ['zip', 'rar'], true)
             || ! is_int($config['minimum_digital_nodes'] ?? null)
             || ! is_int($config['max_document_xml_bytes'] ?? null)
             || ! is_int($config['max_control_xml_bytes'] ?? null)
             || ! is_array($config['outer_zip'] ?? null)
+            || ! is_array($config['outer_rar'] ?? null)
             || ! is_array($config['docx_zip'] ?? null)
         ) {
             throw ClassifierParserException::fatal(
@@ -196,7 +205,18 @@ class Okpd2RosstatDocxParser
             );
         }
 
-        foreach ($config['parts'] as $part) {
+        $parts = $outerType === 'rar'
+            ? $config['outer_rar']['parts'] ?? null
+            : $config['parts'] ?? null;
+
+        if (! is_array($parts) || count($parts) !== 2) {
+            throw ClassifierParserException::fatal(
+                'invalid_classifier_parser_configuration',
+                'The OKPD2 parser part configuration is invalid.'
+            );
+        }
+
+        foreach ($parts as $part) {
             if (! is_array($part)
                 || ! is_string($part['filename'] ?? null)
                 || ! is_array($part['sections'] ?? null)
@@ -208,6 +228,8 @@ class Okpd2RosstatDocxParser
                 );
             }
         }
+
+        $config['parts'] = $parts;
 
         return $config;
     }
@@ -231,11 +253,21 @@ class Okpd2RosstatDocxParser
             );
         }
 
+        $maxTotalCompressedBytes = $config['max_total_compressed_bytes'] ?? PHP_INT_MAX;
+
+        if (! is_int($maxTotalCompressedBytes) || $maxTotalCompressedBytes < 1) {
+            throw ClassifierParserException::fatal(
+                'invalid_classifier_parser_configuration',
+                'The OKPD2 parser archive compressed size limit is invalid.'
+            );
+        }
+
         return new ZipSafetyLimits(
             maxEntries: (int) $values[0],
             maxSingleEntryUncompressedBytes: (int) $values[1],
             maxTotalUncompressedBytes: (int) $values[2],
             maxCompressionRatio: (float) $values[3],
+            maxTotalCompressedBytes: $maxTotalCompressedBytes,
         );
     }
 }

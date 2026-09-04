@@ -22,7 +22,12 @@ class LaravelClassifierHttpTransport implements ClassifierHttpTransport
                 'timeout' => $descriptor->timeoutSeconds,
                 'verify' => true,
             ])->withHeaders([
-                'Accept' => 'application/zip, application/octet-stream;q=0.8',
+                'Accept' => implode(', ', array_map(
+                    static fn (string $mime): string => $mime === 'application/octet-stream'
+                        ? $mime.';q=0.8'
+                        : $mime,
+                    $descriptor->allowedMimeTypes,
+                )),
             ])->get($url);
         } catch (ConnectionException $exception) {
             throw new ClassifierAcquisitionException(

@@ -15,7 +15,7 @@ final readonly class TrustedClassifierDescriptor
         public string $issuingAuthority,
         public string $officialDistributor,
         public string $sourcePageUrl,
-        public string $downloadUrl,
+        public ?string $downloadUrl,
         public array $allowedHosts,
         public string $artifactType,
         public string $originalFilename,

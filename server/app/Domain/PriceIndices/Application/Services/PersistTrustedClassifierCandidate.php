@@ -91,7 +91,7 @@ class PersistTrustedClassifierCandidate
         $parseStartedAt = hrtime(true);
 
         try {
-            $snapshot = $this->parser->parse($source);
+            $snapshot = $this->parser->parse($source, null, $descriptor->expectedArtifactType);
         } catch (ClassifierParserException $exception) {
             throw new ClassifierCandidateStagingException(
                 $exception->errorCode,
@@ -263,6 +263,15 @@ class PersistTrustedClassifierCandidate
     ): void {
         if (! hash_equals($descriptor->sourceSha256, strtolower($source->sha256))) {
             $this->integrityFailure('source_artifact_integrity_failure', 'artifact_integrity');
+        }
+
+        $artifactType = strtolower((string) (
+            $source->metadata_json['artifact_type']
+            ?? pathinfo($source->storage_path, PATHINFO_EXTENSION)
+        ));
+
+        if ($artifactType !== '' && $artifactType !== strtolower($descriptor->expectedArtifactType)) {
+            $this->integrityFailure('candidate_artifact_type_mismatch', 'artifact_integrity');
         }
 
         try {

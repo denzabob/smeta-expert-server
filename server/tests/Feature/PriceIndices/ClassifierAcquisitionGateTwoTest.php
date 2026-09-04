@@ -56,13 +56,13 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_valid_zip_is_streamed_through_same_host_redirect_and_stored_with_sanitized_metadata(): void
+    public function test_valid_rar_is_streamed_through_same_host_redirect_and_stored_with_sanitized_metadata(): void
     {
-        $bytes = $this->zipBytes('canonical-okpd2');
+        $bytes = $this->rarBytes('canonical-okpd2');
         $transport = new FakeClassifierHttpTransport([
-            $this->response(302, '', ['Location' => ['/storage/final/OKPD2.zip']]),
+            $this->response(302, '', ['Location' => ['/storage/final/OKPD2.rar']]),
             $this->response(200, $bytes, [
-                'Content-Type' => ['application/zip; charset=binary'],
+                'Content-Type' => ['application/x-rar-compressed; charset=binary'],
                 'Content-Length' => [(string) strlen($bytes)],
                 'ETag' => ['"official-etag"'],
                 'Last-Modified' => ['Sun, 23 Aug 2026 10:20:30 GMT'],
@@ -75,18 +75,21 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
 
         $this->assertFalse($result->reused);
         $this->assertSame('okpd2', $result->classifier->code);
-        $this->assertSame('https://rosstat.gov.ru/storage/final/OKPD2.zip', $result->resolvedUrl);
+        $this->assertSame('https://rosstat.gov.ru/storage/final/OKPD2.rar', $result->resolvedUrl);
         $this->assertSame([
-            'https://rosstat.gov.ru/storage/mediabank/OKPD2.zip',
-            'https://rosstat.gov.ru/storage/final/OKPD2.zip',
+            'https://rosstat.gov.ru/classification',
+            'https://rosstat.gov.ru/storage/mediabank/OKPD2.rar',
+            'https://rosstat.gov.ru/storage/final/OKPD2.rar',
         ], $transport->requestedUrls);
         $this->assertSame($expectedHash, $result->sourceFile->sha256);
         $this->assertSame(strlen($bytes), $result->sourceFile->size_bytes);
-        $this->assertSame('application/zip', $result->sourceFile->mime_type);
+        $this->assertSame('application/x-rar-compressed', $result->sourceFile->mime_type);
         $this->assertSame('"official-etag"', $result->sourceFile->etag);
         $this->assertSame('2026-08-23 10:20:30', $result->sourceFile->last_modified_at?->format('Y-m-d H:i:s'));
-        $this->assertNull($result->sourceFile->declared_version_label);
-        $this->assertSame("classifiers/okpd2/artifacts/{$expectedHash}.zip", $result->sourceFile->storage_path);
+        $this->assertSame('148/2026', $result->sourceFile->declared_version_label);
+        $this->assertSame("classifiers/okpd2/artifacts/{$expectedHash}.rar", $result->sourceFile->storage_path);
+        $this->assertSame('rar', $result->sourceFile->metadata_json['artifact_type']);
+        $this->assertSame('2026-09-02', $result->sourceFile->metadata_json['publication_date']);
         $this->assertSame($bytes, Storage::disk('price_indices_classifier_artifacts')->get($result->sourceFile->storage_path));
         $this->assertSame([], Storage::disk('price_indices_classifier_artifacts')->allFiles('.tmp'));
         $this->assertPrivateDiskConfiguration();
@@ -124,41 +127,41 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
     public static function invalidDownloadProvider(): array
     {
         return [
-            'empty' => ['empty_artifact', '', ['Content-Type' => ['application/zip']], null],
+            'empty' => ['empty_artifact', '', ['Content-Type' => ['application/x-rar-compressed']], null],
             'oversized content length' => [
                 'artifact_too_large',
-                "PK\x03\x04oversized",
-                ['Content-Type' => ['application/zip'], 'Content-Length' => ['15']],
+                "Rar!\x1a\x07\x01\x00oversized",
+                ['Content-Type' => ['application/x-rar-compressed'], 'Content-Length' => ['15']],
                 8,
             ],
             'oversized streamed body' => [
                 'artifact_too_large',
-                "PK\x03\x04oversized",
-                ['Content-Type' => ['application/zip']],
+                "Rar!\x1a\x07\x01\x00oversized",
+                ['Content-Type' => ['application/x-rar-compressed']],
                 8,
             ],
             'wrong mime' => [
                 'invalid_mime_type',
-                "PK\x03\x04payload",
+                "Rar!\x1a\x07\x01\x00payload",
                 ['Content-Type' => ['text/html']],
                 null,
             ],
             'wrong magic' => [
-                'invalid_zip_signature',
-                'not-a-zip',
+                'invalid_rar_signature',
+                'not-a-rar',
                 ['Content-Type' => ['application/octet-stream']],
                 null,
             ],
             'partial content length' => [
                 'partial_download',
-                "PK\x03\x04short",
-                ['Content-Type' => ['application/zip'], 'Content-Length' => ['999']],
+                "Rar!\x1a\x07\x01\x00short",
+                ['Content-Type' => ['application/x-rar-compressed'], 'Content-Length' => ['999']],
                 null,
             ],
             'invalid last modified' => [
                 'invalid_response_metadata',
-                "PK\x03\x04payload",
-                ['Content-Type' => ['application/zip'], 'Last-Modified' => ['not-a-date']],
+                "Rar!\x1a\x07\x01\x00payload",
+                ['Content-Type' => ['application/x-rar-compressed'], 'Last-Modified' => ['not-a-date']],
                 null,
             ],
         ];
@@ -169,13 +172,13 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
         $calls = 0;
         $stream = new PumpStream(function () use (&$calls): string {
             if ($calls++ === 0) {
-                return "PK\x03\x04partial";
+                return "Rar!\x1a\x07\x01\x00partial";
             }
 
             throw new \RuntimeException('simulated network interruption');
         });
         $this->app->instance(ClassifierHttpTransport::class, new FakeClassifierHttpTransport([
-            new ClassifierHttpResponse(200, ['Content-Type' => ['application/zip']], $stream),
+            new ClassifierHttpResponse(200, ['Content-Type' => ['application/x-rar-compressed']], $stream),
         ]));
 
         try {
@@ -212,7 +215,7 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
 
     public function test_same_bytes_are_reused_across_same_or_changed_download_url(): void
     {
-        $bytes = $this->zipBytes('same-content');
+        $bytes = $this->rarBytes('same-content');
         $transport = new FakeClassifierHttpTransport([
             $this->response(200, $bytes),
             $this->response(200, $bytes),
@@ -223,10 +226,6 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
 
         $first = $service->acquire('okpd2');
         $sameUrl = $service->acquire('okpd2');
-        config()->set(
-            'price_indices.classifier_acquisition.descriptors.okpd2.download_url',
-            'https://rosstat.gov.ru/storage/mediabank/renamed.zip',
-        );
         $changedUrl = $service->acquire('okpd2');
 
         $this->assertFalse($first->reused);
@@ -240,8 +239,8 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
 
     public function test_same_url_with_changed_bytes_creates_a_new_immutable_artifact(): void
     {
-        $firstBytes = $this->zipBytes('first');
-        $secondBytes = $this->zipBytes('second');
+        $firstBytes = $this->rarBytes('first');
+        $secondBytes = $this->rarBytes('second');
         $this->app->instance(ClassifierHttpTransport::class, new FakeClassifierHttpTransport([
             $this->response(200, $firstBytes),
             $this->response(200, $secondBytes),
@@ -261,7 +260,7 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
 
     public function test_existing_valid_orphan_artifact_is_reused_without_overwrite(): void
     {
-        $bytes = $this->zipBytes('orphan');
+        $bytes = $this->rarBytes('orphan');
         $descriptor = app(TrustedClassifierDescriptorRegistry::class)->get('okpd2');
         $path = app(ClassifierArtifactStorage::class)->finalPath($descriptor, hash('sha256', $bytes));
         Storage::disk($descriptor->storageDisk)->put($path, $bytes);
@@ -280,7 +279,7 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
 
     public function test_corrupted_existing_destination_without_db_row_fails_closed_without_clobber(): void
     {
-        $bytes = $this->zipBytes('expected');
+        $bytes = $this->rarBytes('expected');
         $descriptor = app(TrustedClassifierDescriptorRegistry::class)->get('okpd2');
         $path = app(ClassifierArtifactStorage::class)->finalPath($descriptor, hash('sha256', $bytes));
         Storage::disk($descriptor->storageDisk)->put($path, 'corrupt');
@@ -302,7 +301,7 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
 
     public function test_missing_or_corrupted_artifact_for_existing_db_row_is_not_repaired_or_reused(): void
     {
-        $bytes = $this->zipBytes('stored');
+        $bytes = $this->rarBytes('stored');
         $transport = new FakeClassifierHttpTransport([
             $this->response(200, $bytes),
             $this->response(200, $bytes),
@@ -325,7 +324,7 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
 
     public function test_expected_database_duplicate_race_recovers_the_winning_entity(): void
     {
-        $bytes = $this->zipBytes('race');
+        $bytes = $this->rarBytes('race');
         $this->app->instance(ClassifierHttpTransport::class, new FakeClassifierHttpTransport([
             $this->response(200, $bytes),
         ]));
@@ -361,14 +360,14 @@ class ClassifierAcquisitionGateTwoTest extends TestCase
 
     private function response(int $status, string $body, array $headers = []): ClassifierHttpResponse
     {
-        $headers += ['Content-Type' => ['application/zip']];
+        $headers += ['Content-Type' => ['application/x-rar-compressed']];
 
         return new ClassifierHttpResponse($status, $headers, Utils::streamFor($body));
     }
 
-    private function zipBytes(string $payload): string
+    private function rarBytes(string $payload): string
     {
-        return "PK\x03\x04".$payload;
+        return "Rar!\x1a\x07\x01\x00".$payload;
     }
 
     private function assertPrivateDiskConfiguration(): void
@@ -407,6 +406,18 @@ class FakeClassifierHttpTransport implements ClassifierHttpTransport
     public function get(string $url, TrustedClassifierDescriptor $descriptor): ClassifierHttpResponse
     {
         $this->requestedUrls[] = $url;
+
+        if (str_ends_with($url, '/classification')) {
+            $html = <<<'HTML'
+<html><body><section class="toggle-section"><h2>Общероссийский классификатор продукции по видам экономической деятельности ОК 034-2014 (КПЕС 2008)</h2><div class="document-list__item">ОКПД2 (с учетом изменений с 1/2015 по 148/2026), 1.01 Мб, 02.09.2026 <a href="/storage/mediabank/OKPD2.rar">Скачать</a></div></section></body></html>
+HTML;
+
+            return new ClassifierHttpResponse(200, [
+                'Content-Type' => ['text/html; charset=UTF-8'],
+                'Content-Length' => [(string) strlen($html)],
+            ], Utils::streamFor($html));
+        }
+
         $next = array_shift($this->responses);
 
         if ($next instanceof Throwable) {
