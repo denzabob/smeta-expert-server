@@ -10,6 +10,18 @@ class RarClassifierArchiveInspector
 {
     private const SIGNATURE = "Rar!\x1a\x07\x01\x00";
 
+    /** @var list<string> */
+    private const LSAR_TEST_RESULTS = [
+        'ok',
+        'not_tested',
+        'not_supported',
+        'wrong_password',
+        'unpacking_failed',
+        'wrong_size',
+        'no_checksum',
+        'wrong_checksum',
+    ];
+
     public function __construct(
         private readonly ClassifierArchiveCommandRunner $runner,
         private readonly ZipEntryNamePolicy $entryNames,
@@ -57,7 +69,7 @@ class RarClassifierArchiveInspector
         $timeoutSeconds = $this->positiveInt($configuration['command_timeout_seconds'] ?? null);
 
         $result = $this->runner->run(
-            [$inspectorBinary, '-j', '-t', '-nr', $absolutePath],
+            [$inspectorBinary, '-test', '-json', '-no-recursion', $absolutePath],
             $maxListingBytes,
             $timeoutSeconds,
         );
@@ -125,7 +137,9 @@ class RarClassifierArchiveInspector
             $directory = $this->truthy($rawEntry['XADIsDirectory'] ?? false);
             $encrypted = $this->truthy($rawEntry['XADIsEncrypted'] ?? false);
             $link = $this->truthy($rawEntry['XADIsSymbolicLink'] ?? false)
-                || $this->truthy($rawEntry['XADIsLink'] ?? false);
+                || $this->truthy($rawEntry['XADIsLink'] ?? false)
+                || $this->truthy($rawEntry['XADIsHardLink'] ?? false)
+                || array_key_exists('XADLinkDestination', $rawEntry);
             $special = $this->truthy($rawEntry['XADIsSpecialFile'] ?? false);
 
             if ($uncompressed > $limits->maxSingleEntryUncompressedBytes) {
@@ -173,12 +187,7 @@ class RarClassifierArchiveInspector
                 );
             }
 
-            if (($rawEntry['lsarTestResult'] ?? null) !== 'ok') {
-                throw ClassifierParserException::fatal(
-                    'corrupted_rar_entry',
-                    'The classifier RAR contains an entry that failed integrity testing.',
-                );
-            }
+            $this->assertIntegrityTestPassed($rawEntry);
 
             $entry = new ClassifierArchiveEntry(
                 index: (int) $index,
@@ -249,6 +258,34 @@ class RarClassifierArchiveInspector
     private function truthy(mixed $value): bool
     {
         return $value === true || $value === 1 || $value === '1';
+    }
+
+    /** @param array<string, mixed> $rawEntry */
+    private function assertIntegrityTestPassed(array $rawEntry): void
+    {
+        if (! array_key_exists('lsarTestResult', $rawEntry) || ! is_string($rawEntry['lsarTestResult'])) {
+            throw ClassifierParserException::fatal(
+                'invalid_rar_listing',
+                'The trusted RAR inspector did not return an integrity test result for an entry.',
+            );
+        }
+
+        $testResult = $rawEntry['lsarTestResult'];
+
+        if (! in_array($testResult, self::LSAR_TEST_RESULTS, true)) {
+            throw ClassifierParserException::fatal(
+                'invalid_rar_listing',
+                'The trusted RAR inspector returned an unknown integrity test result.',
+            );
+        }
+
+        if ($testResult !== 'ok') {
+            throw ClassifierParserException::fatal(
+                'corrupted_rar_entry',
+                'The classifier RAR contains an entry that did not pass integrity testing.',
+                ['lsar_test_result' => $testResult],
+            );
+        }
     }
 
     private function crc32(mixed $value): ?string

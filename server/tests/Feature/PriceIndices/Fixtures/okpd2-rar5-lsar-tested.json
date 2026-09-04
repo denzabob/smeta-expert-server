@@ -1,0 +1,46 @@
+{
+  "lsarFormatVersion": 2,
+  "lsarContents": [
+    {
+      "XADFileName": "OKPD2 01-35.docx",
+      "XADFileSize": 688229,
+      "XADCompressedSize": 660698,
+      "RAR5CRC32": 879906571,
+      "RAR5InputParts": [
+        {
+          "Offset": 0,
+          "InputLength": 660698,
+          "CRC32": 879906571
+        }
+      ],
+      "XADIsDirectory": 0,
+      "XADIsEncrypted": 0,
+      "XADIsSymbolicLink": 0,
+      "XADIsLink": 0,
+      "XADIsSpecialFile": 0,
+      "lsarTestResult": "ok"
+    },
+    {
+      "XADFileName": "OKPD2 36-99.docx",
+      "XADFileSize": 410397,
+      "XADCompressedSize": 395008,
+      "RAR5CRC32": 308926545,
+      "RAR5InputParts": [
+        {
+          "Offset": 660698,
+          "InputLength": 395008,
+          "CRC32": 308926545
+        }
+      ],
+      "XADIsDirectory": 0,
+      "XADIsEncrypted": 0,
+      "XADIsSymbolicLink": 0,
+      "XADIsLink": 0,
+      "XADIsSpecialFile": 0,
+      "lsarTestResult": "ok"
+    }
+  ],
+  "lsarEncoding": "UTF-8",
+  "lsarConfidence": 1,
+  "lsarFormatName": "RAR archive"
+}
