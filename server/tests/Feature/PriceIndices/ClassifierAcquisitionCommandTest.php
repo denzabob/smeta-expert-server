@@ -122,6 +122,9 @@ class ClassifierAcquisitionCommandTest extends TestCase
         $this->assertStringContainsString("'allow_redirects' => false", $source);
         $this->assertStringNotContainsString("'verify' => false", $source);
         $this->assertStringNotContainsString('CURLOPT_SSL_VERIFYPEER', $source);
+        $this->assertStringNotContainsString('NODE_TLS_REJECT_UNAUTHORIZED', $source);
+        $this->assertStringNotContainsString('--insecure', $source);
+        $this->assertStringNotContainsString('verify=false', $source);
     }
 
     private function assertNoDownstreamLifecycle(): void

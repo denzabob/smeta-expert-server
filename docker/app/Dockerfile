@@ -7,6 +7,7 @@ FROM php:8.3-fpm
 RUN apt-get update && apt-get install -y \
     git \
     curl \
+    ca-certificates \
     unzip \
     unar \
     libpng-dev \
@@ -48,6 +49,10 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 COPY docker/app/php-fpm.conf /usr/local/etc/php-fpm.d/zzz-custom.conf
 COPY docker/app/php.ini /usr/local/etc/php/conf.d/custom.ini
 COPY docker/app/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY docker/certificates/russian-trusted-root-ca.crt /usr/local/share/ca-certificates/russian-trusted-root-ca.crt
+COPY docker/certificates/russian-trusted-sub-ca.crt /usr/local/share/ca-certificates/russian-trusted-sub-ca.crt
+
+RUN update-ca-certificates
 
 # -------------------------
 # Workdir
