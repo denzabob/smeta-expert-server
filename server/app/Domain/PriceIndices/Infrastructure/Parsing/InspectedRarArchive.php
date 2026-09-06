@@ -77,7 +77,7 @@ final class InspectedRarArchive implements ClassifierOuterArchive
 
         try {
             $result = $this->runner->run(
-                [$this->extractorBinary, '-f', '-o', $directory, $this->archivePath, $name],
+                [$this->extractorBinary, '-f', '-no-directory', '-o', $directory, $this->archivePath, $name],
                 $this->maxListingBytes,
                 $this->commandTimeoutSeconds,
             );

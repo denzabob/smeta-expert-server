@@ -99,6 +99,40 @@ class RarClassifierArchiveInspectorTest extends TestCase
         );
     }
 
+    public function test_unar_containing_directory_behavior_is_disabled_for_both_production_entries(): void
+    {
+        $payloads = [
+            'OKPD2 01-35.docx' => 'part-one',
+            'OKPD2 36-99.docx' => 'part-two',
+        ];
+        $runner = new FakeRarCommandRunner($this->listing($payloads), $payloads);
+        $archive = $this->open($runner);
+
+        try {
+            foreach ($payloads as $name => $payload) {
+                $temporary = $archive->materialize($name, 'prism-rar-materialized-');
+
+                try {
+                    $this->assertSame($payload, file_get_contents($temporary->path));
+                } finally {
+                    $temporary->close();
+                }
+            }
+        } finally {
+            $archive->close();
+        }
+
+        $this->assertCount(3, $runner->commands);
+        $this->assertSame(
+            ['unar', '-f', '-no-directory', '-o', $runner->commands[1][4], $this->archivePath, 'OKPD2 01-35.docx'],
+            $runner->commands[1],
+        );
+        $this->assertSame(
+            ['unar', '-f', '-no-directory', '-o', $runner->commands[2][4], $this->archivePath, 'OKPD2 36-99.docx'],
+            $runner->commands[2],
+        );
+    }
+
     public function test_explicit_failed_lsar_test_result_rejects_entry(): void
     {
         $listing = $this->listing(['OKPD2 01-35.docx' => 'one']);
@@ -385,14 +419,37 @@ final class FakeRarCommandRunner implements ClassifierArchiveCommandRunner
             );
         }
 
-        $outputDirectory = $command[3] ?? '';
+        $outputDirectoryOptionIndex = array_search('-o', $command, true);
+        $outputDirectory = is_int($outputDirectoryOptionIndex)
+            ? (string) ($command[$outputDirectoryOptionIndex + 1] ?? '')
+            : '';
+        $archivePath = is_int($outputDirectoryOptionIndex)
+            ? (string) ($command[$outputDirectoryOptionIndex + 2] ?? '')
+            : '';
         $name = (string) end($command);
 
         if (! isset($this->payloads[$name])) {
             return new ClassifierArchiveCommandResult(1, '', 'missing');
         }
 
-        file_put_contents($outputDirectory.DIRECTORY_SEPARATOR.$name, $this->payloads[$name]);
+        $targetDirectory = $outputDirectory;
+
+        if (! in_array('-no-directory', $command, true)) {
+            $targetDirectory .= DIRECTORY_SEPARATOR.pathinfo($archivePath, PATHINFO_FILENAME);
+        }
+
+        $targetPath = $targetDirectory.DIRECTORY_SEPARATOR.str_replace(
+            ['/', '\\'],
+            DIRECTORY_SEPARATOR,
+            $name,
+        );
+        $parentDirectory = dirname($targetPath);
+
+        if (! is_dir($parentDirectory) && ! @mkdir($parentDirectory, 0700, true)) {
+            return new ClassifierArchiveCommandResult(1, '', 'unable to create output directory');
+        }
+
+        file_put_contents($targetPath, $this->payloads[$name]);
 
         return new ClassifierArchiveCommandResult(0, '', '');
     }
