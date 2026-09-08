@@ -35,7 +35,7 @@ class PriceIndicesImportJobTest extends TestCase
         $dataset = $this->createReferenceDataset();
         $file = $this->sourceFileForWorkbook($dataset, $this->writeRepresentativeWorkbook());
         $import = app(CreateStatisticalImport::class)->execute($dataset, $file);
-        $job = new RunStatisticalImportJob($import->public_id);
+        $job = new RunStatisticalImportJob($import->public_id, $file->id);
 
         $this->app->call([$job, 'handle']);
         $import->refresh();
@@ -46,6 +46,7 @@ class PriceIndicesImportJobTest extends TestCase
         $this->assertNull($import->published_at);
         $this->assertSame(0, StatisticalDatasetActiveImport::query()->where('dataset_id', $dataset->id)->count());
         $this->assertSame(1, $job->tries);
+        $this->assertSame($file->id, $job->sourceFileId);
         $this->assertSame(3600, $job->timeout);
         $this->assertInstanceOf(WithoutOverlapping::class, $job->middleware()[0]);
     }

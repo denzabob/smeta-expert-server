@@ -59,6 +59,27 @@ class PriceIndicesSourceFileActivationTest extends TestCase
         );
     }
 
+    public function test_files_for_different_periods_can_both_be_active(): void
+    {
+        $actor = User::factory()->create();
+        $dataset = StatisticalDataset::factory()->create();
+        $june = StatisticalSourceFile::factory()->for($dataset, 'dataset')->approved()->create([
+            'reporting_year' => 2026,
+            'reporting_month' => 6,
+        ]);
+        $august = StatisticalSourceFile::factory()->for($dataset, 'dataset')->approved()->create([
+            'reporting_year' => 2026,
+            'reporting_month' => 8,
+        ]);
+
+        app(ActivateSourceFile::class)->execute($june, $actor);
+        app(ActivateSourceFile::class)->execute($august, $actor);
+
+        $this->assertSame(SourceFileStatus::Active, $june->refresh()->status);
+        $this->assertSame(SourceFileStatus::Active, $august->refresh()->status);
+        $this->assertSame(2, StatisticalDatasetActiveFile::query()->count());
+    }
+
     public function test_pending_and_rejected_files_cannot_be_activated(): void
     {
         $actor = User::factory()->create();

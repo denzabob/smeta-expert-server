@@ -7,6 +7,7 @@ use App\Domain\PriceIndices\Application\Services\QueueStatisticalImportPreview;
 use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesApiException;
 use App\Domain\PriceIndices\Domain\SourceFiles\StatisticalSourceFile;
 use App\Domain\PriceIndices\Http\PriceIndicesErrorResponder;
+use App\Domain\PriceIndices\Http\Requests\StartStatisticalImportRequest;
 use App\Domain\PriceIndices\Http\Resources\StatisticalImportPreviewResource;
 use App\Domain\PriceIndices\Http\Resources\StatisticalImportResource;
 use App\Http\Controllers\Controller;
@@ -19,8 +20,7 @@ final class SourceFileImportAdminController extends Controller
         private readonly QueueStatisticalImportPreview $preview,
         private readonly QueueStatisticalImport $queue,
         private readonly PriceIndicesErrorResponder $errors,
-    ) {
-    }
+    ) {}
 
     public function preview(Request $request, StatisticalSourceFile $sourceFile): JsonResponse
     {
@@ -39,10 +39,14 @@ final class SourceFileImportAdminController extends Controller
         }
     }
 
-    public function store(Request $request, StatisticalSourceFile $sourceFile): JsonResponse
+    public function store(StartStatisticalImportRequest $request, StatisticalSourceFile $sourceFile): JsonResponse
     {
         try {
-            $import = $this->queue->execute($sourceFile, $request->user());
+            $import = $this->queue->execute(
+                $sourceFile,
+                $request->user(),
+                $request->validated('preview_public_id'),
+            );
 
             return (new StatisticalImportResource($import->load([
                 'dataset', 'sourceFile', 'activePointer', 'supersedes',

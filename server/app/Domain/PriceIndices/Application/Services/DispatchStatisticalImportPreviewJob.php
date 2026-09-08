@@ -14,13 +14,15 @@ final class DispatchStatisticalImportPreviewJob
     public function __construct(
         private readonly Dispatcher $dispatcher,
         private readonly FailStatisticalImportPreview $fail,
-    ) {
-    }
+    ) {}
 
     public function execute(StatisticalImportPreview $preview): void
     {
         try {
-            $this->dispatcher->dispatch(new RunStatisticalImportPreviewJob($preview->public_id));
+            $this->dispatcher->dispatch(new RunStatisticalImportPreviewJob(
+                $preview->public_id,
+                (int) $preview->source_file_id,
+            ));
         } catch (Throwable $exception) {
             $this->fail->execute(
                 $preview,

@@ -27,6 +27,10 @@ final class StatisticalImportPreviewResource extends JsonResource
                 'public_id' => $this->sourceFile->public_id,
                 'original_filename' => $this->sourceFile->original_filename,
                 'sha256' => $this->sourceFile->sha256,
+                'reporting_period' => [
+                    'year' => $this->sourceFile->reporting_year,
+                    'month' => $this->sourceFile->reporting_month,
+                ],
             ]),
             'importer' => [
                 'code' => $this->importer_code,

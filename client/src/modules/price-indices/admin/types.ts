@@ -103,7 +103,12 @@ export interface StatisticalImportPreview {
   public_id: string
   status: PreviewStatus
   dataset?: Pick<StatisticalDataset, 'public_id' | 'code' | 'name'>
-  source_file: { public_id: string; original_filename: string; sha256: string }
+  source_file: {
+    public_id: string
+    original_filename: string
+    sha256: string
+    reporting_period: { year: number | null; month: number | null }
+  }
   importer: { code: string; version: string }
   timestamps: TaskTimestamps & { expires_at: string | null }
   counters: PreviewCounters

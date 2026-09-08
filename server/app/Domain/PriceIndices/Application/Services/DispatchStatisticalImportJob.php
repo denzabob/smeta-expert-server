@@ -14,13 +14,15 @@ final class DispatchStatisticalImportJob
     public function __construct(
         private readonly Dispatcher $dispatcher,
         private readonly FailStatisticalImport $fail,
-    ) {
-    }
+    ) {}
 
     public function execute(StatisticalImport $import): void
     {
         try {
-            $this->dispatcher->dispatch(new RunStatisticalImportJob($import->public_id));
+            $this->dispatcher->dispatch(new RunStatisticalImportJob(
+                $import->public_id,
+                (int) $import->source_file_id,
+            ));
         } catch (Throwable $exception) {
             $this->fail->execute(
                 $import,

@@ -26,7 +26,7 @@
         <v-chip :color="statusColor(item.status)" size="small" variant="tonal">
           {{ sourceStatusLabels[item.status] }}
         </v-chip>
-        <v-icon v-if="item.active" icon="mdi-check-decagram" color="success" size="small" class="ml-1" title="Текущий активный файл" />
+        <v-icon v-if="item.active" icon="mdi-check-decagram" color="success" size="small" class="ml-1" title="Текущий файл этого периода" />
       </template>
       <template #item.validation_status="{ item }">
         <v-chip :color="statusColor(item.validation_status)" size="x-small" variant="outlined">{{ item.validation_status }}</v-chip>

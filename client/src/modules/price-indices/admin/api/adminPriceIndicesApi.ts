@@ -81,8 +81,11 @@ export function createAdminPriceIndicesApi(client: AxiosInstance = api) {
         `${base}/previews/${publicId}/retry`,
       )).data
     },
-    async startImport(sourceFilePublicId: string) {
-      return (await client.post<ResourceResponse<StatisticalImport>>(`${base}/source-files/${sourceFilePublicId}/imports`)).data
+    async startImport(sourceFilePublicId: string, previewPublicId: string) {
+      return (await client.post<ResourceResponse<StatisticalImport>>(
+        `${base}/source-files/${sourceFilePublicId}/imports`,
+        { preview_public_id: previewPublicId },
+      )).data
     },
     async listImports(params: ImportListParams) {
       return (await client.get<PaginatedResponse<StatisticalImport>>(`${base}/imports`, { params })).data

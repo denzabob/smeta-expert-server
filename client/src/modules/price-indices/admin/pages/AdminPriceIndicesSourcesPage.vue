@@ -53,6 +53,7 @@ import SourceFileUploadCard from '../components/SourceFileUploadCard.vue'
 import { adminPriceIndicesApi } from '../api/adminPriceIndicesApi'
 import { getPriceIndicesErrorMessage, isPublicationConflict } from '../errors'
 import { usePollingTask } from '../composables/usePollingTask'
+import { isCurrentPreviewIdentity } from '../previewIdentity'
 import type { StatisticalDataset, StatisticalImport, StatisticalImportIssue, StatisticalImportPreview, StatisticalImportPreviewResult, StatisticalSource, StatisticalSourceFile } from '../types'
 
 const route = useRoute(); const router = useRouter()
@@ -61,6 +62,7 @@ const selectedDatasetId = ref(''); const selectedSourceId = ref<string | null>(n
 const sourceFilesTotal = ref(0); const filesPage = ref(1); const filesPerPage = ref(25)
 const initialLoading = ref(true); const filesLoading = ref(false); const pageError = ref(''); const busyFileId = ref<string | null>(null); const actionBusy = ref(false)
 const preview = ref<StatisticalImportPreview | null>(null); const previewResult = ref<StatisticalImportPreviewResult | null>(null); const previewCached = ref(false); const previewBusy = ref(false)
+const analysisSourceId = ref<string | null>(null); let previewRequestToken = 0
 const currentImport = ref<StatisticalImport | null>(null); const activeImport = ref<StatisticalImport | null>(null); const importBusy = ref(false)
 const rejectDialog = ref(false); const rejectReason = ref(''); const actionFile = ref<StatisticalSourceFile | null>(null); const activateDialog = ref(false); const importDialog = ref(false); const publishDialog = ref(false)
 const issuesDialog = ref(false); const issues = ref<StatisticalImportIssue[]>([]); const issuesTotal = ref(0); const issuesPage = ref(1); const issuesPerPage = ref(50); const issuesLoading = ref(false)
@@ -69,7 +71,11 @@ const snackbar = ref({ show: false, text: '', color: 'success' })
 const previewPoller = usePollingTask({
   fetcher: async () => { if (!preview.value) throw new Error('Preview is not selected'); return (await adminPriceIndicesApi.getPreview(preview.value.public_id)).data },
   isTerminal: (value) => ['ready', 'failed', 'expired'].includes(value.status),
-  onData: async (value) => { preview.value = value; if (value.status === 'ready') await loadPreviewResult(value.public_id) },
+  onData: async (value) => {
+    if (!isCurrentPreviewIdentity(value.public_id, value.source_file.public_id, preview.value?.public_id, analysisSourceId.value)) return
+    preview.value = value
+    if (value.status === 'ready') await loadPreviewResult(value.public_id, value.source_file.public_id)
+  },
   onError: () => { pageError.value = 'Временная ошибка обновления статуса анализа. Повторная попытка будет выполнена автоматически.' }, intervalMs: 2500, timeoutMs: 15 * 60 * 1000,
 })
 const importPoller = usePollingTask({
@@ -98,25 +104,146 @@ watch(selectedSourceId, async () => { filesPage.value = 1; await loadSourceFiles
 function datasetTitle(item: StatisticalDataset) { return `${item.name} · ${item.code}` }
 function notify(text: string, color = 'success') { snackbar.value = { show: true, text, color } }
 function notifyError(message: string) { notify(message, 'error') }
-function stopTasks() { previewPoller.stop(); importPoller.stop(); preview.value = null; previewResult.value = null; currentImport.value = null }
+function stopTasks() {
+  previewRequestToken += 1
+  previewPoller.stop()
+  importPoller.stop()
+  preview.value = null
+  previewResult.value = null
+  previewCached.value = false
+  analysisSourceId.value = null
+  currentImport.value = null
+}
+function clearPreviewSelection() {
+  previewRequestToken += 1
+  previewPoller.stop()
+  preview.value = null
+  previewResult.value = null
+  previewCached.value = false
+  analysisSourceId.value = null
+}
 async function updateQuery(values: Record<string, string | undefined>) { const query = { ...route.query }; for (const [key, value] of Object.entries(values)) { if (value) query[key] = value; else delete query[key] } await router.replace({ query }) }
 async function loadDatasetContext() { await Promise.all([loadSources(), loadSourceFiles(), loadActiveImport()]) }
 async function loadSources() { if (!selectedDatasetId.value) return; sources.value = (await adminPriceIndicesApi.listSources(selectedDatasetId.value)).data }
 async function loadSourceFiles() { if (!selectedDatasetId.value) return; filesLoading.value = true; try { const response = await adminPriceIndicesApi.listSourceFiles({ dataset: selectedDatasetId.value, source: selectedSourceId.value || undefined, page: filesPage.value, per_page: filesPerPage.value, sort: 'detected_at', direction: 'desc' }); sourceFiles.value = response.data; sourceFilesTotal.value = response.meta.total } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось загрузить файлы.')) } finally { filesLoading.value = false } }
 async function loadActiveImport() { if (!selectedDatasetId.value) return; activeImport.value = (await adminPriceIndicesApi.getActiveImport(selectedDatasetId.value)).data }
-async function onUploaded(file: StatisticalSourceFile) { notify(`Файл «${file.original_filename}» загружен.`); await loadSourceFiles() }
+async function onUploaded(file: StatisticalSourceFile) {
+  clearPreviewSelection()
+  await updateQuery({ preview: undefined })
+  notify(`Файл «${file.original_filename}» загружен.`)
+  await loadSourceFiles()
+}
 async function approveFile(file: StatisticalSourceFile) { if (busyFileId.value) return; busyFileId.value = file.public_id; try { await adminPriceIndicesApi.approveSourceFile(file.public_id); notify('Файл одобрен.'); await loadSourceFiles() } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось одобрить файл.')) } finally { busyFileId.value = null } }
 function openReject(file: StatisticalSourceFile) { actionFile.value = file; rejectReason.value = ''; rejectDialog.value = true }
 async function rejectFile() { if (!actionFile.value || actionBusy.value) return; actionBusy.value = true; try { await adminPriceIndicesApi.rejectSourceFile(actionFile.value.public_id, rejectReason.value.trim()); rejectDialog.value = false; notify('Файл отклонён.'); await loadSourceFiles() } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось отклонить файл.')) } finally { actionBusy.value = false } }
 function openActivate(file: StatisticalSourceFile) { actionFile.value = file; activateDialog.value = true }
-async function activateFile() { if (!actionFile.value || actionBusy.value) return; actionBusy.value = true; try { await adminPriceIndicesApi.activateSourceFile(actionFile.value.public_id); activateDialog.value = false; notify('Файл активирован.'); await Promise.all([loadSourceFiles(), loadActiveImport()]) } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось активировать файл.')) } finally { actionBusy.value = false } }
+async function activateFile() {
+  if (!actionFile.value || actionBusy.value) return
+  actionBusy.value = true
+  const file = actionFile.value
+  try {
+    await adminPriceIndicesApi.activateSourceFile(file.public_id)
+    activateDialog.value = false
+    if (analysisSourceId.value !== file.public_id) {
+      clearPreviewSelection()
+      await updateQuery({ preview: undefined })
+    }
+    notify('Файл активирован.')
+    await Promise.all([loadSourceFiles(), loadActiveImport()])
+  } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось активировать файл.')) } finally { actionBusy.value = false }
+}
 async function downloadFile(file: StatisticalSourceFile) { if (busyFileId.value) return; busyFileId.value = file.public_id; try { const response = await adminPriceIndicesApi.downloadSourceFile(file.public_id); const url = URL.createObjectURL(response.data); const link = document.createElement('a'); link.href = url; link.download = file.original_filename; link.click(); URL.revokeObjectURL(url) } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось скачать файл.')) } finally { busyFileId.value = null } }
-async function startPreview(file: StatisticalSourceFile) { if (previewBusy.value) return; previewBusy.value = true; previewPoller.stop(); previewResult.value = null; try { const response = await adminPriceIndicesApi.startPreview(file.public_id); preview.value = response.data; previewCached.value = response.meta.cached; await updateQuery({ preview: response.data.public_id }); if (response.data.status === 'ready') { await loadPreviewResult(response.data.public_id); notify('Использован ранее выполненный анализ.', 'info') } else previewPoller.start() } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось запустить анализ.')) } finally { previewBusy.value = false } }
-async function recoverPreview(publicId: string) { try { preview.value = (await adminPriceIndicesApi.getPreview(publicId)).data; if (preview.value.status === 'ready') await loadPreviewResult(publicId); else if (['pending', 'running'].includes(preview.value.status)) previewPoller.start() } catch { await updateQuery({ preview: undefined }) } }
-async function loadPreviewResult(publicId: string) { previewResult.value = (await adminPriceIndicesApi.getPreviewResult(publicId)).data }
-async function retryPreview() { if (!preview.value || previewBusy.value) return; previewBusy.value = true; try { const response = await adminPriceIndicesApi.retryPreview(preview.value.public_id); preview.value = response.data; previewResult.value = null; previewCached.value = false; await updateQuery({ preview: response.data.public_id }); previewPoller.start(); notify('Повторный анализ поставлен в очередь.') } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось повторить анализ.')) } finally { previewBusy.value = false } }
+async function startPreview(file: StatisticalSourceFile) {
+  const requestToken = ++previewRequestToken
+  previewBusy.value = true
+  previewPoller.stop()
+  analysisSourceId.value = file.public_id
+  preview.value = null
+  previewResult.value = null
+  previewCached.value = false
+  try {
+    const response = await adminPriceIndicesApi.startPreview(file.public_id)
+    if (requestToken !== previewRequestToken) return
+    if (response.data.source_file.public_id !== file.public_id) {
+      throw new Error('The preview response belongs to a different source file.')
+    }
+    preview.value = response.data
+    previewCached.value = response.meta.cached
+    await updateQuery({ preview: response.data.public_id })
+    if (response.data.status === 'ready') {
+      await loadPreviewResult(response.data.public_id, file.public_id)
+      if (requestToken === previewRequestToken) notify('Использован ранее выполненный анализ.', 'info')
+    } else previewPoller.start()
+  } catch (error) {
+    if (requestToken === previewRequestToken) notifyError(getPriceIndicesErrorMessage(error, 'Не удалось запустить анализ.'))
+  } finally {
+    if (requestToken === previewRequestToken) previewBusy.value = false
+  }
+}
+async function recoverPreview(publicId: string) {
+  const requestToken = ++previewRequestToken
+  try {
+    const value = (await adminPriceIndicesApi.getPreview(publicId)).data
+    if (requestToken !== previewRequestToken) return
+    analysisSourceId.value = value.source_file.public_id
+    preview.value = value
+    if (value.status === 'ready') await loadPreviewResult(publicId, value.source_file.public_id)
+    else if (['pending', 'running'].includes(value.status)) previewPoller.start()
+  } catch {
+    if (requestToken === previewRequestToken) {
+      clearPreviewSelection()
+      await updateQuery({ preview: undefined })
+    }
+  }
+}
+async function loadPreviewResult(publicId: string, sourceFilePublicId: string) {
+  const result = (await adminPriceIndicesApi.getPreviewResult(publicId)).data
+  if (!isCurrentPreviewIdentity(publicId, sourceFilePublicId, preview.value?.public_id, analysisSourceId.value)) return
+  if (result.source_file.public_id !== sourceFilePublicId) return
+  previewResult.value = result
+}
+async function retryPreview() {
+  if (!preview.value || previewBusy.value) return
+  const currentPreview = preview.value
+  const sourceFilePublicId = analysisSourceId.value
+  if (!sourceFilePublicId || currentPreview.source_file.public_id !== sourceFilePublicId) return
+  const requestToken = ++previewRequestToken
+  previewBusy.value = true
+  try {
+    const response = await adminPriceIndicesApi.retryPreview(currentPreview.public_id)
+    if (requestToken !== previewRequestToken) return
+    preview.value = response.data
+    previewResult.value = null
+    previewCached.value = false
+    await updateQuery({ preview: response.data.public_id })
+    previewPoller.start()
+    notify('Повторный анализ поставлен в очередь.')
+  } catch (error) {
+    if (requestToken === previewRequestToken) notifyError(getPriceIndicesErrorMessage(error, 'Не удалось повторить анализ.'))
+  } finally {
+    if (requestToken === previewRequestToken) previewBusy.value = false
+  }
+}
 function openImportConfirm() { importDialog.value = true }
-async function startImport() { if (!preview.value || importBusy.value) return; importBusy.value = true; try { const response = await adminPriceIndicesApi.startImport(preview.value.source_file.public_id); currentImport.value = response.data; importDialog.value = false; await updateQuery({ import: response.data.public_id }); importPoller.start(); notify('Импорт поставлен в очередь.') } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось запустить импорт.')) } finally { importBusy.value = false } }
+async function startImport() {
+  if (!preview.value || !previewResult.value || importBusy.value) return
+  const sourceFilePublicId = preview.value.source_file.public_id
+  if (!isCurrentPreviewIdentity(preview.value.public_id, sourceFilePublicId, preview.value.public_id, analysisSourceId.value)
+    || previewResult.value.source_file.public_id !== sourceFilePublicId
+  ) {
+    notifyError('Результат анализа не соответствует выбранному исходному файлу. Запустите анализ повторно.')
+    return
+  }
+  importBusy.value = true
+  try {
+    const response = await adminPriceIndicesApi.startImport(sourceFilePublicId, preview.value.public_id)
+    currentImport.value = response.data
+    importDialog.value = false
+    await updateQuery({ import: response.data.public_id })
+    importPoller.start()
+    notify('Импорт поставлен в очередь.')
+  } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось запустить импорт.')) } finally { importBusy.value = false }
+}
 async function recoverImport(publicId: string) { try { currentImport.value = (await adminPriceIndicesApi.getImport(publicId)).data; if (['pending', 'importing', 'validating'].includes(currentImport.value.status)) importPoller.start() } catch { await updateQuery({ import: undefined }) } }
 async function retryImport() { if (!currentImport.value || importBusy.value) return; importBusy.value = true; try { const response = await adminPriceIndicesApi.retryImport(currentImport.value.public_id); currentImport.value = response.data; await updateQuery({ import: response.data.public_id }); importPoller.start(); notify('Повторный импорт поставлен в очередь.') } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось повторить импорт.')) } finally { importBusy.value = false } }
 async function publishImport() { if (!currentImport.value || importBusy.value) return; importBusy.value = true; try { currentImport.value = (await adminPriceIndicesApi.publishImport(currentImport.value.public_id)).data; publishDialog.value = false; notify('Статистические данные опубликованы.'); await Promise.all([loadActiveImport(), loadSourceFiles()]) } catch (error) { notifyError(getPriceIndicesErrorMessage(error, 'Не удалось опубликовать импорт.')); if (isPublicationConflict(error)) await recoverImport(currentImport.value.public_id) } finally { importBusy.value = false } }

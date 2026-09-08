@@ -8,6 +8,7 @@ use App\Domain\PriceIndices\Application\Services\PreviewStatisticalSourceFile;
 use App\Domain\PriceIndices\Application\Services\StatisticalImportPreviewCacheKey;
 use App\Domain\PriceIndices\Domain\Enums\StatisticalImportPreviewStatus;
 use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesApiException;
+use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesInvariantViolation;
 use App\Domain\PriceIndices\Domain\Previews\StatisticalImportPreview;
 use App\Domain\PriceIndices\Domain\Previews\StatisticalImportPreviewLifecycle;
 use Illuminate\Bus\Queueable;
@@ -25,10 +26,13 @@ final class RunStatisticalImportPreviewJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries;
+
     public int $timeout;
 
-    public function __construct(public readonly string $previewPublicId)
-    {
+    public function __construct(
+        public readonly string $previewPublicId,
+        public readonly ?int $sourceFileId = null,
+    ) {
         $this->tries = (int) config('price_indices.imports.preview_job_tries', 1);
         $this->timeout = (int) config('price_indices.imports.preview_job_timeout', 180);
     }
@@ -44,8 +48,14 @@ final class RunStatisticalImportPreviewJob implements ShouldQueue
             ->with('sourceFile')
             ->where('public_id', $this->previewPublicId)
             ->firstOrFail();
+        if ($this->sourceFileId !== null && $preview->source_file_id !== $this->sourceFileId) {
+            throw new PriceIndicesInvariantViolation(
+                'The statistical preview job source file does not match the preview source file.'
+            );
+        }
         if ($preview->status !== StatisticalImportPreviewStatus::Pending) {
             Log::info('Price indices preview job skipped because preview is not pending.', $this->context($preview));
+
             return;
         }
 
@@ -55,6 +65,7 @@ final class RunStatisticalImportPreviewJob implements ShouldQueue
         );
         if (! $lock->get()) {
             Log::info('Price indices preview job skipped because equivalent preview is locked.', $this->context($preview));
+
             return;
         }
 

@@ -6,6 +6,7 @@ use App\Domain\PriceIndices\Domain\Classifiers\StatisticalClassifierItem;
 use App\Domain\PriceIndices\Domain\Datasets\StatisticalDataset;
 use App\Domain\PriceIndices\Domain\Enums\SourceFileStatus;
 use App\Domain\PriceIndices\Domain\Enums\StatisticalImportIssueSeverity;
+use App\Domain\PriceIndices\Domain\Enums\StatisticalImportPreviewStatus;
 use App\Domain\PriceIndices\Domain\Enums\StatisticalImportStatus;
 use App\Domain\PriceIndices\Domain\Enums\StatisticalObservationMissingReason;
 use App\Domain\PriceIndices\Domain\Imports\StatisticalDatasetActiveImport;
@@ -13,6 +14,7 @@ use App\Domain\PriceIndices\Domain\Imports\StatisticalImport;
 use App\Domain\PriceIndices\Domain\Imports\StatisticalImportIssue;
 use App\Domain\PriceIndices\Domain\Indicators\StatisticalIndicator;
 use App\Domain\PriceIndices\Domain\Observations\StatisticalObservation;
+use App\Domain\PriceIndices\Domain\Previews\StatisticalImportPreview;
 use App\Domain\PriceIndices\Domain\Series\StatisticalSeries;
 use App\Domain\PriceIndices\Domain\SourceFiles\StatisticalSourceFile;
 use App\Domain\PriceIndices\Domain\Territories\StatisticalTerritory;
@@ -94,6 +96,9 @@ class PriceIndicesAdminImportApiTest extends TestCase
             ->assertJsonMissingPath('data.source_file.id');
         $this->assertSame($before, [StatisticalImport::count(), StatisticalObservation::count(), StatisticalClassifierItem::count()]);
         Queue::assertPushed(RunStatisticalImportPreviewJob::class, 1);
+        Queue::assertPushed(RunStatisticalImportPreviewJob::class, function (RunStatisticalImportPreviewJob $job) use ($file): bool {
+            return $job->sourceFileId === $file->id;
+        });
 
         $inactive = StatisticalSourceFile::factory()->create([
             'dataset_id' => $dataset->id,
@@ -134,8 +139,11 @@ class PriceIndicesAdminImportApiTest extends TestCase
         $this->actingAsRole('admin');
         $dataset = $this->createReferenceDataset();
         $file = $this->sourceFileForWorkbook($dataset, $this->writeRepresentativeWorkbook());
+        $preview = $this->readyPreviewFor($file);
 
-        $response = $this->postJson("/api/indices/admin/source-files/{$file->public_id}/imports")
+        $response = $this->postJson("/api/indices/admin/source-files/{$file->public_id}/imports", [
+            'preview_public_id' => $preview->public_id,
+        ])
             ->assertAccepted()
             ->assertJsonPath('data.status', 'pending')
             ->assertJsonPath('data.dataset.public_id', $dataset->public_id)
@@ -148,12 +156,16 @@ class PriceIndicesAdminImportApiTest extends TestCase
         $this->assertSame(0, $import->observations()->count());
         Queue::assertPushed(RunStatisticalImportJob::class, 1);
 
-        $this->postJson("/api/indices/admin/source-files/{$file->public_id}/imports")
+        $this->postJson("/api/indices/admin/source-files/{$file->public_id}/imports", [
+            'preview_public_id' => $preview->public_id,
+        ])
             ->assertConflict()->assertJsonPath('code', 'import_already_running');
         $this->assertSame(1, $file->imports()->count());
 
         $file->forceFill(['status' => SourceFileStatus::Approved])->save();
-        $this->postJson("/api/indices/admin/source-files/{$file->public_id}/imports")
+        $this->postJson("/api/indices/admin/source-files/{$file->public_id}/imports", [
+            'preview_public_id' => $preview->public_id,
+        ])
             ->assertConflict()->assertJsonPath('code', 'source_file_not_active');
 
         $unsupportedDataset = StatisticalDataset::factory()->create(['code' => 'unsupported_start_dataset']);
@@ -161,8 +173,41 @@ class PriceIndicesAdminImportApiTest extends TestCase
             'dataset_id' => $unsupportedDataset->id,
             'status' => SourceFileStatus::Active,
         ]);
-        $this->postJson("/api/indices/admin/source-files/{$unsupportedFile->public_id}/imports")
+        $unsupportedPreview = $this->readyPreviewFor($unsupportedFile);
+        $this->postJson("/api/indices/admin/source-files/{$unsupportedFile->public_id}/imports", [
+            'preview_public_id' => $unsupportedPreview->public_id,
+        ])
             ->assertUnprocessable()->assertJsonPath('code', 'unsupported_dataset');
+    }
+
+    public function test_import_rejects_preview_for_another_file_and_propagates_selected_file_id(): void
+    {
+        Queue::fake();
+        $this->actingAsRole('admin');
+        $dataset = $this->createReferenceDataset();
+        $fileA = $this->sourceFileForWorkbook($dataset, $this->writeRepresentativeWorkbook('source-a.xlsx'));
+        $fileB = $this->sourceFileForWorkbook($dataset, $this->writeFormulaWorkbook('source-b.xlsx'));
+        $previewA = $this->readyPreviewFor($fileA);
+        $previewB = $this->readyPreviewFor($fileB);
+
+        $this->postJson("/api/indices/admin/source-files/{$fileB->public_id}/imports")
+            ->assertUnprocessable();
+
+        $this->postJson("/api/indices/admin/source-files/{$fileB->public_id}/imports", [
+            'preview_public_id' => $previewA->public_id,
+        ])->assertConflict()->assertJsonPath('code', 'preview_source_file_mismatch');
+        $this->assertSame(0, $fileB->imports()->count());
+
+        $response = $this->postJson("/api/indices/admin/source-files/{$fileB->public_id}/imports", [
+            'preview_public_id' => $previewB->public_id,
+        ])->assertAccepted()->assertJsonPath('data.source_file.public_id', $fileB->public_id);
+
+        $this->assertSame($fileB->id, StatisticalImport::query()
+            ->where('public_id', $response->json('data.public_id'))
+            ->value('source_file_id'));
+        Queue::assertPushed(RunStatisticalImportJob::class, function (RunStatisticalImportJob $job) use ($fileB): bool {
+            return $job->sourceFileId === $fileB->id;
+        });
     }
 
     public function test_dispatch_failure_marks_new_attempt_failed(): void
@@ -174,7 +219,10 @@ class PriceIndicesAdminImportApiTest extends TestCase
             $mock->shouldReceive('dispatch')->once()->andThrow(new RuntimeException('queue backend unavailable'));
         });
 
-        $this->postJson("/api/indices/admin/source-files/{$file->public_id}/imports")
+        $preview = $this->readyPreviewFor($file);
+        $this->postJson("/api/indices/admin/source-files/{$file->public_id}/imports", [
+            'preview_public_id' => $preview->public_id,
+        ])
             ->assertStatus(503)
             ->assertJsonPath('code', 'job_dispatch_failed')
             ->assertJsonMissingPath('exception');
@@ -214,7 +262,10 @@ class PriceIndicesAdminImportApiTest extends TestCase
                 'status' => StatisticalImportStatus::from($status),
             ]);
 
-            $this->postJson("/api/indices/admin/source-files/{$file->public_id}/imports")
+            $preview = $this->readyPreviewFor($file);
+            $this->postJson("/api/indices/admin/source-files/{$file->public_id}/imports", [
+                'preview_public_id' => $preview->public_id,
+            ])
                 ->assertConflict()
                 ->assertJsonPath('code', $code);
         }
@@ -595,7 +646,7 @@ class PriceIndicesAdminImportApiTest extends TestCase
     private function actingAsRole(string $role, ?int $id = null): User
     {
         if ($id !== null) {
-            $user = new User();
+            $user = new User;
             $user->forceFill(['id' => $id, 'role' => $role]);
         } else {
             $user = User::factory()->create(['role' => $role]);
@@ -603,5 +654,24 @@ class PriceIndicesAdminImportApiTest extends TestCase
         Sanctum::actingAs($user);
 
         return $user;
+    }
+
+    private function readyPreviewFor(StatisticalSourceFile $file): StatisticalImportPreview
+    {
+        $preview = StatisticalImportPreview::factory()->create([
+            'dataset_id' => $file->dataset_id,
+            'source_file_id' => $file->id,
+        ]);
+
+        $preview->forceFill([
+            'status' => StatisticalImportPreviewStatus::Ready,
+            'finished_at' => now(),
+            'expires_at' => now()->addHour(),
+            'result_json' => [
+                'source_file' => ['public_id' => $file->public_id],
+            ],
+        ])->save();
+
+        return $preview->refresh();
     }
 }

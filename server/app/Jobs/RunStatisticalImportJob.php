@@ -32,8 +32,10 @@ class RunStatisticalImportJob implements ShouldQueue
 
     public int $backoff;
 
-    public function __construct(public readonly string $importPublicId)
-    {
+    public function __construct(
+        public readonly string $importPublicId,
+        public readonly ?int $sourceFileId = null,
+    ) {
         $this->tries = (int) config('price_indices.imports.job_tries', 1);
         $this->timeout = (int) config('price_indices.imports.job_timeout', 3_600);
         $this->backoff = (int) config('price_indices.imports.job_backoff', 60);
@@ -55,7 +57,15 @@ class RunStatisticalImportJob implements ShouldQueue
         CleanupFailedStatisticalImport $cleanup,
         FailStatisticalImport $fail,
     ): void {
-        $import = StatisticalImport::query()->where('public_id', $this->importPublicId)->firstOrFail();
+        $import = StatisticalImport::query()
+            ->with('sourceFile')
+            ->where('public_id', $this->importPublicId)
+            ->firstOrFail();
+        if ($this->sourceFileId !== null && $import->source_file_id !== $this->sourceFileId) {
+            throw new PriceIndicesInvariantViolation(
+                'The statistical import job source file does not match the import source file.'
+            );
+        }
         if ($import->status !== StatisticalImportStatus::Pending) {
             Log::warning('Price indices import job skipped because import is not pending.', $this->context($import));
 

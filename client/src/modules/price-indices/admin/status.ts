@@ -1,7 +1,7 @@
 import type { ImportStatus, PreviewStatus, SourceFileStatus } from './types'
 
 export const sourceStatusLabels: Record<SourceFileStatus, string> = {
-  pending_review: 'На проверке', approved: 'Одобрен', active: 'Активен', rejected: 'Отклонён', superseded: 'Заменён',
+  pending_review: 'На проверке', approved: 'Одобрен', active: 'Доступен для импорта', rejected: 'Отклонён', superseded: 'Заменён',
 }
 export const previewStatusLabels: Record<PreviewStatus, string> = {
   pending: 'В очереди', running: 'Выполняется', ready: 'Готов', failed: 'Ошибка', expired: 'Истёк',

@@ -4,6 +4,10 @@
       <div>
         <div class="text-title-medium font-weight-medium">Предварительный анализ</div>
         <div class="text-body-2 text-medium-emphasis">{{ preview.source_file.original_filename }}</div>
+        <div class="text-caption text-medium-emphasis text-break">
+          Public ID: {{ preview.source_file.public_id }} · SHA-256: {{ preview.source_file.sha256 }} ·
+          Период: {{ formatPeriod(preview.source_file.reporting_period.year, preview.source_file.reporting_period.month) }}
+        </div>
       </div>
       <v-spacer />
       <v-chip :color="statusColor(preview.status)" variant="tonal">{{ previewStatusLabels[preview.status] }}</v-chip>
@@ -62,7 +66,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
-import { formatDate, previewStatusLabels, statusColor } from '../status'
+import { formatDate, formatPeriod, previewStatusLabels, statusColor } from '../status'
 import type { StatisticalImportPreview, StatisticalImportPreviewResult } from '../types'
 const props = defineProps<{ preview: StatisticalImportPreview | null; result: StatisticalImportPreviewResult | null; cached: boolean; busy: boolean }>()
 defineEmits<{ retry: []; startImport: [] }>()

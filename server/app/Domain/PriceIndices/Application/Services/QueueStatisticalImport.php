@@ -3,10 +3,12 @@
 namespace App\Domain\PriceIndices\Application\Services;
 
 use App\Domain\PriceIndices\Domain\Enums\SourceFileStatus;
+use App\Domain\PriceIndices\Domain\Enums\StatisticalImportPreviewStatus;
 use App\Domain\PriceIndices\Domain\Enums\StatisticalImportStatus;
 use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesApiException;
 use App\Domain\PriceIndices\Domain\Exceptions\PriceIndicesInvariantViolation;
 use App\Domain\PriceIndices\Domain\Imports\StatisticalImport;
+use App\Domain\PriceIndices\Domain\Previews\StatisticalImportPreview;
 use App\Domain\PriceIndices\Domain\SourceFiles\StatisticalSourceFile;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -17,16 +19,39 @@ final class QueueStatisticalImport
         private readonly StatisticalImporterRegistry $registry,
         private readonly CreateStatisticalImport $create,
         private readonly DispatchStatisticalImportJob $dispatch,
-    ) {
-    }
+        private readonly ExpireStatisticalImportPreviewIfNeeded $expirePreview,
+    ) {}
 
-    public function execute(StatisticalSourceFile $sourceFile, User $actor): StatisticalImport
-    {
-        $import = DB::transaction(function () use ($sourceFile, $actor): StatisticalImport {
+    public function execute(
+        StatisticalSourceFile $sourceFile,
+        User $actor,
+        string $previewPublicId,
+    ): StatisticalImport {
+        $preview = StatisticalImportPreview::query()
+            ->where('public_id', $previewPublicId)
+            ->first();
+
+        if ($preview === null) {
+            throw new PriceIndicesApiException(
+                'preview_not_found',
+                404,
+                'The requested preliminary analysis was not found.',
+            );
+        }
+
+        $preview = $this->expirePreview->execute($preview);
+
+        $import = DB::transaction(function () use ($sourceFile, $actor, $preview): StatisticalImport {
             $file = StatisticalSourceFile::query()
                 ->with('dataset')
                 ->lockForUpdate()
                 ->findOrFail($sourceFile->id);
+
+            $preview = StatisticalImportPreview::query()
+                ->lockForUpdate()
+                ->findOrFail($preview->id);
+
+            $this->assertPreviewMatchesSourceFile($preview, $file);
 
             if ($file->status !== SourceFileStatus::Active) {
                 throw new PriceIndicesApiException(
@@ -47,6 +72,16 @@ final class QueueStatisticalImport
                 );
             }
 
+            if ($preview->importer_code !== $importer->code()
+                || $preview->importer_version !== $importer->version()
+            ) {
+                throw new PriceIndicesApiException(
+                    'preview_importer_mismatch',
+                    409,
+                    'The preliminary analysis was produced by a different importer version.',
+                );
+            }
+
             $existing = StatisticalImport::query()
                 ->where('source_file_id', $file->id)
                 ->where('importer_code', $importer->code())
@@ -64,6 +99,61 @@ final class QueueStatisticalImport
         $this->dispatch->execute($import);
 
         return $import->refresh();
+    }
+
+    private function assertPreviewMatchesSourceFile(
+        StatisticalImportPreview $preview,
+        StatisticalSourceFile $sourceFile,
+    ): void {
+        if ($preview->source_file_id !== $sourceFile->id) {
+            throw new PriceIndicesApiException(
+                'preview_source_file_mismatch',
+                409,
+                'The preliminary analysis belongs to a different source file.',
+                details: [
+                    'requested_source_file_public_id' => $sourceFile->public_id,
+                    'preview_source_file_public_id' => $preview->sourceFile()->value('public_id'),
+                ],
+            );
+        }
+
+        if ($preview->status === StatisticalImportPreviewStatus::Ready
+            && $preview->expires_at !== null
+            && $preview->expires_at->isPast()
+        ) {
+            throw new PriceIndicesApiException(
+                'preview_expired',
+                409,
+                'The preliminary analysis has expired.',
+            );
+        }
+
+        if ($preview->status !== StatisticalImportPreviewStatus::Ready || $preview->result_json === null) {
+            $code = match ($preview->status) {
+                StatisticalImportPreviewStatus::Failed => 'preview_failed',
+                StatisticalImportPreviewStatus::Expired => 'preview_expired',
+                default => 'preview_not_ready',
+            };
+
+            throw new PriceIndicesApiException(
+                $code,
+                409,
+                'The preliminary analysis is not ready for import.',
+            );
+        }
+
+        $resultSourceFilePublicId = data_get($preview->result_json, 'source_file.public_id');
+        if ($resultSourceFilePublicId !== $sourceFile->public_id) {
+            throw new PriceIndicesApiException(
+                'preview_source_file_mismatch',
+                409,
+                'The preliminary analysis result belongs to a different source file.',
+                details: [
+                    'requested_source_file_public_id' => $sourceFile->public_id,
+                    'preview_source_file_public_id' => $resultSourceFilePublicId,
+                ],
+            );
+        }
     }
 
     private function rejectDuplicate(StatisticalImport $import): never
