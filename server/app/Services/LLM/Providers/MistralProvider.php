@@ -6,6 +6,8 @@ namespace App\Services\LLM\Providers;
 
 use App\Services\LLM\Contracts\LLMProviderInterface;
 use App\Services\LLM\DTO\DecompositionPrompt;
+use App\Services\LLM\DTO\LLMChatRequest;
+use App\Services\LLM\DTO\LLMChatResponse;
 use App\Services\LLM\DTO\LLMResponse;
 use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\Parsing\LLMJsonParser;
@@ -173,6 +175,69 @@ class MistralProvider implements LLMProviderInterface
                 provider: self::NAME,
                 errorType: 'unknown',
                 previous: $e
+            );
+        }
+    }
+
+    public function chat(LLMChatRequest $request): LLMChatResponse
+    {
+        if (empty($this->apiKey)) {
+            throw LLMProviderException::configError(self::NAME, 'API key is not configured');
+        }
+
+        $startTime = microtime(true);
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])
+                ->timeout($this->timeout)
+                ->post($this->baseUrl . '/chat/completions', [
+                    'model' => $this->model,
+                    'messages' => $request->toProviderMessages(),
+                    'temperature' => $this->temperature,
+                    'max_tokens' => $this->maxTokens,
+                ]);
+
+            $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
+
+            if (!$response->successful()) {
+                throw LLMProviderException::httpError(self::NAME, $response->status(), $response->body());
+            }
+
+            $data = $response->json();
+            $content = $data['choices'][0]['message']['content'] ?? null;
+
+            if (!is_string($content) || trim($content) === '') {
+                throw new LLMProviderException('Provider returned an empty chat response', self::NAME, 'invalid_response');
+            }
+
+            return new LLMChatResponse(
+                provider: self::NAME,
+                model: $this->model,
+                content: $content,
+                latencyMs: $latencyMs,
+                promptTokens: $data['usage']['prompt_tokens'] ?? null,
+                completionTokens: $data['usage']['completion_tokens'] ?? null,
+                costUsd: $this->estimateCost($data['usage']['prompt_tokens'] ?? null, $data['usage']['completion_tokens'] ?? null),
+            );
+        } catch (LLMProviderException $e) {
+            throw $e;
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            if (str_contains($e->getMessage(), 'timed out')) {
+                throw LLMProviderException::timeout(self::NAME, $this->timeout);
+            }
+
+            throw LLMProviderException::networkError(self::NAME, $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('MistralProvider: unexpected chat error', ['error' => $e->getMessage()]);
+
+            throw new LLMProviderException(
+                message: 'Unexpected chat provider error',
+                provider: self::NAME,
+                errorType: 'unknown',
+                previous: $e,
             );
         }
     }

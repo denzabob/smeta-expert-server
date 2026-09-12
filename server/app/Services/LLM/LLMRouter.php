@@ -6,12 +6,16 @@ namespace App\Services\LLM;
 
 use App\Services\LLM\Contracts\LLMProviderInterface;
 use App\Services\LLM\DTO\DecompositionPrompt;
+use App\Services\LLM\DTO\LLMChatRequest;
+use App\Services\LLM\DTO\LLMChatResponse;
 use App\Services\LLM\DTO\LLMResponse;
 use App\Services\LLM\Enums\LLMErrorType;
 use App\Services\LLM\Exceptions\InvalidLLMJsonException;
+use App\Services\LLM\Exceptions\LLMChatUnavailableException;
 use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\Exceptions\LLMUnavailableException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Роутер LLM запросов с поддержкой failover, retry и structured logging.
@@ -46,14 +50,19 @@ class LLMRouter
     /** @var array<string, LLMProviderInterface> */
     private array $providerInstances = [];
 
+    /** @var (\Closure(string, array): ?LLMProviderInterface)|null */
+    private ?\Closure $providerFactory;
+
     public function __construct(
         CircuitBreaker $circuitBreaker,
         LLMSettingsRepository $settings,
         LLMErrorClassifier $errorClassifier,
+        ?\Closure $providerFactory = null,
     ) {
         $this->circuitBreaker = $circuitBreaker;
         $this->settings = $settings;
         $this->errorClassifier = $errorClassifier;
+        $this->providerFactory = $providerFactory;
     }
 
     /**
@@ -260,6 +269,119 @@ class LLMRouter
     }
 
     /**
+     * Выполнить обычный text-chat запрос через тот же provider/failover routing,
+     * но без JSON mode и decomposition parser.
+     *
+     * @throws LLMChatUnavailableException
+     */
+    public function chat(LLMChatRequest $request, ?string $correlationId = null): LLMChatResponse
+    {
+        $this->lastCorrelationId = $correlationId ?? (string) Str::uuid();
+        $executionPlan = $this->buildExecutionPlan();
+        $failoverChain = [];
+        $attemptIndex = 0;
+        $lastErrorType = null;
+
+        Log::info('LLMRouter: starting text chat request', [
+            'correlation_id' => $this->lastCorrelationId,
+            'execution_plan' => $executionPlan,
+        ]);
+
+        foreach ($executionPlan as $providerName) {
+            if (!$this->circuitBreaker->isAvailable($providerName)) {
+                $failoverChain[] = "{$providerName}:circuit_open";
+                continue;
+            }
+
+            $provider = $this->getProvider($providerName);
+            if ($provider === null) {
+                $failoverChain[] = "{$providerName}:not_configured";
+                $lastErrorType = LLMErrorType::CONFIG;
+                continue;
+            }
+
+            $retryCount = 0;
+
+            for ($attempt = 0; $attempt < self::MAX_ATTEMPTS_PER_PROVIDER; $attempt++) {
+                try {
+                    $response = $provider->chat($request);
+                    $this->circuitBreaker->recordSuccess($providerName);
+
+                    Log::info('LLMRouter: text chat completed', [
+                        'correlation_id' => $this->lastCorrelationId,
+                        'provider' => $providerName,
+                        'model' => $response->model,
+                        'attempt_index' => $attemptIndex,
+                        'retry_count' => $retryCount,
+                    ]);
+
+                    return $response;
+                } catch (LLMProviderException $e) {
+                    $errorType = $this->errorClassifier->classify($e, $e->getHttpStatus());
+                    $lastErrorType = $errorType;
+                    $failoverChain[] = "{$providerName}:{$errorType->value}";
+
+                    Log::warning('LLMRouter: text chat provider failed', [
+                        'correlation_id' => $this->lastCorrelationId,
+                        'provider' => $providerName,
+                        'error_type' => $errorType->value,
+                        'http_status' => $e->getHttpStatus(),
+                        'attempt' => $attempt + 1,
+                    ]);
+
+                    if (!$errorType->isFailoverAllowed()) {
+                        if ($this->settings->getMode() === 'manual') {
+                            $this->throwChatUnavailable($failoverChain, $lastErrorType,
+                                "Provider {$providerName} configuration error");
+                        }
+                        break;
+                    }
+
+                    $this->circuitBreaker->recordFailure($providerName, $errorType->value);
+
+                    if ($errorType->isRetryable() && $attempt + 1 < self::MAX_ATTEMPTS_PER_PROVIDER) {
+                        $retryCount++;
+                        $delayMs = (int) (self::RETRY_BASE_DELAY_MS * (2 ** $attempt) + random_int(0, self::RETRY_JITTER_MAX_MS));
+                        usleep($delayMs * 1000);
+                        continue;
+                    }
+
+                    if ($this->settings->getMode() === 'manual') {
+                        $this->throwChatUnavailable($failoverChain, $lastErrorType,
+                            'AI unavailable (manual mode, no failover)');
+                    }
+
+                    break;
+                } catch (\Throwable $e) {
+                    $errorType = $this->errorClassifier->classify($e);
+                    $lastErrorType = $errorType;
+                    $failoverChain[] = "{$providerName}:{$errorType->value}";
+
+                    Log::error('LLMRouter: unexpected text chat provider error', [
+                        'correlation_id' => $this->lastCorrelationId,
+                        'provider' => $providerName,
+                        'error_type' => $errorType->value,
+                    ]);
+
+                    $this->circuitBreaker->recordFailure($providerName, $errorType->value);
+
+                    if ($this->settings->getMode() === 'manual') {
+                        $this->throwChatUnavailable($failoverChain, $lastErrorType,
+                            'AI unavailable (manual mode, no failover)');
+                    }
+
+                    break;
+                }
+            }
+
+            $attemptIndex++;
+        }
+
+        $this->throwChatUnavailable($failoverChain, $lastErrorType,
+            'All LLM providers are unavailable for text chat');
+    }
+
+    /**
      * Построить execution plan из настроек.
      *
      * @return string[]
@@ -334,7 +456,9 @@ class LLMRouter
         }
 
         $providerSettings = $this->settings->getProviderSettings($name);
-        $provider = ProviderRegistry::createProvider($name, $providerSettings);
+        $provider = $this->providerFactory !== null
+            ? ($this->providerFactory)($name, $providerSettings)
+            : ProviderRegistry::createProvider($name, $providerSettings);
 
         if ($provider !== null) {
             $this->providerInstances[$name] = $provider;
@@ -365,6 +489,22 @@ class LLMRouter
         throw new LLMUnavailableException(
             message: $message,
             failoverChain: $failoverChain,
+        );
+    }
+
+    /**
+     * @throws LLMChatUnavailableException
+     * @return never
+     */
+    private function throwChatUnavailable(
+        array $failoverChain,
+        ?LLMErrorType $lastErrorType,
+        string $message,
+    ): never {
+        throw new LLMChatUnavailableException(
+            message: $message,
+            failoverChain: $failoverChain,
+            lastErrorType: $lastErrorType,
         );
     }
 }

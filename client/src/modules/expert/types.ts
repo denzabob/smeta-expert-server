@@ -14,7 +14,21 @@ export interface ExpertMessage {
   role: 'user' | 'assistant'
   text: string
   createdAt: string
+  deliveryState?: ExpertMessageDeliveryState
+  deliveryError?: string
+  clientMessageId?: string
+  runtimeMaterialContext?: ExpertMessageMaterialContext[]
   sources?: ExpertSource[]
+}
+
+export type ExpertMessageDeliveryState = 'sending' | 'sent' | 'error'
+
+export interface ExpertMessageMaterialContext {
+  id: string
+  name: string
+  kind: ExpertMaterialKind
+  format: string
+  icon: string
 }
 
 export interface ExpertConversation {

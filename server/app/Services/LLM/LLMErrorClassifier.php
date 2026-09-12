@@ -63,6 +63,7 @@ class LLMErrorClassifier
             'http_5xx' => LLMErrorType::SERVER_ERROR,
             'network' => LLMErrorType::NETWORK,
             'invalid_json' => LLMErrorType::INVALID_RESPONSE,
+            'invalid_response' => LLMErrorType::INVALID_RESPONSE,
             default => null,
         };
 

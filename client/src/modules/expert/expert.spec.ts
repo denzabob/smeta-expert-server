@@ -111,10 +111,52 @@ describe('Expert frontend prototype contracts', () => {
     expect(chatSource).toContain('messagesSequence')
   })
 
-  it('clears a chat draft only after the parent confirms persistence', () => {
+  it('clears an optimistic chat draft after local acceptance and keeps keyboard semantics explicit', () => {
     const composerSource = readFileSync(new URL('./components/chat/ExpertChatComposer.vue', import.meta.url), 'utf8')
+    const chatSource = readFileSync(new URL('./pages/ExpertChat.vue', import.meta.url), 'utf8')
 
-    expect(composerSource).toContain('(saved: boolean)')
-    expect(composerSource).toContain('if (saved && text.value.trim() === value)')
+    expect(composerSource).toContain("shouldSubmitExpertChatComposer(event)")
+    expect(composerSource).toContain("normalizeExpertChatDraft(text.value)")
+    expect(composerSource).toContain("if (normalizeExpertChatDraft(text.value) === value) text.value = ''")
+    expect(chatSource).toContain('createOptimisticUserMessage')
+    expect(chatSource).toContain('retryMessage')
+    expect(chatSource).toContain('showScrollToBottom')
+    expect(chatSource).not.toContain('AI-ответы подключаются на следующем этапе.')
+  })
+
+  it('uses the Expert Chat AI response envelope without a fake assistant placeholder', () => {
+    const chatSource = readFileSync(new URL('./pages/ExpertChat.vue', import.meta.url), 'utf8')
+    const messageSource = readFileSync(new URL('./components/chat/ExpertChatMessage.vue', import.meta.url), 'utf8')
+
+    expect(chatSource).toContain('reply.userMessage')
+    expect(chatSource).toContain('reply.assistantMessage')
+    expect(chatSource).toContain('appendServerAssistantMessage')
+    expect(chatSource).toContain('handleMessageAdded(wasNearBottom, false)')
+    expect(messageSource).toContain('Формируется ответ…')
+  })
+
+  it('uses the shared Materials transfer flow without persisting composer chips as message attachments', () => {
+    const composerSource = readFileSync(new URL('./components/chat/ExpertChatComposer.vue', import.meta.url), 'utf8')
+    const chatSource = readFileSync(new URL('./pages/ExpertChat.vue', import.meta.url), 'utf8')
+
+    expect(composerSource).toContain("type=\"file\"")
+    expect(composerSource).toContain("'attach-files'")
+    expect(composerSource).toContain('sendBlockedReason')
+    expect(chatSource).toContain('useExpertMaterialTransfers')
+    expect(chatSource).toContain('transfers.queueUploads')
+    expect(chatSource).toContain('snapshotExpertMessageMaterialContext')
+    expect(chatSource).toContain('runtimeMaterialContext')
+    expect(chatSource).not.toContain('expertApi.deleteMaterial')
+  })
+
+  it('keeps the Material drawer as a temporary overlay and replaces browser confirmation', () => {
+    const materialsSource = readFileSync(new URL('./pages/ExpertMaterials.vue', import.meta.url), 'utf8')
+    const drawerSource = readFileSync(new URL('./components/materials/ExpertMaterialDrawer.vue', import.meta.url), 'utf8')
+
+    expect(drawerSource).toContain('v-if="open"')
+    expect(drawerSource).toContain('temporary location="right"')
+    expect(materialsSource).toContain('v-if="drawerOpen"')
+    expect(materialsSource).not.toContain('window.confirm')
+    expect(materialsSource).toContain('Материал используется в результатах исследования')
   })
 })

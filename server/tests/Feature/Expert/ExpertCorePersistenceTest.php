@@ -3,6 +3,8 @@
 namespace Tests\Feature\Expert;
 
 use App\Models\Expert\ExpertProject;
+use App\Services\LLM\DTO\LLMChatResponse;
+use App\Services\LLM\LLMRouter;
 use App\Services\Expert\ExpertStorageCleanupService;
 use App\Models\User;
 use App\Services\Admin\AdminUserService;
@@ -56,9 +58,17 @@ class ExpertCorePersistenceTest extends TestCase
     public function test_conversation_messages_persist_and_client_cannot_forge_role(): void
     {
         [$user,$project]=$this->project();
+        $router=Mockery::mock(LLMRouter::class);
+        $router->shouldReceive('setUserId')->once()->with($user->id)->andReturnSelf();
+        $router->shouldReceive('chat')->once()->andReturn(new LLMChatResponse('fake','fake-chat','Тестовый ответ',1));
+        $this->app->instance(LLMRouter::class,$router);
         $conversation=$this->actingAs($user,'sanctum')->postJson("/api/expert/projects/{$project->public_id}/conversations",['title'=>'Общий анализ'])->assertCreated();
         $url='/api/expert/conversations/'.$conversation->json('public_id').'/messages';
-        $this->postJson($url,['content'=>'Проверь документ','role'=>'assistant'])->assertCreated()->assertJsonPath('role','user')->assertJsonMissingPath('id');
+        $this->postJson($url,['content'=>'Проверь документ','role'=>'assistant'],['X-Expert-Message-Id'=>(string) Str::uuid()])
+            ->assertCreated()
+            ->assertJsonPath('user_message.role','user')
+            ->assertJsonPath('assistant_message.role','assistant')
+            ->assertJsonMissingPath('user_message.id');
         $this->getJson($url)->assertOk()->assertJsonPath('data.0.content','Проверь документ')->assertJsonPath('data.0.role','user');
     }
 
@@ -73,6 +83,20 @@ class ExpertCorePersistenceTest extends TestCase
         $this->actingAs($user,'sanctum')->get('/api/expert/materials/'.$material->json('public_id').'/download')->assertNotFound();
         $this->actingAs($user,'sanctum')->post("/api/expert/projects/{$project->public_id}/materials",['file'=>UploadedFile::fake()->create('evil.exe',10,'application/x-msdownload')],['Accept'=>'application/json'])->assertUnprocessable();
         $this->post("/api/expert/projects/{$project->public_id}/materials",['file'=>UploadedFile::fake()->create('disguised.exe',10,'application/pdf')],['Accept'=>'application/json'])->assertUnprocessable();
+    }
+
+    public function test_private_image_content_is_owner_scoped_and_does_not_expose_storage_path(): void
+    {
+        Storage::fake('local'); [$user,$project]=$this->project(); $other=User::factory()->create();
+        $material=$this->actingAs($user,'sanctum')->post("/api/expert/projects/{$project->public_id}/materials",[
+            'file'=>UploadedFile::fake()->create('kitchen.jpg',10,'image/jpeg'),
+        ],['Accept'=>'application/json'])->assertCreated()->assertJsonPath('original_name','kitchen.jpg')->assertJsonMissingPath('storage_path');
+        $url='/api/expert/materials/'.$material->json('public_id').'/content';
+
+        $this->get($url)->assertOk()->assertHeader('content-type','image/jpeg');
+        $this->actingAs($other,'sanctum')->get($url)->assertForbidden();
+        $record=$project->materials()->firstOrFail(); Storage::disk('local')->delete($record->storage_path);
+        $this->actingAs($user,'sanctum')->get($url)->assertNotFound();
     }
 
     public function test_finding_bindings_reject_foreign_entities_and_protect_linked_material(): void

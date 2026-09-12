@@ -1,4 +1,4 @@
-import axios, { type AxiosInstance } from 'axios'
+import axios, { type AxiosInstance, type AxiosProgressEvent } from 'axios'
 import type {
   ExpertConversation,
   ExpertFinding,
@@ -17,6 +17,7 @@ import {
   expertWorkTypeLabels,
   expertWorkTypeValues,
 } from './options'
+import { describeProjectMaterial, formatMaterialSize, safeMaterialDisplayName } from './materialPresentation'
 
 export type ExpertCountsDto = {
   research_objects: number
@@ -46,6 +47,10 @@ export type ExpertMessageDto = {
   metadata?: Record<string, unknown> | null
   created_at: string
   updated_at?: string
+}
+export type ExpertChatReplyDto = {
+  user_message: ExpertMessageDto
+  assistant_message: ExpertMessageDto
 }
 export type ExpertMaterialDto = {
   public_id: string
@@ -94,6 +99,8 @@ export type ExpertProjectDto = {
 export type ExpertCollection<T> = { data: T[] }
 export type ExpertValidationErrors = Record<string, string[]>
 export type ExpertApiError = { status?: number; message: string; validationErrors: ExpertValidationErrors }
+export type ExpertUploadOptions = { onProgress?: (progress: number) => void }
+export type ExpertDownloadOptions = { onProgress?: (progress: number | null) => void }
 export type ExpertFindingInput = {
   type: ExpertFindingType
   title: string
@@ -135,18 +142,6 @@ const findingStatusLabels: Record<string, ExpertFindingStatus> = {
   expert_rejected: 'Отклонено экспертом',
 }
 
-function materialKind(dto: ExpertMaterialDto): ExpertMaterialKind {
-  if (dto.mime_type.startsWith('image/')) return 'image'
-  if (dto.extension === 'xlsx') return 'spreadsheet'
-  return dto.category === 'document' ? 'document' : 'other'
-}
-
-function formatBytes(value: number): string {
-  if (value < 1024) return `${value} Б`
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} КБ`
-  return `${(value / 1024 / 1024).toFixed(1)} МБ`
-}
-
 export function mapResearchObject(dto: ExpertResearchObjectDto): ExpertResearchObject {
   return {
     id: dto.public_id,
@@ -178,23 +173,29 @@ export function mapMessage(dto: ExpertMessageDto): ExpertMessage {
 }
 
 export function mapMaterial(dto: ExpertMaterialDto): ExpertProjectMaterial {
-  const kind = materialKind(dto)
+  const kind: ExpertMaterialKind = dto.mime_type.startsWith('image/')
+    ? 'image'
+    : dto.category === 'spreadsheet'
+      ? 'spreadsheet'
+      : dto.category === 'document'
+        ? 'document'
+        : 'other'
+  const presentation = describeProjectMaterial({
+    kind,
+    format: dto.extension,
+    mimeType: dto.mime_type,
+  })
   return {
     id: dto.public_id,
-    name: dto.original_name,
-    kind,
-    format: dto.extension.toUpperCase(),
+    name: safeMaterialDisplayName(dto.original_name, dto.extension),
+    kind: presentation.kind,
+    format: presentation.format,
     meta: dto.mime_type,
-    size: formatBytes(dto.size),
+    size: formatMaterialSize(dto.size),
     category: dto.category,
-    status: dto.status === 'uploaded' ? 'Загружен' : 'Обработан',
+    status: dto.status === 'uploaded' ? 'Загружен' : dto.status === 'processing' ? 'Обрабатывается' : dto.status === 'failed' ? 'Ошибка' : 'Обработан',
     useInAi: false,
-    icon:
-      kind === 'image'
-        ? 'mdi-file-image-outline'
-        : kind === 'spreadsheet'
-          ? 'mdi-file-excel-outline'
-          : 'mdi-file-document-outline',
+    icon: presentation.icon,
     mimeType: dto.mime_type,
     sizeBytes: dto.size,
     createdAt: dto.created_at,
@@ -374,12 +375,16 @@ export function createExpertApi(http?: AxiosInstance) {
       )
       return data.data.map(mapMessage)
     },
-    async sendMessage(conversationId: string, content: string) {
-      const { data } = await (await resolveHttp()).post<ExpertMessageDto>(
+    async sendMessage(conversationId: string, content: string, clientMessageId: string) {
+      const { data } = await (await resolveHttp()).post<ExpertChatReplyDto>(
         `/api/expert/conversations/${encodeURIComponent(conversationId)}/messages`,
         { content },
+        { headers: { 'X-Expert-Message-Id': clientMessageId } },
       )
-      return mapMessage(data)
+      return {
+        userMessage: mapMessage(data.user_message),
+        assistantMessage: mapMessage(data.assistant_message),
+      }
     },
     async listMaterials(projectId: string) {
       const { data } = await (await resolveHttp()).get<ExpertCollection<ExpertMaterialDto>>(
@@ -387,19 +392,32 @@ export function createExpertApi(http?: AxiosInstance) {
       )
       return data.data.map(mapMaterial)
     },
-    async uploadMaterial(projectId: string, file: File) {
+    async uploadMaterial(projectId: string, file: File, options: ExpertUploadOptions = {}) {
       const form = new FormData()
       form.append('file', file)
       const { data } = await (await resolveHttp()).post<ExpertMaterialDto>(
         `/api/expert/projects/${encodeURIComponent(projectId)}/materials`,
         form,
-        { headers: { 'Content-Type': 'multipart/form-data' } },
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (event: AxiosProgressEvent) => options.onProgress?.(toProgress(event)),
+        },
       )
       return mapMaterial(data)
     },
-    async downloadMaterial(id: string) {
+    async downloadMaterial(id: string, options: ExpertDownloadOptions = {}) {
       const response = await (await resolveHttp()).get<Blob>(
         `/api/expert/materials/${encodeURIComponent(id)}/download`,
+        {
+          responseType: 'blob',
+          onDownloadProgress: (event: AxiosProgressEvent) => options.onProgress?.(toOptionalProgress(event)),
+        },
+      )
+      return response.data
+    },
+    async getMaterialImageContent(id: string) {
+      const response = await (await resolveHttp()).get<Blob>(
+        `/api/expert/materials/${encodeURIComponent(id)}/content`,
         { responseType: 'blob' },
       )
       return response.data
@@ -434,3 +452,13 @@ export function createExpertApi(http?: AxiosInstance) {
 }
 
 export const expertApi = createExpertApi()
+
+function toProgress(event: AxiosProgressEvent): number {
+  return event.total && event.total > 0
+    ? Math.min(100, Math.round((event.loaded / event.total) * 100))
+    : 0
+}
+
+function toOptionalProgress(event: AxiosProgressEvent): number | null {
+  return event.total && event.total > 0 ? toProgress(event) : null
+}

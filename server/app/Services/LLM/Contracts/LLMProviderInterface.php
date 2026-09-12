@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\LLM\Contracts;
 
 use App\Services\LLM\DTO\DecompositionPrompt;
+use App\Services\LLM\DTO\LLMChatRequest;
+use App\Services\LLM\DTO\LLMChatResponse;
 use App\Services\LLM\DTO\LLMResponse;
 
 /**
@@ -40,4 +42,9 @@ interface LLMProviderInterface
      * @throws \App\Services\LLM\Exceptions\LLMProviderException При ошибке провайдера
      */
     public function generateDecomposition(DecompositionPrompt $prompt): LLMResponse;
+
+    /**
+     * Выполнить text-only chat completion без JSON schema и decomposition parser.
+     */
+    public function chat(LLMChatRequest $request): LLMChatResponse;
 }

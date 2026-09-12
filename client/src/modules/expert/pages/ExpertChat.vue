@@ -32,37 +32,50 @@
 
       <v-progress-linear v-if="loading" indeterminate color="primary" />
       <v-alert v-if="errorMessage" type="error" variant="tonal" density="compact" class="ma-3">
-        {{ errorMessage }}
+        <span>{{ errorMessage }}</span>
+        <template #append><v-btn size="small" variant="text" @click="retryHistory">Повторить</v-btn></template>
       </v-alert>
 
-      <div ref="messageArea" class="expert-chat__messages">
-        <div v-if="!loading && !messages.length" class="expert-chat__empty">
-          <div class="expert-chat__empty-icon"><v-icon :icon="projectMode === 'demo' ? 'mdi-prism' : 'mdi-message-text-outline'" size="30" /></div>
-          <h1>{{ projectMode === 'demo' ? 'Чем помочь в этом исследовании?' : 'Сообщений пока нет' }}</h1>
-          <p>{{ projectMode === 'demo' ? 'Prism AI работает с демонстрационным контекстом проекта.' : 'Создайте чат и добавьте первое сообщение. AI-ответы подключаются на следующем этапе.' }}</p>
-          <div v-if="projectMode === 'demo'" class="expert-chat__quick-actions">
-            <button v-for="action in project.quickActions" :key="action" type="button" @click="sendMessage(action)">
-              <v-icon icon="mdi-arrow-up-right" size="17" /><span>{{ action }}</span>
-            </button>
+      <div class="expert-chat__messages-wrap">
+        <div ref="messageArea" class="expert-chat__messages" @scroll.passive="updateScrollPosition">
+          <div v-if="!loading && !messages.length" class="expert-chat__empty">
+            <div class="expert-chat__empty-icon"><v-icon :icon="projectMode === 'demo' ? 'mdi-prism' : 'mdi-message-text-outline'" size="30" /></div>
+            <h1>{{ projectMode === 'demo' ? 'Чем помочь в этом исследовании?' : 'Экспертный чат' }}</h1>
+            <p>{{ projectMode === 'demo' ? 'Prism AI работает с демонстрационным контекстом проекта.' : 'Начните рабочий диалог — сообщения сохранятся в истории проекта.' }}</p>
+            <div v-if="projectMode === 'demo'" class="expert-chat__quick-actions">
+              <button v-for="action in project.quickActions" :key="action" type="button" @click="sendMessage(action)">
+                <v-icon icon="mdi-arrow-up-right" size="17" /><span>{{ action }}</span>
+              </button>
+            </div>
           </div>
-          <v-btn v-else-if="!conversation" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="openNewConversation">Создать чат</v-btn>
+          <ExpertChatMessage
+            v-for="message in messages"
+            v-else
+            :key="message.id"
+            :message="message"
+            @action="notify"
+            @open-source="contextOpen = true"
+            @retry="retryMessage"
+          />
         </div>
-        <ExpertChatMessage
-          v-for="message in messages"
-          v-else
-          :key="message.id"
-          :message="message"
-          @action="notify"
-          @open-source="contextOpen = true"
-        />
+        <v-btn v-if="showScrollToBottom" class="expert-chat__new-messages" color="surface" variant="flat" size="small" append-icon="mdi-arrow-down" aria-label="Показать новые сообщения" @click="scrollToLatest('smooth')">Новые сообщения</v-btn>
       </div>
 
       <ExpertChatComposer
         :context-chips="projectMode === 'demo' ? contextChips : []"
-        :busy="sending || loading"
         :persistence-only="projectMode === 'real'"
+        :allow-whole-project-context="projectMode === 'demo'"
+        :allow-file-upload="projectMode === 'real'"
+        :upload-items="composerUploadItems"
+        :material-contexts="composerMaterialContexts"
+        :image-previews="composerImagePreviews"
+        :send-blocked-reason="composerSendBlockedReason"
         @send="sendMessage"
         @attachment="handleAttachment"
+        @attach-files="attachComposerFiles"
+        @retry-upload="retryComposerUpload"
+        @remove-upload="removeFailedComposerUpload"
+        @remove-material-context="removeComposerMaterialContext"
         @remove-context="removeContext"
         @select-whole-project="selectWholeProject"
       />
@@ -89,23 +102,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import ExpertChatComposer from '../components/chat/ExpertChatComposer.vue'
 import ExpertChatMessage from '../components/chat/ExpertChatMessage.vue'
 import ExpertContextPanel from '../components/chat/ExpertContextPanel.vue'
 import { createWholeProjectContext, removeChatContext, selectWholeProjectChatContext, type ExpertChatContextChip } from '../chatContext'
+import { addExpertMessageMaterialContext, getExpertChatAttachmentSendBlockReason, snapshotExpertMessageMaterialContext } from '../chatAttachments'
+import { normalizeExpertChatDraft } from '../chatComposer'
+import { appendUniqueExpertMessage, createOptimisticUserMessage, replaceOptimisticExpertMessage, setExpertMessageDeliveryState } from '../chatMessageState'
+import { isNearExpertChatBottom, shouldFollowNewExpertMessage } from '../chatScroll'
+import { useExpertMaterialTransfers } from '../composables/useExpertMaterialTransfers'
 import { expertApi, mapExpertApiError } from '../api'
-import type { ExpertMessage, ExpertProject, ExpertProjectMode } from '../types'
+import type { ExpertConversation, ExpertMessage, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMode } from '../types'
 
 const props = defineProps<{ project: ExpertProject; projectMode: ExpertProjectMode }>()
 const { mdAndDown } = useDisplay()
 const conversationId = ref('')
 const messagesByConversation = ref<Record<string, ExpertMessage[]>>({})
+const pendingMessages = ref<ExpertMessage[]>([])
 const contextOpen = ref(props.projectMode === 'demo' && !mdAndDown.value)
 const contextChips = ref<ExpertChatContextChip[]>(createWholeProjectContext())
 const loading = ref(false)
-const sending = ref(false)
 const errorMessage = ref('')
 const newConversationOpen = ref(false)
 const newConversationTitle = ref('Общий анализ')
@@ -114,18 +132,105 @@ const conversationError = ref('')
 const snackbarOpen = ref(false)
 const snackbarText = ref('')
 const messageArea = ref<HTMLElement | null>(null)
+const showScrollToBottom = ref(false)
+const transfers = useExpertMaterialTransfers()
+const composerMaterialContexts = ref<ExpertMessageMaterialContext[]>([])
+const composerUploadItems = computed(() => transfers.uploads.value)
+const composerImagePreviews = computed(() => transfers.imagePreviews.value)
+const composerSendBlockedReason = computed(() => getExpertChatAttachmentSendBlockReason(composerUploadItems.value))
 let conversationsSequence = 0
 let messagesSequence = 0
+let conversationCreationPromise: Promise<string> | null = null
+let conversationsLoadPromise: Promise<void> | null = null
 
 const conversation = computed(() => props.project.conversations.find((item) => item.id === conversationId.value))
-const messages = computed(() => messagesByConversation.value[conversationId.value] ?? conversation.value?.messages ?? [])
+const messages = computed(() => conversationId.value
+  ? messagesByConversation.value[conversationId.value] ?? conversation.value?.messages ?? []
+  : pendingMessages.value)
+
+function appendMessages(newMessages: ExpertMessage[]) {
+  const id = conversationId.value
+  if (!id) {
+    pendingMessages.value = [...pendingMessages.value, ...newMessages]
+    return
+  }
+  messagesByConversation.value = {
+    ...messagesByConversation.value,
+    [id]: [...(messagesByConversation.value[id] ?? conversation.value?.messages ?? []), ...newMessages],
+  }
+}
+
+function updateMessageDelivery(messageId: string, deliveryState: NonNullable<ExpertMessage['deliveryState']>, deliveryError?: string) {
+  pendingMessages.value = setExpertMessageDeliveryState(pendingMessages.value, messageId, deliveryState, deliveryError)
+  messagesByConversation.value = Object.fromEntries(Object.entries(messagesByConversation.value).map(([id, items]) => [
+    id,
+    setExpertMessageDeliveryState(items, messageId, deliveryState, deliveryError),
+  ]))
+}
+
+function replaceOptimisticMessage(optimisticId: string, savedMessage: ExpertMessage) {
+  pendingMessages.value = replaceOptimisticExpertMessage(pendingMessages.value, optimisticId, savedMessage)
+  messagesByConversation.value = Object.fromEntries(Object.entries(messagesByConversation.value).map(([id, items]) => [
+    id,
+    replaceOptimisticExpertMessage(items, optimisticId, savedMessage),
+  ]))
+}
+
+function appendServerAssistantMessage(targetConversationId: string, assistantMessage: ExpertMessage) {
+  messagesByConversation.value = {
+    ...messagesByConversation.value,
+    [targetConversationId]: appendUniqueExpertMessage(
+      messagesByConversation.value[targetConversationId] ?? [],
+      assistantMessage,
+    ),
+  }
+}
+
+function findMessage(messageId: string): ExpertMessage | undefined {
+  return pendingMessages.value.find((message) => message.id === messageId)
+    ?? Object.values(messagesByConversation.value).flat().find((message) => message.id === messageId)
+}
+
+function attachConversation(created: ExpertConversation) {
+  if (!props.project.conversations.some((item) => item.id === created.id)) {
+    props.project.conversations.push(created)
+    props.project.counts && (props.project.counts.conversations = props.project.conversations.length)
+  }
+  const queued = pendingMessages.value
+  messagesByConversation.value = {
+    ...messagesByConversation.value,
+    [created.id]: [...queued, ...(messagesByConversation.value[created.id] ?? [])],
+  }
+  pendingMessages.value = []
+  conversationId.value = created.id
+}
+
+async function ensureConversation(): Promise<string> {
+  if (conversationId.value) return conversationId.value
+  if (conversationsLoadPromise) {
+    await conversationsLoadPromise
+    if (conversationId.value) return conversationId.value
+  }
+  if (!conversationCreationPromise) {
+    conversationCreationPromise = expertApi.createConversation(props.project.id, 'Общий анализ')
+      .then((created) => {
+        attachConversation(created)
+        return created.id
+      })
+      .finally(() => { conversationCreationPromise = null })
+  }
+  return conversationCreationPromise
+}
 
 async function loadConversations() {
   const sequence = ++conversationsSequence
   const targetProject = props.project
+  messagesByConversation.value = {}
+  pendingMessages.value = []
   errorMessage.value = ''
   if (props.projectMode === 'demo') {
     conversationId.value = props.project.conversations[0]?.id ?? ''
+    await scrollToLatest('auto')
     return
   }
   loading.value = true
@@ -142,8 +247,8 @@ async function loadConversations() {
   }
 }
 
-async function loadMessages(id: string) {
-  if (props.projectMode === 'demo' || !id || Object.prototype.hasOwnProperty.call(messagesByConversation.value, id)) return
+async function loadMessages(id: string, force = false) {
+  if (props.projectMode === 'demo' || !id || (!force && Object.prototype.hasOwnProperty.call(messagesByConversation.value, id))) return
   const sequence = ++messagesSequence
   loading.value = true
   errorMessage.value = ''
@@ -151,11 +256,30 @@ async function loadMessages(id: string) {
     const loaded = await expertApi.listMessages(id)
     if (sequence !== messagesSequence) return
     messagesByConversation.value = { ...messagesByConversation.value, [id]: loaded }
+    await scrollToLatest('auto')
   } catch (error) {
     if (sequence === messagesSequence) errorMessage.value = mapExpertApiError(error).message
   } finally {
     if (sequence === messagesSequence) loading.value = false
   }
+}
+
+async function retryHistory() {
+  errorMessage.value = ''
+  if (conversationId.value) {
+    await loadMessages(conversationId.value, true)
+    return
+  }
+  await requestConversations()
+}
+
+function requestConversations(): Promise<void> {
+  const request = loadConversations()
+  conversationsLoadPromise = request
+  void request.finally(() => {
+    if (conversationsLoadPromise === request) conversationsLoadPromise = null
+  })
+  return request
 }
 
 function openNewConversation() {
@@ -178,11 +302,9 @@ async function createConversation() {
   conversationError.value = ''
   try {
     const created = await expertApi.createConversation(props.project.id, title)
-    props.project.conversations.push(created)
-    props.project.counts && (props.project.counts.conversations = props.project.conversations.length)
-    messagesByConversation.value = { ...messagesByConversation.value, [created.id]: [] }
-    conversationId.value = created.id
+    attachConversation(created)
     newConversationOpen.value = false
+    await scrollToLatest('auto')
   } catch (error) {
     conversationError.value = mapExpertApiError(error).message
   } finally {
@@ -190,44 +312,115 @@ async function createConversation() {
   }
 }
 
-async function sendMessage(text: string, complete: (saved: boolean) => void = () => undefined) {
-  let savedSuccessfully = false
-  if (props.projectMode === 'demo') {
-    const id = conversationId.value
-    const current = messages.value
-    const stamp = Date.now()
-    const userMessage: ExpertMessage = { id: 'local-' + stamp, role: 'user', text, createdAt: 'сейчас' }
-    const reply: ExpertMessage = { id: 'local-ai-' + stamp, role: 'assistant', text: 'Это демонстрационный ответ. Реальный AI Gateway не входит в текущий этап.', createdAt: 'сейчас' }
-    messagesByConversation.value = { ...messagesByConversation.value, [id]: [...current, userMessage, reply] }
-    savedSuccessfully = true
-  } else {
-    sending.value = true
-    errorMessage.value = ''
-    try {
-      let targetConversationId = conversationId.value
-      if (!targetConversationId) {
-        const created = await expertApi.createConversation(props.project.id, 'Общий анализ')
-        props.project.conversations.push(created)
-        props.project.counts && (props.project.counts.conversations = props.project.conversations.length)
-        targetConversationId = created.id
-        messagesByConversation.value = { ...messagesByConversation.value, [created.id]: [] }
-        conversationId.value = created.id
-      }
-      const saved = await expertApi.sendMessage(targetConversationId, text)
-      messagesByConversation.value = {
-        ...messagesByConversation.value,
-        [targetConversationId]: [...(messagesByConversation.value[targetConversationId] ?? []), saved],
-      }
-      savedSuccessfully = true
-    } catch (error) {
-      errorMessage.value = mapExpertApiError(error).message
-    } finally {
-      sending.value = false
-    }
+async function persistMessage(message: ExpertMessage) {
+  if (!message.clientMessageId) {
+    updateMessageDelivery(message.id, 'error', 'Не удалось подготовить идентификатор сообщения для повторной отправки.')
+    return
   }
-  complete(savedSuccessfully)
+
+  try {
+    const targetConversationId = await ensureConversation()
+    const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId)
+    replaceOptimisticMessage(message.id, reply.userMessage)
+
+    const wasNearBottom = targetConversationId === conversationId.value && isMessageAreaNearBottom()
+    appendServerAssistantMessage(targetConversationId, reply.assistantMessage)
+    if (targetConversationId === conversationId.value) {
+      void handleMessageAdded(wasNearBottom, false)
+    }
+  } catch (error) {
+    updateMessageDelivery(message.id, 'error', mapExpertApiError(error).message)
+  }
+}
+
+function retryMessage(messageId: string) {
+  const message = findMessage(messageId)
+  if (!message || message.role !== 'user' || message.deliveryState === 'sending') return
+  updateMessageDelivery(message.id, 'sending')
+  void persistMessage(message)
+}
+
+function sendMessage(text: string, accepted: () => void = () => undefined) {
+  const normalizedText = normalizeExpertChatDraft(text)
+  if (!normalizedText || (props.projectMode === 'real' && composerSendBlockedReason.value)) return
+  const wasNearBottom = isMessageAreaNearBottom()
+
+  if (props.projectMode === 'demo') {
+    const userMessage = { ...createOptimisticUserMessage(normalizedText), deliveryState: 'sent' as const }
+    const reply: ExpertMessage = {
+      id: `local-demo-${Date.now()}`,
+      role: 'assistant',
+      text: 'Это демонстрационный ответ. Для рабочего проекта ответ формируется AI.',
+      createdAt: new Date().toISOString(),
+      deliveryState: 'sent',
+    }
+    appendMessages([userMessage, reply])
+    accepted()
+    void handleMessageAdded(wasNearBottom, true)
+    return
+  }
+
+  const optimisticMessage: ExpertMessage = {
+    ...createOptimisticUserMessage(normalizedText),
+    // Block 4A does not send material context; retain this immutable snapshot for Block 4B only.
+    runtimeMaterialContext: snapshotExpertMessageMaterialContext(composerMaterialContexts.value),
+  }
+  appendMessages([optimisticMessage])
+  accepted()
+  composerMaterialContexts.value = []
+  void handleMessageAdded(wasNearBottom, true)
+  void persistMessage(optimisticMessage)
+}
+
+function attachComposerFiles(files: File[]) {
+  if (props.projectMode !== 'real' || !files.length) return
+
+  transfers.queueUploads(props.project.id, files, (material) => {
+    if (!props.project.materials.some((item) => item.id === material.id)) {
+      props.project.materials.unshift(material)
+      props.project.counts && (props.project.counts.materials = props.project.materials.length)
+    }
+    composerMaterialContexts.value = addExpertMessageMaterialContext(composerMaterialContexts.value, material)
+    void transfers.loadImagePreview(material)
+  })
+}
+
+function retryComposerUpload(id: string) {
+  if (props.projectMode === 'real') transfers.retryUpload(props.project.id, id)
+}
+
+function removeFailedComposerUpload(id: string) {
+  transfers.removeUpload(id)
+}
+
+function removeComposerMaterialContext(id: string) {
+  composerMaterialContexts.value = composerMaterialContexts.value.filter((context) => context.id !== id)
+}
+
+function isMessageAreaNearBottom(): boolean {
+  const element = messageArea.value
+  return !element || isNearExpertChatBottom(element)
+}
+
+function updateScrollPosition() {
+  showScrollToBottom.value = !isMessageAreaNearBottom()
+}
+
+async function scrollToLatest(behavior: ScrollBehavior) {
   await nextTick()
-  messageArea.value?.scrollTo({ top: messageArea.value.scrollHeight, behavior: 'smooth' })
+  const element = messageArea.value
+  if (!element) return
+  element.scrollTo({ top: element.scrollHeight, behavior })
+  showScrollToBottom.value = false
+}
+
+async function handleMessageAdded(wasNearBottom: boolean, isOwnMessage: boolean) {
+  await nextTick()
+  if (shouldFollowNewExpertMessage(wasNearBottom, isOwnMessage)) {
+    await scrollToLatest('smooth')
+    return
+  }
+  showScrollToBottom.value = true
 }
 
 function notify(action: string) {
@@ -244,8 +437,14 @@ function selectWholeProject() {
   contextChips.value = selectWholeProjectChatContext()
 }
 
-watch(() => props.project.id, loadConversations, { immediate: true })
-watch(conversationId, loadMessages)
+watch(() => props.project.id, () => { void requestConversations() }, { immediate: true })
+watch(conversationId, (id) => { void loadMessages(id) })
+watch(() => props.project.id, () => {
+  composerMaterialContexts.value = []
+  transfers.clearUploads()
+  transfers.syncImagePreviews(props.project.materials)
+})
+onBeforeUnmount(() => transfers.dispose())
 </script>
 
 <style scoped>
@@ -254,7 +453,9 @@ watch(conversationId, loadMessages)
 .expert-chat__toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 54px; padding: 7px 14px; border-bottom: 1px solid rgba(var(--v-theme-outline-variant), .55); background: rgb(var(--v-theme-surface)); }
 .expert-chat__conversation { font-weight: 800; text-transform: none; }
 .expert-chat__toolbar-actions { display: flex; gap: 4px; }
-.expert-chat__messages { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 24px; overflow-y: auto; padding: 28px max(22px, calc((100% - 820px) / 2)); scroll-behavior: smooth; }
+.expert-chat__messages-wrap { position: relative; display: flex; flex: 1; min-height: 0; }
+.expert-chat__messages { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 24px; overflow-y: auto; padding: 28px max(16px, calc((100% - 960px) / 2)); }
+.expert-chat__new-messages { position: absolute; right: max(16px, calc((100% - 960px) / 2)); bottom: 18px; z-index: 1; border: 1px solid rgba(var(--v-theme-outline), .28); box-shadow: var(--ds-shadow-soft); text-transform: none; }
 .expert-chat__empty { display: grid; align-content: center; justify-items: center; min-height: 100%; padding: 24px; text-align: center; }
 .expert-chat__empty-icon { display: grid; place-items: center; width: 54px; height: 54px; margin-bottom: 16px; border-radius: 50%; color: rgb(var(--v-theme-on-primary-container)); background: rgb(var(--v-theme-primary-container)); }
 .expert-chat__empty h1 { margin: 0; font-size: clamp(1.35rem, 3vw, 1.85rem); letter-spacing: -.025em; }
@@ -262,5 +463,5 @@ watch(conversationId, loadMessages)
 .expert-chat__quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 260px)); gap: 9px; }
 .expert-chat__quick-actions button { display: flex; align-items: center; gap: 9px; padding: 12px 13px; border: 1px solid rgba(var(--v-theme-outline-variant), .62); border-radius: var(--md-sys-shape-corner-large); color: rgba(var(--v-theme-on-surface), .84); background: rgb(var(--v-theme-surface)); cursor: pointer; text-align: left; font: inherit; font-size: .76rem; }
 .expert-chat__quick-actions button:hover { border-color: rgba(var(--v-theme-primary), .52); background: rgba(var(--v-theme-primary), .045); }
-@media (max-width: 700px) { .expert-chat__messages { gap: 18px; padding: 18px 12px; } .expert-chat__quick-actions { grid-template-columns: 1fr; width: 100%; } }
+@media (max-width: 700px) { .expert-chat__messages { gap: 18px; padding: 18px 12px; } .expert-chat__new-messages { right: 12px; bottom: 12px; } .expert-chat__quick-actions { grid-template-columns: 1fr; width: 100%; } }
 </style>

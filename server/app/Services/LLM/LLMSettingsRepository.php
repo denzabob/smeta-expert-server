@@ -232,6 +232,7 @@ class LLMSettingsRepository
             'model' => config("services.{$providerName}.model", ProviderRegistry::getDefaultModel($providerName)),
             'temperature' => (float) config("services.{$providerName}.temperature", 0.2),
             'max_tokens' => (int) config("services.{$providerName}.max_tokens", 4096),
+            'timeout' => (int) config("services.{$providerName}.timeout", 60),
         ];
 
         return $defaults;

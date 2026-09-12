@@ -46,6 +46,7 @@ return [
         'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
         'temperature' => env('OPENROUTER_TEMPERATURE', 0.2),
         'max_tokens' => env('OPENROUTER_MAX_TOKENS', 4096),
+        'timeout' => env('OPENROUTER_TIMEOUT', 60),
     ],
 
     /*
@@ -59,6 +60,7 @@ return [
         'base_url' => env('DEEPSEEK_BASE_URL', 'https://api.deepseek.com/v1'),
         'temperature' => env('DEEPSEEK_TEMPERATURE', 0.2),
         'max_tokens' => env('DEEPSEEK_MAX_TOKENS', 4096),
+        'timeout' => env('DEEPSEEK_TIMEOUT', 90),
     ],
 
     /*
@@ -72,6 +74,7 @@ return [
         'base_url' => env('MISTRAL_BASE_URL', 'https://api.mistral.ai/v1'),
         'temperature' => env('MISTRAL_TEMPERATURE', 0.2),
         'max_tokens' => env('MISTRAL_MAX_TOKENS', 4096),
+        'timeout' => env('MISTRAL_TIMEOUT', 90),
     ],
 
     /*
@@ -85,6 +88,7 @@ return [
         'base_url' => env('ROUTERAI_BASE_URL', 'https://routerai.ru/api/v1'),
         'temperature' => env('ROUTERAI_TEMPERATURE', 0.2),
         'max_tokens' => env('ROUTERAI_MAX_TOKENS', 4096),
+        'timeout' => env('ROUTERAI_TIMEOUT', 90),
     ],
 
     /*
