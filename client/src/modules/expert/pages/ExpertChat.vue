@@ -26,21 +26,24 @@
         </template>
       </div>
 
-      <div v-if="selectedMaterials.length || messages.length" class="expert-chat__context-chips">
-        <v-chip size="small" variant="tonal" prepend-icon="mdi-folder-multiple-outline">Материалы проекта · {{ project.materials.length }}</v-chip>
-        <v-chip size="small" variant="tonal" prepend-icon="mdi-book-open-page-variant-outline">Нормативы · {{ project.normatives.filter((item) => item.connected).length }}</v-chip>
-      </div>
-      <ExpertChatComposer :selected-materials="selectedMaterials" @send="sendMessage" @attachment="handleAttachment" @remove-material="removeMaterial" />
+      <ExpertChatComposer :context-chips="contextChips" @send="sendMessage" @attachment="handleAttachment" @remove-context="removeContext" @select-whole-project="selectWholeProject" />
     </section>
 
     <ExpertContextPanel v-if="contextOpen && !mdAndDown" :project="project" @close="contextOpen = false" @action="notify" />
     <v-navigation-drawer v-if="mdAndDown" v-model="contextOpen" temporary location="right" width="360"><ExpertContextPanel :project="project" @close="contextOpen = false" @action="notify" /></v-navigation-drawer>
 
-    <v-dialog v-model="materialPickerOpen" max-width="640" scrollable>
+    <v-dialog :model-value="materialPickerOpen" max-width="640" scrollable @update:model-value="handleMaterialPickerVisibility">
       <v-card class="expert-chat__picker">
-        <v-card-title class="d-flex align-center justify-space-between"><span>Материалы проекта</span><v-btn icon="mdi-close" variant="text" @click="materialPickerOpen = false" /></v-card-title>
-        <v-card-text><v-text-field v-model="materialSearch" prepend-inner-icon="mdi-magnify" placeholder="Найти материал" variant="outlined" density="compact" hide-details class="mb-3" /><v-list lines="two"><v-list-item v-for="material in filteredMaterials" :key="material.id" :prepend-icon="material.icon" :title="material.name" :subtitle="`${material.format} · ${material.meta}`" @click="toggleMaterial(material)"><template #append><v-checkbox-btn :model-value="selectedMaterials.some((item) => item.id === material.id)" /></template></v-list-item></v-list></v-card-text>
-        <v-card-actions class="justify-end"><v-btn variant="text" @click="materialPickerOpen = false">Отмена</v-btn><v-btn color="primary" variant="flat" @click="materialPickerOpen = false">Добавить {{ selectedMaterials.length || '' }}</v-btn></v-card-actions>
+        <v-card-title class="d-flex align-center justify-space-between"><span>Материалы проекта</span><v-btn icon="mdi-close" variant="text" @click="cancelMaterialPicker" /></v-card-title>
+        <v-card-text><v-text-field v-model="materialSearch" prepend-inner-icon="mdi-magnify" placeholder="Найти материал" variant="outlined" density="compact" hide-details class="mb-3" /><v-list lines="two"><v-list-item v-for="material in filteredMaterials" :key="material.id" :prepend-icon="material.icon" :title="material.name" :subtitle="`${material.format} · ${material.meta}`" @click="toggleMaterial(material)"><template #append><v-checkbox-btn :model-value="hasChatContext(contextDraftChips, 'material', material.id)" /></template></v-list-item></v-list></v-card-text>
+        <v-card-actions class="justify-end"><v-btn variant="text" @click="cancelMaterialPicker">Отмена</v-btn><v-btn color="primary" variant="flat" @click="applyMaterialPicker">Готово</v-btn></v-card-actions>
+      </v-card>
+    </v-dialog>
+    <v-dialog :model-value="normativePickerOpen" max-width="640" scrollable @update:model-value="handleNormativePickerVisibility">
+      <v-card class="expert-chat__picker">
+        <v-card-title class="d-flex align-center justify-space-between"><span>Подключённые нормативы</span><v-btn icon="mdi-close" variant="text" @click="cancelNormativePicker" /></v-card-title>
+        <v-card-text><v-list lines="two"><v-list-item v-for="normative in connectedNormatives" :key="normative.id" prepend-icon="mdi-book-open-page-variant-outline" :title="normative.code" :subtitle="normative.title" @click="toggleNormative(normative)"><template #append><v-checkbox-btn :model-value="hasChatContext(contextDraftChips, 'normative', normative.id)" /></template></v-list-item></v-list></v-card-text>
+        <v-card-actions class="justify-end"><v-btn variant="text" @click="cancelNormativePicker">Отмена</v-btn><v-btn color="primary" variant="flat" @click="applyNormativePicker">Готово</v-btn></v-card-actions>
       </v-card>
     </v-dialog>
     <v-snackbar v-model="snackbarOpen" :timeout="2600">{{ snackbarText }}<template #actions><v-btn variant="text" @click="snackbarOpen = false">Закрыть</v-btn></template></v-snackbar>
@@ -53,7 +56,8 @@ import { useDisplay } from 'vuetify'
 import ExpertChatComposer from '../components/chat/ExpertChatComposer.vue'
 import ExpertChatMessage from '../components/chat/ExpertChatMessage.vue'
 import ExpertContextPanel from '../components/chat/ExpertContextPanel.vue'
-import type { ExpertMessage, ExpertProject, ExpertProjectMaterial } from '../types'
+import { createChatContextDraft, createWholeProjectContext, hasChatContext, removeChatContext, selectWholeProjectChatContext, toggleMaterialChatContext, toggleNormativeChatContext, type ExpertChatContextChip } from '../chatContext'
+import type { ExpertMessage, ExpertNormative, ExpertProject, ExpertProjectMaterial } from '../types'
 
 const props = defineProps<{ project: ExpertProject }>()
 const { mdAndDown } = useDisplay()
@@ -62,26 +66,39 @@ const localMessages = ref<Record<string, ExpertMessage[]>>({})
 const contextOpen = ref(!mdAndDown.value)
 const materialPickerOpen = ref(false)
 const materialSearch = ref('')
-const selectedMaterials = ref<ExpertProjectMaterial[]>([])
+const contextChips = ref<ExpertChatContextChip[]>(createWholeProjectContext())
+const contextDraftChips = ref<ExpertChatContextChip[]>([])
+const normativePickerOpen = ref(false)
 const snackbarOpen = ref(false)
 const snackbarText = ref('')
 const messageArea = ref<HTMLElement | null>(null)
 const conversation = computed(() => props.project.conversations.find((item) => item.id === conversationId.value) ?? props.project.conversations[0])
 const messages = computed(() => localMessages.value[conversationId.value] ?? conversation.value?.messages ?? [])
 const filteredMaterials = computed(() => props.project.materials.filter((item) => item.name.toLowerCase().includes(materialSearch.value.trim().toLowerCase())))
+const connectedNormatives = computed(() => props.project.normatives.filter((item) => item.connected))
 
 function notify(action: string) { snackbarText.value = action === 'Копировать' ? 'Текст скопирован в прототипе' : `${action}: функция будет подключена на следующем этапе`; snackbarOpen.value = true }
 function openSource() { contextOpen.value = true }
 function toggleContext() { contextOpen.value = !contextOpen.value }
-function handleAttachment(action: string) { if (action === 'materials') materialPickerOpen.value = true; else notify(action === 'normative' ? 'Добавление норматива' : 'Загрузка материалов') }
-function toggleMaterial(material: ExpertProjectMaterial) { const exists = selectedMaterials.value.some((item) => item.id === material.id); selectedMaterials.value = exists ? selectedMaterials.value.filter((item) => item.id !== material.id) : [...selectedMaterials.value, material] }
-function removeMaterial(id: string) { selectedMaterials.value = selectedMaterials.value.filter((item) => item.id !== id) }
+function handleAttachment(action: string) { if (action === 'materials') openMaterialPicker(); else if (action === 'normative') openNormativePicker(); else notify('Загрузка материалов') }
+function openMaterialPicker() { contextDraftChips.value = createChatContextDraft(contextChips.value); materialPickerOpen.value = true }
+function openNormativePicker() { contextDraftChips.value = createChatContextDraft(contextChips.value); normativePickerOpen.value = true }
+function discardContextDraft() { contextDraftChips.value = [] }
+function cancelMaterialPicker() { materialPickerOpen.value = false; discardContextDraft() }
+function cancelNormativePicker() { normativePickerOpen.value = false; discardContextDraft() }
+function applyMaterialPicker() { contextChips.value = contextDraftChips.value; materialPickerOpen.value = false; discardContextDraft() }
+function applyNormativePicker() { contextChips.value = contextDraftChips.value; normativePickerOpen.value = false; discardContextDraft() }
+function handleMaterialPickerVisibility(open: boolean) { if (!open) cancelMaterialPicker() }
+function handleNormativePickerVisibility(open: boolean) { if (!open) cancelNormativePicker() }
+function toggleMaterial(material: ExpertProjectMaterial) { contextDraftChips.value = toggleMaterialChatContext(contextDraftChips.value, { id: material.id, label: material.name, detail: material.meta, icon: material.icon }) }
+function toggleNormative(normative: ExpertNormative) { contextDraftChips.value = toggleNormativeChatContext(contextDraftChips.value, { id: normative.id, label: normative.code, detail: normative.title, icon: 'mdi-book-open-page-variant-outline', connected: normative.connected }) }
+function removeContext(id: string) { contextChips.value = removeChatContext(contextChips.value, id) }
+function selectWholeProject() { contextChips.value = selectWholeProjectChatContext() }
 async function sendMessage(text: string) {
   const current = messages.value
   const userMessage: ExpertMessage = { id: `local-${Date.now()}`, role: 'user', text, createdAt: 'сейчас' }
-  const reply: ExpertMessage = { id: `local-ai-${Date.now()}`, role: 'assistant', text: 'На этом этапе это интерфейсный прототип. Команда уже связана с контекстом проекта; анализ материалов и сохранение результата будут подключены вместе с AI Gateway.', createdAt: 'сейчас', sources: selectedMaterials.value.map((item) => ({ id: item.id, label: item.name, detail: item.meta, icon: item.icon })) }
+  const reply: ExpertMessage = { id: `local-ai-${Date.now()}`, role: 'assistant', text: 'На этом этапе это интерфейсный прототип. Команда уже связана с выбранным контекстом; анализ материалов и сохранение результата будут подключены вместе с AI Gateway.', createdAt: 'сейчас', sources: contextChips.value.filter((context) => context.kind !== 'whole-project').map(({ id, label, detail, icon }) => ({ id, label, detail, icon })) }
   localMessages.value = { ...localMessages.value, [conversationId.value]: [...current, userMessage, reply] }
-  selectedMaterials.value = []
   await nextTick(); messageArea.value?.scrollTo({ top: messageArea.value.scrollHeight, behavior: 'smooth' })
 }
 </script>
@@ -100,7 +117,6 @@ async function sendMessage(text: string) {
 .expert-chat__quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 260px)); gap: 9px; }
 .expert-chat__quick-actions button { display: flex; align-items: center; gap: 9px; padding: 12px 13px; border: 1px solid rgba(var(--v-theme-outline-variant), .62); border-radius: var(--md-sys-shape-corner-large); color: rgba(var(--v-theme-on-surface), .84); background: rgb(var(--v-theme-surface)); cursor: pointer; text-align: left; font: inherit; font-size: .76rem; }
 .expert-chat__quick-actions button:hover { border-color: rgba(var(--v-theme-primary), .52); background: rgba(var(--v-theme-primary), .045); }
-.expert-chat__context-chips { display: flex; gap: 6px; width: min(820px, calc(100% - 36px)); margin: 0 auto; overflow-x: auto; }
 .expert-chat__picker { border-radius: var(--md-sys-shape-corner-extra-large); }
-@media (max-width: 700px) { .expert-chat__messages { gap: 18px; padding: 18px 12px; } .expert-chat__quick-actions { grid-template-columns: 1fr; width: 100%; } .expert-chat__quick-actions button { max-width: none; } .expert-chat__context-chips { width: calc(100% - 16px); } }
+@media (max-width: 700px) { .expert-chat__messages { gap: 18px; padding: 18px 12px; } .expert-chat__quick-actions { grid-template-columns: 1fr; width: 100%; } .expert-chat__quick-actions button { max-width: none; } }
 </style>

@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { expertSidebarSections } from './navigation'
 import { expertProjects, getExpertProject } from './mock/expertMockData'
+import { expertResearchTabs, getExpertProjectReadiness } from './presentation'
 import { expertRoutes } from './router/routes'
 
 describe('Expert frontend prototype contracts', () => {
@@ -29,6 +31,65 @@ describe('Expert frontend prototype contracts', () => {
     expect(expertProjects.every((project) => Array.isArray(project.conversations))).toBe(true)
     expect(getExpertProject('demo-commodity')?.conversations.length).toBeGreaterThan(1)
     expect(getExpertProject('demo-construction')?.conversations.length).toBeGreaterThan(1)
+  })
+
+  it('uses a universal Finding model with research objects, evidence and expert statuses', () => {
+    const commodityProject = getExpertProject('demo-commodity')
+    const constructionProject = getExpertProject('demo-construction')
+
+    expect(expertProjects.every((project) => project.researchObjects.length > 0)).toBe(true)
+    expect(expertProjects.every((project) => project.findings.every((finding) => project.researchObjects.some((item) => item.id === finding.researchObjectId)))).toBe(true)
+    expect(expertProjects.every((project) => project.findings.every((finding) => (finding.materialIds ?? []).every((id) => project.materials.some((item) => item.id === id))))).toBe(true)
+    expect(expertProjects.every((project) => project.findings.every((finding) => (finding.normativeReferenceIds ?? []).every((id) => project.normatives.some((item) => item.id === id))))).toBe(true)
+    expect(commodityProject?.findings.map((finding) => finding.type)).toEqual(expect.arrayContaining(['defect', 'damage', 'observation']))
+    expect(constructionProject?.findings.map((finding) => finding.type)).toEqual(expect.arrayContaining(['non_compliance', 'observation']))
+    expect(commodityProject?.findings.find((finding) => finding.id === 'finding-1')?.materialIds).toContain('mat-4')
+    expect(constructionProject?.findings.find((finding) => finding.id === 'c-finding-1')?.normativeReferenceIds).toContain('c-n-2')
+    expect(new Set(expertProjects.flatMap((project) => project.findings.map((finding) => finding.status)))).toEqual(new Set(['Предложено AI', 'Подтверждено экспертом', 'Отклонено экспертом']))
+  })
+
+  it('labels the universal findings tab as research results and uses structural readiness', () => {
+    const project = getExpertProject('demo-commodity')
+    if (!project) throw new Error('Demo commodity project is required for Expert contract tests')
+    const readiness = getExpertProjectReadiness(project)
+
+    expect(expertResearchTabs.find((item) => item.value === 'all')?.label).toBe('Результаты исследования')
+    expect(expertResearchTabs.map((item) => item.label)).not.toContain('Выявленные обстоятельства')
+    expect(readiness).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Объекты исследования', value: 'Готово' }),
+      expect.objectContaining({ label: 'Заключение', value: 'Черновик' }),
+    ]))
+    expect(JSON.stringify(readiness)).not.toContain('%')
+  })
+
+  it('keeps normative recommendations explainable and report sections linked to entities', () => {
+    const recommendedNormatives = expertProjects.flatMap((project) => project.normatives.filter((normative) => normative.recommended))
+    const reportReferences = expertProjects.flatMap((project) => project.reportSections.flatMap((section) => section.entityReferences ?? []))
+
+    expect(recommendedNormatives.every((normative) => normative.recommendationReason && normative.status)).toBe(true)
+    expect(reportReferences).toEqual(expect.arrayContaining([
+      expect.objectContaining({ entityType: 'finding' }),
+      expect.objectContaining({ entityType: 'research_object' }),
+      expect.objectContaining({ entityType: 'material' }),
+      expect.objectContaining({ entityType: 'normative' }),
+    ]))
+    expect(expertProjects.every((project) => project.reportSections.every((section) => (section.entityReferences ?? []).every((reference) => {
+      if (reference.entityType === 'finding') return project.findings.some((item) => item.id === reference.entityId)
+      if (reference.entityType === 'research_object') return project.researchObjects.some((item) => item.id === reference.entityId)
+      if (reference.entityType === 'normative') return project.normatives.some((item) => item.id === reference.entityId)
+      if (reference.entityType === 'material') return project.materials.some((item) => item.id === reference.entityId)
+      return true
+    })))).toBe(true)
+  })
+
+  it('does not retain a numerical 68 percent readiness display', () => {
+    const overviewSource = readFileSync(new URL('./pages/ExpertOverview.vue', import.meta.url), 'utf8')
+    const contextSource = readFileSync(new URL('./components/chat/ExpertContextPanel.vue', import.meta.url), 'utf8')
+
+    expect(overviewSource).not.toContain('68%')
+    expect(contextSource).not.toContain('68%')
+    expect(overviewSource).not.toContain('model-value="68"')
+    expect(contextSource).not.toContain('model-value="68"')
   })
 
   it('exposes only Expert-level navigation in the global sidebar', () => {

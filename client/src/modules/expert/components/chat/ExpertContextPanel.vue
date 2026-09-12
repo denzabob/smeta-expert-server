@@ -23,8 +23,7 @@
         <div class="expert-context-panel__document">
           <v-icon icon="mdi-file-document-edit-outline" size="28" />
           <strong>Заключение {{ project.revisions[0]?.label }}</strong>
-          <span>Готовность документа — 68%</span>
-          <v-progress-linear :model-value="68" color="primary" rounded height="6" />
+          <span>Статус документа — {{ reportReadiness?.value ?? 'Черновик' }}</span>
           <v-btn size="small" variant="tonal" color="primary" :to="{ name: 'expert-project-report', params: { projectId: project.id } }">Открыть документ</v-btn>
         </div>
       </template>
@@ -33,12 +32,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { getExpertProjectReadiness } from '../../presentation'
 import type { ExpertProject } from '../../types'
 
-defineProps<{ project: ExpertProject }>()
+const props = defineProps<{ project: ExpertProject }>()
 defineEmits<{ (event: 'close'): void; (event: 'action', label: string): void }>()
 const tab = ref('sources')
+const reportReadiness = computed(() => getExpertProjectReadiness(props.project).find((item) => item.label === 'Заключение'))
 </script>
 
 <style scoped>
@@ -61,6 +62,5 @@ const tab = ref('sources')
 .expert-context-panel__finding small { margin-top: 3px; color: rgba(var(--v-theme-on-surface-variant), .78); font-size: .69rem; line-height: 1.35; }
 .expert-context-panel__document { display: grid; justify-items: start; gap: 10px; padding: 16px; border-radius: var(--md-sys-shape-corner-large); background: rgb(var(--v-theme-surface-container-low)); font-size: .76rem; }
 .expert-context-panel__document span { color: rgba(var(--v-theme-on-surface-variant), .76); }
-.expert-context-panel__document .v-progress-linear { width: 100%; }
 @media (max-width: 1280px) { .expert-context-panel { width: 280px; } }
 </style>

@@ -40,6 +40,13 @@ export interface ExpertProjectMaterial {
   icon: string
 }
 
+export interface ExpertResearchObject {
+  id: string
+  name: string
+  type?: string
+  description?: string
+}
+
 export type ExpertFindingType =
   | 'fact'
   | 'measurement'
@@ -50,7 +57,7 @@ export type ExpertFindingType =
   | 'calculation'
   | 'conclusion'
 
-export type ExpertFindingStatus = 'Предложено AI' | 'Подтверждено экспертом' | 'Отклонено'
+export type ExpertFindingStatus = 'Предложено AI' | 'Подтверждено экспертом' | 'Отклонено экспертом'
 
 export interface ExpertFinding {
   id: string
@@ -59,6 +66,7 @@ export interface ExpertFinding {
   type: ExpertFindingType
   typeLabel: string
   object: string
+  researchObjectId?: string
   description: string
   factualData?: string
   measurement?: string
@@ -67,9 +75,13 @@ export interface ExpertFinding {
   recommendation?: string
   calculation?: string
   sources: ExpertSource[]
+  materialIds?: string[]
+  normativeReferenceIds?: string[]
   images?: string[]
   status: ExpertFindingStatus
 }
+
+export type ExpertNormativeStatus = 'Действующий' | 'Требует проверки'
 
 export interface ExpertNormative {
   id: string
@@ -78,6 +90,21 @@ export interface ExpertNormative {
   applicability: string
   connected: boolean
   recommended?: boolean
+  recommendationReason?: string
+  status?: ExpertNormativeStatus
+}
+
+export type ExpertReportEntityType =
+  | 'finding'
+  | 'measurement'
+  | 'research_object'
+  | 'normative'
+  | 'material'
+  | 'conclusion'
+
+export interface ExpertReportEntityReference {
+  entityType: ExpertReportEntityType
+  entityId: string
 }
 
 export interface ExpertReportSection {
@@ -85,6 +112,7 @@ export interface ExpertReportSection {
   number: number
   title: string
   content: string
+  entityReferences?: ExpertReportEntityReference[]
 }
 
 export interface ExpertReportRevision {
@@ -92,6 +120,7 @@ export interface ExpertReportRevision {
   label: string
   createdAt: string
   current?: boolean
+  description?: string
 }
 
 export interface ExpertProject {
@@ -109,6 +138,7 @@ export interface ExpertProject {
   questions: string[]
   conversations: ExpertConversation[]
   materials: ExpertProjectMaterial[]
+  researchObjects: ExpertResearchObject[]
   findings: ExpertFinding[]
   normatives: ExpertNormative[]
   reportSections: ExpertReportSection[]

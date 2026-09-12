@@ -26,10 +26,8 @@
         <section class="expert-panel">
           <div class="expert-panel__title"><v-icon icon="mdi-progress-check" size="20" /> Готовность</div>
           <div class="expert-overview__checklist">
-            <div v-for="item in readiness" :key="item.label"><v-icon :icon="item.done ? 'mdi-check-circle' : 'mdi-circle-slice-5'" :color="item.done ? 'success' : 'primary'" size="18" /><span>{{ item.label }}</span><strong v-if="item.value">{{ item.value }}</strong></div>
+            <div v-for="item in readiness" :key="item.label"><v-icon :icon="readinessIcon(item.state)" :color="readinessColor(item.state)" size="18" /><span>{{ item.label }}</span><strong>{{ item.value }}</strong></div>
           </div>
-          <div class="expert-overview__progress"><span>Заключение</span><strong>68%</strong></div>
-          <v-progress-linear color="primary" :model-value="68" height="7" rounded />
         </section>
       </div>
     </div>
@@ -39,6 +37,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
+import { getExpertProjectReadiness } from '../presentation'
 import type { ExpertProject } from '../types'
 
 const props = defineProps<{ project: ExpertProject }>()
@@ -51,10 +50,9 @@ const metrics = computed(() => [
   { label: 'Материалы', value: props.project.materials.length === 5 ? 24 : 18 }, { label: 'Изображения', value: props.project.profile === 'commodity' ? 83 : 46 },
   { label: 'Факты', value: 18 }, { label: 'Измерения', value: 11 }, { label: 'Выявлено', value: props.project.findings.length }, { label: 'Нормативы', value: props.project.normatives.length },
 ])
-const readiness = [
-  { label: 'Материалы добавлены', done: true }, { label: 'Объекты исследования определены', done: true },
-  { label: 'Исходные данные структурированы', done: true }, { label: 'Исследование выполняется', done: false }, { label: 'Ответы на вопросы', done: false, value: '2 / 3' },
-]
+const readiness = computed(() => getExpertProjectReadiness(props.project))
+function readinessIcon(state: 'complete' | 'in_progress' | 'draft') { return state === 'complete' ? 'mdi-check-circle' : state === 'in_progress' ? 'mdi-progress-clock' : 'mdi-file-document-edit-outline' }
+function readinessColor(state: 'complete' | 'in_progress' | 'draft') { return state === 'complete' ? 'success' : state === 'in_progress' ? 'primary' : 'secondary' }
 function projectRoute(name: string): RouteLocationRaw { return { name, params: { projectId: props.project.id } } }
 </script>
 
@@ -78,7 +76,6 @@ function projectRoute(name: string): RouteLocationRaw { return { name, params: {
 .expert-overview__metrics strong { font-size: 1rem; }
 .expert-overview__checklist { display: grid; gap: 11px; }
 .expert-overview__checklist > div { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; font-size: .78rem; }
-.expert-overview__progress { display: flex; justify-content: space-between; margin: 20px 0 7px; font-size: .8rem; }
 @media (max-width: 1100px) { .expert-overview__layout { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .expert-page { padding: 18px 14px; } .expert-page__heading { align-items: stretch; flex-direction: column; } .expert-page__heading .v-btn { width: 100%; } .expert-overview__info dl { grid-template-columns: 1fr; gap: 3px; } .expert-overview__info dd { margin-bottom: 8px; } }
 </style>
