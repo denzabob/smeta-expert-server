@@ -414,6 +414,11 @@ onUnmounted(() => {
   color: rgb(var(--v-theme-on-tertiary-container));
 }
 
+.menu-item-icon--expert {
+  background: rgb(var(--v-theme-secondary-container));
+  color: rgb(var(--v-theme-on-secondary-container));
+}
+
 .menu-item-icon--admin {
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   color: white;

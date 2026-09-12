@@ -385,6 +385,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { sidebarSections } from './shell/sidebarConfig'
 import { priceIndicesSidebarSections } from '@/modules/price-indices/navigation'
+import { expertSidebarSections } from '@/modules/expert/navigation'
 import {
   resolveActiveApplication,
   selectSidebarConfig,
@@ -410,11 +411,15 @@ const { smAndDown } = useDisplay()
 const theme = useTheme()
 const compactNav = computed(() => smAndDown.value)
 const activeApplication = computed(() => resolveActiveApplication(route.path))
-const activeSidebarSections = computed(() => selectSidebarConfig(
-  activeApplication.value,
-  sidebarSections,
-  priceIndicesSidebarSections,
-))
+const activeSidebarSections = computed(() => {
+  if (activeApplication.value === 'expert') return expertSidebarSections
+
+  return selectSidebarConfig(
+    activeApplication.value,
+    sidebarSections,
+    priceIndicesSidebarSections,
+  )
+})
 const isProjectEditorRoute = computed(() => route.name === 'ProjectEditorView')
 const isIdeasRoute = computed(() => String(route.path).startsWith('/ideas'))
 const showTopToolbar = computed(() => !compactNav.value)

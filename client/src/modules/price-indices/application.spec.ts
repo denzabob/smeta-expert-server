@@ -12,6 +12,8 @@ describe('Price Indices application helpers', () => {
     ['/projects', 'estimates'],
     ['/app/indices', 'price_indices'],
     ['/app/indices/calculations', 'price_indices'],
+    ['/expert', 'expert'],
+    ['/expert/projects/demo-commodity/chat', 'expert'],
     ['/admin/system/users', 'admin'],
     ['/parser/history', 'parser'],
   ] as const)('resolves %s as %s', (path, application) => {
@@ -32,11 +34,12 @@ describe('Price Indices application helpers', () => {
     const pendingAdminItems = buildApplicationMenu({ id: 3, role: 'admin' }, 'idle')
     const availableAdminItems = buildApplicationMenu({ id: 3, role: 'admin' }, 'available')
 
-    expect(regularItems.map((item) => item.id)).toEqual(['estimates'])
-    expect(pendingAdminItems.map((item) => item.id)).toEqual(['estimates', 'admin', 'parser'])
+    expect(regularItems.map((item) => item.id)).toEqual(['estimates', 'expert'])
+    expect(pendingAdminItems.map((item) => item.id)).toEqual(['estimates', 'expert', 'admin', 'parser'])
     expect(availableAdminItems.map((item) => item.id)).toEqual([
       'estimates',
       'price_indices',
+      'expert',
       'admin',
       'parser',
     ])
@@ -45,7 +48,7 @@ describe('Price Indices application helpers', () => {
   it('preserves existing id=1 visibility for admin and parser without exposing indices', () => {
     const items = buildApplicationMenu({ id: 1, role: 'user' }, 'available')
 
-    expect(items.map((item) => item.id)).toEqual(['estimates', 'admin', 'parser'])
+    expect(items.map((item) => item.id)).toEqual(['estimates', 'expert', 'admin', 'parser'])
   })
 
   it.each([

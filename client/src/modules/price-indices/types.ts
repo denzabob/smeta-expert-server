@@ -18,7 +18,7 @@ export interface PriceIndicesCapabilitiesResponse {
   data: PriceIndicesCapabilities
 }
 
-export type ApplicationId = 'estimates' | 'price_indices' | 'admin' | 'parser'
+export type ApplicationId = 'estimates' | 'price_indices' | 'expert' | 'admin' | 'parser'
 
 export interface ApplicationMenuItem {
   id: ApplicationId

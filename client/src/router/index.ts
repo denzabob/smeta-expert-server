@@ -11,6 +11,7 @@ import {
 } from '@/modules/price-indices/application'
 import { priceIndicesRoutes } from '@/modules/price-indices/router/routes'
 import { adminPriceIndicesRoutes } from '@/modules/price-indices/admin/routes'
+import { expertRoutes } from '@/modules/expert/router/routes'
 import api from '@/api/axios'
 import { setProjectsFlashMessage, storePrefetchedProject } from './projectAccess'
 
@@ -58,6 +59,7 @@ const router = createRouter({
           meta: { title: 'Проекты' }
         },
         ...priceIndicesRoutes,
+        ...expertRoutes,
         {
           path: 'materials',
           name: 'materials',

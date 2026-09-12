@@ -16,6 +16,7 @@ type ApplicationUser = {
 
 export function resolveActiveApplication(path: string): ApplicationId {
   if (matchesPath(path, '/app/indices')) return 'price_indices'
+  if (matchesPath(path, '/expert')) return 'expert'
   if (matchesPath(path, '/admin')) return 'admin'
   if (matchesPath(path, '/parser')) return 'parser'
 
@@ -53,6 +54,14 @@ export function buildApplicationMenu(
       routeName: 'price-indices-overview',
     })
   }
+
+  items.push({
+    id: 'expert',
+    label: 'Эксперт',
+    icon: 'mdi-file-search-outline',
+    iconClass: 'menu-item-icon--expert',
+    routeName: 'expert-dashboard',
+  })
 
   if (isExistingAdminUser(user)) {
     items.push(

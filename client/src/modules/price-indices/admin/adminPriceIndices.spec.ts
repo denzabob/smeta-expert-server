@@ -89,14 +89,16 @@ describe('Price Indices admin navigation', () => {
     ])
   })
 
-  it('preserves the existing Admin and Parser application visibility rules', () => {
+  it('preserves the existing Admin and Parser visibility while including Expert', () => {
     expect(buildApplicationMenu({ id: 1, role: 'user' }, 'available').map((item) => item.id)).toEqual([
       'estimates',
+      'expert',
       'admin',
       'parser',
     ])
     expect(buildApplicationMenu({ id: 2, role: 'user' }, 'available').map((item) => item.id)).toEqual([
       'estimates',
+      'expert',
     ])
   })
 })
