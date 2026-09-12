@@ -8,9 +8,13 @@ export interface ExpertResearchTab {
 }
 
 export const expertResearchTabs: ExpertResearchTab[] = [
+  { label: 'Результаты исследования', value: 'all' },
   { label: 'Факты', value: 'fact' },
   { label: 'Измерения', value: 'measurement' },
-  { label: 'Результаты исследования', value: 'all' },
+  { label: 'Дефекты', value: 'defect' },
+  { label: 'Повреждения', value: 'damage' },
+  { label: 'Несоответствия', value: 'non_compliance' },
+  { label: 'Наблюдения', value: 'observation' },
   { label: 'Расчёты', value: 'calculation' },
   { label: 'Выводы', value: 'conclusion' },
 ]

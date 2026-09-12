@@ -13,11 +13,11 @@
           <v-list-item v-for="item in attachmentActions" :key="item.label" :prepend-icon="item.icon" :title="item.label" :subtitle="item.subtitle" @click="handleAttachment(item.action)" />
         </v-list>
       </v-menu>
-      <textarea v-model="text" rows="1" placeholder="Спросить Prism AI..." aria-label="Сообщение Prism AI" @keydown.enter.exact.prevent="send" />
-      <v-select v-model="mode" :items="modes" variant="plain" density="compact" hide-details class="expert-composer__mode" aria-label="Режим Prism AI" />
-      <v-btn icon="mdi-arrow-up" color="primary" variant="flat" size="small" :disabled="!text.trim()" aria-label="Отправить" @click="send" />
+      <textarea v-model="text" rows="1" :placeholder="persistenceOnly ? 'Введите сообщение…' : 'Спросить Prism AI...'" :aria-label="persistenceOnly ? 'Сообщение' : 'Сообщение Prism AI'" :disabled="busy" @keydown.enter.exact.prevent="send" />
+      <v-select v-if="!persistenceOnly" v-model="mode" :items="modes" variant="plain" density="compact" hide-details class="expert-composer__mode" aria-label="Режим Prism AI" />
+      <v-btn icon="mdi-arrow-up" color="primary" variant="flat" size="small" :loading="busy" :disabled="busy || !text.trim()" aria-label="Отправить" @click="send" />
     </div>
-    <div class="expert-composer__hint">Prism AI может ошибаться. Проверяйте выводы и источники.</div>
+    <div class="expert-composer__hint">{{ persistenceOnly ? 'Сообщение будет сохранено в истории проекта.' : 'Prism AI может ошибаться. Проверяйте выводы и источники.' }}</div>
   </div>
 </template>
 
@@ -25,8 +25,8 @@
 import { ref } from 'vue'
 import type { ExpertChatContextChip } from '../../chatContext'
 
-defineProps<{ contextChips: ExpertChatContextChip[] }>()
-const emit = defineEmits<{ (event: 'send', text: string): void; (event: 'attachment', action: string): void; (event: 'remove-context', id: string): void; (event: 'select-whole-project'): void }>()
+const props = withDefaults(defineProps<{ contextChips: ExpertChatContextChip[]; busy?: boolean; persistenceOnly?: boolean }>(), { busy: false, persistenceOnly: false })
+const emit = defineEmits<{ (event: 'send', text: string, complete: (saved: boolean) => void): void; (event: 'attachment', action: string): void; (event: 'remove-context', id: string): void; (event: 'select-whole-project'): void }>()
 const text = ref('')
 const mode = ref('Auto')
 const modes = ['Auto', 'Быстро', 'Глубокий анализ']
@@ -37,7 +37,13 @@ const attachmentActions = [
   { label: 'Из материалов проекта', subtitle: 'Уже добавленные файлы', icon: 'mdi-folder-multiple-outline', action: 'materials' },
   { label: 'Норматив', subtitle: 'Подключённые источники', icon: 'mdi-book-open-page-variant-outline', action: 'normative' },
 ]
-function send() { const value = text.value.trim(); if (!value) return; emit('send', value); text.value = '' }
+function send() {
+  const value = text.value.trim()
+  if (!value || props.busy) return
+  emit('send', value, (saved) => {
+    if (saved && text.value.trim() === value) text.value = ''
+  })
+}
 function handleAttachment(action: string) { emit('attachment', action) }
 </script>
 

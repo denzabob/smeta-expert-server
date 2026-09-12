@@ -3,104 +3,249 @@
     <section class="expert-chat__main">
       <header class="expert-chat__toolbar">
         <v-menu location="bottom start">
-          <template #activator="{ props: menuProps }"><v-btn v-bind="menuProps" variant="text" append-icon="mdi-chevron-down" class="expert-chat__conversation">{{ conversation?.title || 'Общий анализ' }}</v-btn></template>
-          <v-list density="compact" min-width="240"><v-list-subheader>Чаты проекта</v-list-subheader><v-list-item v-for="item in project.conversations" :key="item.id" :title="item.title" prepend-icon="mdi-message-text-outline" @click="conversationId = item.id" /><v-divider /><v-list-item title="Новый чат" prepend-icon="mdi-plus" @click="notify('Новый чат будет доступен после подключения сохранения')" /></v-list>
+          <template #activator="{ props: menuProps }">
+            <v-btn v-bind="menuProps" variant="text" append-icon="mdi-chevron-down" class="expert-chat__conversation">
+              {{ conversation?.title || 'Общий анализ' }}
+            </v-btn>
+          </template>
+          <v-list density="compact" min-width="240">
+            <v-list-subheader>Чаты проекта</v-list-subheader>
+            <v-list-item
+              v-for="item in project.conversations"
+              :key="item.id"
+              :title="item.title"
+              prepend-icon="mdi-message-text-outline"
+              @click="conversationId = item.id"
+            />
+            <v-divider />
+            <v-list-item title="Новый чат" prepend-icon="mdi-plus" @click="openNewConversation" />
+          </v-list>
         </v-menu>
         <div class="expert-chat__toolbar-actions">
-          <v-tooltip text="Контекст проекта"><template #activator="{ props: tooltipProps }"><v-btn v-bind="tooltipProps" icon="mdi-dock-right" size="small" :variant="contextOpen ? 'tonal' : 'text'" aria-label="Контекст проекта" @click="toggleContext" /></template></v-tooltip>
-          <v-btn icon="mdi-dots-horizontal" size="small" variant="text" aria-label="Действия чата" />
+          <v-tooltip v-if="projectMode === 'demo'" text="Контекст проекта">
+            <template #activator="{ props: tooltipProps }">
+              <v-btn v-bind="tooltipProps" icon="mdi-dock-right" size="small" :variant="contextOpen ? 'tonal' : 'text'" aria-label="Контекст проекта" @click="contextOpen = !contextOpen" />
+            </template>
+          </v-tooltip>
         </div>
       </header>
 
+      <v-progress-linear v-if="loading" indeterminate color="primary" />
+      <v-alert v-if="errorMessage" type="error" variant="tonal" density="compact" class="ma-3">
+        {{ errorMessage }}
+      </v-alert>
+
       <div ref="messageArea" class="expert-chat__messages">
-        <div v-if="!messages.length" class="expert-chat__empty">
-          <div class="expert-chat__empty-icon"><v-icon icon="mdi-prism" size="30" /></div>
-          <h1>Чем помочь в этом исследовании?</h1>
-          <p>Prism AI будет работать с материалами, фактами и документом этого проекта.</p>
-          <div class="expert-chat__quick-actions">
-            <button v-for="action in project.quickActions" :key="action" type="button" @click="sendMessage(action)"><v-icon icon="mdi-arrow-up-right" size="17" /><span>{{ action }}</span></button>
+        <div v-if="!loading && !messages.length" class="expert-chat__empty">
+          <div class="expert-chat__empty-icon"><v-icon :icon="projectMode === 'demo' ? 'mdi-prism' : 'mdi-message-text-outline'" size="30" /></div>
+          <h1>{{ projectMode === 'demo' ? 'Чем помочь в этом исследовании?' : 'Сообщений пока нет' }}</h1>
+          <p>{{ projectMode === 'demo' ? 'Prism AI работает с демонстрационным контекстом проекта.' : 'Создайте чат и добавьте первое сообщение. AI-ответы подключаются на следующем этапе.' }}</p>
+          <div v-if="projectMode === 'demo'" class="expert-chat__quick-actions">
+            <button v-for="action in project.quickActions" :key="action" type="button" @click="sendMessage(action)">
+              <v-icon icon="mdi-arrow-up-right" size="17" /><span>{{ action }}</span>
+            </button>
           </div>
+          <v-btn v-else-if="!conversation" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="openNewConversation">Создать чат</v-btn>
         </div>
-        <template v-else>
-          <ExpertChatMessage v-for="message in messages" :key="message.id" :message="message" @action="notify" @open-source="openSource" />
-        </template>
+        <ExpertChatMessage
+          v-for="message in messages"
+          v-else
+          :key="message.id"
+          :message="message"
+          @action="notify"
+          @open-source="contextOpen = true"
+        />
       </div>
 
-      <ExpertChatComposer :context-chips="contextChips" @send="sendMessage" @attachment="handleAttachment" @remove-context="removeContext" @select-whole-project="selectWholeProject" />
+      <ExpertChatComposer
+        :context-chips="projectMode === 'demo' ? contextChips : []"
+        :busy="sending || loading"
+        :persistence-only="projectMode === 'real'"
+        @send="sendMessage"
+        @attachment="handleAttachment"
+        @remove-context="removeContext"
+        @select-whole-project="selectWholeProject"
+      />
     </section>
 
-    <ExpertContextPanel v-if="contextOpen && !mdAndDown" :project="project" @close="contextOpen = false" @action="notify" />
-    <v-navigation-drawer v-if="mdAndDown" v-model="contextOpen" temporary location="right" width="360"><ExpertContextPanel :project="project" @close="contextOpen = false" @action="notify" /></v-navigation-drawer>
+    <ExpertContextPanel v-if="projectMode === 'demo' && contextOpen && !mdAndDown" :project="project" @close="contextOpen = false" @action="notify" />
+    <v-navigation-drawer v-if="projectMode === 'demo' && mdAndDown" v-model="contextOpen" temporary location="right" width="360">
+      <ExpertContextPanel :project="project" @close="contextOpen = false" @action="notify" />
+    </v-navigation-drawer>
 
-    <v-dialog :model-value="materialPickerOpen" max-width="640" scrollable @update:model-value="handleMaterialPickerVisibility">
-      <v-card class="expert-chat__picker">
-        <v-card-title class="d-flex align-center justify-space-between"><span>Материалы проекта</span><v-btn icon="mdi-close" variant="text" @click="cancelMaterialPicker" /></v-card-title>
-        <v-card-text><v-text-field v-model="materialSearch" prepend-inner-icon="mdi-magnify" placeholder="Найти материал" variant="outlined" density="compact" hide-details class="mb-3" /><v-list lines="two"><v-list-item v-for="material in filteredMaterials" :key="material.id" :prepend-icon="material.icon" :title="material.name" :subtitle="`${material.format} · ${material.meta}`" @click="toggleMaterial(material)"><template #append><v-checkbox-btn :model-value="hasChatContext(contextDraftChips, 'material', material.id)" /></template></v-list-item></v-list></v-card-text>
-        <v-card-actions class="justify-end"><v-btn variant="text" @click="cancelMaterialPicker">Отмена</v-btn><v-btn color="primary" variant="flat" @click="applyMaterialPicker">Готово</v-btn></v-card-actions>
+    <v-dialog v-model="newConversationOpen" max-width="460">
+      <v-card>
+        <v-card-title>Новый чат</v-card-title>
+        <v-card-text>
+          <v-text-field v-model="newConversationTitle" label="Название" variant="outlined" autofocus @keydown.enter.prevent="createConversation" />
+          <v-alert v-if="conversationError" type="error" variant="tonal" density="compact">{{ conversationError }}</v-alert>
+        </v-card-text>
+        <v-card-actions><v-spacer /><v-btn :disabled="creatingConversation" @click="newConversationOpen = false">Отмена</v-btn><v-btn color="primary" :loading="creatingConversation" @click="createConversation">Создать</v-btn></v-card-actions>
       </v-card>
     </v-dialog>
-    <v-dialog :model-value="normativePickerOpen" max-width="640" scrollable @update:model-value="handleNormativePickerVisibility">
-      <v-card class="expert-chat__picker">
-        <v-card-title class="d-flex align-center justify-space-between"><span>Подключённые нормативы</span><v-btn icon="mdi-close" variant="text" @click="cancelNormativePicker" /></v-card-title>
-        <v-card-text><v-list lines="two"><v-list-item v-for="normative in connectedNormatives" :key="normative.id" prepend-icon="mdi-book-open-page-variant-outline" :title="normative.code" :subtitle="normative.title" @click="toggleNormative(normative)"><template #append><v-checkbox-btn :model-value="hasChatContext(contextDraftChips, 'normative', normative.id)" /></template></v-list-item></v-list></v-card-text>
-        <v-card-actions class="justify-end"><v-btn variant="text" @click="cancelNormativePicker">Отмена</v-btn><v-btn color="primary" variant="flat" @click="applyNormativePicker">Готово</v-btn></v-card-actions>
-      </v-card>
-    </v-dialog>
-    <v-snackbar v-model="snackbarOpen" :timeout="2600">{{ snackbarText }}<template #actions><v-btn variant="text" @click="snackbarOpen = false">Закрыть</v-btn></template></v-snackbar>
+
+    <v-snackbar v-model="snackbarOpen" :timeout="2600">{{ snackbarText }}</v-snackbar>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import ExpertChatComposer from '../components/chat/ExpertChatComposer.vue'
 import ExpertChatMessage from '../components/chat/ExpertChatMessage.vue'
 import ExpertContextPanel from '../components/chat/ExpertContextPanel.vue'
-import { createChatContextDraft, createWholeProjectContext, hasChatContext, removeChatContext, selectWholeProjectChatContext, toggleMaterialChatContext, toggleNormativeChatContext, type ExpertChatContextChip } from '../chatContext'
-import type { ExpertMessage, ExpertNormative, ExpertProject, ExpertProjectMaterial } from '../types'
+import { createWholeProjectContext, removeChatContext, selectWholeProjectChatContext, type ExpertChatContextChip } from '../chatContext'
+import { expertApi, mapExpertApiError } from '../api'
+import type { ExpertMessage, ExpertProject, ExpertProjectMode } from '../types'
 
-const props = defineProps<{ project: ExpertProject }>()
+const props = defineProps<{ project: ExpertProject; projectMode: ExpertProjectMode }>()
 const { mdAndDown } = useDisplay()
-const conversationId = ref(props.project.conversations[0]?.id ?? '')
-const localMessages = ref<Record<string, ExpertMessage[]>>({})
-const contextOpen = ref(!mdAndDown.value)
-const materialPickerOpen = ref(false)
-const materialSearch = ref('')
+const conversationId = ref('')
+const messagesByConversation = ref<Record<string, ExpertMessage[]>>({})
+const contextOpen = ref(props.projectMode === 'demo' && !mdAndDown.value)
 const contextChips = ref<ExpertChatContextChip[]>(createWholeProjectContext())
-const contextDraftChips = ref<ExpertChatContextChip[]>([])
-const normativePickerOpen = ref(false)
+const loading = ref(false)
+const sending = ref(false)
+const errorMessage = ref('')
+const newConversationOpen = ref(false)
+const newConversationTitle = ref('Общий анализ')
+const creatingConversation = ref(false)
+const conversationError = ref('')
 const snackbarOpen = ref(false)
 const snackbarText = ref('')
 const messageArea = ref<HTMLElement | null>(null)
-const conversation = computed(() => props.project.conversations.find((item) => item.id === conversationId.value) ?? props.project.conversations[0])
-const messages = computed(() => localMessages.value[conversationId.value] ?? conversation.value?.messages ?? [])
-const filteredMaterials = computed(() => props.project.materials.filter((item) => item.name.toLowerCase().includes(materialSearch.value.trim().toLowerCase())))
-const connectedNormatives = computed(() => props.project.normatives.filter((item) => item.connected))
+let conversationsSequence = 0
+let messagesSequence = 0
 
-function notify(action: string) { snackbarText.value = action === 'Копировать' ? 'Текст скопирован в прототипе' : `${action}: функция будет подключена на следующем этапе`; snackbarOpen.value = true }
-function openSource() { contextOpen.value = true }
-function toggleContext() { contextOpen.value = !contextOpen.value }
-function handleAttachment(action: string) { if (action === 'materials') openMaterialPicker(); else if (action === 'normative') openNormativePicker(); else notify('Загрузка материалов') }
-function openMaterialPicker() { contextDraftChips.value = createChatContextDraft(contextChips.value); materialPickerOpen.value = true }
-function openNormativePicker() { contextDraftChips.value = createChatContextDraft(contextChips.value); normativePickerOpen.value = true }
-function discardContextDraft() { contextDraftChips.value = [] }
-function cancelMaterialPicker() { materialPickerOpen.value = false; discardContextDraft() }
-function cancelNormativePicker() { normativePickerOpen.value = false; discardContextDraft() }
-function applyMaterialPicker() { contextChips.value = contextDraftChips.value; materialPickerOpen.value = false; discardContextDraft() }
-function applyNormativePicker() { contextChips.value = contextDraftChips.value; normativePickerOpen.value = false; discardContextDraft() }
-function handleMaterialPickerVisibility(open: boolean) { if (!open) cancelMaterialPicker() }
-function handleNormativePickerVisibility(open: boolean) { if (!open) cancelNormativePicker() }
-function toggleMaterial(material: ExpertProjectMaterial) { contextDraftChips.value = toggleMaterialChatContext(contextDraftChips.value, { id: material.id, label: material.name, detail: material.meta, icon: material.icon }) }
-function toggleNormative(normative: ExpertNormative) { contextDraftChips.value = toggleNormativeChatContext(contextDraftChips.value, { id: normative.id, label: normative.code, detail: normative.title, icon: 'mdi-book-open-page-variant-outline', connected: normative.connected }) }
-function removeContext(id: string) { contextChips.value = removeChatContext(contextChips.value, id) }
-function selectWholeProject() { contextChips.value = selectWholeProjectChatContext() }
-async function sendMessage(text: string) {
-  const current = messages.value
-  const userMessage: ExpertMessage = { id: `local-${Date.now()}`, role: 'user', text, createdAt: 'сейчас' }
-  const reply: ExpertMessage = { id: `local-ai-${Date.now()}`, role: 'assistant', text: 'На этом этапе это интерфейсный прототип. Команда уже связана с выбранным контекстом; анализ материалов и сохранение результата будут подключены вместе с AI Gateway.', createdAt: 'сейчас', sources: contextChips.value.filter((context) => context.kind !== 'whole-project').map(({ id, label, detail, icon }) => ({ id, label, detail, icon })) }
-  localMessages.value = { ...localMessages.value, [conversationId.value]: [...current, userMessage, reply] }
-  await nextTick(); messageArea.value?.scrollTo({ top: messageArea.value.scrollHeight, behavior: 'smooth' })
+const conversation = computed(() => props.project.conversations.find((item) => item.id === conversationId.value))
+const messages = computed(() => messagesByConversation.value[conversationId.value] ?? conversation.value?.messages ?? [])
+
+async function loadConversations() {
+  const sequence = ++conversationsSequence
+  const targetProject = props.project
+  errorMessage.value = ''
+  if (props.projectMode === 'demo') {
+    conversationId.value = props.project.conversations[0]?.id ?? ''
+    return
+  }
+  loading.value = true
+  try {
+    const loaded = await expertApi.listConversations(targetProject.id)
+    if (sequence !== conversationsSequence) return
+    targetProject.conversations = loaded
+    targetProject.counts && (targetProject.counts.conversations = loaded.length)
+    conversationId.value = loaded[0]?.id ?? ''
+  } catch (error) {
+    if (sequence === conversationsSequence) errorMessage.value = mapExpertApiError(error).message
+  } finally {
+    if (sequence === conversationsSequence) loading.value = false
+  }
 }
+
+async function loadMessages(id: string) {
+  if (props.projectMode === 'demo' || !id || Object.prototype.hasOwnProperty.call(messagesByConversation.value, id)) return
+  const sequence = ++messagesSequence
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const loaded = await expertApi.listMessages(id)
+    if (sequence !== messagesSequence) return
+    messagesByConversation.value = { ...messagesByConversation.value, [id]: loaded }
+  } catch (error) {
+    if (sequence === messagesSequence) errorMessage.value = mapExpertApiError(error).message
+  } finally {
+    if (sequence === messagesSequence) loading.value = false
+  }
+}
+
+function openNewConversation() {
+  if (props.projectMode === 'demo') {
+    notify('Новый чат в демо-режиме')
+    return
+  }
+  conversationError.value = ''
+  newConversationTitle.value = 'Общий анализ'
+  newConversationOpen.value = true
+}
+
+async function createConversation() {
+  const title = newConversationTitle.value.trim()
+  if (!title) {
+    conversationError.value = 'Укажите название чата.'
+    return
+  }
+  creatingConversation.value = true
+  conversationError.value = ''
+  try {
+    const created = await expertApi.createConversation(props.project.id, title)
+    props.project.conversations.push(created)
+    props.project.counts && (props.project.counts.conversations = props.project.conversations.length)
+    messagesByConversation.value = { ...messagesByConversation.value, [created.id]: [] }
+    conversationId.value = created.id
+    newConversationOpen.value = false
+  } catch (error) {
+    conversationError.value = mapExpertApiError(error).message
+  } finally {
+    creatingConversation.value = false
+  }
+}
+
+async function sendMessage(text: string, complete: (saved: boolean) => void = () => undefined) {
+  let savedSuccessfully = false
+  if (props.projectMode === 'demo') {
+    const id = conversationId.value
+    const current = messages.value
+    const stamp = Date.now()
+    const userMessage: ExpertMessage = { id: 'local-' + stamp, role: 'user', text, createdAt: 'сейчас' }
+    const reply: ExpertMessage = { id: 'local-ai-' + stamp, role: 'assistant', text: 'Это демонстрационный ответ. Реальный AI Gateway не входит в текущий этап.', createdAt: 'сейчас' }
+    messagesByConversation.value = { ...messagesByConversation.value, [id]: [...current, userMessage, reply] }
+    savedSuccessfully = true
+  } else {
+    sending.value = true
+    errorMessage.value = ''
+    try {
+      let targetConversationId = conversationId.value
+      if (!targetConversationId) {
+        const created = await expertApi.createConversation(props.project.id, 'Общий анализ')
+        props.project.conversations.push(created)
+        props.project.counts && (props.project.counts.conversations = props.project.conversations.length)
+        targetConversationId = created.id
+        messagesByConversation.value = { ...messagesByConversation.value, [created.id]: [] }
+        conversationId.value = created.id
+      }
+      const saved = await expertApi.sendMessage(targetConversationId, text)
+      messagesByConversation.value = {
+        ...messagesByConversation.value,
+        [targetConversationId]: [...(messagesByConversation.value[targetConversationId] ?? []), saved],
+      }
+      savedSuccessfully = true
+    } catch (error) {
+      errorMessage.value = mapExpertApiError(error).message
+    } finally {
+      sending.value = false
+    }
+  }
+  complete(savedSuccessfully)
+  await nextTick()
+  messageArea.value?.scrollTo({ top: messageArea.value.scrollHeight, behavior: 'smooth' })
+}
+
+function notify(action: string) {
+  snackbarText.value = action + ': функция доступна только в демонстрационном режиме.'
+  snackbarOpen.value = true
+}
+function handleAttachment(action: string) {
+  notify(action === 'materials' ? 'Контекст материалов' : 'Добавление вложения')
+}
+function removeContext(id: string) {
+  contextChips.value = removeChatContext(contextChips.value, id)
+}
+function selectWholeProject() {
+  contextChips.value = selectWholeProjectChatContext()
+}
+
+watch(() => props.project.id, loadConversations, { immediate: true })
+watch(conversationId, loadMessages)
 </script>
 
 <style scoped>
@@ -117,6 +262,5 @@ async function sendMessage(text: string) {
 .expert-chat__quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 260px)); gap: 9px; }
 .expert-chat__quick-actions button { display: flex; align-items: center; gap: 9px; padding: 12px 13px; border: 1px solid rgba(var(--v-theme-outline-variant), .62); border-radius: var(--md-sys-shape-corner-large); color: rgba(var(--v-theme-on-surface), .84); background: rgb(var(--v-theme-surface)); cursor: pointer; text-align: left; font: inherit; font-size: .76rem; }
 .expert-chat__quick-actions button:hover { border-color: rgba(var(--v-theme-primary), .52); background: rgba(var(--v-theme-primary), .045); }
-.expert-chat__picker { border-radius: var(--md-sys-shape-corner-extra-large); }
-@media (max-width: 700px) { .expert-chat__messages { gap: 18px; padding: 18px 12px; } .expert-chat__quick-actions { grid-template-columns: 1fr; width: 100%; } .expert-chat__quick-actions button { max-width: none; } }
+@media (max-width: 700px) { .expert-chat__messages { gap: 18px; padding: 18px 12px; } .expert-chat__quick-actions { grid-template-columns: 1fr; width: 100%; } }
 </style>

@@ -12,7 +12,7 @@
     </header>
 
     <section class="expert-stats" aria-label="Состояние проектов">
-      <v-card v-for="stat in expertDashboardStats" :key="stat.label" class="expert-stat" variant="flat">
+      <v-card v-for="stat in dashboardStats" :key="stat.label" class="expert-stat" variant="flat">
         <div class="expert-stat__icon"><v-icon :icon="stat.icon" size="22" /></div>
         <div>
           <div class="expert-stat__value">{{ stat.value }}</div>
@@ -30,6 +30,9 @@
         <v-btn variant="text" color="primary" :to="{ name: 'expert-projects' }" append-icon="mdi-arrow-right">Все проекты</v-btn>
       </div>
 
+      <v-progress-linear v-if="loading" indeterminate color="primary" />
+      <v-alert v-else-if="errorMessage" type="error" variant="tonal" class="ma-4" closable @click:close="errorMessage = ''">{{ errorMessage }} <v-btn variant="text" size="small" @click="loadProjects">Повторить</v-btn></v-alert>
+      <v-alert v-else-if="!realProjects.length" type="info" variant="tonal" class="ma-4">Реальных проектов пока нет. Создайте первое исследование.</v-alert>
       <div class="expert-projects__table" role="table" aria-label="Последние проекты">
         <div class="expert-projects__row expert-projects__row--head" role="row">
           <span>Название</span><span>Направление</span><span>Вид работы</span><span>Статус</span><span>Обновлён</span>
@@ -58,14 +61,31 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import ExpertCreateProjectModal from '../components/ExpertCreateProjectModal.vue'
-import { expertDashboardStats, expertProjects } from '../mock/expertMockData'
+import { expertApi, mapExpertApiError } from '../api'
+import type { ExpertProject } from '../types'
 
 const route = useRoute()
 const createOpen = ref(false)
-const displayProjects = computed(() => route.name === 'expert-projects' ? expertProjects : expertProjects.slice(0, 3))
+const loading = ref(true)
+const errorMessage = ref('')
+const realProjects = ref<ExpertProject[]>([])
+const displayProjects = computed(() => route.name === 'expert-projects' ? realProjects.value : realProjects.value.slice(0, 3))
+const dashboardStats = computed(() => [
+  { label: 'Активные проекты', value: realProjects.value.filter((item)=>item.status === 'В работе').length, icon: 'mdi-briefcase-outline' },
+  { label: 'Черновики', value: realProjects.value.filter((item)=>item.status === 'Черновик').length, icon: 'mdi-file-edit-outline' },
+  { label: 'Материалы', value: realProjects.value.reduce((sum,item)=>sum+(item.counts?.materials ?? 0),0), icon: 'mdi-folder-multiple-outline' },
+  { label: 'Результаты', value: realProjects.value.reduce((sum,item)=>sum+(item.counts?.findings ?? 0),0), icon: 'mdi-check-circle-outline' },
+])
+async function loadProjects() {
+  loading.value=true; errorMessage.value=''
+  try { realProjects.value=await expertApi.listProjects() }
+  catch(error) { errorMessage.value=mapExpertApiError(error).message }
+  finally { loading.value=false }
+}
+onMounted(loadProjects)
 </script>
 
 <style scoped>

@@ -36,6 +36,13 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Required by Laravel's MySQL schema-dump loader in the test environment.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-mysql-client \
+    && printf '[client]\nskip-ssl\n' > /etc/mysql/conf.d/99-prism-local.cnf \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # -------------------------
 # Composer
 # -------------------------

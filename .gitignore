@@ -75,6 +75,8 @@ server/tests/Feature/*
 !server/tests/Feature/VkAuthTest.php
 !server/tests/Feature/Billing/
 !server/tests/Feature/Billing/*.php
+!server/tests/Feature/Expert/
+!server/tests/Feature/Expert/**
 
 # If you really do not need these generated trees in git
 server/server/storage/

@@ -7,6 +7,7 @@ use App\Domain\PriceIndices\Infrastructure\Http\LaravelClassifierHttpTransport;
 use App\Domain\PriceIndices\Infrastructure\Parsing\ClassifierArchiveCommandRunner;
 use App\Domain\PriceIndices\Infrastructure\Parsing\ProcessClassifierArchiveCommandRunner;
 use App\Models\Chat\ChatConversation;
+use App\Models\Expert\ExpertProject;
 use App\Models\Idea;
 use App\Models\MaterialDimensionParseFailure;
 use App\Models\MaterialDimensionRule;
@@ -16,6 +17,7 @@ use App\Models\ProjectLaborWorkStep;
 use App\Observers\ProjectLaborWorkObserver;
 use App\Observers\ProjectLaborWorkStepObserver;
 use App\Policies\ChatConversationPolicy;
+use App\Policies\ExpertProjectPolicy;
 use App\Policies\IdeaPolicy;
 use App\Policies\MaterialDimensionParseFailurePolicy;
 use App\Policies\MaterialDimensionRulePolicy;
@@ -60,6 +62,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(MaterialTypePattern::class, MaterialTypePatternPolicy::class);
         Gate::policy(Idea::class, IdeaPolicy::class);
         Gate::policy(ChatConversation::class, ChatConversationPolicy::class);
+        Gate::policy(ExpertProject::class, ExpertProjectPolicy::class);
 
         ProjectLaborWork::observe(ProjectLaborWorkObserver::class);
         ProjectLaborWorkStep::observe(ProjectLaborWorkStepObserver::class);

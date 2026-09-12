@@ -4,12 +4,16 @@ namespace App\Services\Admin;
 
 use App\Models\AdminAuditLog;
 use App\Models\User;
+use App\Services\Expert\ExpertStorageCleanupService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class AdminUserService
 {
+    public function __construct(private readonly ExpertStorageCleanupService $expertStorageCleanup) {}
+
     /**
      * Log an admin action to the audit log.
      */
@@ -95,10 +99,23 @@ class AdminUserService
      */
     public function hardDeleteUser(User $targetUser, User $admin, ?string $reason = null, ?string $ip = null): void
     {
-        DB::transaction(function () use ($targetUser, $admin, $reason, $ip) {
+        $expertCleanupTasks = [];
+        $expertProjectPublicIds = [];
+
+        DB::transaction(function () use ($targetUser, $admin, $reason, $ip, &$expertCleanupTasks, &$expertProjectPublicIds) {
             $userId = $targetUser->id;
             $userName = $targetUser->name;
             $userEmail = $targetUser->email;
+
+            if (Schema::hasTable('expert_projects')) {
+                $expertProjectPublicIds = DB::table('expert_projects')->where('user_id', $userId)->pluck('public_id')->all();
+
+                if ($this->expertStorageCleanup->journalIsAvailable()) {
+                    foreach ($expertProjectPublicIds as $publicId) {
+                        $expertCleanupTasks[] = $this->expertStorageCleanup->scheduleDirectory("expert/{$publicId}");
+                    }
+                }
+            }
 
             // Collect dependency info before deletion for audit
             $dependencies = $this->getDependencies($targetUser);
@@ -124,6 +141,25 @@ class AdminUserService
                 $ip
             );
         });
+
+        if ($this->expertStorageCleanup->journalIsAvailable()) {
+            foreach ($expertCleanupTasks as $task) {
+                $this->expertStorageCleanup->attempt($task);
+            }
+
+            return;
+        }
+
+        foreach ($expertProjectPublicIds as $publicId) {
+            $directory = "expert/{$publicId}";
+            $disk = Storage::disk('local');
+
+            if ($disk->exists($directory) && ! $disk->deleteDirectory($directory)) {
+                Log::warning('Expert project files could not be removed after user hard delete.', [
+                    'directory' => $directory,
+                ]);
+            }
+        }
     }
 
     /**
@@ -155,6 +191,9 @@ class AdminUserService
             'collect_profiles' => DB::table('parser_supplier_collect_profiles')->where('user_id', $userId)->count(),
             'price_import_sessions' => DB::table('price_import_sessions')->where('user_id', $userId)->count(),
             'project_revisions' => DB::table('project_revisions')->where('created_by_user_id', $userId)->count(),
+            'expert_projects' => Schema::hasTable('expert_projects')
+                ? DB::table('expert_projects')->where('user_id', $userId)->count()
+                : 0,
         ];
     }
 
@@ -172,6 +211,12 @@ class AdminUserService
 
         // auth_verification_challenges - can be deleted
         DB::table('auth_verification_challenges')->where('user_id', $userId)->delete();
+
+        // Expert projects cascade their objects, chats, messages, materials, findings and pivots.
+        // Binary directories are removed only after the outer user-delete transaction commits.
+        if (Schema::hasTable('expert_projects')) {
+            DB::table('expert_projects')->where('user_id', $userId)->delete();
+        }
 
         // project_revisions has restrict - need to nullify user reference
         DB::table('project_revisions')->where('created_by_user_id', $userId)->update(['created_by_user_id' => null]);

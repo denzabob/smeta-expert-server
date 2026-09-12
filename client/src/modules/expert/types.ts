@@ -21,10 +21,13 @@ export interface ExpertConversation {
   id: string
   title: string
   messages: ExpertMessage[]
+  messagesCount?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 export type ExpertMaterialKind = 'document' | 'image' | 'spreadsheet' | 'video' | 'other'
-export type ExpertMaterialStatus = 'Обработан' | 'Обрабатывается' | 'Ошибка'
+export type ExpertMaterialStatus = 'Загружен' | 'Обработан' | 'Обрабатывается' | 'Ошибка'
 
 export interface ExpertProjectMaterial {
   id: string
@@ -38,6 +41,9 @@ export interface ExpertProjectMaterial {
   status: ExpertMaterialStatus
   useInAi: boolean
   icon: string
+  mimeType?: string
+  sizeBytes?: number
+  createdAt?: string
 }
 
 export interface ExpertResearchObject {
@@ -45,7 +51,11 @@ export interface ExpertResearchObject {
   name: string
   type?: string
   description?: string
+  sortOrder?: number
 }
+
+export type ExpertProjectMode = 'demo' | 'real'
+export interface ExpertProjectCounts { researchObjects: number; conversations: number; materials: number; findings: number }
 
 export type ExpertFindingType =
   | 'fact'
@@ -70,6 +80,8 @@ export interface ExpertFinding {
   description: string
   factualData?: string
   measurement?: string
+  value?: string
+  unit?: string
   cause?: string
   normativeComparison?: string
   recommendation?: string
@@ -144,6 +156,7 @@ export interface ExpertProject {
   reportSections: ExpertReportSection[]
   revisions: ExpertReportRevision[]
   quickActions: string[]
+  counts?: ExpertProjectCounts
 }
 
 export interface ExpertProjectDraft {

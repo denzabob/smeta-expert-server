@@ -6,7 +6,7 @@
       <div class="expert-project-header__meta">{{ project.direction }} · {{ project.workType }}</div>
     </div>
     <div class="expert-project-header__actions">
-      <v-chip size="small" variant="tonal" prepend-icon="mdi-auto-fix">Prism AI · Auto</v-chip>
+      <v-chip v-if="projectMode === 'demo'" size="small" variant="tonal" prepend-icon="mdi-auto-fix">Prism AI · Demo</v-chip>
       <v-chip size="small" color="primary" variant="tonal" prepend-icon="mdi-circle-medium">{{ project.status }}</v-chip>
       <v-btn icon="mdi-dots-horizontal" variant="text" aria-label="Действия проекта" />
     </div>
@@ -14,9 +14,9 @@
 </template>
 
 <script setup lang="ts">
-import type { ExpertProject } from '../types'
+import type { ExpertProject, ExpertProjectMode } from '../types'
 
-defineProps<{ project: ExpertProject; compact: boolean }>()
+defineProps<{ project: ExpertProject; compact: boolean; projectMode: ExpertProjectMode }>()
 defineEmits<{ (event: 'open-navigation'): void }>()
 </script>
 

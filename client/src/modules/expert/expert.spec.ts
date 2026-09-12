@@ -98,4 +98,23 @@ describe('Expert frontend prototype contracts', () => {
       'expert-projects',
     ])
   })
+
+  it('keeps production dashboard independent from demo fixtures and guards async project loads', () => {
+    const dashboardSource = readFileSync(new URL('./pages/ExpertDashboard.vue', import.meta.url), 'utf8')
+    const projectSource = readFileSync(new URL('./pages/ExpertProject.vue', import.meta.url), 'utf8')
+    const chatSource = readFileSync(new URL('./pages/ExpertChat.vue', import.meta.url), 'utf8')
+
+    expect(dashboardSource).not.toContain("from '../mock/expertMockData'")
+    expect(projectSource).toContain('sequence===loadSequence')
+    expect(projectSource).toContain('isDemoProjectId(id)')
+    expect(chatSource).toContain('targetConversationId')
+    expect(chatSource).toContain('messagesSequence')
+  })
+
+  it('clears a chat draft only after the parent confirms persistence', () => {
+    const composerSource = readFileSync(new URL('./components/chat/ExpertChatComposer.vue', import.meta.url), 'utf8')
+
+    expect(composerSource).toContain('(saved: boolean)')
+    expect(composerSource).toContain('if (saved && text.value.trim() === value)')
+  })
 })

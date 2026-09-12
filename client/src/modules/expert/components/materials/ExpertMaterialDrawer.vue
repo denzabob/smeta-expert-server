@@ -2,20 +2,21 @@
   <v-navigation-drawer v-model="open" temporary location="right" width="460" class="expert-material-drawer">
     <template v-if="material">
       <div class="expert-drawer__header"><div><span class="expert-drawer__eyebrow">Материал проекта</span><h2>{{ material.name }}</h2></div><v-btn icon="mdi-close" variant="text" @click="open = false" /></div>
-      <div class="expert-material-drawer__preview"><v-icon :icon="material.icon" size="58" /><span>Предпросмотр {{ material.format }}</span><small>Будет подключён на этапе обработки документов</small></div>
+      <div class="expert-material-drawer__preview"><v-icon :icon="material.icon" size="58" /><span>{{ material.format }}</span><small>{{ projectMode === 'demo' ? 'Демонстрационный предпросмотр' : 'Предпросмотр содержимого будет подключён на следующем этапе' }}</small></div>
       <div class="expert-drawer__content">
         <dl><template v-for="item in details" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></template></dl>
-        <v-switch :model-value="material.useInAi" label="Использовать в AI" color="primary" hide-details inset readonly />
+        <v-switch v-if="projectMode === 'demo'" :model-value="material.useInAi" label="Использовать в AI" color="primary" hide-details inset readonly />
       </div>
-      <div class="expert-drawer__actions"><v-btn variant="tonal" prepend-icon="mdi-open-in-new" @click="$emit('action', 'Открыть')">Открыть</v-btn><v-btn variant="tonal" prepend-icon="mdi-message-plus-outline" @click="$emit('action', 'Добавить в чат')">В чат</v-btn><v-btn color="primary" variant="flat" prepend-icon="mdi-chat-question-outline" @click="$emit('action', 'Спросить по материалу')">Спросить</v-btn></div>
+      <div v-if="projectMode === 'real'" class="expert-drawer__actions"><v-btn variant="tonal" prepend-icon="mdi-download-outline" @click="$emit('action', 'download')">Скачать</v-btn><v-btn color="error" variant="tonal" prepend-icon="mdi-delete-outline" @click="$emit('action', 'delete')">Удалить</v-btn></div>
+      <div v-else class="expert-drawer__actions"><v-btn variant="tonal" prepend-icon="mdi-open-in-new" @click="$emit('action', 'Открыть')">Открыть</v-btn><v-btn variant="tonal" prepend-icon="mdi-message-plus-outline" @click="$emit('action', 'Добавить в чат')">В чат</v-btn><v-btn color="primary" variant="flat" prepend-icon="mdi-chat-question-outline" @click="$emit('action', 'Спросить по материалу')">Спросить</v-btn></div>
     </template>
   </v-navigation-drawer>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ExpertProjectMaterial } from '../../types'
-const props = defineProps<{ material: ExpertProjectMaterial | null }>()
+import type { ExpertProjectMaterial, ExpertProjectMode } from '../../types'
+const props = defineProps<{ material: ExpertProjectMaterial | null; projectMode: ExpertProjectMode }>()
 const open = defineModel<boolean>({ required: true })
 defineEmits<{ (event: 'action', action: string): void }>()
 const details = computed(() => props.material ? [

@@ -7,13 +7,14 @@
     </router-link>
     <div class="expert-project-nav__footer">
       <v-icon icon="mdi-cloud-check-outline" size="18" />
-      <span>Изменения сохранены</span>
+      <span>{{ projectMode === 'demo' ? 'Демонстрационный проект' : 'Данные проекта загружены' }}</span>
     </div>
   </nav>
 </template>
 
 <script setup lang="ts">
-defineProps<{ projectId: string }>()
+import type { ExpertProjectMode } from '../types'
+defineProps<{ projectId: string; projectMode: ExpertProjectMode }>()
 defineEmits<{ (event: 'navigated'): void }>()
 
 const items = [
