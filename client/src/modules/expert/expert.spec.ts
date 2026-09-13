@@ -146,6 +146,9 @@ describe('Expert frontend prototype contracts', () => {
     expect(chatSource).toContain('transfers.queueUploads')
     expect(chatSource).toContain('snapshotExpertMessageMaterialContext')
     expect(chatSource).toContain('runtimeMaterialContext')
+    expect(chatSource).toContain('message.runtimeMaterialContext?.map((context) => context.id) ?? []')
+    expect(chatSource).toContain('isExpertMaterialContextError(mapped.code)')
+    expect(chatSource).toContain('mergeExpertMessageMaterialContexts')
     expect(chatSource).not.toContain('expertApi.deleteMaterial')
   })
 

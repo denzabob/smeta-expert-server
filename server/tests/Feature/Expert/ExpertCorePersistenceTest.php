@@ -17,19 +17,7 @@ use Tests\TestCase;
 
 class ExpertCorePersistenceTest extends TestCase
 {
-    use RefreshDatabase {
-        migrateFreshUsing as protected defaultMigrateFreshUsing;
-    }
-
-    protected function migrateFreshUsing(): array
-    {
-        return array_merge($this->defaultMigrateFreshUsing(), [
-            '--path' => [
-                'database/migrations/2026_09_12_000000_create_expert_core_tables.php',
-                'database/migrations/2026_09_12_000001_create_expert_storage_cleanup_tasks_table.php',
-            ],
-        ]);
-    }
+    use RefreshDatabase;
 
     public function test_authentication_project_ownership_and_core_crud(): void
     {

@@ -62,6 +62,7 @@ class LLMErrorClassifier
             'http_429' => LLMErrorType::RATE_LIMIT,
             'http_5xx' => LLMErrorType::SERVER_ERROR,
             'network' => LLMErrorType::NETWORK,
+            'request_error' => LLMErrorType::REQUEST_ERROR,
             'invalid_json' => LLMErrorType::INVALID_RESPONSE,
             'invalid_response' => LLMErrorType::INVALID_RESPONSE,
             default => null,
@@ -93,6 +94,7 @@ class LLMErrorClassifier
             $httpCode === 401, $httpCode === 403 => LLMErrorType::AUTH,
             $httpCode === 429 => LLMErrorType::RATE_LIMIT,
             $httpCode === 408 => LLMErrorType::TIMEOUT,
+            $httpCode === 400, $httpCode === 422 => LLMErrorType::REQUEST_ERROR,
             $httpCode >= 500 => LLMErrorType::SERVER_ERROR,
             default => LLMErrorType::UNKNOWN,
         };

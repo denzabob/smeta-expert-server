@@ -108,12 +108,12 @@ import ExpertChatComposer from '../components/chat/ExpertChatComposer.vue'
 import ExpertChatMessage from '../components/chat/ExpertChatMessage.vue'
 import ExpertContextPanel from '../components/chat/ExpertContextPanel.vue'
 import { createWholeProjectContext, removeChatContext, selectWholeProjectChatContext, type ExpertChatContextChip } from '../chatContext'
-import { addExpertMessageMaterialContext, getExpertChatAttachmentSendBlockReason, snapshotExpertMessageMaterialContext } from '../chatAttachments'
+import { addExpertMessageMaterialContext, getExpertChatAttachmentSendBlockReason, mergeExpertMessageMaterialContexts, snapshotExpertMessageMaterialContext } from '../chatAttachments'
 import { normalizeExpertChatDraft } from '../chatComposer'
 import { appendUniqueExpertMessage, createOptimisticUserMessage, replaceOptimisticExpertMessage, setExpertMessageDeliveryState } from '../chatMessageState'
 import { isNearExpertChatBottom, shouldFollowNewExpertMessage } from '../chatScroll'
 import { useExpertMaterialTransfers } from '../composables/useExpertMaterialTransfers'
-import { expertApi, mapExpertApiError } from '../api'
+import { expertApi, isExpertMaterialContextError, mapExpertApiError } from '../api'
 import type { ExpertConversation, ExpertMessage, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMode } from '../types'
 
 const props = defineProps<{ project: ExpertProject; projectMode: ExpertProjectMode }>()
@@ -137,7 +137,10 @@ const transfers = useExpertMaterialTransfers()
 const composerMaterialContexts = ref<ExpertMessageMaterialContext[]>([])
 const composerUploadItems = computed(() => transfers.uploads.value)
 const composerImagePreviews = computed(() => transfers.imagePreviews.value)
-const composerSendBlockedReason = computed(() => getExpertChatAttachmentSendBlockReason(composerUploadItems.value))
+const composerSendBlockedReason = computed(() => getExpertChatAttachmentSendBlockReason(
+  composerUploadItems.value,
+  composerMaterialContexts.value,
+))
 let conversationsSequence = 0
 let messagesSequence = 0
 let conversationCreationPromise: Promise<string> | null = null
@@ -320,7 +323,12 @@ async function persistMessage(message: ExpertMessage) {
 
   try {
     const targetConversationId = await ensureConversation()
-    const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId)
+    const reply = await expertApi.sendMessage(
+      targetConversationId,
+      message.text,
+      message.clientMessageId,
+      message.runtimeMaterialContext?.map((context) => context.id) ?? [],
+    )
     replaceOptimisticMessage(message.id, reply.userMessage)
 
     const wasNearBottom = targetConversationId === conversationId.value && isMessageAreaNearBottom()
@@ -329,7 +337,14 @@ async function persistMessage(message: ExpertMessage) {
       void handleMessageAdded(wasNearBottom, false)
     }
   } catch (error) {
-    updateMessageDelivery(message.id, 'error', mapExpertApiError(error).message)
+    const mapped = mapExpertApiError(error)
+    if (isExpertMaterialContextError(mapped.code) && message.runtimeMaterialContext) {
+      composerMaterialContexts.value = mergeExpertMessageMaterialContexts(
+        composerMaterialContexts.value,
+        message.runtimeMaterialContext,
+      )
+    }
+    updateMessageDelivery(message.id, 'error', mapped.message)
   }
 }
 

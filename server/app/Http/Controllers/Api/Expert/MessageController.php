@@ -4,7 +4,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Expert\MessageRequest;
 use App\Http\Resources\Expert\MessageResource;
 use App\Models\Expert\ExpertConversation;
+use App\Services\Expert\ExpertChatRequestConflictException;
 use App\Services\Expert\ExpertChatService;
+use App\Services\Expert\ExpertMaterialContextBuilder;
+use App\Services\Expert\ExpertMaterialContextException;
 use App\Services\LLM\Exceptions\LLMChatUnavailableException;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\JsonResponse;
@@ -14,7 +17,11 @@ use Illuminate\Validation\ValidationException;
 
 class MessageController extends Controller
 {
-    public function __construct(private readonly ExpertChatService $expertChat) {}
+    public function __construct(
+        private readonly ExpertChatService $expertChat,
+        private readonly ExpertMaterialContextBuilder $materialContextBuilder,
+    ) {
+    }
 
     public function index(ExpertConversation $conversation){$this->authorize('view',$conversation->project);return MessageResource::collection($conversation->messages);}
 
@@ -22,12 +29,48 @@ class MessageController extends Controller
     {
         $this->authorize('update', $conversation->project);
 
+        $content = $request->validated('content');
+        $clientMessageId = $request->clientMessageId() ?? (string) Str::uuid();
+        $materialPublicIds = $request->validated('material_public_ids', []);
+        $requestFingerprint = $this->expertChat->requestFingerprint($content, $materialPublicIds);
+
         try {
+            $existing = $this->expertChat->completedReplyOrFail(
+                $conversation,
+                $content,
+                $clientMessageId,
+                $requestFingerprint,
+            );
+
+            if ($existing !== null) {
+                return response()->json([
+                    'user_message' => new MessageResource($existing->userMessage),
+                    'assistant_message' => new MessageResource($existing->assistantMessage),
+                ]);
+            }
+
+            $materialContext = $this->materialContextBuilder->build(
+                $conversation->project,
+                $materialPublicIds,
+            );
+
             $result = $this->expertChat->reply(
                 $conversation,
-                $request->validated('content'),
-                $request->clientMessageId() ?? (string) Str::uuid(),
+                $content,
+                $clientMessageId,
+                $requestFingerprint,
+                $materialContext,
             );
+        } catch (ExpertChatRequestConflictException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => 'expert_request_conflict',
+            ], 409);
+        } catch (ExpertMaterialContextException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->errorCode,
+            ], $exception->status);
         } catch (LockTimeoutException) {
             return response()->json([
                 'message' => 'Сообщение с этим идентификатором ещё обрабатывается. Повторите попытку через несколько секунд.',

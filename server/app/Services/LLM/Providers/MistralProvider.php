@@ -33,6 +33,7 @@ class MistralProvider implements LLMProviderInterface
     private float $temperature;
     private int $maxTokens;
     private int $timeout;
+    private int $connectTimeout;
 
     private LLMJsonParser $jsonParser;
 
@@ -43,7 +44,8 @@ class MistralProvider implements LLMProviderInterface
         ?float $temperature = null,
         ?int $maxTokens = null,
         ?int $timeout = null,
-        ?LLMJsonParser $jsonParser = null
+        ?LLMJsonParser $jsonParser = null,
+        ?int $connectTimeout = null,
     ) {
         $this->apiKey = (string) ($apiKey ?? config('services.mistral.key') ?? '');
         $this->baseUrl = (string) ($baseUrl ?? config('services.mistral.base_url') ?? self::DEFAULT_BASE_URL);
@@ -51,6 +53,7 @@ class MistralProvider implements LLMProviderInterface
         $this->temperature = $temperature ?? (float) config('services.mistral.temperature', 0.2);
         $this->maxTokens = $maxTokens ?? (int) config('services.mistral.max_tokens', 4096);
         $this->timeout = $timeout ?? self::DEFAULT_TIMEOUT;
+        $this->connectTimeout = $connectTimeout ?? (int) config('services.llm_transport.connect_timeout', 10);
         $this->jsonParser = $jsonParser ?? new LLMJsonParser();
     }
 
@@ -65,7 +68,8 @@ class MistralProvider implements LLMProviderInterface
             model: $settings['model'] ?? null,
             temperature: isset($settings['temperature']) ? (float) $settings['temperature'] : null,
             maxTokens: isset($settings['max_tokens']) ? (int) $settings['max_tokens'] : null,
-            timeout: isset($settings['timeout']) ? (int) $settings['timeout'] : null
+            timeout: isset($settings['timeout']) ? (int) $settings['timeout'] : null,
+            connectTimeout: isset($settings['connect_timeout']) ? (int) $settings['connect_timeout'] : null,
         );
     }
 
@@ -90,12 +94,13 @@ class MistralProvider implements LLMProviderInterface
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
             ])
-            ->timeout(10)
+            ->connectTimeout($this->connectTimeout)
+            ->timeout((int) config('services.llm_transport.health_timeout'))
             ->get($this->baseUrl . '/models');
 
             return $response->successful();
         } catch (\Throwable $e) {
-            Log::debug('MistralProvider: ping failed', ['error' => $e->getMessage()]);
+            Log::debug('MistralProvider: ping failed', ['exception' => $e::class]);
             return false;
         }
     }
@@ -124,6 +129,7 @@ class MistralProvider implements LLMProviderInterface
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
             ])
+            ->connectTimeout($this->connectTimeout)
             ->timeout($this->timeout)
             ->post($this->baseUrl . '/chat/completions', $payload);
 
@@ -166,15 +172,13 @@ class MistralProvider implements LLMProviderInterface
             throw LLMProviderException::networkError(self::NAME, $e->getMessage());
         } catch (\Throwable $e) {
             Log::error('MistralProvider: unexpected error', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'exception' => $e::class,
             ]);
 
             throw new LLMProviderException(
-                message: "Unexpected error: {$e->getMessage()}",
+                message: 'Unexpected provider error',
                 provider: self::NAME,
                 errorType: 'unknown',
-                previous: $e
             );
         }
     }
@@ -192,6 +196,7 @@ class MistralProvider implements LLMProviderInterface
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
             ])
+                ->connectTimeout($this->connectTimeout)
                 ->timeout($this->timeout)
                 ->post($this->baseUrl . '/chat/completions', [
                     'model' => $this->model,
@@ -231,13 +236,12 @@ class MistralProvider implements LLMProviderInterface
 
             throw LLMProviderException::networkError(self::NAME, $e->getMessage());
         } catch (\Throwable $e) {
-            Log::error('MistralProvider: unexpected chat error', ['error' => $e->getMessage()]);
+            Log::error('MistralProvider: unexpected chat error', ['exception' => $e::class]);
 
             throw new LLMProviderException(
                 message: 'Unexpected chat provider error',
                 provider: self::NAME,
                 errorType: 'unknown',
-                previous: $e,
             );
         }
     }

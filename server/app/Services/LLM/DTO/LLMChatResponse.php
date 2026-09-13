@@ -17,6 +17,10 @@ final class LLMChatResponse
         public readonly ?int $promptTokens = null,
         public readonly ?int $completionTokens = null,
         public readonly ?float $costUsd = null,
+        public readonly ?int $totalTokens = null,
+        public readonly ?int $cachedTokens = null,
+        public readonly ?int $reasoningTokens = null,
+        public readonly array $metadata = [],
     ) {
     }
 }

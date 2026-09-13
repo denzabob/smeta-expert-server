@@ -69,7 +69,7 @@ class LLMProviderException extends LLMException
     public static function networkError(string $provider, string $details): self
     {
         return new self(
-            message: "Provider {$provider} network error: {$details}",
+            message: "Provider {$provider} network error",
             provider: $provider,
             errorType: 'network'
         );
@@ -84,11 +84,12 @@ class LLMProviderException extends LLMException
             $status === 429 => 'http_429',
             $status >= 500 => 'http_5xx',
             in_array($status, [401, 403]) => 'auth',
+            in_array($status, [400, 422]) => 'request_error',
             default => 'http_error',
         };
 
         return new self(
-            message: "Provider {$provider} HTTP {$status}: {$body}",
+            message: "Provider {$provider} HTTP {$status}",
             provider: $provider,
             errorType: $errorType,
             httpStatus: $status

@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { addExpertMessageMaterialContext, createExpertMessageMaterialContext, getExpertChatAttachmentSendBlockReason, snapshotExpertMessageMaterialContext } from './chatAttachments'
+import { addExpertMessageMaterialContext, createExpertMessageMaterialContext, getExpertChatAttachmentSendBlockReason, isExpertMaterialSupportedForAiContext, mergeExpertMessageMaterialContexts, snapshotExpertMessageMaterialContext } from './chatAttachments'
 import type { ExpertProjectMaterial } from './types'
 
-function material(id: string, name: string): ExpertProjectMaterial {
+function material(id: string, name: string, format = 'PDF'): ExpertProjectMaterial {
   return {
     id,
     name,
     kind: 'document',
-    format: 'PDF',
+    format,
     meta: 'application/pdf',
     size: '1 КБ',
     category: 'document',
@@ -44,5 +44,23 @@ describe('chat material attachment context', () => {
     expect(firstSnapshot.map((context) => context.id)).toEqual(['m1'])
     expect(nextComposerContext.map((context) => context.id)).toEqual(['m1', 'm2'])
     expect(firstSnapshot).not.toBe(firstContext)
+  })
+
+  it('blocks image context while allowing XLSX context', () => {
+    const image = {
+      ...material('image-1', 'Фото.png'),
+      kind: 'image' as const,
+      format: 'PNG',
+    }
+    const first = [createExpertMessageMaterialContext(material('m1', 'Первый.pdf'))]
+    const restored = mergeExpertMessageMaterialContexts(
+      [createExpertMessageMaterialContext(material('m2', 'Новый.docx'))],
+      first,
+    )
+
+    expect(isExpertMaterialSupportedForAiContext(createExpertMessageMaterialContext(image))).toBe(false)
+    expect(getExpertChatAttachmentSendBlockReason([], [createExpertMessageMaterialContext(image)])).toContain('можно хранить в проекте')
+    expect(isExpertMaterialSupportedForAiContext(createExpertMessageMaterialContext(material('xlsx-1', 'Расчёт.xlsx', 'XLSX')))).toBe(true)
+    expect(restored.map((context) => context.id)).toEqual(['m2', 'm1'])
   })
 })

@@ -12,6 +12,7 @@ enum LLMErrorType: string
     case RATE_LIMIT = 'rate_limit';
     case SERVER_ERROR = 'server_error';
     case NETWORK = 'network';
+    case REQUEST_ERROR = 'request_error';
     case INVALID_RESPONSE = 'invalid_response';
     case UNKNOWN = 'unknown';
 
@@ -32,7 +33,7 @@ enum LLMErrorType: string
     public function isRetryable(): bool
     {
         return match ($this) {
-            self::TIMEOUT, self::SERVER_ERROR, self::NETWORK => true,
+            self::TIMEOUT, self::RATE_LIMIT, self::SERVER_ERROR, self::NETWORK => true,
             default => false,
         };
     }
@@ -49,6 +50,7 @@ enum LLMErrorType: string
             self::RATE_LIMIT => 'Rate limit exceeded',
             self::SERVER_ERROR => 'Server error (5xx)',
             self::NETWORK => 'Network error',
+            self::REQUEST_ERROR => 'Provider request validation error',
             self::INVALID_RESPONSE => 'Invalid response',
             self::UNKNOWN => 'Unknown error',
         };

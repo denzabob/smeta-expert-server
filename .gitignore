@@ -83,3 +83,4 @@ server/server/storage/
 .deploy.env
 backups/
 *.sql
+!server/database/schema/mysql-schema.sql

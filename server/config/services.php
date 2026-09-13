@@ -2,6 +2,11 @@
 
 return [
 
+    'llm_transport' => [
+        'connect_timeout' => env('LLM_CONNECT_TIMEOUT', 10),
+        'health_timeout' => env('LLM_HEALTH_TIMEOUT', 10),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

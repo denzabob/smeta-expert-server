@@ -1,6 +1,6 @@
 import type { AxiosInstance } from 'axios'
 import { describe, expect, it, vi } from 'vitest'
-import { createExpertApi, isDemoProjectId, mapExpertApiError, mapExpertProject, mapFinding, mapMaterial, toProjectPayload } from './api'
+import { createExpertApi, isDemoProjectId, isExpertMaterialContextError, mapExpertApiError, mapExpertProject, mapFinding, mapMaterial, toProjectPayload } from './api'
 
 describe('Expert persistence mapping', () => {
   it('isolates exactly two demo ids', () => {
@@ -17,7 +17,7 @@ describe('Expert persistence mapping', () => {
     const payload=toProjectPayload({title:' P ',direction:'Товароведческое',workType:'Досудебное исследование',customer:'',object:'Объект',address:'',researchDate:'',questions:['Q']})
     expect(payload).toMatchObject({name:'P',domain:'commodity',work_type:'pretrial_research',research_questions:[expect.objectContaining({order:1,text:'Q'})],initial_research_object:{name:'Объект',sort_order:0}})
   })
-  it('provides stable fallback error mapping', () => { expect(mapExpertApiError(new Error('x'))).toEqual({message:'Не удалось выполнить запрос.',validationErrors:{}}) })
+  it('provides stable fallback error mapping', () => { expect(mapExpertApiError(new Error('x'))).toEqual({code:undefined,message:'Не удалось выполнить запрос.',validationErrors:{}}) })
   it('maps private material metadata without exposing a storage path', () => {
     const material=mapMaterial({public_id:'m1',original_name:'evidence.pdf',mime_type:'application/pdf',extension:'pdf',size:2048,category:'document',status:'uploaded',created_at:'2026-09-12T10:00:00Z'})
     expect(material).toMatchObject({id:'m1',name:'evidence.pdf',kind:'document',size:'2.0 КБ',status:'Загружен'})
@@ -78,5 +78,49 @@ describe('Expert persistence mapping', () => {
       {content:'Проверить'},
       {headers:{'X-Expert-Message-Id':'550e8400-e29b-41d4-a716-446655440000'}},
     )
+  })
+
+  it('sends public material UUIDs only when the immutable snapshot is not empty', async () => {
+    const post=vi.fn().mockResolvedValue({data:{
+      user_message:{public_id:'message-1',role:'user',content:'Проверить',created_at:'2026-09-12T10:00:00Z'},
+      assistant_message:{public_id:'message-2',role:'assistant',content:'Ответ',created_at:'2026-09-12T10:00:01Z'},
+    }})
+    const client=createExpertApi({post} as unknown as AxiosInstance)
+
+    await client.sendMessage(
+      'conversation-1',
+      'Проверить',
+      '550e8400-e29b-41d4-a716-446655440000',
+      ['550e8400-e29b-41d4-a716-446655440001'],
+    )
+
+    expect(post).toHaveBeenCalledWith(
+      '/api/expert/conversations/conversation-1/messages',
+      {content:'Проверить',material_public_ids:['550e8400-e29b-41d4-a716-446655440001']},
+      {headers:{'X-Expert-Message-Id':'550e8400-e29b-41d4-a716-446655440000'}},
+    )
+  })
+
+  it('preserves machine-readable context errors without parsing their Russian text', () => {
+    const error = {
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: {code:'material_context_extraction_failed',message:'Не удалось извлечь текст.'},
+      },
+    }
+
+    const mapped = mapExpertApiError(error)
+
+    expect(mapped).toMatchObject({status:422,code:'material_context_extraction_failed',message:'Не удалось извлечь текст.'})
+    expect(isExpertMaterialContextError(mapped.code)).toBe(true)
+    expect(isExpertMaterialContextError('material_context_temporarily_disabled')).toBe(true)
+
+    const conflict = mapExpertApiError({
+      isAxiosError: true,
+      response: {status:409, data:{code:'expert_request_conflict', message:'Snapshot изменён.'}},
+    })
+
+    expect(conflict).toMatchObject({status:409,code:'expert_request_conflict',message:'Snapshot изменён.'})
   })
 })

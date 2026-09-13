@@ -32,6 +32,7 @@ class RouterAiProvider implements LLMProviderInterface
     private float $temperature;
     private int $maxTokens;
     private int $timeout;
+    private int $connectTimeout;
 
     private LLMJsonParser $jsonParser;
 
@@ -42,7 +43,8 @@ class RouterAiProvider implements LLMProviderInterface
         ?float $temperature = null,
         ?int $maxTokens = null,
         ?int $timeout = null,
-        ?LLMJsonParser $jsonParser = null
+        ?LLMJsonParser $jsonParser = null,
+        ?int $connectTimeout = null,
     ) {
         $this->apiKey = (string) ($apiKey ?? config('services.routerai.key') ?? '');
         $this->baseUrl = (string) ($baseUrl ?? config('services.routerai.base_url') ?? self::DEFAULT_BASE_URL);
@@ -50,6 +52,7 @@ class RouterAiProvider implements LLMProviderInterface
         $this->temperature = $temperature ?? (float) config('services.routerai.temperature', 0.2);
         $this->maxTokens = $maxTokens ?? (int) config('services.routerai.max_tokens', 4096);
         $this->timeout = $timeout ?? self::DEFAULT_TIMEOUT;
+        $this->connectTimeout = $connectTimeout ?? (int) config('services.llm_transport.connect_timeout', 10);
         $this->jsonParser = $jsonParser ?? new LLMJsonParser();
     }
 
@@ -64,7 +67,8 @@ class RouterAiProvider implements LLMProviderInterface
             model: $settings['model'] ?? null,
             temperature: isset($settings['temperature']) ? (float) $settings['temperature'] : null,
             maxTokens: isset($settings['max_tokens']) ? (int) $settings['max_tokens'] : null,
-            timeout: isset($settings['timeout']) ? (int) $settings['timeout'] : null
+            timeout: isset($settings['timeout']) ? (int) $settings['timeout'] : null,
+            connectTimeout: isset($settings['connect_timeout']) ? (int) $settings['connect_timeout'] : null,
         );
     }
 
@@ -88,12 +92,13 @@ class RouterAiProvider implements LLMProviderInterface
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
             ])
-            ->timeout(10)
+            ->connectTimeout($this->connectTimeout)
+            ->timeout((int) config('services.llm_transport.health_timeout'))
             ->get($this->baseUrl . '/models');
 
             return $response->successful();
         } catch (\Throwable $e) {
-            Log::debug('RouterAiProvider: ping failed', ['error' => $e->getMessage()]);
+            Log::debug('RouterAiProvider: ping failed', ['exception' => $e::class]);
             return false;
         }
     }
@@ -122,6 +127,7 @@ class RouterAiProvider implements LLMProviderInterface
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
             ])
+            ->connectTimeout($this->connectTimeout)
             ->timeout($this->timeout)
             ->post($this->baseUrl . '/chat/completions', $payload);
 
@@ -164,15 +170,13 @@ class RouterAiProvider implements LLMProviderInterface
             throw LLMProviderException::networkError(self::NAME, $e->getMessage());
         } catch (\Throwable $e) {
             Log::error('RouterAiProvider: unexpected error', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'exception' => $e::class,
             ]);
 
             throw new LLMProviderException(
-                message: "Unexpected error: {$e->getMessage()}",
+                message: 'Unexpected provider error',
                 provider: self::NAME,
                 errorType: 'unknown',
-                previous: $e
             );
         }
     }
@@ -190,6 +194,7 @@ class RouterAiProvider implements LLMProviderInterface
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
             ])
+                ->connectTimeout($this->connectTimeout)
                 ->timeout($this->timeout)
                 ->post($this->baseUrl . '/chat/completions', [
                     'model' => $this->model,
@@ -213,11 +218,19 @@ class RouterAiProvider implements LLMProviderInterface
 
             return new LLMChatResponse(
                 provider: self::NAME,
-                model: $this->model,
+                model: is_string($data['model'] ?? null) ? $data['model'] : $this->model,
                 content: $content,
                 latencyMs: $latencyMs,
-                promptTokens: $data['usage']['prompt_tokens'] ?? null,
-                completionTokens: $data['usage']['completion_tokens'] ?? null,
+                promptTokens: $this->nullableInt($data['usage']['prompt_tokens'] ?? null),
+                completionTokens: $this->nullableInt($data['usage']['completion_tokens'] ?? null),
+                totalTokens: $this->nullableInt($data['usage']['total_tokens'] ?? null),
+                cachedTokens: $this->nullableInt($data['usage']['prompt_tokens_details']['cached_tokens'] ?? null),
+                reasoningTokens: $this->nullableInt($data['usage']['completion_tokens_details']['reasoning_tokens'] ?? null),
+                metadata: array_filter([
+                    'upstream_id' => is_string($data['id'] ?? null) ? $data['id'] : null,
+                    'upstream_provider' => is_string($data['provider'] ?? null) ? $data['provider'] : null,
+                    'service_tier' => is_string($data['service_tier'] ?? null) ? $data['service_tier'] : null,
+                ], static fn (mixed $value): bool => $value !== null),
             );
         } catch (LLMProviderException $e) {
             throw $e;
@@ -228,14 +241,20 @@ class RouterAiProvider implements LLMProviderInterface
 
             throw LLMProviderException::networkError(self::NAME, $e->getMessage());
         } catch (\Throwable $e) {
-            Log::error('RouterAiProvider: unexpected chat error', ['error' => $e->getMessage()]);
+            Log::error('RouterAiProvider: unexpected chat error', ['exception' => $e::class]);
 
             throw new LLMProviderException(
                 message: 'Unexpected chat provider error',
                 provider: self::NAME,
                 errorType: 'unknown',
-                previous: $e,
             );
         }
+    }
+
+    private function nullableInt(mixed $value): ?int
+    {
+        return is_int($value) || (is_string($value) && ctype_digit($value))
+            ? (int) $value
+            : null;
     }
 }

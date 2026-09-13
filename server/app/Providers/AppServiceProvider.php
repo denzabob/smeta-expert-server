@@ -8,6 +8,8 @@ use App\Domain\PriceIndices\Infrastructure\Parsing\ClassifierArchiveCommandRunne
 use App\Domain\PriceIndices\Infrastructure\Parsing\ProcessClassifierArchiveCommandRunner;
 use App\Models\Chat\ChatConversation;
 use App\Models\Expert\ExpertProject;
+use App\Services\Expert\ExpertMaterialTextExtractor;
+use App\Services\Expert\ExpertMaterialTextExtractorInterface;
 use App\Models\Idea;
 use App\Models\MaterialDimensionParseFailure;
 use App\Models\MaterialDimensionRule;
@@ -35,6 +37,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(ClassifierHttpTransport::class, LaravelClassifierHttpTransport::class);
         $this->app->bind(ClassifierArchiveCommandRunner::class, ProcessClassifierArchiveCommandRunner::class);
+        $this->app->bind(ExpertMaterialTextExtractorInterface::class, ExpertMaterialTextExtractor::class);
     }
 
     /**

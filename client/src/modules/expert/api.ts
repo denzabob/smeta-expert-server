@@ -98,7 +98,7 @@ export type ExpertProjectDto = {
 }
 export type ExpertCollection<T> = { data: T[] }
 export type ExpertValidationErrors = Record<string, string[]>
-export type ExpertApiError = { status?: number; message: string; validationErrors: ExpertValidationErrors }
+export type ExpertApiError = { status?: number; code?: string; message: string; validationErrors: ExpertValidationErrors }
 export type ExpertUploadOptions = { onProgress?: (progress: number) => void }
 export type ExpertDownloadOptions = { onProgress?: (progress: number | null) => void }
 export type ExpertFindingInput = {
@@ -286,10 +286,11 @@ export function mapExpertApiError(error: unknown): ExpertApiError {
   if (!axios.isAxiosError(error))
     return { message: 'Не удалось выполнить запрос.', validationErrors: {} }
   const data = error.response?.data as
-    | { message?: string; errors?: ExpertValidationErrors }
+    | { message?: string; code?: string; errors?: ExpertValidationErrors }
     | undefined
   return {
     status: error.response?.status,
+    code: data?.code,
     message:
       data?.message ??
       (error.response?.status === 404
@@ -297,6 +298,14 @@ export function mapExpertApiError(error: unknown): ExpertApiError {
         : 'Не удалось выполнить запрос.'),
     validationErrors: data?.errors ?? {},
   }
+}
+
+export function isExpertMaterialContextError(code?: string): boolean {
+  return code === 'material_context_unsupported'
+    || code === 'material_context_temporarily_disabled'
+    || code === 'material_context_extraction_failed'
+    || code === 'material_context_too_large'
+    || code === 'material_context_not_found'
 }
 
 async function defaultHttp(): Promise<AxiosInstance> {
@@ -375,10 +384,18 @@ export function createExpertApi(http?: AxiosInstance) {
       )
       return data.data.map(mapMessage)
     },
-    async sendMessage(conversationId: string, content: string, clientMessageId: string) {
+    async sendMessage(
+      conversationId: string,
+      content: string,
+      clientMessageId: string,
+      materialPublicIds: string[] = [],
+    ) {
+      const payload = materialPublicIds.length
+        ? { content, material_public_ids: materialPublicIds }
+        : { content }
       const { data } = await (await resolveHttp()).post<ExpertChatReplyDto>(
         `/api/expert/conversations/${encodeURIComponent(conversationId)}/messages`,
-        { content },
+        payload,
         { headers: { 'X-Expert-Message-Id': clientMessageId } },
       )
       return {
