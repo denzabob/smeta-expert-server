@@ -52,6 +52,7 @@ return [
         'temperature' => env('OPENROUTER_TEMPERATURE', 0.2),
         'max_tokens' => env('OPENROUTER_MAX_TOKENS', 4096),
         'timeout' => env('OPENROUTER_TIMEOUT', 60),
+        'capabilities' => ['text_input', 'structured_output'],
     ],
 
     /*
@@ -66,6 +67,7 @@ return [
         'temperature' => env('DEEPSEEK_TEMPERATURE', 0.2),
         'max_tokens' => env('DEEPSEEK_MAX_TOKENS', 4096),
         'timeout' => env('DEEPSEEK_TIMEOUT', 90),
+        'capabilities' => ['text_input', 'structured_output'],
     ],
 
     /*
@@ -80,6 +82,7 @@ return [
         'temperature' => env('MISTRAL_TEMPERATURE', 0.2),
         'max_tokens' => env('MISTRAL_MAX_TOKENS', 4096),
         'timeout' => env('MISTRAL_TIMEOUT', 90),
+        'capabilities' => ['text_input', 'structured_output'],
     ],
 
     /*
@@ -94,6 +97,12 @@ return [
         'temperature' => env('ROUTERAI_TEMPERATURE', 0.2),
         'max_tokens' => env('ROUTERAI_MAX_TOKENS', 4096),
         'timeout' => env('ROUTERAI_TIMEOUT', 90),
+        'capabilities' => ['text_input', 'structured_output', 'tools'],
+        'model_capabilities' => [
+            'openai/gpt-4o*' => ['image_input', 'pdf_ocr'],
+            'openai/gpt-4.1*' => ['image_input', 'pdf_ocr'],
+            'google/gemini-2.*' => ['image_input', 'pdf_ocr'],
+        ],
     ],
 
     /*

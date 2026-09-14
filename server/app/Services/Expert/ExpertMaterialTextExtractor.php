@@ -202,8 +202,14 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
         }
 
         $document = (new Parser())->parseContent($contents);
+        $pageCount = count($document->getPages());
+        $text = (string) $document->getText();
+        $meaningfulChars = preg_match_all('/[\p{L}\p{N}]/u', $text) ?: 0;
+        if ($meaningfulChars < max(1, (int) config('expert.pdf_ocr.min_usable_text_chars', 16))) {
+            throw ExpertMaterialContextException::pdfWithoutUsableText($pageCount);
+        }
 
-        return $this->normaliseText($document->getText());
+        return $this->normaliseText($text);
     }
 
     private function wordText(DOMXPath $xpath, DOMNode $node): string

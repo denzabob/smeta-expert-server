@@ -6,7 +6,9 @@ namespace App\Services\Expert;
 
 use App\Models\Expert\ExpertConversation;
 use App\Models\Expert\ExpertMessage;
+use App\Services\LLM\DTO\LLMChatMessage;
 use App\Services\LLM\DTO\LLMChatRequest;
+use App\Services\LLM\DTO\LLMTextContent;
 use App\Services\LLM\LLMRouter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -16,6 +18,7 @@ final class ExpertChatService
     public function __construct(
         private readonly LLMRouter $llmRouter,
         private readonly ExpertChatPrompt $prompt,
+        private readonly ExpertPdfOcrCache $ocrCache,
     ) {
     }
 
@@ -57,15 +60,12 @@ final class ExpertChatService
             : new ExpertChatResult($userMessage, $assistantMessage, false);
     }
 
-    /**
-     * @param list<array{public_id: string, name: string, mime_type: string, text: string}> $materialContext
-     */
     public function reply(
         ExpertConversation $conversation,
         string $content,
         string $clientMessageId,
         string $requestFingerprint,
-        array $materialContext,
+        ExpertChatMaterialContext $materialContext,
     ): ExpertChatResult {
         $lock = Cache::lock(
             "expert-chat:{$conversation->id}:{$clientMessageId}",
@@ -98,6 +98,11 @@ final class ExpertChatService
                 $response = $this->llmRouter
                     ->setUserId($conversation->project->user_id)
                     ->chat($this->buildRequest($conversation, $userMessage, $materialContext));
+                foreach ($materialContext->ocrCandidates as $candidate) {
+                    $parsed = collect($response->parsedFiles)->first(fn ($file) => strtolower($file->sha256) === strtolower($candidate->sha256));
+                    if ($parsed === null) throw ExpertPdfOcrException::failed();
+                    $this->ocrCache->put($candidate, $parsed);
+                }
 
                 $assistantMessage = $conversation->messages()->create([
                     'role' => 'assistant',
@@ -162,27 +167,25 @@ final class ExpertChatService
         ])->save();
     }
 
-    /**
-     * @param list<array{public_id: string, name: string, mime_type: string, text: string}> $materialContext
-     */
     private function buildRequest(
         ExpertConversation $conversation,
         ExpertMessage $currentMessage,
-        array $materialContext,
+        ExpertChatMaterialContext $materialContext,
     ): LLMChatRequest {
         $history = $this->recentHistory($conversation, $currentMessage)
-            ->map(fn (ExpertMessage $message): array => [
-                'role' => $message->role,
-                'content' => $message->content,
-            ])
+            ->map(fn (ExpertMessage $message): LLMChatMessage => LLMChatMessage::text(
+                $message->role,
+                $message->content,
+            ))
             ->all();
 
-        $history[] = [
-            'role' => 'user',
-            'content' => $currentMessage->content,
-        ];
+        $history[] = new LLMChatMessage('user', [
+            new LLMTextContent($currentMessage->content),
+            ...$materialContext->images,
+            ...$materialContext->files,
+        ]);
 
-        return new LLMChatRequest($this->prompt->systemMessage(), $history, $materialContext);
+        return new LLMChatRequest($this->prompt->systemMessage(), $history, $materialContext->textMaterials);
     }
 
     /**

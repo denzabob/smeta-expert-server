@@ -36,15 +36,22 @@
       <v-chip-group v-model="filter" mandatory selected-class="text-primary">
         <v-chip v-for="item in filters" :key="item.value" :value="item.value" filter variant="tonal" size="small">{{ item.label }}</v-chip>
       </v-chip-group>
+      <div class="expert-materials__view-controls">
+        <v-btn-toggle v-model="viewMode" mandatory density="compact" color="primary" variant="outlined" aria-label="Вид материалов">
+          <v-btn value="list" prepend-icon="mdi-format-list-bulleted">Компактный список</v-btn>
+          <v-btn value="grid" prepend-icon="mdi-view-grid-outline">Плитка</v-btn>
+        </v-btn-toggle>
+        <v-select v-model="pageSize" :items="pageSizeOptions" label="На странице" density="compact" variant="outlined" hide-details aria-label="Количество материалов на странице" />
+      </div>
     </div>
 
-    <div v-if="filteredMaterials.length" class="expert-materials__grid">
-      <article v-for="material in filteredMaterials" :key="material.id" class="expert-material-card">
+    <div v-if="pagedMaterials.length" class="expert-materials__grid" :class="{ 'expert-materials__grid--tiles': viewMode === 'grid' }">
+      <article v-for="material in pagedMaterials" :key="material.id" class="expert-material-card">
         <button class="expert-material-card__open" type="button" :aria-label="`Открыть свойства: ${material.name}`" @click="openMaterial(material)">
-          <div class="expert-material-card__visual" :class="`expert-material-card__visual--${materialAccent(material)}`">
+          <div :ref="(element) => setThumbnailTarget(material.id, element)" class="expert-material-card__visual" :class="`expert-material-card__visual--${materialAccent(material)}`">
             <template v-if="material.kind === 'image'">
-              <v-progress-circular v-if="imagePreview(material.id)?.status === 'loading'" indeterminate color="primary" size="24" width="3" aria-label="Загружается миниатюра изображения" />
-              <img v-else-if="imagePreview(material.id)?.status === 'ready'" :src="imagePreview(material.id)?.url" :alt="`Миниатюра: ${material.name}`" class="expert-material-card__thumbnail" @error="markImagePreviewError(material.id)" />
+              <v-progress-circular v-if="thumbnailPreview(material.id)?.status === 'loading'" indeterminate color="primary" size="24" width="3" aria-label="Загружается миниатюра изображения" />
+              <img v-else-if="thumbnailPreview(material.id)?.status === 'ready'" :src="thumbnailPreview(material.id)?.url" :alt="`Миниатюра: ${material.name}`" class="expert-material-card__thumbnail" @error="markThumbnailError(material.id)" />
               <v-icon v-else :icon="material.icon" size="28" />
             </template>
             <v-icon v-else :icon="material.icon" size="28" />
@@ -62,12 +69,18 @@
         </v-menu>
       </article>
     </div>
-    <div v-else-if="!loading && !uploadItems.length" class="expert-empty">
+    <div v-else-if="!loading && !uploadItems.length && !props.project.materials.length" class="expert-empty">
       <v-icon icon="mdi-folder-open-outline" size="44" />
       <h2>Материалы пока не добавлены</h2>
       <p>Допустимы PDF, DOCX, XLSX, JPG, JPEG, PNG и WEBP размером до 50 МБ.</p>
       <v-btn color="primary" variant="tonal" @click="requestUpload">Добавить материалы</v-btn>
     </div>
+    <div v-else-if="!loading && !uploadItems.length" class="expert-empty expert-empty--filtered">
+      <v-icon icon="mdi-filter-off-outline" size="38" />
+      <h2>Материалы не найдены</h2>
+      <p>Измените поиск или фильтр, чтобы увидеть другие материалы.</p>
+    </div>
+    <v-pagination v-if="pageCount > 1 && pagedMaterials.length" v-model="page" :length="pageCount" density="comfortable" class="expert-materials__pagination" aria-label="Страницы материалов" />
 
     <ExpertMaterialDrawer
       v-if="drawerOpen"
@@ -105,11 +118,16 @@ import ExpertMaterialDrawer from '../components/materials/ExpertMaterialDrawer.v
 import { useExpertMaterialTransfers, type ExpertMaterialUploadItem } from '../composables/useExpertMaterialTransfers'
 import { expertApi, mapExpertApiError } from '../api'
 import { describeProjectMaterial } from '../materialPresentation'
+import { filterAndPaginateMaterials } from '../materialPagination'
 import type { ExpertMaterialKind, ExpertMaterialStatus, ExpertProject, ExpertProjectMaterial, ExpertProjectMode } from '../types'
 
 const props = defineProps<{ project: ExpertProject; projectMode: ExpertProjectMode }>()
 const search = ref('')
 const filter = ref<'all' | ExpertMaterialKind>('all')
+const pageSizeOptions = [25, 50, 100]
+const viewMode = ref<'list' | 'grid'>(readViewMode())
+const pageSize = ref(readPageSize())
+const page = ref(1)
 const drawerOpen = ref(false)
 const selectedMaterial = ref<ExpertProjectMaterial | null>(null)
 const loading = ref(false)
@@ -130,10 +148,10 @@ const filters: { label: string; value: 'all' | ExpertMaterialKind }[] = [
   { label: 'Таблицы', value: 'spreadsheet' },
   { label: 'Прочее', value: 'other' },
 ]
-const filteredMaterials = computed(() => props.project.materials.filter((item) =>
-  (filter.value === 'all' || item.kind === filter.value) &&
-  item.name.toLowerCase().includes(search.value.trim().toLowerCase()),
-))
+const materialPage = computed(() => filterAndPaginateMaterials(props.project.materials, search.value, filter.value, page.value, pageSize.value))
+const filteredMaterials = computed(() => materialPage.value.filtered)
+const pageCount = computed(() => materialPage.value.pageCount)
+const pagedMaterials = computed(() => materialPage.value.items)
 const uploadItems = computed(() => transfers.uploads.value)
 const uploadingCount = computed(() => transfers.uploadingCount.value)
 const failedUploads = computed(() => uploadItems.value.filter((item) => item.state === 'error'))
@@ -172,8 +190,9 @@ function uploadFiles(event: Event) {
   transfers.queueUploads(props.project.id, files, (material) => {
     if (props.project.materials.some((item) => item.id === material.id)) return
     props.project.materials.unshift(material)
+    page.value = 1
     props.project.counts && (props.project.counts.materials = props.project.materials.length)
-    void transfers.loadImagePreview(material)
+    void transfers.loadImageThumbnail(material)
   })
   input.value = ''
 }
@@ -223,6 +242,7 @@ async function confirmRemove() {
 }
 
 function openMaterial(material: ExpertProjectMaterial) {
+  if (selectedMaterial.value && selectedMaterial.value.id !== material.id) transfers.releaseImagePreview(selectedMaterial.value.id)
   selectedMaterial.value = material
   drawerOpen.value = true
   void transfers.loadImagePreview(material)
@@ -239,8 +259,35 @@ function imagePreview(id: string) {
   return transfers.imagePreviews.value[id]
 }
 
+function thumbnailPreview(id: string) {
+  return transfers.thumbnailPreviews.value[id]
+}
+
 function markImagePreviewError(id: string) {
   transfers.markImagePreviewError(id)
+}
+
+function markThumbnailError(id: string) {
+  transfers.markThumbnailError(id)
+}
+
+let thumbnailObserver: IntersectionObserver | null = null
+if (typeof IntersectionObserver !== 'undefined') {
+  thumbnailObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return
+      const id = (entry.target as HTMLElement).dataset.materialId
+      const material = id ? pagedMaterials.value.find((item) => item.id === id) : undefined
+      if (material) void transfers.loadImageThumbnail(material)
+      thumbnailObserver?.unobserve(entry.target)
+    })
+  }, { rootMargin: '160px' })
+}
+
+function setThumbnailTarget(id: string, element: Element | null) {
+  if (!(element instanceof HTMLElement)) return
+  element.dataset.materialId = id
+  thumbnailObserver?.observe(element)
 }
 
 function materialAccent(material: ExpertProjectMaterial) {
@@ -285,9 +332,32 @@ function statusColor(status: ExpertMaterialStatus) {
 watch(() => props.project.id, loadMaterials, { immediate: true })
 watch(() => props.project.materials.map((material) => material.id), () => {
   transfers.syncImagePreviews(props.project.materials)
-  props.project.materials.filter((material) => material.kind === 'image').forEach((material) => void transfers.loadImagePreview(material))
+  page.value = Math.min(page.value, pageCount.value)
 }, { immediate: true })
-onBeforeUnmount(() => transfers.dispose())
+watch([search, filter, pageSize], () => { page.value = 1 })
+watch(drawerOpen, (open) => {
+  if (!open && selectedMaterial.value) transfers.releaseImagePreview(selectedMaterial.value.id)
+})
+watch(viewMode, (value) => writeStorage('expert.materials.view', value))
+watch(pageSize, (value) => writeStorage('expert.materials.pageSize', String(value)))
+onBeforeUnmount(() => { thumbnailObserver?.disconnect(); transfers.dispose() })
+
+function readStorage(key: string, fallback: string): string {
+  try { return window.localStorage.getItem(key) ?? fallback } catch { return fallback }
+}
+
+function readViewMode(): 'list' | 'grid' {
+  return readStorage('expert.materials.view', 'list') === 'grid' ? 'grid' : 'list'
+}
+
+function readPageSize(): number {
+  const value = Number(readStorage('expert.materials.pageSize', '25'))
+  return pageSizeOptions.includes(value) ? value : 25
+}
+
+function writeStorage(key: string, value: string) {
+  try { window.localStorage.setItem(key, value) } catch { /* storage is optional */ }
+}
 </script>
 
 <style scoped>
@@ -300,11 +370,13 @@ onBeforeUnmount(() => transfers.dispose())
 .expert-materials__uploads { margin-bottom: 16px; }
 .expert-materials__upload-summary { color: rgba(var(--v-theme-on-surface-variant), .76); font-size: .75rem; font-weight: 700; }
 .expert-materials__controls { display: grid; grid-template-columns: minmax(240px, 380px) minmax(0, 1fr); align-items: center; gap: 18px; margin-bottom: 16px; }
-.expert-material-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 13px; min-height: 72px; padding: 11px 14px; border: 1px solid rgba(var(--v-theme-outline-variant), .62); border-radius: var(--md-sys-shape-corner-large); color: rgb(var(--v-theme-on-surface)); background: rgb(var(--v-theme-surface)); }
+.expert-materials__view-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; grid-column: 1 / -1; }
+.expert-materials__view-controls :deep(.v-select) { max-width: 150px; }
+.expert-material-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 64px; padding: 8px 12px; border: 1px solid rgba(var(--v-theme-outline-variant), .62); border-radius: var(--md-sys-shape-corner-large); color: rgb(var(--v-theme-on-surface)); background: rgb(var(--v-theme-surface)); }
 .expert-material-card--transfer { background: rgb(var(--v-theme-surface-container-low)); }
 .expert-material-card__open { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; min-width: 0; gap: 13px; padding: 0; border: 0; color: inherit; background: transparent; cursor: pointer; font: inherit; text-align: left; }
 .expert-material-card:not(.expert-material-card--transfer):hover { border-color: rgba(var(--v-theme-primary), .45); background: rgba(var(--v-theme-primary), .035); }
-.expert-material-card__visual { display: grid; place-items: center; width: 46px; height: 46px; overflow: hidden; border-radius: var(--md-sys-shape-corner-medium); color: rgb(var(--v-theme-on-surface-variant)); background: rgba(var(--v-theme-on-surface-variant), .1); }
+.expert-material-card__visual { display: grid; place-items: center; width: 44px; height: 44px; overflow: hidden; border-radius: var(--md-sys-shape-corner-medium); color: rgb(var(--v-theme-on-surface-variant)); background: rgba(var(--v-theme-on-surface-variant), .1); }
 .expert-material-card__visual--pdf { color: rgb(var(--v-theme-error)); background: rgba(var(--v-theme-error), .1); }
 .expert-material-card__visual--word { color: rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .1); }
 .expert-material-card__visual--spreadsheet { color: rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .1); }
@@ -317,8 +389,14 @@ onBeforeUnmount(() => transfers.dispose())
 .expert-material-card__body strong { font-size: .84rem; }
 .expert-material-card__body span { margin-top: 3px; color: rgba(var(--v-theme-on-surface-variant), .76); font-size: .71rem; }
 .expert-material-card__body small { margin-top: 2px; color: rgba(var(--v-theme-on-surface-variant), .58); font-size: .66rem; }
+.expert-materials__grid--tiles { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.expert-materials__grid--tiles .expert-material-card { grid-template-columns: 1fr auto; align-items: start; min-height: 220px; padding: 10px; }
+.expert-materials__grid--tiles .expert-material-card__open { grid-template-columns: 1fr; align-content: start; gap: 9px; }
+.expert-materials__grid--tiles .expert-material-card__visual { width: 100%; height: 148px; }
+.expert-materials__grid--tiles .expert-material-card__thumbnail { object-fit: cover; }
+.expert-materials__pagination { margin-top: 18px; }
 .expert-empty { display: grid; justify-items: center; padding: 64px 20px; text-align: center; color: rgba(var(--v-theme-on-surface-variant), .75); }
 .expert-empty h2 { margin: 14px 0 4px; color: rgb(var(--v-theme-on-surface)); font-size: 1.05rem; }
 .expert-empty p { max-width: 440px; margin: 0 0 18px; font-size: .8rem; }
-@media (max-width: 760px) { .expert-section-page { padding: 18px 13px 76px; } .expert-section-page__header { align-items: stretch; flex-direction: column; } .expert-materials__controls { grid-template-columns: 1fr; gap: 8px; } .expert-materials__controls :deep(.v-slide-group) { max-width: calc(100vw - 60px); } .expert-material-card { grid-template-columns: minmax(0, 1fr) auto; } .expert-material-card > .v-chip { display: none; } .expert-material-card > .v-menu { grid-column: 2; grid-row: 1; } .expert-material-card--transfer > .v-btn { grid-column: 1 / -1; justify-self: start; } }
+@media (max-width: 760px) { .expert-section-page { padding: 18px 13px 76px; } .expert-section-page__header { align-items: stretch; flex-direction: column; } .expert-materials__controls { grid-template-columns: 1fr; gap: 8px; } .expert-materials__controls :deep(.v-slide-group) { max-width: calc(100vw - 60px); } .expert-materials__view-controls { justify-content: stretch; } .expert-materials__view-controls :deep(.v-btn-toggle) { flex: 1; } .expert-materials__view-controls :deep(.v-btn) { flex: 1; padding-inline: 8px; } .expert-material-card { grid-template-columns: minmax(0, 1fr) auto auto; } .expert-material-card > .v-chip { grid-column: 2; grid-row: 1; } .expert-material-card > .v-menu { grid-column: 3; grid-row: 1; } .expert-material-card--transfer > .v-btn { grid-column: 1 / -1; justify-self: start; } }
 </style>

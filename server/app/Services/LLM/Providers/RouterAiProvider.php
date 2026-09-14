@@ -8,8 +8,11 @@ use App\Services\LLM\Contracts\LLMProviderInterface;
 use App\Services\LLM\DTO\DecompositionPrompt;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMChatResponse;
+use App\Services\LLM\RouterAiFileAnnotationParser;
 use App\Services\LLM\DTO\LLMResponse;
 use App\Services\LLM\Exceptions\LLMProviderException;
+use App\Services\LLM\LLMCapabilityCatalog;
+use App\Services\LLM\OpenAiChatMessageMapper;
 use App\Services\LLM\Parsing\LLMJsonParser;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -75,6 +78,16 @@ class RouterAiProvider implements LLMProviderInterface
     public function name(): string
     {
         return self::NAME;
+    }
+
+    public function model(): string
+    {
+        return $this->model;
+    }
+
+    public function capabilities(): array
+    {
+        return LLMCapabilityCatalog::forProviderModel(self::NAME, $this->model);
     }
 
     public function supportsJsonMode(): bool
@@ -196,12 +209,13 @@ class RouterAiProvider implements LLMProviderInterface
             ])
                 ->connectTimeout($this->connectTimeout)
                 ->timeout($this->timeout)
-                ->post($this->baseUrl . '/chat/completions', [
+                ->post($this->baseUrl . '/chat/completions', array_filter([
                     'model' => $this->model,
-                    'messages' => $request->toProviderMessages(),
+                    'messages' => OpenAiChatMessageMapper::map($request),
                     'temperature' => $this->temperature,
                     'max_tokens' => $this->maxTokens,
-                ]);
+                    'plugins' => $request->hasPdfOcrFiles() ? [['id' => 'file-parser', 'pdf' => ['engine' => (string) config('expert.pdf_ocr.engine', 'mistral-ocr')]]] : null,
+                ], static fn (mixed $value): bool => $value !== null));
 
             $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
 
@@ -226,6 +240,7 @@ class RouterAiProvider implements LLMProviderInterface
                 totalTokens: $this->nullableInt($data['usage']['total_tokens'] ?? null),
                 cachedTokens: $this->nullableInt($data['usage']['prompt_tokens_details']['cached_tokens'] ?? null),
                 reasoningTokens: $this->nullableInt($data['usage']['completion_tokens_details']['reasoning_tokens'] ?? null),
+                                parsedFiles: RouterAiFileAnnotationParser::parse($data['choices'][0]['message']['annotations'] ?? []),
                 metadata: array_filter([
                     'upstream_id' => is_string($data['id'] ?? null) ? $data['id'] : null,
                     'upstream_provider' => is_string($data['provider'] ?? null) ? $data['provider'] : null,

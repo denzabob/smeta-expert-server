@@ -77,6 +77,9 @@ server/tests/Feature/*
 !server/tests/Feature/Billing/*.php
 !server/tests/Feature/Expert/
 !server/tests/Feature/Expert/**
+!server/tests/Fixtures/
+!server/tests/Fixtures/Expert/
+!server/tests/Fixtures/Expert/vision-defect.jpg.b64
 
 # If you really do not need these generated trees in git
 server/server/storage/

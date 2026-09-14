@@ -30,6 +30,7 @@ export interface ExpertMaterialTransferApi {
   uploadMaterial(projectId: string, file: File, options?: ExpertUploadOptions): Promise<ExpertProjectMaterial>
   downloadMaterial(id: string, options?: ExpertDownloadOptions): Promise<Blob>
   getMaterialImageContent(id: string): Promise<Blob>
+  getMaterialThumbnail?(id: string): Promise<Blob>
 }
 
 export type MaterialDownloadResult =
@@ -43,10 +44,14 @@ export function useExpertMaterialTransfers(
 ) {
   const uploads = ref<ExpertMaterialUploadItem[]>([])
   const downloadStates = ref<Record<string, { progress: number | null }>>({})
+  const thumbnailPreviews = ref<Record<string, ExpertMaterialImagePreview>>({})
   const imagePreviews = ref<Record<string, ExpertMaterialImagePreview>>({})
   const uploadCallbacks = new Map<string, (material: ExpertProjectMaterial) => void>()
   const queuedUploadIds: string[] = []
   const previewTokens = new Map<string, number>()
+  const thumbnailTokens = new Map<string, number>()
+  const thumbnailAccessOrder: string[] = []
+  const maxThumbnailCache = 80
   const maxConcurrentUploads = 3
   let activeUploads = 0
   let itemSequence = 0
@@ -163,9 +168,38 @@ export function useExpertMaterialTransfers(
     }
   }
 
+  async function loadImageThumbnail(material: Pick<ExpertProjectMaterial, 'id' | 'kind'>): Promise<void> {
+    if (disposed || material.kind !== 'image') return
+
+    const existing = thumbnailPreviews.value[material.id]
+    if (existing?.status === 'ready' || existing?.status === 'loading') return
+
+    const token = (thumbnailTokens.get(material.id) ?? 0) + 1
+    thumbnailTokens.set(material.id, token)
+    updateThumbnailPreview(material.id, { status: 'loading' })
+    try {
+      const blob = await (api.getMaterialThumbnail?.(material.id) ?? api.getMaterialImageContent(material.id))
+      const url = URL.createObjectURL(blob)
+      if (disposed || thumbnailTokens.get(material.id) !== token) {
+        URL.revokeObjectURL(url)
+        return
+      }
+      updateThumbnailPreview(material.id, { status: 'ready', url })
+      thumbnailAccessOrder.push(material.id)
+      trimThumbnailCache()
+    } catch (error) {
+      if (!disposed && thumbnailTokens.get(material.id) === token) updateThumbnailPreview(material.id, { status: 'error', error })
+    }
+  }
+
   function markImagePreviewError(id: string) {
     releaseImagePreview(id)
     updateImagePreview(id, { status: 'error' })
+  }
+
+  function markThumbnailError(id: string) {
+    releaseThumbnail(id)
+    updateThumbnailPreview(id, { status: 'error' })
   }
 
   function syncImagePreviews(materials: ExpertProjectMaterial[]) {
@@ -173,6 +207,22 @@ export function useExpertMaterialTransfers(
     Object.keys(imagePreviews.value).forEach((id) => {
       if (!allowed.has(id)) releaseImagePreview(id)
     })
+    Object.keys(thumbnailPreviews.value).forEach((id) => {
+      if (!allowed.has(id)) releaseThumbnail(id)
+    })
+  }
+
+  function releaseThumbnail(id: string) {
+    thumbnailTokens.set(id, (thumbnailTokens.get(id) ?? 0) + 1)
+    const preview = thumbnailPreviews.value[id]
+    if (preview?.url) URL.revokeObjectURL(preview.url)
+    const { [id]: _removed, ...remaining } = thumbnailPreviews.value
+    thumbnailPreviews.value = remaining
+    let index = thumbnailAccessOrder.indexOf(id)
+    while (index >= 0) {
+      thumbnailAccessOrder.splice(index, 1)
+      index = thumbnailAccessOrder.indexOf(id)
+    }
   }
 
   function releaseImagePreview(id: string) {
@@ -189,6 +239,11 @@ export function useExpertMaterialTransfers(
       if (preview.url) URL.revokeObjectURL(preview.url)
     })
     imagePreviews.value = {}
+    Object.values(thumbnailPreviews.value).forEach((preview) => {
+      if (preview.url) URL.revokeObjectURL(preview.url)
+    })
+    thumbnailPreviews.value = {}
+    thumbnailAccessOrder.splice(0)
   }
 
   function processQueue(projectId: string) {
@@ -240,10 +295,24 @@ export function useExpertMaterialTransfers(
     imagePreviews.value = { ...imagePreviews.value, [id]: preview }
   }
 
+  function updateThumbnailPreview(id: string, preview: ExpertMaterialImagePreview) {
+    const previous = thumbnailPreviews.value[id]
+    if (previous?.url && previous.url !== preview.url) URL.revokeObjectURL(previous.url)
+    thumbnailPreviews.value = { ...thumbnailPreviews.value, [id]: preview }
+  }
+
+  function trimThumbnailCache() {
+    while (thumbnailAccessOrder.length > maxThumbnailCache) {
+      const candidate = thumbnailAccessOrder.shift()
+      if (candidate) releaseThumbnail(candidate)
+    }
+  }
+
   return {
     uploads,
     uploadingCount,
     imagePreviews,
+    thumbnailPreviews,
     queueUploads,
     retryUpload,
     removeUpload,
@@ -252,9 +321,12 @@ export function useExpertMaterialTransfers(
     isDownloading,
     downloadProgress,
     loadImagePreview,
+    loadImageThumbnail,
     markImagePreviewError,
+    markThumbnailError,
     syncImagePreviews,
     releaseImagePreview,
+    releaseThumbnail,
     dispose,
   }
 }

@@ -1,7 +1,8 @@
 import type { ExpertMaterialUploadItem } from './composables/useExpertMaterialTransfers'
 import type { ExpertMessageMaterialContext, ExpertProjectMaterial } from './types'
 
-const supportedAiContextFormats = new Set(['txt', 'md', 'docx', 'pdf', 'xlsx'])
+const supportedDocumentFormats = new Set(['txt', 'md', 'docx', 'pdf', 'xlsx'])
+const supportedImageFormats = new Set(['jpg', 'jpeg', 'png', 'webp'])
 
 export function createExpertMessageMaterialContext(material: ExpertProjectMaterial): ExpertMessageMaterialContext {
   return {
@@ -44,8 +45,11 @@ export function mergeExpertMessageMaterialContexts(
 export function isExpertMaterialSupportedForAiContext(
   context: Pick<ExpertMessageMaterialContext, 'kind' | 'format'>,
 ): boolean {
-  return context.kind !== 'image'
-    && supportedAiContextFormats.has(context.format.trim().toLowerCase())
+  const format = context.format.trim().toLowerCase()
+
+  return context.kind === 'image'
+    ? supportedImageFormats.has(format)
+    : supportedDocumentFormats.has(format)
 }
 
 export function getExpertChatAttachmentSendBlockReason(

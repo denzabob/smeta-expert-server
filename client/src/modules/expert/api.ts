@@ -306,6 +306,17 @@ export function isExpertMaterialContextError(code?: string): boolean {
     || code === 'material_context_extraction_failed'
     || code === 'material_context_too_large'
     || code === 'material_context_not_found'
+    || code === 'vision_not_supported'
+    || code === 'pdf_ocr_not_supported'
+    || code === 'pdf_ocr_disabled'
+    || code === 'pdf_ocr_too_large'
+    || code === 'pdf_ocr_too_many_pages'
+    || code === 'pdf_ocr_failed'
+    || code === 'pdf_ocr_cache_invalid'
+    || code === 'vision_material_invalid'
+    || code === 'vision_material_too_large'
+    || code === 'vision_too_many_images'
+    || code === 'vision_preparation_failed'
 }
 
 async function defaultHttp(): Promise<AxiosInstance> {
@@ -435,6 +446,13 @@ export function createExpertApi(http?: AxiosInstance) {
     async getMaterialImageContent(id: string) {
       const response = await (await resolveHttp()).get<Blob>(
         `/api/expert/materials/${encodeURIComponent(id)}/content`,
+        { responseType: 'blob' },
+      )
+      return response.data
+    },
+    async getMaterialThumbnail(id: string) {
+      const response = await (await resolveHttp()).get<Blob>(
+        `/api/expert/materials/${encodeURIComponent(id)}/thumbnail`,
         { responseType: 'blob' },
       )
       return response.data

@@ -377,7 +377,7 @@ function sendMessage(text: string, accepted: () => void = () => undefined) {
 
   const optimisticMessage: ExpertMessage = {
     ...createOptimisticUserMessage(normalizedText),
-    // Block 4A does not send material context; retain this immutable snapshot for Block 4B only.
+    // Runtime-only material snapshot is reused unchanged by retry and never persisted in messages.
     runtimeMaterialContext: snapshotExpertMessageMaterialContext(composerMaterialContexts.value),
   }
   appendMessages([optimisticMessage])

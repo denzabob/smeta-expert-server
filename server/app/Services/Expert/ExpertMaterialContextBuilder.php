@@ -169,4 +169,43 @@ final class ExpertMaterialContextBuilder
 
         return 'Материал без названия' . ($extension === '' ? '' : '.' . $extension);
     }
+    public function buildForChat(ExpertProject $project, array $publicIds): ExpertMaterialContextBuildResult
+    {
+        if ($publicIds === []) return new ExpertMaterialContextBuildResult([], []);
+        $textMaterials = [];
+        $ocrCandidates = [];
+        $ocrLimit = max(1, (int) config('expert.pdf_ocr.max_source_bytes', 20 * 1024 * 1024));
+        $ocrPages = 0;
+        $ocrCount = 0;
+        foreach (array_values(array_unique($publicIds)) as $publicId) {
+            try {
+                $textMaterials = [...$textMaterials, ...$this->build($project, [(string) $publicId])];
+                continue;
+            } catch (ExpertMaterialContextException $exception) {
+                if ($exception->reason === null || ! str_starts_with($exception->reason, 'pdf_no_usable_text:')) throw $exception;
+                $pageCount = (int) substr($exception->reason, strlen('pdf_no_usable_text:'));
+                $material = $project->materials()->where('public_id', $publicId)->first();
+                if (! $material) throw ExpertMaterialContextException::notFound();
+                $disk = Storage::disk('local');
+                $bytes = (int) $disk->size($material->storage_path);
+                if ($bytes <= 0 || $bytes > $ocrLimit) throw ExpertPdfOcrException::tooLarge();
+                $ocrCount++;
+                if ($ocrCount > max(1, (int) config('expert.pdf_ocr.max_pdfs', 2))) throw ExpertPdfOcrException::tooManyPages();
+                if ($pageCount <= 0 || $pageCount > max(1, (int) config('expert.pdf_ocr.max_pages_per_pdf', 100))) throw ExpertPdfOcrException::tooManyPages();
+                $ocrPages += $pageCount;
+                if ($ocrPages > max(1, (int) config('expert.pdf_ocr.max_total_pages', 150))) throw ExpertPdfOcrException::tooManyPages();
+                $raw = $disk->get($material->storage_path);
+                $ocrCandidates[] = new ExpertPdfOcrCandidate(
+                    (string) $project->public_id,
+                    (string) $material->public_id,
+                    $this->presentationName($material),
+                    (string) $material->mime_type,
+                    $raw,
+                    hash('sha256', $raw),
+                    $pageCount,
+                );
+            }
+        }
+        return new ExpertMaterialContextBuildResult($textMaterials, $ocrCandidates);
+    }
 }

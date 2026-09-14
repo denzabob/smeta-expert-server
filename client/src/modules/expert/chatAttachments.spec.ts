@@ -36,30 +36,49 @@ describe('chat material attachment context', () => {
     expect(getExpertChatAttachmentSendBlockReason([])).toBeUndefined()
   })
 
-  it('keeps the first message snapshot independent from later composer attachments', () => {
-    const firstContext = addExpertMessageMaterialContext([], material('m1', 'Первый.pdf'))
+  it('keeps the image UUID snapshot independent from later mixed composer attachments', () => {
+    const image = {
+      ...material('image-1', 'Фото.jpg'),
+      kind: 'image' as const,
+      format: 'JPG',
+    }
+    const firstContext = addExpertMessageMaterialContext([], image)
     const firstSnapshot = snapshotExpertMessageMaterialContext(firstContext)
-    const nextComposerContext = addExpertMessageMaterialContext(firstContext, material('m2', 'Второй.pdf'))
+    const nextComposerContext = addExpertMessageMaterialContext(firstContext, material('document-1', 'Договор.pdf'))
 
-    expect(firstSnapshot.map((context) => context.id)).toEqual(['m1'])
-    expect(nextComposerContext.map((context) => context.id)).toEqual(['m1', 'm2'])
+    expect(firstSnapshot.map((context) => context.id)).toEqual(['image-1'])
+    expect(firstSnapshot[0]).toMatchObject({ kind: 'image', format: 'JPG' })
+    expect(nextComposerContext.map((context) => context.id)).toEqual(['image-1', 'document-1'])
     expect(firstSnapshot).not.toBe(firstContext)
   })
 
-  it('blocks image context while allowing XLSX context', () => {
-    const image = {
-      ...material('image-1', 'Фото.png'),
-      kind: 'image' as const,
-      format: 'PNG',
-    }
+  it('allows native vision formats while keeping GIF and SVG blocked', () => {
     const first = [createExpertMessageMaterialContext(material('m1', 'Первый.pdf'))]
     const restored = mergeExpertMessageMaterialContexts(
       [createExpertMessageMaterialContext(material('m2', 'Новый.docx'))],
       first,
     )
 
-    expect(isExpertMaterialSupportedForAiContext(createExpertMessageMaterialContext(image))).toBe(false)
-    expect(getExpertChatAttachmentSendBlockReason([], [createExpertMessageMaterialContext(image)])).toContain('можно хранить в проекте')
+    for (const format of ['JPG', 'JPEG', 'PNG', 'WEBP']) {
+      const image = createExpertMessageMaterialContext({
+        ...material(`image-${format}`, `Фото.${format.toLowerCase()}`),
+        kind: 'image' as const,
+        format,
+      })
+      expect(isExpertMaterialSupportedForAiContext(image)).toBe(true)
+      expect(getExpertChatAttachmentSendBlockReason([], [image])).toBeUndefined()
+    }
+
+    for (const format of ['GIF', 'SVG']) {
+      const image = createExpertMessageMaterialContext({
+        ...material(`image-${format}`, `Фото.${format.toLowerCase()}`),
+        kind: 'image' as const,
+        format,
+      })
+      expect(isExpertMaterialSupportedForAiContext(image)).toBe(false)
+      expect(getExpertChatAttachmentSendBlockReason([], [image])).toContain('можно хранить в проекте')
+    }
+
     expect(isExpertMaterialSupportedForAiContext(createExpertMessageMaterialContext(material('xlsx-1', 'Расчёт.xlsx', 'XLSX')))).toBe(true)
     expect(restored.map((context) => context.id)).toEqual(['m2', 'm1'])
   })

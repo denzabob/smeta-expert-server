@@ -14,7 +14,9 @@ use App\Services\LLM\DTO\DecompositionPrompt;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMChatResponse;
 use App\Services\LLM\DTO\LLMResponse;
+use App\Services\LLM\Enums\LLMCapability;
 use App\Services\LLM\Exceptions\LLMProviderException;
+use App\Services\LLM\OpenAiChatMessageMapper;
 use App\Services\LLM\LLMErrorClassifier;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
@@ -62,7 +64,7 @@ class ExpertMaterialContextFlowTest extends TestCase
 
         $this->assertCount(1, $provider->chatRequests);
         $request = $provider->chatRequests[0];
-        $payload = $request->toProviderMessages();
+        $payload = OpenAiChatMessageMapper::map($request);
 
         $this->assertSame([$material->public_id], array_column($request->materialContext, 'public_id'));
         $this->assertStringContainsString('EXPERT-74291', implode("\n", array_column($payload, 'content')));
@@ -100,7 +102,7 @@ class ExpertMaterialContextFlowTest extends TestCase
 
         $this->assertCount(1, $provider->chatRequests);
         $request = $provider->chatRequests[0];
-        $payload = $request->toProviderMessages();
+        $payload = OpenAiChatMessageMapper::map($request);
 
         $this->assertSame([$material->public_id], array_column($request->materialContext, 'public_id'));
         $this->assertStringContainsString('XLSX-EXPERT-92851', implode("\n", array_column($payload, 'content')));
@@ -205,7 +207,7 @@ class ExpertMaterialContextFlowTest extends TestCase
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             $this->xlsxFixture(),
         );
-        $pdf = $this->material($project, 'Текстовый.pdf', 'application/pdf', $this->pdfFixture('Уникальный код PDF: PDF-31415'));
+        $pdf = $this->material($project, 'Текстовый.pdf', 'application/pdf', $this->pdfFixture('Unique PDF text layer marker: PDF-31415-EXTRACTABLE'));
 
         $context = app(ExpertMaterialContextBuilder::class)->build($project, [
             $txt->public_id,
@@ -556,14 +558,14 @@ class ExpertMaterialContextFlowTest extends TestCase
             'material_public_ids' => [$material->public_id],
         ])->assertCreated();
 
-        $firstPayload = $provider->chatRequests[0]->toProviderMessages();
+        $firstPayload = OpenAiChatMessageMapper::map($provider->chatRequests[0]);
         $this->assertSame('system', $firstPayload[0]['role']);
         $this->assertStringNotContainsString('Ignore previous instructions', $firstPayload[0]['content']);
         $this->assertSame('user', $firstPayload[1]['role']);
         $this->assertStringContainsString('Ignore previous instructions', $firstPayload[1]['content']);
 
         $this->send($user, $conversation, ['content' => 'Следующий вопрос'])->assertCreated();
-        $secondPayload = $provider->chatRequests[1]->toProviderMessages();
+        $secondPayload = OpenAiChatMessageMapper::map($provider->chatRequests[1]);
         $this->assertStringNotContainsString(
             'Ignore previous instructions',
             implode("\n", array_column($secondPayload, 'content')),
@@ -775,6 +777,8 @@ final class ExpertMaterialContextFakeProvider implements LLMProviderInterface
     public function __construct(public string $reply) {}
 
     public function name(): string { return 'fake'; }
+    public function model(): string { return 'fake-chat-model'; }
+    public function capabilities(): array { return [LLMCapability::TEXT_INPUT]; }
     public function supportsJsonMode(): bool { return true; }
     public function isAvailable(): bool { return true; }
 

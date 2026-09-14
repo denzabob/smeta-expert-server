@@ -8,43 +8,29 @@ use App\Services\LLM\DTO\DecompositionPrompt;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMChatResponse;
 use App\Services\LLM\DTO\LLMResponse;
+use App\Services\LLM\Enums\LLMCapability;
 
 /**
  * Контракт провайдера LLM
- * 
+ *
  * Провайдеры не строят промпт — только отправляют system/user и принимают ответ.
  * Провайдеры не решают fallback — это делает Router.
  */
 interface LLMProviderInterface
 {
-    /**
-     * Уникальное имя провайдера (openrouter, deepseek, mixtral)
-     */
     public function name(): string;
 
-    /**
-     * Поддерживает ли провайдер JSON mode
-     */
+    public function model(): string;
+
+    /** @return list<LLMCapability> */
+    public function capabilities(): array;
+
     public function supportsJsonMode(): bool;
 
-    /**
-     * Проверить доступность провайдера (ping)
-     * 
-     * @return bool true если провайдер доступен
-     */
     public function isAvailable(): bool;
 
-    /**
-     * Сгенерировать декомпозицию работы
-     * 
-     * @param DecompositionPrompt $prompt Подготовленный промпт
-     * @return LLMResponse Ответ провайдера
-     * @throws \App\Services\LLM\Exceptions\LLMProviderException При ошибке провайдера
-     */
     public function generateDecomposition(DecompositionPrompt $prompt): LLMResponse;
 
-    /**
-     * Выполнить text-only chat completion без JSON schema и decomposition parser.
-     */
+    /** Выполнить chat completion без decomposition parser. */
     public function chat(LLMChatRequest $request): LLMChatResponse;
 }

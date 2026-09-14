@@ -9,11 +9,13 @@ use App\Services\LLM\DTO\DecompositionPrompt;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMChatResponse;
 use App\Services\LLM\DTO\LLMResponse;
+use App\Services\LLM\Enums\LLMCapability;
 use App\Services\LLM\Enums\LLMErrorType;
 use App\Services\LLM\Exceptions\InvalidLLMJsonException;
 use App\Services\LLM\Exceptions\LLMChatUnavailableException;
 use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\Exceptions\LLMUnavailableException;
+use App\Services\LLM\Exceptions\LLMUnsupportedCapabilityException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -281,6 +283,36 @@ class LLMRouter
         $failoverChain = [];
         $attemptIndex = 0;
         $lastErrorType = null;
+
+        if ($request->hasFiles()) {
+            $executionPlan = array_slice($executionPlan, 0, 1);
+            $providerName = $executionPlan[0] ?? $this->settings->getPrimaryProvider();
+            $provider = $this->getProvider($providerName);
+            if ($request->hasPdfOcrFiles() && ($provider === null || ! in_array(LLMCapability::PDF_OCR, $provider->capabilities(), true))) {
+                throw new LLMUnsupportedCapabilityException($provider?->name() ?? $providerName, $provider?->model() ?? 'unknown', LLMCapability::PDF_OCR);
+            }
+        }
+
+        if ($request->hasImages()) {
+            // A multimodal fallback would silently switch the configured model/profile.
+            // Keep the current primary only until an explicit vision routing policy exists.
+            $executionPlan = array_slice($executionPlan, 0, 1);
+            $providerName = $executionPlan[0] ?? $this->settings->getPrimaryProvider();
+            $provider = $this->getProvider($providerName);
+
+            if ($provider !== null && ! in_array(LLMCapability::IMAGE_INPUT, $provider->capabilities(), true)) {
+                Log::warning('LLMRouter: configured profile rejected image input.', [
+                    'correlation_id' => $this->lastCorrelationId,
+                    'provider' => $provider->name(),
+                    'model' => $provider->model(),
+                    'capability' => LLMCapability::IMAGE_INPUT->value,
+                ]);
+
+                throw new LLMUnsupportedCapabilityException(
+                    $provider->name(), $provider->model(), LLMCapability::IMAGE_INPUT,
+                );
+            }
+        }
 
         Log::info('LLMRouter: starting text chat request', [
             'correlation_id' => $this->lastCorrelationId,

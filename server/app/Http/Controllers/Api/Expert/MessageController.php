@@ -5,10 +5,13 @@ use App\Http\Requests\Expert\MessageRequest;
 use App\Http\Resources\Expert\MessageResource;
 use App\Models\Expert\ExpertConversation;
 use App\Services\Expert\ExpertChatRequestConflictException;
+use App\Services\Expert\ExpertChatMaterialContextBuilder;
 use App\Services\Expert\ExpertChatService;
-use App\Services\Expert\ExpertMaterialContextBuilder;
 use App\Services\Expert\ExpertMaterialContextException;
+use App\Services\Expert\ExpertVisionException;
+use App\Services\Expert\ExpertPdfOcrException;
 use App\Services\LLM\Exceptions\LLMChatUnavailableException;
+use App\Services\LLM\Exceptions\LLMUnsupportedCapabilityException;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -19,7 +22,7 @@ class MessageController extends Controller
 {
     public function __construct(
         private readonly ExpertChatService $expertChat,
-        private readonly ExpertMaterialContextBuilder $materialContextBuilder,
+        private readonly ExpertChatMaterialContextBuilder $materialContextBuilder,
     ) {
     }
 
@@ -71,6 +74,21 @@ class MessageController extends Controller
                 'message' => $exception->getMessage(),
                 'code' => $exception->errorCode,
             ], $exception->status);
+        } catch (ExpertPdfOcrException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->errorCode,
+            ], $exception->status);        } catch (ExpertVisionException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->errorCode,
+            ], $exception->status);
+        } catch (LLMUnsupportedCapabilityException $exception) {
+            $isPdf = $exception->capability->value === 'pdf_ocr';
+            return response()->json([
+                'message' => $isPdf ? 'Текущая модель AI не поддерживает OCR PDF.' : 'Текущая модель AI не поддерживает анализ изображений.',
+                'code' => $isPdf ? 'pdf_ocr_not_supported' : 'vision_not_supported',
+            ], 422);
         } catch (LockTimeoutException) {
             return response()->json([
                 'message' => 'Сообщение с этим идентификатором ещё обрабатывается. Повторите попытку через несколько секунд.',

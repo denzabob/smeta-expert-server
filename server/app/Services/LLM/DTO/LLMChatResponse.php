@@ -21,6 +21,7 @@ final class LLMChatResponse
         public readonly ?int $cachedTokens = null,
         public readonly ?int $reasoningTokens = null,
         public readonly array $metadata = [],
+        public readonly array $parsedFiles = [],
     ) {
     }
 }

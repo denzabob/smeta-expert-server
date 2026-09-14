@@ -61,6 +61,14 @@ describe('Expert persistence mapping', () => {
     expect(uploadProgress).toEqual([50])
     expect(downloadProgress).toEqual([30])
   })
+  it('requests private thumbnails through a dedicated endpoint', async () => {
+    const get = vi.fn().mockResolvedValue({ data: {} as Blob })
+    const client = createExpertApi({ get } as unknown as AxiosInstance)
+
+    await client.getMaterialThumbnail('m/1')
+
+    expect(get).toHaveBeenCalledWith('/api/expert/materials/m%2F1/thumbnail', { responseType: 'blob' })
+  })
   it('sends the content-only chat body with a stable retry header and maps both messages', async () => {
     const post=vi.fn().mockResolvedValue({data:{
       user_message:{public_id:'message-1',role:'user',content:'Проверить',created_at:'2026-09-12T10:00:00Z'},
@@ -91,12 +99,12 @@ describe('Expert persistence mapping', () => {
       'conversation-1',
       'Проверить',
       '550e8400-e29b-41d4-a716-446655440000',
-      ['550e8400-e29b-41d4-a716-446655440001'],
+      ['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440002'],
     )
 
     expect(post).toHaveBeenCalledWith(
       '/api/expert/conversations/conversation-1/messages',
-      {content:'Проверить',material_public_ids:['550e8400-e29b-41d4-a716-446655440001']},
+      {content:'Проверить',material_public_ids:['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440002']},
       {headers:{'X-Expert-Message-Id':'550e8400-e29b-41d4-a716-446655440000'}},
     )
   })
@@ -115,6 +123,7 @@ describe('Expert persistence mapping', () => {
     expect(mapped).toMatchObject({status:422,code:'material_context_extraction_failed',message:'Не удалось извлечь текст.'})
     expect(isExpertMaterialContextError(mapped.code)).toBe(true)
     expect(isExpertMaterialContextError('material_context_temporarily_disabled')).toBe(true)
+    expect(isExpertMaterialContextError('vision_not_supported')).toBe(true)
 
     const conflict = mapExpertApiError({
       isAxiosError: true,

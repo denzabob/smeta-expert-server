@@ -20,6 +20,7 @@ const material = (id: string, name = 'Заключение.pdf'): ExpertProjectM
   useInAi: false,
   icon: 'mdi-file-pdf-box',
 })
+const imageMaterial = (id: string): ExpertProjectMaterial => ({ ...material(id, 'Фото.jpg'), kind: 'image', format: 'JPG', meta: 'image/jpeg', category: 'image', icon: 'mdi-image-outline' })
 
 function transferApi(overrides: Partial<ExpertMaterialTransferApi> = {}): ExpertMaterialTransferApi {
   return {
@@ -147,5 +148,32 @@ describe('Expert material transfers', () => {
 
     await expect(transfers.downloadMaterial(material('m1'))).resolves.toEqual(expect.objectContaining({ ok: false, error: expect.any(Error) }))
     expect(transfers.isDownloading('m1')).toBe(false)
+  })
+
+  it('loads a thumbnail from the dedicated endpoint and revokes it on release', async () => {
+    const api = transferApi({ getMaterialThumbnail: vi.fn().mockResolvedValue({} as Blob) })
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:thumb')
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    const transfers = useExpertMaterialTransfers(api, vi.fn())
+
+    await transfers.loadImageThumbnail(imageMaterial('m1'))
+
+    expect(api.getMaterialThumbnail).toHaveBeenCalledWith('m1')
+    expect(api.getMaterialImageContent).not.toHaveBeenCalled()
+    expect(transfers.thumbnailPreviews.value.m1).toMatchObject({ status: 'ready', url: 'blob:thumb' })
+    transfers.releaseThumbnail('m1')
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:thumb')
+    createObjectURL.mockRestore()
+    revokeObjectURL.mockRestore()
+  })
+
+  it('does not fetch an original image while synchronising the material list', () => {
+    const api = transferApi({ getMaterialThumbnail: vi.fn(), getMaterialImageContent: vi.fn() })
+    const transfers = useExpertMaterialTransfers(api, vi.fn())
+
+    transfers.syncImagePreviews([imageMaterial('m1')])
+
+    expect(api.getMaterialThumbnail).not.toHaveBeenCalled()
+    expect(api.getMaterialImageContent).not.toHaveBeenCalled()
   })
 })

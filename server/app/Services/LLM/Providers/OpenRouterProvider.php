@@ -10,6 +10,8 @@ use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMChatResponse;
 use App\Services\LLM\DTO\LLMResponse;
 use App\Services\LLM\Exceptions\LLMProviderException;
+use App\Services\LLM\LLMCapabilityCatalog;
+use App\Services\LLM\OpenAiChatMessageMapper;
 use App\Services\LLM\Parsing\LLMJsonParser;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -76,6 +78,16 @@ class OpenRouterProvider implements LLMProviderInterface
     public function name(): string
     {
         return self::NAME;
+    }
+
+    public function model(): string
+    {
+        return $this->model;
+    }
+
+    public function capabilities(): array
+    {
+        return LLMCapabilityCatalog::forProviderModel(self::NAME, $this->model);
     }
 
     public function supportsJsonMode(): bool
@@ -206,7 +218,7 @@ class OpenRouterProvider implements LLMProviderInterface
                 ->timeout($this->timeout)
                 ->post($this->baseUrl . '/chat/completions', [
                     'model' => $this->model,
-                    'messages' => $request->toProviderMessages(),
+                    'messages' => OpenAiChatMessageMapper::map($request),
                     'temperature' => $this->temperature,
                     'max_tokens' => $this->maxTokens,
                 ]);

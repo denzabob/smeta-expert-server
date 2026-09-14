@@ -29,6 +29,7 @@ Route::prefix('expert')->middleware('auth:sanctum')->group(function () {
     Route::post('projects/{project}/materials', [MaterialController::class, 'store']);
     Route::get('materials/{material}', [MaterialController::class, 'show']);
     Route::get('materials/{material}/content', [MaterialController::class, 'content']);
+    Route::get('materials/{material}/thumbnail', [MaterialController::class, 'thumbnail']);
     Route::get('materials/{material}/download', [MaterialController::class, 'download']);
     Route::delete('materials/{material}', [MaterialController::class, 'destroy']);
     Route::get('projects/{project}/findings', [FindingController::class, 'index']);

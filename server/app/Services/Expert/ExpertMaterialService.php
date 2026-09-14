@@ -9,7 +9,11 @@ use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 class ExpertMaterialService
 {
-    public function __construct(private readonly ExpertStorageCleanupService $storageCleanup) {}
+    public function __construct(
+        private readonly ExpertStorageCleanupService $storageCleanup,
+        private readonly ExpertMaterialThumbnailService $thumbnails,
+        private readonly ExpertPdfOcrCache $ocrCache,
+    ) {}
 
     public function store(ExpertProject $project, int $userId, UploadedFile $file): ExpertProjectMaterial
     {
@@ -32,17 +36,21 @@ class ExpertMaterialService
         if (! $this->storageCleanup->journalIsAvailable()) {
             DB::transaction(fn () => $material->delete());
             $this->storageCleanup->deleteBestEffort('file', $path);
+            $this->storageCleanup->deleteBestEffort('directory', $this->thumbnails->cacheDirectory($material));
+            $this->storageCleanup->deleteBestEffort('directory', $this->ocrCache->cacheDirectory($material));
 
             return;
         }
 
-        $task = DB::transaction(function () use ($material, $path) {
-            $task = $this->storageCleanup->scheduleFile($path);
+        $tasks = DB::transaction(function () use ($material, $path) {
+            $fileTask = $this->storageCleanup->scheduleFile($path);
+            $thumbnailTask = $this->storageCleanup->scheduleDirectory($this->thumbnails->cacheDirectory($material));
+            $ocrTask = $this->storageCleanup->scheduleDirectory($this->ocrCache->cacheDirectory($material));
             $material->delete();
 
-            return $task;
+            return [$fileTask, $thumbnailTask, $ocrTask];
         });
 
-        $this->storageCleanup->attempt($task);
+        foreach ($tasks as $task) $this->storageCleanup->attempt($task);
     }
 }
