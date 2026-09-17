@@ -97,7 +97,10 @@ return [
         'temperature' => env('ROUTERAI_TEMPERATURE', 0.2),
         'max_tokens' => env('ROUTERAI_MAX_TOKENS', 4096),
         'timeout' => env('ROUTERAI_TIMEOUT', 90),
-        'capabilities' => ['text_input', 'structured_output', 'tools'],
+        // A provider-specific, documented `reasoning_summary` SSE field is
+        // required before this can be enabled. Raw reasoning is never read.
+        'safe_reasoning_summary_supported' => env('ROUTERAI_SAFE_REASONING_SUMMARY_SUPPORTED', false),
+        'capabilities' => ['text_input', 'structured_output', 'tools', 'streaming'],
         'model_capabilities' => [
             'openai/gpt-4o*' => ['image_input', 'pdf_ocr'],
             'openai/gpt-4.1*' => ['image_input', 'pdf_ocr'],

@@ -3,6 +3,7 @@ use App\Http\Controllers\Api\Expert\ConversationController;
 use App\Http\Controllers\Api\Expert\FindingController;
 use App\Http\Controllers\Api\Expert\MaterialController;
 use App\Http\Controllers\Api\Expert\MessageController;
+use App\Http\Controllers\Api\Expert\MessageStreamController;
 use App\Http\Controllers\Api\Expert\ProjectController;
 use App\Http\Controllers\Api\Expert\ResearchObjectController;
 use Illuminate\Support\Facades\Route;
@@ -25,6 +26,9 @@ Route::prefix('expert')->middleware('auth:sanctum')->group(function () {
     Route::delete('conversations/{conversation}', [ConversationController::class, 'destroy']);
     Route::get('conversations/{conversation}/messages', [MessageController::class, 'index']);
     Route::post('conversations/{conversation}/messages', [MessageController::class, 'store']);
+    Route::post('conversations/{conversation}/messages/stream', [MessageStreamController::class, 'store']);
+    Route::post('conversations/{conversation}/messages/{assistant}/continue/stream', [MessageStreamController::class, 'continue']);
+    Route::post('conversations/{conversation}/runs/{runId}/cancel', [MessageStreamController::class, 'cancel'])->whereUuid('runId');
     Route::get('projects/{project}/materials', [MaterialController::class, 'index']);
     Route::post('projects/{project}/materials', [MaterialController::class, 'store']);
     Route::get('materials/{material}', [MaterialController::class, 'show']);

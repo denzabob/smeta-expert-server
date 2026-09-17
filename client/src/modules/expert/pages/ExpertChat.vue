@@ -53,9 +53,12 @@
             v-else
             :key="message.id"
             :message="message"
+            :allow-continue="Boolean(continuableAssistantIds[message.id])"
+            :timeline-runs="timelineRunsFor(message.id)"
             @action="notify"
             @open-source="contextOpen = true"
             @retry="retryMessage"
+            @continue="continueMessage"
           />
         </div>
         <v-btn v-if="showScrollToBottom" class="expert-chat__new-messages" color="surface" variant="flat" size="small" append-icon="mdi-arrow-down" aria-label="Показать новые сообщения" @click="scrollToLatest('smooth')">Новые сообщения</v-btn>
@@ -70,7 +73,9 @@
         :material-contexts="composerMaterialContexts"
         :image-previews="composerImagePreviews"
         :send-blocked-reason="composerSendBlockedReason"
+        :busy="streamActive"
         @send="sendMessage"
+        @stop="stopStream"
         @attachment="handleAttachment"
         @attach-files="attachComposerFiles"
         @retry-upload="retryComposerUpload"
@@ -110,8 +115,20 @@ import ExpertContextPanel from '../components/chat/ExpertContextPanel.vue'
 import { createWholeProjectContext, removeChatContext, selectWholeProjectChatContext, type ExpertChatContextChip } from '../chatContext'
 import { addExpertMessageMaterialContext, getExpertChatAttachmentSendBlockReason, mergeExpertMessageMaterialContexts, snapshotExpertMessageMaterialContext } from '../chatAttachments'
 import { normalizeExpertChatDraft } from '../chatComposer'
+import { shouldUseLegacyExpertChatFallback } from '../chatStreamingFallback'
 import { appendUniqueExpertMessage, createOptimisticUserMessage, replaceOptimisticExpertMessage, setExpertMessageDeliveryState } from '../chatMessageState'
 import { isNearExpertChatBottom, shouldFollowNewExpertMessage } from '../chatScroll'
+import {
+  addExpertTimelineRun,
+  appendExpertReasoningSummary,
+  applyExpertTimelineActivity,
+  finishExpertTimelineRun,
+  moveExpertTimelineRuns,
+  removeExpertTimelineRuns,
+  type ExpertReasoningSummaryEvent,
+  type ExpertRunActivity,
+  type ExpertTimelineRun,
+} from '../chatTimeline'
 import { useExpertMaterialTransfers } from '../composables/useExpertMaterialTransfers'
 import { expertApi, isExpertMaterialContextError, mapExpertApiError } from '../api'
 import type { ExpertConversation, ExpertMessage, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMode } from '../types'
@@ -141,10 +158,22 @@ const composerSendBlockedReason = computed(() => getExpertChatAttachmentSendBloc
   composerUploadItems.value,
   composerMaterialContexts.value,
 ))
+const generationState = ref<'idle' | 'starting' | 'streaming' | 'stopping' | 'completed' | 'stopped' | 'interrupted' | 'error'>('idle')
+const activeRunId = ref<string | null>(null)
+const activeAbort = ref<AbortController | null>(null)
+const continuationSnapshots = new Map<string, { content: string; materialIds: string[] }>()
+const continuableAssistantIds = ref<Record<string, true>>({})
+const timelineByAssistant = ref<Record<string, ExpertTimelineRun[]>>({})
+const streamActive = computed(() => ['starting', 'streaming', 'stopping'].includes(generationState.value))
 let conversationsSequence = 0
 let messagesSequence = 0
 let conversationCreationPromise: Promise<string> | null = null
 let conversationsLoadPromise: Promise<void> | null = null
+
+function resetTransientGenerationState() {
+  const currentState: string = generationState.value
+  if (['starting', 'streaming', 'stopping'].includes(currentState)) generationState.value = 'idle'
+}
 
 const conversation = computed(() => props.project.conversations.find((item) => item.id === conversationId.value))
 const messages = computed(() => conversationId.value
@@ -172,11 +201,22 @@ function updateMessageDelivery(messageId: string, deliveryState: NonNullable<Exp
 }
 
 function replaceOptimisticMessage(optimisticId: string, savedMessage: ExpertMessage) {
-  pendingMessages.value = replaceOptimisticExpertMessage(pendingMessages.value, optimisticId, savedMessage)
+  const optimistic = findMessage(optimisticId)
+  const savedWithRuntime: ExpertMessage = {
+    ...savedMessage,
+    ...(optimistic?.clientMessageId ? { clientMessageId: optimistic.clientMessageId } : {}),
+    ...(optimistic?.runtimeMaterialContext ? { runtimeMaterialContext: optimistic.runtimeMaterialContext } : {}),
+  }
+  pendingMessages.value = replaceOptimisticExpertMessage(pendingMessages.value, optimisticId, savedWithRuntime)
   messagesByConversation.value = Object.fromEntries(Object.entries(messagesByConversation.value).map(([id, items]) => [
-    id,
-    replaceOptimisticExpertMessage(items, optimisticId, savedMessage),
+    id, replaceOptimisticExpertMessage(items, optimisticId, savedWithRuntime),
   ]))
+}
+
+function replaceSavedMessage(messageId: string, savedMessage: ExpertMessage) {
+  const replace = (items: ExpertMessage[]) => items.map((message) => message.id === messageId ? { ...savedMessage, deliveryState: 'sent' as const } : message)
+  pendingMessages.value = replace(pendingMessages.value)
+  messagesByConversation.value = Object.fromEntries(Object.entries(messagesByConversation.value).map(([id, items]) => [id, replace(items)]))
 }
 
 function appendServerAssistantMessage(targetConversationId: string, assistantMessage: ExpertMessage) {
@@ -187,6 +227,59 @@ function appendServerAssistantMessage(targetConversationId: string, assistantMes
       assistantMessage,
     ),
   }
+}
+
+function updateMessageText(messageId: string, append: string) {
+  const update = (items: ExpertMessage[]) => items.map((item) => item.id === messageId ? { ...item, text: item.text + append } : item)
+  pendingMessages.value = update(pendingMessages.value)
+  messagesByConversation.value = Object.fromEntries(Object.entries(messagesByConversation.value).map(([id, items]) => [id, update(items)]))
+}
+
+function removeMessage(messageId: string) {
+  pendingMessages.value = pendingMessages.value.filter((message) => message.id !== messageId)
+  messagesByConversation.value = Object.fromEntries(Object.entries(messagesByConversation.value).map(([id, items]) => [
+    id, items.filter((message) => message.id !== messageId),
+  ]))
+}
+
+function timelineRunsFor(assistantId: string): ExpertTimelineRun[] {
+  return timelineByAssistant.value[assistantId] ?? []
+}
+
+function beginTimelineRun(assistantId: string, runId: string) {
+  timelineByAssistant.value = {
+    ...timelineByAssistant.value,
+    [assistantId]: addExpertTimelineRun(timelineRunsFor(assistantId), runId),
+  }
+}
+
+function applyTimelineActivity(assistantId: string, activity: ExpertRunActivity) {
+  timelineByAssistant.value = {
+    ...timelineByAssistant.value,
+    [assistantId]: applyExpertTimelineActivity(timelineRunsFor(assistantId), activity),
+  }
+}
+
+function appendTimelineSummary(assistantId: string, summary: ExpertReasoningSummaryEvent) {
+  timelineByAssistant.value = {
+    ...timelineByAssistant.value,
+    [assistantId]: appendExpertReasoningSummary(timelineRunsFor(assistantId), summary),
+  }
+}
+
+function finishTimelineRun(assistantId: string, runId: string, terminal: 'completed' | 'cancelled' | 'interrupted') {
+  timelineByAssistant.value = {
+    ...timelineByAssistant.value,
+    [assistantId]: finishExpertTimelineRun(timelineRunsFor(assistantId), runId, terminal),
+  }
+}
+
+function moveTimelineRun(fromAssistantId: string, toAssistantId: string) {
+  timelineByAssistant.value = moveExpertTimelineRuns(timelineByAssistant.value, fromAssistantId, toAssistantId)
+}
+
+function discardTimelineRun(assistantId: string) {
+  timelineByAssistant.value = removeExpertTimelineRuns(timelineByAssistant.value, assistantId)
 }
 
 function findMessage(messageId: string): ExpertMessage | undefined {
@@ -230,6 +323,7 @@ async function loadConversations() {
   const targetProject = props.project
   messagesByConversation.value = {}
   pendingMessages.value = []
+  timelineByAssistant.value = {}
   errorMessage.value = ''
   if (props.projectMode === 'demo') {
     conversationId.value = props.project.conversations[0]?.id ?? ''
@@ -315,6 +409,14 @@ async function createConversation() {
   }
 }
 
+function restoreMessageMaterialContext(message: ExpertMessage) {
+  if (!message.runtimeMaterialContext) return
+  composerMaterialContexts.value = mergeExpertMessageMaterialContexts(
+    composerMaterialContexts.value,
+    message.runtimeMaterialContext,
+  )
+}
+
 async function persistMessage(message: ExpertMessage) {
   if (!message.clientMessageId) {
     updateMessageDelivery(message.id, 'error', 'Не удалось подготовить идентификатор сообщения для повторной отправки.')
@@ -323,28 +425,190 @@ async function persistMessage(message: ExpertMessage) {
 
   try {
     const targetConversationId = await ensureConversation()
-    const reply = await expertApi.sendMessage(
-      targetConversationId,
-      message.text,
-      message.clientMessageId,
-      message.runtimeMaterialContext?.map((context) => context.id) ?? [],
-    )
-    replaceOptimisticMessage(message.id, reply.userMessage)
-
-    const wasNearBottom = targetConversationId === conversationId.value && isMessageAreaNearBottom()
-    appendServerAssistantMessage(targetConversationId, reply.assistantMessage)
-    if (targetConversationId === conversationId.value) {
-      void handleMessageAdded(wasNearBottom, false)
+    const materialIds = message.runtimeMaterialContext?.map((context) => context.id) ?? []
+    generationState.value = 'starting'
+    activeAbort.value = new AbortController()
+    let localAssistantId = ''
+    let persistedUserId = message.id
+    let lastSeq = 0
+    let fallbackToLegacy = false
+    try {
+      await expertApi.streamMessage(targetConversationId, message.text, message.clientMessageId, materialIds, {
+        onRun: (runId, userMessage) => {
+          activeRunId.value = runId
+          generationState.value = 'streaming'
+          replaceOptimisticMessage(message.id, userMessage)
+          persistedUserId = userMessage.id
+          localAssistantId = `local-stream-${runId}`
+          appendServerAssistantMessage(targetConversationId, { id: localAssistantId, role: 'assistant', text: '', createdAt: new Date().toISOString() })
+          beginTimelineRun(localAssistantId, runId)
+        },
+        onDelta: (runId, seq, text) => {
+          if (runId !== activeRunId.value || seq <= lastSeq) return
+          lastSeq = seq
+          const wasNearBottom = targetConversationId === conversationId.value && isMessageAreaNearBottom()
+          if (!localAssistantId) {
+            localAssistantId = `local-stream-${runId}`
+            appendServerAssistantMessage(targetConversationId, { id: localAssistantId, role: 'assistant', text: '', createdAt: new Date().toISOString() })
+            beginTimelineRun(localAssistantId, runId)
+          }
+          updateMessageText(localAssistantId, text)
+          if (targetConversationId === conversationId.value) void handleMessageAdded(wasNearBottom, false)
+        },
+        onActivity: (activity) => {
+          if (activity.runId === activeRunId.value && localAssistantId) applyTimelineActivity(localAssistantId, activity)
+        },
+        onReasoningSummary: (summary) => {
+          if (summary.runId === activeRunId.value && localAssistantId) appendTimelineSummary(localAssistantId, summary)
+        },
+        onDone: (assistantMessage) => {
+          generationState.value = 'completed'
+          if (assistantMessage && localAssistantId) {
+            replaceOptimisticMessage(localAssistantId, assistantMessage)
+            moveTimelineRun(localAssistantId, assistantMessage.id)
+            finishTimelineRun(assistantMessage.id, activeRunId.value ?? '', 'completed')
+            localAssistantId = assistantMessage.id
+          } else if (assistantMessage) {
+            appendServerAssistantMessage(targetConversationId, assistantMessage)
+          } else if (localAssistantId) {
+            finishTimelineRun(localAssistantId, activeRunId.value ?? '', 'completed')
+            removeMessage(localAssistantId)
+            discardTimelineRun(localAssistantId)
+          }
+          if (assistantMessage) { continuationSnapshots.delete(assistantMessage.id); delete continuableAssistantIds.value[assistantMessage.id] }
+        },
+        onCancelled: (assistantMessage) => {
+          generationState.value = 'stopped'
+          if (assistantMessage && localAssistantId) {
+            replaceOptimisticMessage(localAssistantId, assistantMessage)
+            moveTimelineRun(localAssistantId, assistantMessage.id)
+            finishTimelineRun(assistantMessage.id, activeRunId.value ?? '', 'cancelled')
+            localAssistantId = assistantMessage.id
+          } else if (assistantMessage) {
+            appendServerAssistantMessage(targetConversationId, assistantMessage)
+          } else if (localAssistantId) {
+            finishTimelineRun(localAssistantId, activeRunId.value ?? '', 'cancelled')
+            removeMessage(localAssistantId)
+            discardTimelineRun(localAssistantId)
+          }
+          if (assistantMessage) { continuationSnapshots.set(assistantMessage.id, { content: message.text, materialIds }); continuableAssistantIds.value = { ...continuableAssistantIds.value, [assistantMessage.id]: true } }
+        },
+        onError: (mapped, assistantMessage) => {
+          generationState.value = 'interrupted'
+          const useLegacyFallback = shouldUseLegacyExpertChatFallback(mapped.code, assistantMessage)
+          if (assistantMessage && localAssistantId) {
+            replaceOptimisticMessage(localAssistantId, assistantMessage)
+            moveTimelineRun(localAssistantId, assistantMessage.id)
+            finishTimelineRun(assistantMessage.id, activeRunId.value ?? '', 'interrupted')
+            localAssistantId = assistantMessage.id
+          } else if (assistantMessage) {
+            appendServerAssistantMessage(targetConversationId, assistantMessage)
+          } else if (localAssistantId) {
+            finishTimelineRun(localAssistantId, activeRunId.value ?? '', 'interrupted')
+            removeMessage(localAssistantId)
+            discardTimelineRun(localAssistantId)
+            if (isExpertMaterialContextError(mapped.code)) restoreMessageMaterialContext(message)
+            if (!useLegacyFallback) updateMessageDelivery(persistedUserId, 'error', mapped.message)
+          }
+          if (assistantMessage) { continuationSnapshots.set(assistantMessage.id, { content: message.text, materialIds }); continuableAssistantIds.value = { ...continuableAssistantIds.value, [assistantMessage.id]: true } }
+          fallbackToLegacy = useLegacyFallback
+          if (!useLegacyFallback) errorMessage.value = mapped.message
+        },
+      }, activeAbort.value.signal)
+      if (fallbackToLegacy) {
+        const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId, materialIds)
+        replaceSavedMessage(persistedUserId, reply.userMessage)
+        appendServerAssistantMessage(targetConversationId, reply.assistantMessage)
+        generationState.value = 'completed'
+      }
+    } catch (error) {
+      const mapped = mapExpertApiError(error)
+      if (mapped.code === 'streaming_not_supported') {
+        const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId, materialIds)
+        replaceOptimisticMessage(message.id, reply.userMessage)
+        appendServerAssistantMessage(targetConversationId, reply.assistantMessage)
+      } else if ((error as DOMException).name !== 'AbortError') {
+        throw error
+      }
+    } finally {
+      activeAbort.value = null
+      activeRunId.value = null
+      resetTransientGenerationState()
     }
   } catch (error) {
     const mapped = mapExpertApiError(error)
-    if (isExpertMaterialContextError(mapped.code) && message.runtimeMaterialContext) {
-      composerMaterialContexts.value = mergeExpertMessageMaterialContexts(
-        composerMaterialContexts.value,
-        message.runtimeMaterialContext,
-      )
-    }
+    if (isExpertMaterialContextError(mapped.code)) restoreMessageMaterialContext(message)
     updateMessageDelivery(message.id, 'error', mapped.message)
+  }
+}
+
+function stopStream() {
+  const runId = activeRunId.value
+  const targetConversationId = conversationId.value
+  if (!runId || !targetConversationId || generationState.value === 'stopping') return
+  generationState.value = 'stopping'
+  void expertApi.cancelStream(targetConversationId, runId).catch((error) => {
+    generationState.value = 'error'
+    errorMessage.value = mapExpertApiError(error).message
+  })
+}
+
+async function continueMessage(assistantId: string) {
+  const snapshot = continuationSnapshots.get(assistantId)
+  if (!snapshot || !conversationId.value || streamActive.value) {
+    errorMessage.value = 'Продолжение доступно только в текущем сеансе с исходным контекстом.'
+    return
+  }
+  const assistant = findMessage(assistantId)
+  if (!assistant) return
+  generationState.value = 'starting'
+  activeAbort.value = new AbortController()
+  let lastSeq = 0
+  let continuationRunId = ''
+  try {
+    await expertApi.streamMessage(conversationId.value, snapshot.content, crypto.randomUUID(), snapshot.materialIds, {
+      onRun: (runId) => {
+        continuationRunId = runId
+        activeRunId.value = runId
+        generationState.value = 'streaming'
+        beginTimelineRun(assistantId, runId)
+      },
+      onDelta: (runId, seq, text) => {
+        if (runId !== activeRunId.value || seq <= lastSeq) return
+        lastSeq = seq
+        const nearBottom = isMessageAreaNearBottom()
+        updateMessageText(assistantId, text)
+        void handleMessageAdded(nearBottom, false)
+      },
+      onActivity: (activity) => { if (activity.runId === continuationRunId) applyTimelineActivity(assistantId, activity) },
+      onReasoningSummary: (summary) => { if (summary.runId === continuationRunId) appendTimelineSummary(assistantId, summary) },
+      onDone: (saved) => {
+        generationState.value = 'completed'
+        finishTimelineRun(assistantId, continuationRunId, 'completed')
+        if (saved) replaceSavedMessage(assistantId, saved)
+        continuationSnapshots.delete(assistantId)
+        const { [assistantId]: removed, ...rest } = continuableAssistantIds.value
+        void removed
+        continuableAssistantIds.value = rest
+      },
+      onCancelled: (saved) => {
+        generationState.value = 'stopped'
+        finishTimelineRun(assistantId, continuationRunId, 'cancelled')
+        if (saved) replaceSavedMessage(assistantId, saved)
+      },
+      onError: (mapped, saved) => {
+        generationState.value = 'interrupted'
+        finishTimelineRun(assistantId, continuationRunId, 'interrupted')
+        if (saved) replaceSavedMessage(assistantId, saved)
+        errorMessage.value = mapped.message
+      },
+    }, activeAbort.value.signal, assistantId)
+  } catch (error) {
+    if ((error as DOMException).name !== 'AbortError') errorMessage.value = mapExpertApiError(error).message
+  } finally {
+    activeAbort.value = null
+    activeRunId.value = null
+    resetTransientGenerationState()
   }
 }
 
@@ -456,10 +720,11 @@ watch(() => props.project.id, () => { void requestConversations() }, { immediate
 watch(conversationId, (id) => { void loadMessages(id) })
 watch(() => props.project.id, () => {
   composerMaterialContexts.value = []
+  timelineByAssistant.value = {}
   transfers.clearUploads()
   transfers.syncImagePreviews(props.project.materials)
 })
-onBeforeUnmount(() => transfers.dispose())
+onBeforeUnmount(() => { activeAbort.value?.abort(); timelineByAssistant.value = {}; transfers.dispose() })
 </script>
 
 <style scoped>

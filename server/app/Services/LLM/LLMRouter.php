@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Services\LLM;
 
 use App\Services\LLM\Contracts\LLMProviderInterface;
+use App\Services\LLM\Contracts\LLMStreamingProviderInterface;
+use App\Services\LLM\DTO\LLMCancellationToken;
 use App\Services\LLM\DTO\DecompositionPrompt;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMChatResponse;
+use App\Services\LLM\DTO\LLMStreamEvent;
 use App\Services\LLM\DTO\LLMResponse;
 use App\Services\LLM\Enums\LLMCapability;
 use App\Services\LLM\Enums\LLMErrorType;
@@ -411,6 +414,65 @@ class LLMRouter
 
         $this->throwChatUnavailable($failoverChain, $lastErrorType,
             'All LLM providers are unavailable for text chat');
+    }
+
+    /**
+     * @return iterable<LLMStreamEvent>
+     * @throws LLMChatUnavailableException
+     */
+    public function streamChat(LLMChatRequest $request, LLMCancellationToken $cancellationToken, ?string $correlationId = null): iterable
+    {
+        $this->lastCorrelationId = $correlationId ?? (string) Str::uuid();
+        $executionPlan = $this->buildExecutionPlan();
+        // Multimodal runs must remain on the selected model exactly like chat().
+        if ($request->hasFiles() || $request->hasImages()) {
+            $executionPlan = array_slice($executionPlan, 0, 1);
+        }
+        $failoverChain = [];
+        $lastErrorType = null;
+
+        foreach ($executionPlan as $providerName) {
+            $provider = $this->getProvider($providerName);
+            if (! $provider instanceof LLMStreamingProviderInterface || ! in_array(LLMCapability::STREAMING, $provider->capabilities(), true)) {
+                $failoverChain[] = "{$providerName}:streaming_not_supported";
+                continue;
+            }
+            if ($request->hasImages() && ! in_array(LLMCapability::IMAGE_INPUT, $provider->capabilities(), true)) {
+                throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), LLMCapability::IMAGE_INPUT);
+            }
+            if ($request->hasPdfOcrFiles() && ! in_array(LLMCapability::PDF_OCR, $provider->capabilities(), true)) {
+                throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), LLMCapability::PDF_OCR);
+            }
+
+            for ($attempt = 0; $attempt < self::MAX_ATTEMPTS_PER_PROVIDER; $attempt++) {
+                $emitted = false;
+                try {
+                    foreach ($provider->streamChat($request, $cancellationToken) as $event) {
+                        if (in_array($event->type, ['delta', 'reasoning_summary'], true) && $event->text !== '') {
+                            $emitted = true;
+                        }
+                        yield $event;
+                    }
+                    $this->circuitBreaker->recordSuccess($providerName);
+                    return;
+                } catch (LLMProviderException $exception) {
+                    $lastErrorType = $this->errorClassifier->classify($exception, $exception->getHttpStatus());
+                    $failoverChain[] = "{$providerName}:{$lastErrorType->value}";
+                    $this->circuitBreaker->recordFailure($providerName, $lastErrorType->value);
+                    // Retrying after visible output would duplicate a partial answer.
+                    if (! $emitted && $lastErrorType->isRetryable() && $attempt + 1 < self::MAX_ATTEMPTS_PER_PROVIDER) {
+                        usleep((int) (self::RETRY_BASE_DELAY_MS * (2 ** $attempt)) * 1000);
+                        continue;
+                    }
+                    if ($emitted || $this->settings->getMode() === 'manual') {
+                        throw $exception;
+                    }
+                    break;
+                }
+            }
+        }
+
+        $this->throwChatUnavailable($failoverChain, $lastErrorType, 'Streaming is unavailable for the selected AI provider');
     }
 
     /**

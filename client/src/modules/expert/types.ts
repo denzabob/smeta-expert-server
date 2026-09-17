@@ -14,6 +14,8 @@ export interface ExpertMessage {
   role: 'user' | 'assistant'
   text: string
   createdAt: string
+  metadata?: Record<string, unknown>
+  generationStatus?: 'completed' | 'stopped' | 'interrupted'
   deliveryState?: ExpertMessageDeliveryState
   deliveryError?: string
   clientMessageId?: string

@@ -18,6 +18,8 @@ import {
   expertWorkTypeValues,
 } from './options'
 import { describeProjectMaterial, formatMaterialSize, safeMaterialDisplayName } from './materialPresentation'
+import { parseExpertSseStream } from './chatStreaming'
+import type { ExpertReasoningSummaryEvent, ExpertRunActivity } from './chatTimeline'
 
 export type ExpertCountsDto = {
   research_objects: number
@@ -51,6 +53,20 @@ export type ExpertMessageDto = {
 export type ExpertChatReplyDto = {
   user_message: ExpertMessageDto
   assistant_message: ExpertMessageDto
+}
+export type ExpertStreamHandlers = {
+  onRun: (runId: string, userMessage: ExpertMessage) => void
+  onDelta: (runId: string, seq: number, text: string) => void
+  onActivity?: (activity: ExpertRunActivity) => void
+  onReasoningSummary?: (summary: ExpertReasoningSummaryEvent) => void
+  onDone: (assistantMessage?: ExpertMessage) => void
+  onCancelled: (assistantMessage?: ExpertMessage) => void
+  onError: (error: ExpertApiError, assistantMessage?: ExpertMessage) => void
+}
+
+export class ExpertStreamApiError extends Error {
+  public readonly mapped: ExpertApiError
+  public constructor(mapped: ExpertApiError) { super(mapped.message); this.mapped = mapped }
 }
 export type ExpertMaterialDto = {
   public_id: string
@@ -112,6 +128,14 @@ export type ExpertFindingInput = {
   material_public_ids?: string[]
 }
 
+function isMessageDto(value: unknown): value is ExpertMessageDto {
+  return value !== null
+    && typeof value === 'object'
+    && typeof (value as Record<string, unknown>).public_id === 'string'
+    && typeof (value as Record<string, unknown>).content === 'string'
+    && typeof (value as Record<string, unknown>).role === 'string'
+}
+
 const demoIds = new Set(['demo-commodity', 'demo-construction'])
 export const isDemoProjectId = (id: string): boolean => demoIds.has(id)
 
@@ -164,11 +188,15 @@ export function mapConversation(dto: ExpertConversationDto): ExpertConversation 
 }
 
 export function mapMessage(dto: ExpertMessageDto): ExpertMessage {
+  const metadata = dto.metadata ?? undefined
+  const generationStatus = metadata?.generation_status
   return {
     id: dto.public_id,
     role: dto.role === 'user' ? 'user' : 'assistant',
     text: dto.content,
     createdAt: dto.created_at,
+    metadata,
+    generationStatus: generationStatus === 'completed' || generationStatus === 'stopped' || generationStatus === 'interrupted' ? generationStatus : undefined,
   }
 }
 
@@ -283,6 +311,7 @@ export function toProjectPayload(draft: ExpertProjectDraft) {
 }
 
 export function mapExpertApiError(error: unknown): ExpertApiError {
+  if (error instanceof ExpertStreamApiError) return error.mapped
   if (!axios.isAxiosError(error))
     return { message: 'Не удалось выполнить запрос.', validationErrors: {} }
   const data = error.response?.data as
@@ -317,6 +346,51 @@ export function isExpertMaterialContextError(code?: string): boolean {
     || code === 'vision_material_too_large'
     || code === 'vision_too_many_images'
     || code === 'vision_preparation_failed'
+}
+
+function mapStreamActivity(payload: Record<string, unknown>): ExpertRunActivity | null {
+  const status = payload.status
+  if (payload.version !== 1
+    || typeof payload.run_id !== 'string'
+    || !Number.isSafeInteger(payload.seq)
+    || (payload.seq as number) < 1
+    || typeof payload.activity_id !== 'string'
+    || typeof payload.code !== 'string'
+    || typeof payload.category !== 'string'
+    || !['started', 'completed', 'skipped', 'failed'].includes(String(status))) return null
+
+  return {
+    runId: payload.run_id,
+    seq: payload.seq as number,
+    activityId: payload.activity_id,
+    code: payload.code,
+    status: status as ExpertRunActivity['status'],
+    category: payload.category,
+    detail: safeStreamActivityDetail(payload.detail),
+  }
+}
+
+function mapReasoningSummary(payload: Record<string, unknown>): ExpertReasoningSummaryEvent | null {
+  if (payload.version !== 1
+    || typeof payload.run_id !== 'string'
+    || !Number.isSafeInteger(payload.seq)
+    || (payload.seq as number) < 1
+    || typeof payload.text !== 'string'
+    || (payload.final !== undefined && typeof payload.final !== 'boolean')) return null
+
+  return {
+    runId: payload.run_id,
+    seq: payload.seq as number,
+    text: payload.text.slice(0, 4000),
+    final: payload.final === true,
+  }
+}
+
+function safeStreamActivityDetail(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const segments = value.replace(/\\/g, '/').split('/')
+  const filename = (segments[segments.length - 1] ?? '').replace(/[\u0000-\u001F\u007F]/g, '').trim()
+  return filename ? filename.slice(0, 180) : undefined
 }
 
 async function defaultHttp(): Promise<AxiosInstance> {
@@ -413,6 +487,68 @@ export function createExpertApi(http?: AxiosInstance) {
         userMessage: mapMessage(data.user_message),
         assistantMessage: mapMessage(data.assistant_message),
       }
+    },
+    async streamMessage(
+      conversationId: string,
+      content: string,
+      clientMessageId: string,
+      materialPublicIds: string[],
+      handlers: ExpertStreamHandlers,
+      signal?: AbortSignal,
+      assistantId?: string,
+    ) {
+      const instance = await resolveHttp()
+      const path = assistantId
+        ? `/api/expert/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(assistantId)}/continue/stream`
+        : `/api/expert/conversations/${encodeURIComponent(conversationId)}/messages/stream`
+      const csrf = document.cookie.split('; ').find((item) => item.startsWith('XSRF-TOKEN='))?.slice('XSRF-TOKEN='.length)
+      const response = await fetch(instance.getUri({ url: path }), {
+        method: 'POST',
+        credentials: 'include',
+        signal,
+        headers: {
+          Accept: 'text/event-stream',
+          'Content-Type': 'application/json',
+          'X-Expert-Message-Id': clientMessageId,
+          ...(csrf ? { 'X-XSRF-TOKEN': decodeURIComponent(csrf) } : {}),
+        },
+        body: JSON.stringify(materialPublicIds.length ? { content, material_public_ids: materialPublicIds } : { content }),
+      })
+      if (!response.ok || !response.body) {
+        let data: { message?: string; code?: string; errors?: ExpertValidationErrors } = {}
+        try { data = await response.json() as typeof data } catch { /* stable fallback below */ }
+        throw new ExpertStreamApiError({ status: response.status, code: data.code, message: data.message ?? 'Не удалось начать потоковый ответ.', validationErrors: data.errors ?? {} })
+      }
+      let runId = ''
+      let terminalReceived = false
+      for await (const event of parseExpertSseStream(response.body)) {
+        if (terminalReceived) continue
+        const payload = event.data
+        if (event.event === 'run' && typeof payload.run_id === 'string' && isMessageDto(payload.user_message)) {
+          runId = payload.run_id
+          handlers.onRun(runId, mapMessage(payload.user_message))
+        } else if (event.event === 'delta' && runId && typeof payload.seq === 'number' && typeof payload.text === 'string') {
+          handlers.onDelta(runId, payload.seq, payload.text)
+        } else if (event.event === 'activity' && runId) {
+          const activity = mapStreamActivity(payload)
+          if (activity && activity.runId === runId) handlers.onActivity?.(activity)
+        } else if (event.event === 'reasoning_summary' && runId) {
+          const summary = mapReasoningSummary(payload)
+          if (summary && summary.runId === runId) handlers.onReasoningSummary?.(summary)
+        } else if (event.event === 'done') {
+          terminalReceived = true
+          handlers.onDone(isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
+        } else if (event.event === 'cancelled') {
+          terminalReceived = true
+          handlers.onCancelled(isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
+        } else if (event.event === 'error') {
+          terminalReceived = true
+          handlers.onError({ code: typeof payload.code === 'string' ? payload.code : 'expert_stream_interrupted', message: 'Потоковый ответ AI прерван.', validationErrors: {} }, isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
+        }
+      }
+    },
+    async cancelStream(conversationId: string, runId: string) {
+      await (await resolveHttp()).post(`/api/expert/conversations/${encodeURIComponent(conversationId)}/runs/${encodeURIComponent(runId)}/cancel`)
     },
     async listMaterials(projectId: string) {
       const { data } = await (await resolveHttp()).get<ExpertCollection<ExpertMaterialDto>>(

@@ -22,13 +22,28 @@ final class ExpertChatMaterialContextBuilder
     ) {}
 
     /** @param list<string> $publicIds */
-    public function build(ExpertProject $project, array $publicIds): ExpertChatMaterialContext
+    public function build(ExpertProject $project, array $publicIds, ?ExpertRunActivitySink $activity = null): ExpertChatMaterialContext
     {
-        if ($publicIds === []) return new ExpertChatMaterialContext([], []);
+        $activity ??= new NoOpExpertRunActivitySink();
+        if ($publicIds === []) {
+            $activity->record('context.build.completed', 'context');
+
+            return new ExpertChatMaterialContext([], []);
+        }
 
         $requestedIds = array_values(array_unique($publicIds));
-        $materials = $project->materials()->whereIn('public_id', $requestedIds)->get()->keyBy('public_id');
-        if ($materials->count() !== count($requestedIds)) throw ExpertMaterialContextException::notFound();
+        $resolveActivity = $activity->start('materials.resolve.started', 'material');
+        try {
+            $this->throwIfCancellationRequested($activity);
+            $materials = $project->materials()->whereIn('public_id', $requestedIds)->get()->keyBy('public_id');
+            if ($materials->count() !== count($requestedIds)) throw ExpertMaterialContextException::notFound();
+        } catch (ExpertChatStreamingCancelledException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            $activity->fail($resolveActivity, $this->errorCode($exception));
+            throw $exception;
+        }
+        $activity->complete($resolveActivity, 'materials.resolve.completed');
 
         $imageMaterials = [];
         $textIds = [];
@@ -45,37 +60,65 @@ final class ExpertChatMaterialContextBuilder
         $totalPreparedBytes = 0;
         $maxTotalPreparedBytes = max(1, (int) config('expert.vision.max_total_vision_bytes', 12 * 1024 * 1024));
         foreach ($imageMaterials as $material) {
+            $this->throwIfCancellationRequested($activity);
+            $imageActivity = $activity->start('material.image_prepare.started', 'material', (string) $material->original_name);
             try {
                 $image = $this->imagePreparer->prepare($material);
                 $totalPreparedBytes += strlen($image->bytes);
                 if ($totalPreparedBytes > $maxTotalPreparedBytes) throw ExpertVisionException::tooLarge();
                 $images[] = $image;
+                $activity->complete($imageActivity, 'material.image_prepare.completed');
                 Log::info('Expert vision image prepared.', ['material_public_id' => $image->materialPublicId, 'width' => $image->width, 'height' => $image->height, 'prepared_bytes' => strlen($image->bytes)]);
             } catch (ExpertVisionException $exception) {
+                $activity->fail($imageActivity, $exception->errorCode);
                 Log::warning('Expert vision image rejected.', ['material_public_id' => (string) $material->public_id, 'error_code' => $exception->errorCode]);
+                throw $exception;
+            } catch (\Throwable $exception) {
+                $activity->fail($imageActivity, $this->errorCode($exception));
                 throw $exception;
             }
         }
 
-        $built = $this->textContextBuilder->buildForChat($project, $textIds);
+        $this->throwIfCancellationRequested($activity);
+        $built = $this->textContextBuilder->buildForChat($project, $textIds, $activity);
         if ($built->ocrCandidates !== [] && ! (bool) config('expert.pdf_ocr.enabled', true)) throw ExpertPdfOcrException::disabled();
         $files = [];
         $pending = [];
         $totalFileBase64Bytes = 0;
         $textMaterials = $built->textMaterials;
         foreach ($built->ocrCandidates as $candidate) {
+            $this->throwIfCancellationRequested($activity);
             $cached = $this->ocrCache->get($candidate);
             if ($cached !== null) {
+                $activity->record('pdf.ocr_cache.hit', 'material', $candidate->name);
                 $textMaterials[] = ['public_id' => $candidate->materialPublicId, 'name' => $candidate->name, 'mime_type' => 'application/pdf', 'text' => $cached->text];
                 foreach ($cached->images as $image) $images[] = new \App\Services\LLM\DTO\LLMImageContent($candidate->materialPublicId, $candidate->name, $image->mimeType, $image->bytes, 0, 0);
             } else {
+                $activity->record('pdf.ocr_cache.miss', 'material', $candidate->name);
                 $totalFileBase64Bytes += strlen(base64_encode($candidate->bytes));
                 if ($totalFileBase64Bytes > (int) config('expert.pdf_ocr.max_base64_request_bytes', 58720256)) throw ExpertPdfOcrException::tooLarge();
                 $files[] = new LLMFileContent($candidate->name, 'application/pdf', $candidate->bytes, $candidate->sha256, LLMFileProcessingIntent::PDF_OCR);
                 $pending[] = $candidate;
             }
         }
+
+        $activity->record('context.build.completed', 'context');
+
         return new ExpertChatMaterialContext($textMaterials, $images, $files, $pending);
+    }
+
+    private function throwIfCancellationRequested(ExpertRunActivitySink $activity): void
+    {
+        if ($activity->isCancellationRequested()) {
+            throw new ExpertChatStreamingCancelledException();
+        }
+    }
+
+    private function errorCode(\Throwable $exception): ?string
+    {
+        return property_exists($exception, 'errorCode') && is_string($exception->errorCode)
+            ? $exception->errorCode
+            : null;
     }
 
     private function isImageCandidate(ExpertProjectMaterial $material): bool

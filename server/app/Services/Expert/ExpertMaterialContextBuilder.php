@@ -169,8 +169,9 @@ final class ExpertMaterialContextBuilder
 
         return 'Материал без названия' . ($extension === '' ? '' : '.' . $extension);
     }
-    public function buildForChat(ExpertProject $project, array $publicIds): ExpertMaterialContextBuildResult
+    public function buildForChat(ExpertProject $project, array $publicIds, ?ExpertRunActivitySink $activity = null): ExpertMaterialContextBuildResult
     {
+        $activity ??= new NoOpExpertRunActivitySink();
         if ($publicIds === []) return new ExpertMaterialContextBuildResult([], []);
         $textMaterials = [];
         $ocrCandidates = [];
@@ -178,11 +179,30 @@ final class ExpertMaterialContextBuilder
         $ocrPages = 0;
         $ocrCount = 0;
         foreach (array_values(array_unique($publicIds)) as $publicId) {
+            $activityId = null;
             try {
+                if ($activity->isCancellationRequested()) {
+                    throw new ExpertChatStreamingCancelledException();
+                }
+                /** @var ?ExpertProjectMaterial $material */
+                $material = $project->materials()->where('public_id', $publicId)->first();
+                $isPdf = $material !== null && $this->isPdf($material);
+                $activityId = $activity->start(
+                    $isPdf ? 'pdf.local_extract.started' : 'material.text_extract.started',
+                    'material',
+                    $material === null ? null : $this->presentationName($material),
+                );
                 $textMaterials = [...$textMaterials, ...$this->build($project, [(string) $publicId])];
+                $activity->complete($activityId, $isPdf ? 'pdf.local_extract.completed' : 'material.text_extract.completed');
                 continue;
+            } catch (ExpertChatStreamingCancelledException $exception) {
+                throw $exception;
             } catch (ExpertMaterialContextException $exception) {
-                if ($exception->reason === null || ! str_starts_with($exception->reason, 'pdf_no_usable_text:')) throw $exception;
+                if ($exception->reason === null || ! str_starts_with($exception->reason, 'pdf_no_usable_text:')) {
+                    if ($activityId !== null) $activity->fail($activityId, $exception->errorCode);
+                    throw $exception;
+                }
+                if ($activityId !== null) $activity->complete($activityId, 'pdf.local_extract.completed');
                 $pageCount = (int) substr($exception->reason, strlen('pdf_no_usable_text:'));
                 $material = $project->materials()->where('public_id', $publicId)->first();
                 if (! $material) throw ExpertMaterialContextException::notFound();
@@ -204,8 +224,17 @@ final class ExpertMaterialContextBuilder
                     hash('sha256', $raw),
                     $pageCount,
                 );
+            } catch (\Throwable $exception) {
+                if ($activityId !== null) $activity->fail($activityId);
+                throw $exception;
             }
         }
         return new ExpertMaterialContextBuildResult($textMaterials, $ocrCandidates);
+    }
+
+    private function isPdf(ExpertProjectMaterial $material): bool
+    {
+        return strtolower(ltrim(trim((string) $material->extension), '.')) === 'pdf'
+            || strtolower(trim((string) $material->mime_type)) === 'application/pdf';
     }
 }

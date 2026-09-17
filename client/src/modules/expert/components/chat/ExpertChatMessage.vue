@@ -3,7 +3,8 @@
     <div v-if="message.role === 'assistant'" class="expert-message__avatar"><v-icon icon="mdi-prism" size="19" /></div>
     <div class="expert-message__body">
       <div class="expert-message__author">{{ message.role === 'assistant' ? 'Призма' : 'Вы' }} <span>{{ formattedTimestamp }}</span></div>
-      <div class="expert-message__bubble">{{ message.text }}</div>
+      <div v-if="message.role !== 'assistant' || message.text || !timelineRuns.length" class="expert-message__bubble">{{ message.text }}</div>
+      <ExpertChatActivityTimeline v-if="message.role === 'assistant' && timelineRuns.length" :runs="timelineRuns" />
       <div v-if="message.role === 'user' && message.deliveryState === 'sending'" class="expert-message__delivery" role="status">
         <v-progress-circular indeterminate size="12" width="2" /> Формируется ответ…
       </div>
@@ -22,6 +23,7 @@
         </button>
       </div>
       <div v-if="message.role === 'assistant'" class="expert-message__actions">
+        <v-btn v-if="canContinue" size="x-small" variant="text" prepend-icon="mdi-play" @click="$emit('continue', message.id)">Продолжить</v-btn>
         <v-btn size="x-small" variant="text" prepend-icon="mdi-content-copy" @click="$emit('action', 'Копировать')">Копировать</v-btn>
         <v-menu location="bottom start">
           <template #activator="{ props: menuProps }"><v-btn v-bind="menuProps" size="x-small" variant="text" append-icon="mdi-chevron-down">Добавить</v-btn></template>
@@ -38,10 +40,13 @@
 import { computed } from 'vue'
 import type { ExpertMessage } from '../../types'
 import { formatExpertMessageTimestamp } from '../../chatPresentation'
+import ExpertChatActivityTimeline from './ExpertChatActivityTimeline.vue'
+import type { ExpertTimelineRun } from '../../chatTimeline'
 
-const props = defineProps<{ message: ExpertMessage }>()
-defineEmits<{ (event: 'action', action: string): void; (event: 'open-source', sourceId: string): void; (event: 'retry', messageId: string): void }>()
+const props = withDefaults(defineProps<{ message: ExpertMessage; allowContinue?: boolean; timelineRuns?: ExpertTimelineRun[] }>(), { allowContinue: false, timelineRuns: () => [] })
+defineEmits<{ (event: 'action', action: string): void; (event: 'open-source', sourceId: string): void; (event: 'retry', messageId: string): void; (event: 'continue', messageId: string): void }>()
 const formattedTimestamp = computed(() => formatExpertMessageTimestamp(props.message.createdAt))
+const canContinue = computed(() => props.allowContinue && (props.message.generationStatus === 'stopped' || props.message.generationStatus === 'interrupted'))
 const actions = [
   { label: 'Добавить как факт', icon: 'mdi-pin-outline' },
   { label: 'Добавить в исследование', icon: 'mdi-microscope' },

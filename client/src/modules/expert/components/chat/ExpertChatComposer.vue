@@ -36,7 +36,7 @@
       </v-menu>
       <textarea ref="textarea" v-model="text" rows="1" :placeholder="persistenceOnly ? 'Введите сообщение…' : 'Спросить Prism AI...'" :aria-label="persistenceOnly ? 'Сообщение' : 'Сообщение Prism AI'" :disabled="busy" aria-keyshortcuts="Enter" @input="resizeTextarea" @keydown="handleKeydown" />
       <v-select v-if="!persistenceOnly" v-model="mode" :items="modes" variant="plain" density="compact" hide-details class="expert-composer__mode" aria-label="Режим Prism AI" />
-      <v-btn icon="mdi-arrow-up" color="primary" variant="flat" size="small" :loading="busy" :disabled="sendDisabled" aria-label="Отправить" @click="send" />
+      <v-btn :icon="busy ? 'mdi-stop' : 'mdi-arrow-up'" color="primary" variant="flat" size="small" :disabled="busy ? false : sendDisabled" :aria-label="busy ? 'Остановить ответ' : 'Отправить'" @click="busy ? $emit('stop') : send" />
     </div>
     <div v-if="sendBlockedReason" class="expert-composer__blocked" role="status">{{ sendBlockedReason }}</div>
     <div class="expert-composer__hint">{{ persistenceOnly ? 'Материалы сохраняются в проекте. API чата пока не получает их IDs.' : 'Prism AI может ошибаться. Проверяйте выводы и источники.' }}</div>
@@ -72,6 +72,7 @@ const props = withDefaults(defineProps<{
 })
 const emit = defineEmits<{
   (event: 'send', text: string, accepted: () => void): void
+  (event: 'stop'): void
   (event: 'attachment', action: string): void
   (event: 'attach-files', files: File[]): void
   (event: 'retry-upload', id: string): void

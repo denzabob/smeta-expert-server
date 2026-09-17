@@ -5,6 +5,14 @@ return [
         'idempotency_lock_seconds' => (int) env('EXPERT_CHAT_IDEMPOTENCY_LOCK_SECONDS', 900),
         'idempotency_wait_seconds' => (int) env('EXPERT_CHAT_IDEMPOTENCY_WAIT_SECONDS', 5),
     ],
+    'streaming' => [
+        'lock_seconds' => (int) env('EXPERT_STREAM_LOCK_SECONDS', 900),
+        'run_ttl_seconds' => (int) env('EXPERT_STREAM_RUN_TTL_SECONDS', 1800),
+        'time_to_first_token_seconds' => (int) env('EXPERT_STREAM_TTFB_SECONDS', 45),
+        'idle_timeout_seconds' => (int) env('EXPERT_STREAM_IDLE_TIMEOUT_SECONDS', 45),
+        'absolute_timeout_seconds' => (int) env('EXPERT_STREAM_ABSOLUTE_TIMEOUT_SECONDS', 600),
+        'heartbeat_seconds' => (int) env('EXPERT_STREAM_HEARTBEAT_SECONDS', 15),
+    ],
     'material_context' => [
         'xlsx_enabled' => true,
         'max_materials_per_message' => (int) env('EXPERT_CHAT_MAX_MATERIALS_PER_MESSAGE', 5),

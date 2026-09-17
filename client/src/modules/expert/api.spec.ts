@@ -132,4 +132,58 @@ describe('Expert persistence mapping', () => {
 
     expect(conflict).toMatchObject({status:409,code:'expert_request_conflict',message:'Snapshot изменён.'})
   })
+
+  it('dispatches only versioned activity and dedicated safe-summary stream events', async () => {
+    vi.stubGlobal('document', { cookie: '' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
+      'event: run\ndata: {"version":1,"run_id":"run-1","user_message":{"public_id":"u1","role":"user","content":"Вопрос","created_at":"2026-09-15T10:00:00Z"}}\n\n',
+      'event: activity\ndata: {"version":1,"run_id":"run-1","seq":1,"activity_id":"a1","code":"pdf.ocr_cache.hit","status":"completed","category":"material","detail":"C:\\\\private\\\\scan.pdf","raw":"OCR-SECRET"}\n\n',
+      'event: reasoning\ndata: {"version":1,"run_id":"run-1","seq":1,"text":"RAW-CHAIN-OF-THOUGHT"}\n\n',
+      'event: reasoning_summary\ndata: {"version":1,"run_id":"run-1","seq":1,"text":"Проверен OCR-кеш.","reasoning":"RAW-CHAIN-OF-THOUGHT","final":true}\n\n',
+      'event: done\ndata: {"version":1}\n\n',
+    ].join(''), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })))
+    const activity: unknown[] = []
+    const summaries: unknown[] = []
+    const client = createExpertApi({ getUri: () => 'https://expert.test' } as unknown as AxiosInstance)
+
+    await client.streamMessage('conversation-1', 'Вопрос', 'message-1', [], {
+      onRun: () => undefined,
+      onDelta: () => undefined,
+      onActivity: (event) => activity.push(event),
+      onReasoningSummary: (event) => summaries.push(event),
+      onDone: () => undefined,
+      onCancelled: () => undefined,
+      onError: () => undefined,
+    })
+
+    expect(activity).toEqual([expect.objectContaining({ code: 'pdf.ocr_cache.hit', detail: 'scan.pdf' })])
+    expect(summaries).toEqual([expect.objectContaining({ text: 'Проверен OCR-кеш.', final: true })])
+    expect(JSON.stringify({ activity, summaries })).not.toContain('RAW-CHAIN-OF-THOUGHT')
+    expect(JSON.stringify({ activity, summaries })).not.toContain('OCR-SECRET')
+    vi.unstubAllGlobals()
+  })
+
+  it('ignores all events delivered after the first stream terminal event', async () => {
+    vi.stubGlobal('document', { cookie: '' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
+      'event: run\ndata: {"version":1,"run_id":"run-1","user_message":{"public_id":"u1","role":"user","content":"Вопрос","created_at":"2026-09-15T10:00:00Z"}}\n\n',
+      'event: done\ndata: {"version":1}\n\n',
+      'event: error\ndata: {"version":1,"code":"expert_stream_interrupted"}\n\n',
+      'event: activity\ndata: {"version":1,"run_id":"run-1","seq":1,"activity_id":"a1","code":"generation.interrupted","status":"failed","category":"generation"}\n\n',
+    ].join(''), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })))
+    const received: string[] = []
+    const client = createExpertApi({ getUri: () => 'https://expert.test' } as unknown as AxiosInstance)
+
+    await client.streamMessage('conversation-1', 'Вопрос', 'message-1', [], {
+      onRun: () => undefined,
+      onDelta: () => undefined,
+      onActivity: () => received.push('activity'),
+      onDone: () => received.push('done'),
+      onCancelled: () => received.push('cancelled'),
+      onError: () => received.push('error'),
+    })
+
+    expect(received).toEqual(['done'])
+    vi.unstubAllGlobals()
+  })
 })

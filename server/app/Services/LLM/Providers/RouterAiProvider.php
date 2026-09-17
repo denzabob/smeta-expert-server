@@ -5,15 +5,21 @@ declare(strict_types=1);
 namespace App\Services\LLM\Providers;
 
 use App\Services\LLM\Contracts\LLMProviderInterface;
+use App\Services\LLM\Contracts\LLMStreamingProviderInterface;
 use App\Services\LLM\DTO\DecompositionPrompt;
+use App\Services\LLM\DTO\LLMCancellationToken;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMChatResponse;
-use App\Services\LLM\RouterAiFileAnnotationParser;
 use App\Services\LLM\DTO\LLMResponse;
+use App\Services\LLM\DTO\LLMStreamEvent;
 use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\LLMCapabilityCatalog;
 use App\Services\LLM\OpenAiChatMessageMapper;
 use App\Services\LLM\Parsing\LLMJsonParser;
+use App\Services\LLM\Parsing\OpenAiSseStreamParser;
+use App\Services\LLM\RouterAiFileAnnotationParser;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -22,19 +28,28 @@ use Illuminate\Support\Facades\Log;
  *
  * Использует OpenAI-совместимый API RouterAI.
  */
-class RouterAiProvider implements LLMProviderInterface
+class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInterface
 {
     private const NAME = 'routerai';
+
     private const DEFAULT_BASE_URL = 'https://routerai.ru/api/v1';
+
     private const DEFAULT_MODEL = 'openai/gpt-4o';
+
     private const DEFAULT_TIMEOUT = 90;
 
     private string $apiKey;
+
     private string $baseUrl;
+
     private string $model;
+
     private float $temperature;
+
     private int $maxTokens;
+
     private int $timeout;
+
     private int $connectTimeout;
 
     private LLMJsonParser $jsonParser;
@@ -56,7 +71,7 @@ class RouterAiProvider implements LLMProviderInterface
         $this->maxTokens = $maxTokens ?? (int) config('services.routerai.max_tokens', 4096);
         $this->timeout = $timeout ?? self::DEFAULT_TIMEOUT;
         $this->connectTimeout = $connectTimeout ?? (int) config('services.llm_transport.connect_timeout', 10);
-        $this->jsonParser = $jsonParser ?? new LLMJsonParser();
+        $this->jsonParser = $jsonParser ?? new LLMJsonParser;
     }
 
     /**
@@ -103,15 +118,16 @@ class RouterAiProvider implements LLMProviderInterface
 
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Authorization' => 'Bearer '.$this->apiKey,
             ])
-            ->connectTimeout($this->connectTimeout)
-            ->timeout((int) config('services.llm_transport.health_timeout'))
-            ->get($this->baseUrl . '/models');
+                ->connectTimeout($this->connectTimeout)
+                ->timeout((int) config('services.llm_transport.health_timeout'))
+                ->get($this->baseUrl.'/models');
 
             return $response->successful();
         } catch (\Throwable $e) {
             Log::debug('RouterAiProvider: ping failed', ['exception' => $e::class]);
+
             return false;
         }
     }
@@ -137,16 +153,16 @@ class RouterAiProvider implements LLMProviderInterface
             ];
 
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Authorization' => 'Bearer '.$this->apiKey,
                 'Content-Type' => 'application/json',
             ])
-            ->connectTimeout($this->connectTimeout)
-            ->timeout($this->timeout)
-            ->post($this->baseUrl . '/chat/completions', $payload);
+                ->connectTimeout($this->connectTimeout)
+                ->timeout($this->timeout)
+                ->post($this->baseUrl.'/chat/completions', $payload);
 
             $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 throw LLMProviderException::httpError(
                     self::NAME,
                     $response->status(),
@@ -204,12 +220,12 @@ class RouterAiProvider implements LLMProviderInterface
 
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Authorization' => 'Bearer '.$this->apiKey,
                 'Content-Type' => 'application/json',
             ])
                 ->connectTimeout($this->connectTimeout)
                 ->timeout($this->timeout)
-                ->post($this->baseUrl . '/chat/completions', array_filter([
+                ->post($this->baseUrl.'/chat/completions', array_filter([
                     'model' => $this->model,
                     'messages' => OpenAiChatMessageMapper::map($request),
                     'temperature' => $this->temperature,
@@ -219,14 +235,14 @@ class RouterAiProvider implements LLMProviderInterface
 
             $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 throw LLMProviderException::httpError(self::NAME, $response->status(), $response->body());
             }
 
             $data = $response->json();
             $content = $data['choices'][0]['message']['content'] ?? null;
 
-            if (!is_string($content) || trim($content) === '') {
+            if (! is_string($content) || trim($content) === '') {
                 throw new LLMProviderException('Provider returned an empty chat response', self::NAME, 'invalid_response');
             }
 
@@ -240,7 +256,7 @@ class RouterAiProvider implements LLMProviderInterface
                 totalTokens: $this->nullableInt($data['usage']['total_tokens'] ?? null),
                 cachedTokens: $this->nullableInt($data['usage']['prompt_tokens_details']['cached_tokens'] ?? null),
                 reasoningTokens: $this->nullableInt($data['usage']['completion_tokens_details']['reasoning_tokens'] ?? null),
-                                parsedFiles: RouterAiFileAnnotationParser::parse($data['choices'][0]['message']['annotations'] ?? []),
+                parsedFiles: RouterAiFileAnnotationParser::parse($data['choices'][0]['message']['annotations'] ?? []),
                 metadata: array_filter([
                     'upstream_id' => is_string($data['id'] ?? null) ? $data['id'] : null,
                     'upstream_provider' => is_string($data['provider'] ?? null) ? $data['provider'] : null,
@@ -263,6 +279,89 @@ class RouterAiProvider implements LLMProviderInterface
                 provider: self::NAME,
                 errorType: 'unknown',
             );
+        }
+    }
+
+    /** @return iterable<LLMStreamEvent> */
+    public function streamChat(LLMChatRequest $request, LLMCancellationToken $cancellationToken): iterable
+    {
+        if ($this->apiKey === '') {
+            throw LLMProviderException::configError(self::NAME, 'API key is not configured');
+        }
+
+        $client = new Client([
+            'connect_timeout' => $this->connectTimeout,
+            // A stream is bounded by ExpertChatStreamingService. Guzzle must not
+            // apply the legacy whole-response timeout here.
+            'timeout' => 0,
+            // This bounds both first-byte and between-chunk waits. Before the
+            // first delta LLMRouter may retry; afterwards it persists partial.
+            'read_timeout' => max(1, (float) min(
+                (int) config('expert.streaming.time_to_first_token_seconds', 45),
+                (int) config('expert.streaming.idle_timeout_seconds', 45),
+            )),
+            'http_errors' => false,
+        ]);
+
+        try {
+            $response = $client->request('POST', $this->baseUrl.'/chat/completions', [
+                'headers' => [
+                    'Authorization' => 'Bearer '.$this->apiKey,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'text/event-stream',
+                ],
+                'json' => array_filter([
+                    'model' => $this->model,
+                    'messages' => OpenAiChatMessageMapper::map($request),
+                    'temperature' => $this->temperature,
+                    'max_tokens' => $this->maxTokens,
+                    'stream' => true,
+                    'stream_options' => ['include_usage' => true],
+                    'plugins' => $request->hasPdfOcrFiles() ? [['id' => 'file-parser', 'pdf' => ['engine' => (string) config('expert.pdf_ocr.engine', 'mistral-ocr')]]] : null,
+                ], static fn (mixed $value): bool => $value !== null),
+                'stream' => true,
+            ]);
+        } catch (ConnectException $exception) {
+            throw LLMProviderException::networkError(self::NAME, $exception->getMessage());
+        } catch (\Throwable $exception) {
+            Log::warning('RouterAiProvider: stream connection failed.', ['exception' => $exception::class]);
+            throw new LLMProviderException('Streaming provider connection failed', self::NAME, 'network');
+        }
+
+        if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
+            $body = $response->getBody();
+            try {
+                $body->close();
+            } finally {
+                throw LLMProviderException::httpError(self::NAME, $response->getStatusCode(), 'Streaming provider returned an HTTP error');
+            }
+        }
+
+        $body = $response->getBody();
+
+        try {
+            $chunks = (function () use ($body, $cancellationToken): iterable {
+                while (! $body->eof()) {
+                    if ($cancellationToken->isCancellationRequested()) {
+                        $body->close(); // Closes the active upstream socket, not only UI rendering.
+
+                        return;
+                    }
+                    yield $body->read(8192);
+                }
+            })();
+            // Disabled by default: enable only after the selected RouterAI
+            // integration has a documented, dedicated safe-summary field.
+            yield from (new OpenAiSseStreamParser((bool) config('services.routerai.safe_reasoning_summary_supported', false)))->parse($chunks, $cancellationToken);
+        } catch (LLMProviderException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            if ($cancellationToken->isCancellationRequested()) {
+                return;
+            }
+            throw LLMProviderException::networkError(self::NAME, $exception->getMessage());
+        } finally {
+            $body->close();
         }
     }
 
