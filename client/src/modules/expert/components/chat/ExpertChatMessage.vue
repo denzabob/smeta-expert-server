@@ -15,6 +15,9 @@
       <div v-else-if="message.role === 'user' && message.deliveryState === 'sent'" class="expert-message__delivery">
         <v-icon icon="mdi-check" size="13" /> Отправлено
       </div>
+      <div v-if="message.role === 'assistant' && message.deliveryState === 'error'" class="expert-message__delivery expert-message__delivery--error" role="alert">
+        {{ message.deliveryError || 'Ответ прерван.' }}
+      </div>
       <div v-if="message.sources?.length" class="expert-message__sources">
         <div class="expert-message__sources-label">Источники</div>
         <button v-for="source in message.sources" :key="source.id" class="expert-message__source" type="button" @click="$emit('open-source', source.id)">

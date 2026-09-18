@@ -510,9 +510,12 @@ async function persistMessage(message: ExpertMessage) {
             if (isExpertMaterialContextError(mapped.code)) restoreMessageMaterialContext(message)
             if (!useLegacyFallback) updateMessageDelivery(persistedUserId, 'error', mapped.message)
           }
-          if (assistantMessage) { continuationSnapshots.set(assistantMessage.id, { content: message.text, materialIds }); continuableAssistantIds.value = { ...continuableAssistantIds.value, [assistantMessage.id]: true } }
+          if (assistantMessage) {
+            updateMessageDelivery(assistantMessage.id, 'error', mapped.message)
+            continuationSnapshots.set(assistantMessage.id, { content: message.text, materialIds })
+            continuableAssistantIds.value = { ...continuableAssistantIds.value, [assistantMessage.id]: true }
+          }
           fallbackToLegacy = useLegacyFallback
-          if (!useLegacyFallback) errorMessage.value = mapped.message
         },
       }, activeAbort.value.signal)
       if (fallbackToLegacy) {
@@ -548,19 +551,20 @@ function stopStream() {
   if (!runId || !targetConversationId || generationState.value === 'stopping') return
   generationState.value = 'stopping'
   void expertApi.cancelStream(targetConversationId, runId).catch((error) => {
-    generationState.value = 'error'
-    errorMessage.value = mapExpertApiError(error).message
+    generationState.value = 'streaming'
+    notify(mapExpertApiError(error).message)
   })
 }
 
 async function continueMessage(assistantId: string) {
   const snapshot = continuationSnapshots.get(assistantId)
   if (!snapshot || !conversationId.value || streamActive.value) {
-    errorMessage.value = 'Продолжение доступно только в текущем сеансе с исходным контекстом.'
+    updateMessageDelivery(assistantId, 'error', 'Продолжение доступно только в текущем сеансе с исходным контекстом.')
     return
   }
   const assistant = findMessage(assistantId)
   if (!assistant) return
+  updateMessageDelivery(assistantId, 'sending')
   generationState.value = 'starting'
   activeAbort.value = new AbortController()
   let lastSeq = 0
@@ -586,6 +590,7 @@ async function continueMessage(assistantId: string) {
         generationState.value = 'completed'
         finishTimelineRun(assistantId, continuationRunId, 'completed')
         if (saved) replaceSavedMessage(assistantId, saved)
+        else updateMessageDelivery(assistantId, 'sent')
         continuationSnapshots.delete(assistantId)
         const { [assistantId]: removed, ...rest } = continuableAssistantIds.value
         void removed
@@ -595,16 +600,18 @@ async function continueMessage(assistantId: string) {
         generationState.value = 'stopped'
         finishTimelineRun(assistantId, continuationRunId, 'cancelled')
         if (saved) replaceSavedMessage(assistantId, saved)
+        else updateMessageDelivery(assistantId, 'sent')
       },
       onError: (mapped, saved) => {
         generationState.value = 'interrupted'
         finishTimelineRun(assistantId, continuationRunId, 'interrupted')
         if (saved) replaceSavedMessage(assistantId, saved)
-        errorMessage.value = mapped.message
+        updateMessageDelivery(assistantId, 'error', mapped.message)
       },
     }, activeAbort.value.signal, assistantId)
   } catch (error) {
-    if ((error as DOMException).name !== 'AbortError') errorMessage.value = mapExpertApiError(error).message
+    if ((error as DOMException).name !== 'AbortError') updateMessageDelivery(assistantId, 'error', mapExpertApiError(error).message)
+    else updateMessageDelivery(assistantId, 'sent')
   } finally {
     activeAbort.value = null
     activeRunId.value = null

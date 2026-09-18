@@ -115,6 +115,19 @@ export type ExpertProjectDto = {
 export type ExpertCollection<T> = { data: T[] }
 export type ExpertValidationErrors = Record<string, string[]>
 export type ExpertApiError = { status?: number; code?: string; message: string; validationErrors: ExpertValidationErrors }
+const streamErrorMessages: Record<string, string> = {
+  provider_auth_failed: 'Провайдер AI недоступен из-за настройки доступа.',
+  provider_model_not_found: 'Выбранная модель AI недоступна.',
+  provider_validation_failed: 'Провайдер AI отклонил запрос.',
+  provider_rate_limited: 'Провайдер AI временно ограничил запросы.',
+  provider_timeout: 'Время ожидания ответа AI истекло.',
+  provider_connection_failed: 'Не удалось подключиться к провайдеру AI.',
+  stream_malformed: 'Провайдер AI вернул некорректный поток.',
+  stream_eof_without_terminal: 'Ответ AI оборвался до завершения.',
+  streaming_not_supported: 'Текущая модель AI не поддерживает потоковый ответ.',
+  pdf_ocr_failed: 'Не удалось распознать PDF.',
+  vision_not_supported: 'Текущая модель AI не поддерживает изображения.',
+}
 export type ExpertUploadOptions = { onProgress?: (progress: number) => void }
 export type ExpertDownloadOptions = { onProgress?: (progress: number | null) => void }
 export type ExpertFindingInput = {
@@ -543,7 +556,8 @@ export function createExpertApi(http?: AxiosInstance) {
           handlers.onCancelled(isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
         } else if (event.event === 'error') {
           terminalReceived = true
-          handlers.onError({ code: typeof payload.code === 'string' ? payload.code : 'expert_stream_interrupted', message: 'Потоковый ответ AI прерван.', validationErrors: {} }, isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
+          const code = typeof payload.code === 'string' ? payload.code : 'expert_stream_interrupted'
+          handlers.onError({ code, message: streamErrorMessages[code] ?? 'Потоковый ответ AI прерван.', validationErrors: {} }, isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
         }
       }
     },

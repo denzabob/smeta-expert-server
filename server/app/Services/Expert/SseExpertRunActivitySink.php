@@ -18,6 +18,8 @@ final class SseExpertRunActivitySink implements ExpertRunActivitySink
 
     private int $sequence = 0;
 
+    private ?string $lastActivityCode = null;
+
     /**
      * @param \Closure(string, array<string, mixed>): void $emit
      * @param \Closure(): bool $isCancellationRequested
@@ -90,6 +92,11 @@ final class SseExpertRunActivitySink implements ExpertRunActivitySink
         return (bool) ($this->isCancellationRequested)();
     }
 
+    public function lastActivityCode(): ?string
+    {
+        return $this->lastActivityCode;
+    }
+
     private function recordWithStatus(string $code, string $category, ?string $detail, string $status): string
     {
         $activityId = (string) Str::uuid();
@@ -107,6 +114,7 @@ final class SseExpertRunActivitySink implements ExpertRunActivitySink
     /** @param array{code: string, category: string, detail: ?string, started_at: float} $activity */
     private function emitActivity(string $activityId, array $activity, string $status, ?string $errorCode = null): void
     {
+        $this->lastActivityCode = $activity['code'];
         $payload = [
             'version' => 1,
             'run_id' => $this->runId,

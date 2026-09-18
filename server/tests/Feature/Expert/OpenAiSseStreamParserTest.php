@@ -55,9 +55,21 @@ final class OpenAiSseStreamParserTest extends TestCase
                 $events[] = $event;
             }
             $this->fail('EOF without [DONE] must fail the provider stream.');
-        } catch (LLMProviderException) {
+        } catch (LLMProviderException $exception) {
+            $this->assertSame('stream_eof_without_terminal', $exception->getErrorType());
             $this->assertSame(['delta'], array_map(static fn ($event): string => $event->type, $events));
             $this->assertNotContains('done', array_map(static fn ($event): string => $event->type, $events));
+        }
+    }
+
+    public function test_malformed_json_frame_fails_without_exposing_the_frame(): void
+    {
+        try {
+            iterator_to_array((new OpenAiSseStreamParser)->parse(["data: {PRIVATE-DOCUMENT}\n\n"], new LLMCancellationToken(static fn (): bool => false)));
+            $this->fail('Malformed frame must fail.');
+        } catch (LLMProviderException $exception) {
+            $this->assertSame('stream_malformed', $exception->getErrorType());
+            $this->assertStringNotContainsString('PRIVATE-DOCUMENT', $exception->getMessage());
         }
     }
 

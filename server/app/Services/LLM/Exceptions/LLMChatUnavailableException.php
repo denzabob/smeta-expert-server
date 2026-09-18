@@ -15,8 +15,9 @@ final class LLMChatUnavailableException extends LLMUnavailableException
         string $message = 'All LLM providers are unavailable for chat',
         array $failoverChain = [],
         private readonly ?LLMErrorType $lastErrorType = null,
+        ?\Throwable $previous = null,
     ) {
-        parent::__construct($message, $failoverChain);
+        parent::__construct($message, $failoverChain, previous: $previous);
     }
 
     public function lastErrorType(): ?LLMErrorType

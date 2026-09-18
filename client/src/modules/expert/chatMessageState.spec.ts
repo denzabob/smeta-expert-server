@@ -24,6 +24,16 @@ describe('chat message delivery state', () => {
     expect(repeatedResponse.filter((message) => message.id === 'message-1')).toHaveLength(1)
   })
 
+  it('keeps the saved user message when an immutable snapshot is retried with the same server ID', () => {
+    const saved: ExpertMessage = { id: 'message-1', role: 'user', text: 'Проверить PDF', createdAt: '2026-09-12T10:20:00.000Z', clientMessageId: 'request-1', deliveryState: 'error', runtimeMaterialContext: [{ id: 'pdf-1', name: 'Акт.pdf', kind: 'document', format: 'PDF', icon: 'mdi-file-pdf-box' }] }
+    const retried = setExpertMessageDeliveryState([saved], saved.id, 'sending')
+    const afterRun = replaceOptimisticExpertMessage(retried, saved.id, saved)
+
+    expect(afterRun).toHaveLength(1)
+    expect(afterRun[0]).toMatchObject({ id: 'message-1', clientMessageId: 'request-1', deliveryState: 'sent' })
+    expect(afterRun[0]?.runtimeMaterialContext?.map((item) => item.id)).toEqual(['pdf-1'])
+  })
+
   it('preserves the original runtime material snapshot while a failed message is retried', () => {
     const optimistic: ExpertMessage = {
       id: 'local-1',

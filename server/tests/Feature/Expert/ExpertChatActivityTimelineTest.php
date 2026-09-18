@@ -69,6 +69,26 @@ final class ExpertChatActivityTimelineTest extends TestCase
         $this->assertSame('completed', $assistant->metadata['generation_status']);
     }
 
+    public function test_mixed_jpg_and_text_pdf_reach_one_stream_request_with_real_activity(): void
+    {
+        [, $conversation] = $this->conversation();
+        $image = $this->material($conversation->project, 'defect.jpg', 'image/jpeg', $this->jpegFixture());
+        $pdf = $this->material($conversation->project, 'document.pdf', 'application/pdf', $this->textPdfFixture());
+        $provider = new ExpertTimelineFakeProvider(['Ответ по двум материалам.']);
+        $this->installRouter($provider);
+
+        $events = $this->runStream($conversation, 'Сопоставь материалы', [$image->public_id, $pdf->public_id]);
+        $codes = $this->activityCodes($events);
+
+        $this->assertContains('material.image_prepare.completed', $codes);
+        $this->assertContains('pdf.local_extract.completed', $codes);
+        $this->assertNotContains('pdf.ocr.started', $codes);
+        $this->assertCount(1, $provider->requests);
+        $this->assertTrue($provider->requests[0]->hasImages());
+        $this->assertStringContainsString('TEXT-PDF-TIMELINE-48217', json_encode($provider->requests[0]->materialContext, JSON_THROW_ON_ERROR));
+        $this->assertSame('done', end($events)['event']);
+    }
+
     public function test_scanned_pdf_stream_persists_ocr_cache_then_reuses_it_without_new_ocr(): void
     {
         [, $conversation] = $this->conversation();

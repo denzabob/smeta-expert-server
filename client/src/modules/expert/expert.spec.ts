@@ -152,6 +152,17 @@ describe('Expert frontend prototype contracts', () => {
     expect(chatSource).not.toContain('expertApi.deleteMaterial')
   })
 
+  it('keeps run failures beside messages and removes the obsolete material-ID hint', () => {
+    const composerSource = readFileSync(new URL('./components/chat/ExpertChatComposer.vue', import.meta.url), 'utf8')
+    const messageSource = readFileSync(new URL('./components/chat/ExpertChatMessage.vue', import.meta.url), 'utf8')
+    const chatSource = readFileSync(new URL('./pages/ExpertChat.vue', import.meta.url), 'utf8')
+
+    expect(composerSource).not.toContain('API чата пока не получает их IDs')
+    expect(messageSource).toContain("message.role === 'assistant' && message.deliveryState === 'error'")
+    expect(chatSource).not.toContain('if (!useLegacyFallback) errorMessage.value = mapped.message')
+    expect(chatSource).toContain("updateMessageDelivery(assistantMessage.id, 'error', mapped.message)")
+  })
+
   it('keeps the Material drawer as a temporary overlay and replaces browser confirmation', () => {
     const materialsSource = readFileSync(new URL('./pages/ExpertMaterials.vue', import.meta.url), 'utf8')
     const drawerSource = readFileSync(new URL('./components/materials/ExpertMaterialDrawer.vue', import.meta.url), 'utf8')

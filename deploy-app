@@ -3,6 +3,17 @@ set -eu
 
 COMPOSE_FILES="-f docker-compose.yml -f docker-compose.prod.yml"
 
+SKIP_MIGRATIONS=0
+case "${1:-}" in
+  '') ;;
+  --skip-migrate) SKIP_MIGRATIONS=1 ;;
+  *) echo "Usage: ./deploy-app [--skip-migrate]" >&2; exit 2 ;;
+esac
+if [ "$#" -gt 1 ]; then
+  echo "Usage: ./deploy-app [--skip-migrate]" >&2
+  exit 2
+fi
+
 if [ ! -f ./.deploy.env ]; then
   echo "ERROR: .deploy.env not found"
   exit 1
@@ -48,7 +59,11 @@ WHERE table_schema = '\''$MYSQL_DATABASE'\''
   fi
 }
 
-docker compose $COMPOSE_FILES exec -T app sh -lc "DB_USERNAME=$MIGRATION_DB_USERNAME DB_PASSWORD=$MIGRATION_DB_PASSWORD php artisan migrate --force"
+if [ "$SKIP_MIGRATIONS" -eq 1 ]; then
+  echo "Migrations skipped by request"
+else
+  docker compose $COMPOSE_FILES exec -T app sh -lc "DB_USERNAME=$MIGRATION_DB_USERNAME DB_PASSWORD=$MIGRATION_DB_PASSWORD php artisan migrate --force"
+fi
 docker compose $COMPOSE_FILES exec -T app php artisan optimize:clear
 docker compose $COMPOSE_FILES exec -T app php artisan config:cache
 docker compose $COMPOSE_FILES exec -T app php artisan route:cache

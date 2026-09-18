@@ -163,6 +163,37 @@ describe('Expert persistence mapping', () => {
     vi.unstubAllGlobals()
   })
 
+  it('posts the streaming snapshot with the PDF public UUID and stable message header', async () => {
+    vi.stubGlobal('document', { cookie: '' })
+    const fetchMock = vi.fn().mockResolvedValue(new Response('event: done\ndata: {"version":1}\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = createExpertApi({ getUri: ({ url }: { url: string }) => `https://expert.test${url}` } as unknown as AxiosInstance)
+    await client.streamMessage('conversation-1', 'Проверь PDF', 'request-1', ['550e8400-e29b-41d4-a716-446655440001'], {
+      onRun: () => undefined, onDelta: () => undefined, onDone: () => undefined, onCancelled: () => undefined, onError: () => undefined,
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('https://expert.test/api/expert/conversations/conversation-1/messages/stream', expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'X-Expert-Message-Id': 'request-1' }),
+      body: JSON.stringify({ content: 'Проверь PDF', material_public_ids: ['550e8400-e29b-41d4-a716-446655440001'] }),
+    }))
+    vi.unstubAllGlobals()
+  })
+
+  it('shows a safe contextual message for a classified provider failure', async () => {
+    vi.stubGlobal('document', { cookie: '' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('event: error\ndata: {"version":1,"code":"provider_auth_failed"}\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } })))
+    const errors: string[] = []
+    const client = createExpertApi({ getUri: () => 'https://expert.test' } as unknown as AxiosInstance)
+    await client.streamMessage('conversation-1', 'Вопрос', 'request-1', [], {
+      onRun: () => undefined, onDelta: () => undefined, onDone: () => undefined, onCancelled: () => undefined,
+      onError: (error) => errors.push(`${error.code}: ${error.message}`),
+    })
+
+    expect(errors).toEqual(['provider_auth_failed: Провайдер AI недоступен из-за настройки доступа.'])
+    vi.unstubAllGlobals()
+  })
+
   it('ignores all events delivered after the first stream terminal event', async () => {
     vi.stubGlobal('document', { cookie: '' })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([

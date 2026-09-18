@@ -39,7 +39,7 @@
       <v-btn :icon="busy ? 'mdi-stop' : 'mdi-arrow-up'" color="primary" variant="flat" size="small" :disabled="busy ? false : sendDisabled" :aria-label="busy ? 'Остановить ответ' : 'Отправить'" @click="busy ? $emit('stop') : send" />
     </div>
     <div v-if="sendBlockedReason" class="expert-composer__blocked" role="status">{{ sendBlockedReason }}</div>
-    <div class="expert-composer__hint">{{ persistenceOnly ? 'Материалы сохраняются в проекте. API чата пока не получает их IDs.' : 'Prism AI может ошибаться. Проверяйте выводы и источники.' }}</div>
+    <div class="expert-composer__hint">Prism AI может ошибаться. Проверяйте выводы и источники.</div>
   </div>
 </template>
 

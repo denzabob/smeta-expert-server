@@ -25,6 +25,8 @@ use App\Services\LLM\LLMErrorClassifier;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -109,6 +111,49 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertSame('error', end($events)['event']);
     }
 
+    public function test_stream_error_exposes_safe_root_code_and_log_metadata_without_provider_body(): void
+    {
+        [$conversation] = $this->conversation();
+        $provider = new ExpertStreamingFakeProvider([]);
+        $provider->failure = LLMProviderException::httpError('fake', 401, 'SECRET-UPSTREAM-BODY');
+        $this->installRouter($provider);
+        $logged = [];
+        Log::listen(static function (MessageLogged $event) use (&$logged): void {
+            if ($event->message === 'Expert chat stream failed.') {
+                $logged[] = $event->context;
+            }
+        });
+        $events = $this->runStream($conversation, 'PRIVATE-PROMPT', function () {});
+
+        $terminal = end($events);
+        $this->assertSame('error', $terminal['event']);
+        $this->assertSame('provider_auth_failed', $terminal['data']['code']);
+        $this->assertFalse($terminal['data']['retryable']);
+        $this->assertStringNotContainsString('SECRET-UPSTREAM-BODY', json_encode($events, JSON_THROW_ON_ERROR));
+        $this->assertSame('provider_auth_failed', $logged[0]['root_error_code'] ?? null);
+        $this->assertTrue($logged[0]['before_first_delta'] ?? false);
+        $this->assertSame('4xx', $logged[0]['http_status_class'] ?? null);
+        $this->assertStringNotContainsString('PRIVATE-PROMPT', json_encode($logged, JSON_THROW_ON_ERROR));
+        $this->assertStringNotContainsString('SECRET-UPSTREAM-BODY', json_encode($logged, JSON_THROW_ON_ERROR));
+    }
+
+    public function test_stream_error_distinguishes_timeout_and_missing_model(): void
+    {
+        foreach ([
+            [LLMProviderException::timeout('fake', 1), 'provider_timeout'],
+            [LLMProviderException::httpError('fake', 404), 'provider_model_not_found'],
+        ] as [$failure, $expectedCode]) {
+            [$conversation] = $this->conversation();
+            $provider = new ExpertStreamingFakeProvider([]);
+            $provider->failure = $failure;
+            $this->installRouter($provider);
+            $events = $this->runStream($conversation, 'Проверка', function () {});
+            $terminal = end($events);
+            $this->assertSame('error', $terminal['event']);
+            $this->assertSame($expectedCode, $terminal['data']['code']);
+        }
+    }
+
     public function test_retry_before_first_token_and_continue_reuses_same_assistant(): void
     {
         [$conversation] = $this->conversation();
@@ -184,6 +229,8 @@ final class ExpertStreamingFakeProvider implements LLMProviderInterface, LLMStre
 
     public bool $failBeforeFirstOnce = false;
 
+    public ?LLMProviderException $failure = null;
+
     /** @param list<string> $chunks */
     public function __construct(public array $chunks) {}
 
@@ -225,6 +272,9 @@ final class ExpertStreamingFakeProvider implements LLMProviderInterface, LLMStre
     public function streamChat(LLMChatRequest $request, LLMCancellationToken $token): iterable
     {
         $this->streamCalls++;
+        if ($this->failure !== null) {
+            throw $this->failure;
+        }
         if ($this->failBeforeFirstOnce) {
             $this->failBeforeFirstOnce = false;
             throw LLMProviderException::networkError('fake', 'offline');

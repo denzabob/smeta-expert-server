@@ -36,6 +36,7 @@ export function replaceOptimisticExpertMessage(
 
   return messages.flatMap((message) => {
     if (message.id !== optimisticId) return [message]
+    if (optimisticId === savedMessage.id) return [{ ...savedMessage, deliveryState: 'sent', deliveryError: undefined }]
     if (alreadySaved) return []
     return [{ ...savedMessage, deliveryState: 'sent', deliveryError: undefined }]
   })

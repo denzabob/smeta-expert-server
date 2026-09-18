@@ -30,7 +30,7 @@ final class OpenAiSseStreamParser
             try {
                 $decoded = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
             } catch (\JsonException) {
-                return [];
+                throw new LLMProviderException('Malformed SSE frame', 'openai-compatible', 'stream_malformed');
             }
             if (! is_array($decoded)) {
                 return [];
@@ -124,7 +124,7 @@ final class OpenAiSseStreamParser
         // EOF is not a successful SSE terminal. In particular, annotations
         // observed before it must never be treated as completed OCR output.
         if (! $token->isCancellationRequested()) {
-            throw LLMProviderException::networkError('openai-compatible', 'stream ended without [DONE]');
+            throw new LLMProviderException('Stream ended without terminal marker', 'openai-compatible', 'stream_eof_without_terminal');
         }
     }
 }

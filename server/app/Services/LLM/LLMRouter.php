@@ -430,6 +430,7 @@ class LLMRouter
         }
         $failoverChain = [];
         $lastErrorType = null;
+        $lastProviderException = null;
 
         foreach ($executionPlan as $providerName) {
             $provider = $this->getProvider($providerName);
@@ -456,6 +457,7 @@ class LLMRouter
                     $this->circuitBreaker->recordSuccess($providerName);
                     return;
                 } catch (LLMProviderException $exception) {
+                    $lastProviderException = $exception;
                     $lastErrorType = $this->errorClassifier->classify($exception, $exception->getHttpStatus());
                     $failoverChain[] = "{$providerName}:{$lastErrorType->value}";
                     $this->circuitBreaker->recordFailure($providerName, $lastErrorType->value);
@@ -472,7 +474,7 @@ class LLMRouter
             }
         }
 
-        $this->throwChatUnavailable($failoverChain, $lastErrorType, 'Streaming is unavailable for the selected AI provider');
+        $this->throwChatUnavailable($failoverChain, $lastErrorType, 'Streaming is unavailable for the selected AI provider', $lastProviderException);
     }
 
     /**
@@ -594,11 +596,13 @@ class LLMRouter
         array $failoverChain,
         ?LLMErrorType $lastErrorType,
         string $message,
+        ?LLMProviderException $previous = null,
     ): never {
         throw new LLMChatUnavailableException(
             message: $message,
             failoverChain: $failoverChain,
             lastErrorType: $lastErrorType,
+            previous: $previous,
         );
     }
 }

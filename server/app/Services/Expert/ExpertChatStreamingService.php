@@ -8,10 +8,13 @@ use App\Models\Expert\ExpertConversation;
 use App\Models\Expert\ExpertMessage;
 use App\Services\LLM\DTO\LLMCancellationToken;
 use App\Services\LLM\DTO\LLMParsedFile;
+use App\Services\LLM\Enums\LLMCapability;
+use App\Services\LLM\Enums\LLMErrorType;
 use App\Services\LLM\Exceptions\LLMChatUnavailableException;
 use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\Exceptions\LLMUnsupportedCapabilityException;
 use App\Services\LLM\LLMRouter;
+use App\Services\LLM\LLMSettingsRepository;
 use Illuminate\Support\Facades\Log;
 
 final class ExpertChatStreamingService
@@ -22,6 +25,7 @@ final class ExpertChatStreamingService
         private readonly LLMRouter $router,
         private readonly ExpertChatMaterialContextBuilder $materialContextBuilder,
         private readonly ExpertPdfOcrCache $ocrCache,
+        private readonly LLMSettingsRepository $settings,
     ) {}
 
     /**
@@ -112,6 +116,7 @@ final class ExpertChatStreamingService
         $deltaSequence = 0;
         $reasoningSequence = 0;
         $startedAt = microtime(true);
+        $firstDeltaAt = null;
         $lastHeartbeatAt = $startedAt;
         $assistant = null;
         $modelActivityId = null;
@@ -170,6 +175,7 @@ final class ExpertChatStreamingService
                     break;
                 }
                 if ($event->type === 'delta' && $event->text !== '') {
+                    $firstDeltaAt ??= microtime(true);
                     $hasVisibleOutput = true;
                     $content .= $event->text;
                     if ($modelActivityId !== null) {
@@ -217,12 +223,12 @@ final class ExpertChatStreamingService
             $status = $token->isCancellationRequested() ? 'stopped' : ($hasVisibleOutput || $content !== '' ? 'interrupted' : 'failed');
             $finishReason = $status === 'stopped' ? 'cancelled' : 'error';
             $errorCode = $this->errorCode($exception) ?? $errorCode;
-            Log::warning('Expert chat stream interrupted.', ['run_id' => $runId, 'exception' => $exception::class]);
+            $this->logFailure($runId, $errorCode, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt);
         } catch (\Throwable $exception) {
             $status = $token->isCancellationRequested() ? 'stopped' : ($hasVisibleOutput || $content !== '' ? 'interrupted' : 'failed');
             $finishReason = $status === 'stopped' ? 'cancelled' : 'error';
             $errorCode = $this->errorCode($exception) ?? $errorCode;
-            Log::error('Expert chat stream failed.', ['run_id' => $runId, 'exception' => $exception::class]);
+            $this->logFailure($runId, $errorCode, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt);
         } finally {
             $activity->terminalize($status === 'stopped' ? 'skipped' : 'failed');
             $assistant = $this->chat->persistStreamingAssistant(
@@ -265,7 +271,7 @@ final class ExpertChatStreamingService
         $emit('error', [
             'version' => 1,
             'code' => $errorCode,
-            'retryable' => ! $hasVisibleOutput,
+            'retryable' => ! $hasVisibleOutput && ! in_array($errorCode, ['provider_auth_failed', 'provider_model_not_found', 'provider_validation_failed', 'streaming_not_supported', 'vision_not_supported'], true),
             'assistant_message' => $assistant === null ? null : $this->messagePayload($assistant),
         ]);
     }
@@ -327,16 +333,68 @@ final class ExpertChatStreamingService
             return $exception->errorCode;
         }
         if ($exception instanceof LLMUnsupportedCapabilityException) {
-            return 'streaming_not_supported';
+            return match ($exception->capability) {
+                LLMCapability::IMAGE_INPUT => 'vision_not_supported',
+                LLMCapability::PDF_OCR => 'pdf_ocr_failed',
+                default => 'streaming_not_supported',
+            };
+        }
+        if ($exception instanceof LLMProviderException) {
+            return match (true) {
+                $exception->getErrorType() === 'stream_malformed' => 'stream_malformed',
+                $exception->getErrorType() === 'stream_eof_without_terminal' => 'stream_eof_without_terminal',
+                in_array($exception->getErrorType(), ['auth', 'config'], true) => 'provider_auth_failed',
+                $exception->getHttpStatus() === 404 => 'provider_model_not_found',
+                in_array($exception->getErrorType(), ['request_error'], true) => 'provider_validation_failed',
+                $exception->getErrorType() === 'http_429' => 'provider_rate_limited',
+                $exception->getErrorType() === 'timeout' => 'provider_timeout',
+                $exception->getErrorType() === 'network' => 'provider_connection_failed',
+                default => 'expert_stream_interrupted',
+            };
         }
         if ($exception instanceof LLMChatUnavailableException) {
             $failoverChain = $exception->getFailoverChain();
             if ($this->isOnlyStreamingUnsupported($failoverChain)) {
                 return 'streaming_not_supported';
             }
+            if ($exception->getPrevious() instanceof LLMProviderException) {
+                return $this->errorCode($exception->getPrevious());
+            }
+
+            return match ($exception->lastErrorType()) {
+                LLMErrorType::AUTH, LLMErrorType::CONFIG => 'provider_auth_failed',
+                LLMErrorType::REQUEST_ERROR => 'provider_validation_failed',
+                LLMErrorType::RATE_LIMIT => 'provider_rate_limited',
+                LLMErrorType::TIMEOUT => 'provider_timeout',
+                LLMErrorType::NETWORK => 'provider_connection_failed',
+                default => 'expert_stream_interrupted',
+            };
         }
 
         return null;
+    }
+
+    private function logFailure(string $runId, string $code, \Throwable $exception, ?string $activityCode, float $startedAt, ?float $firstDeltaAt): void
+    {
+        $rootException = $exception instanceof LLMChatUnavailableException && $exception->getPrevious() instanceof LLMProviderException
+            ? $exception->getPrevious() : $exception;
+        $provider = $rootException instanceof LLMProviderException ? $rootException->getProvider() : $this->settings->getPrimaryProvider();
+        $provider = preg_match('/^[a-z0-9_-]{1,40}$/i', $provider) ? $provider : 'unknown';
+        $model = $this->settings->getProviderSettings($provider)['model'] ?? null;
+        $model = is_string($model) && preg_match('/^[a-z0-9._\/-]{1,100}$/i', $model) ? $model : null;
+        $httpStatus = $rootException instanceof LLMProviderException ? $rootException->getHttpStatus() : null;
+
+        Log::warning('Expert chat stream failed.', array_filter([
+            'run_id' => $runId,
+            'provider' => $provider,
+            'model' => $model,
+            'root_error_code' => $code,
+            'before_first_delta' => $firstDeltaAt === null,
+            'last_activity_code' => $activityCode,
+            'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+            'ttft_ms' => $firstDeltaAt === null ? null : (int) round(($firstDeltaAt - $startedAt) * 1000),
+            'http_status_class' => $httpStatus === null ? null : intdiv($httpStatus, 100).'xx',
+        ], static fn (mixed $value): bool => $value !== null));
     }
 
     /** @param list<mixed> $failoverChain */

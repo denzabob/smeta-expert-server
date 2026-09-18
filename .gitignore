@@ -57,6 +57,8 @@ server/storage/logs/
 server/tests/
 !server/tests/
 server/tests/*
+!server/tests/Shell/
+!server/tests/Shell/deploy-app-skip-migrate.sh
 !server/tests/Unit/
 server/tests/Unit/*
 !server/tests/Unit/Billing/
