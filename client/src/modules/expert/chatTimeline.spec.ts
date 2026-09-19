@@ -6,6 +6,8 @@ import {
   createExpertTimelineRun,
   expertTimelineAria,
   finishExpertTimelineRun,
+  hasSignificantExpertTimelineActivity,
+  isSignificantExpertTimelineActivity,
   moveExpertTimelineRuns,
   presentExpertTimelineActivity,
   removeExpertTimelineRuns,
@@ -68,6 +70,16 @@ describe('Expert activity timeline state', () => {
     expect(presentExpertTimelineActivity({ ...started, code: 'pdf.ocr_cache.hit', status: 'completed' })).toMatchObject({ label: 'Использован OCR-кеш' })
     expect(presentExpertTimelineActivity({ ...started, code: 'future.provider.operation', status: 'started' })).toMatchObject({ label: 'Выполняется операция' })
     expect(presentExpertTimelineActivity({ ...started, code: 'generation.cancelled', status: 'completed' }).icon).not.toBe('mdi-check-circle-outline')
+  })
+
+  it('keeps fast text-only transport stages out of the visible timeline but identifies material work', () => {
+    expect(isSignificantExpertTimelineActivity({ ...started, code: 'request.accepted', status: 'completed' })).toBe(false)
+    expect(isSignificantExpertTimelineActivity({ ...started, code: 'model.first_token', status: 'completed' })).toBe(false)
+    expect(isSignificantExpertTimelineActivity({ ...started, code: 'material.image_prepare.started' })).toBe(true)
+    expect(hasSignificantExpertTimelineActivity({
+      ...createExpertTimelineRun('run-1'),
+      activities: [{ ...started, code: 'pdf.ocr.started' }],
+    })).toBe(true)
   })
 
   it('exposes stable keyboard ARIA controls and clears session-only runs', () => {

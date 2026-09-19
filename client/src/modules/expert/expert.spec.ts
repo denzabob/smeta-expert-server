@@ -126,13 +126,13 @@ describe('Expert frontend prototype contracts', () => {
 
   it('uses the Expert Chat AI response envelope without a fake assistant placeholder', () => {
     const chatSource = readFileSync(new URL('./pages/ExpertChat.vue', import.meta.url), 'utf8')
-    const messageSource = readFileSync(new URL('./components/chat/ExpertChatMessage.vue', import.meta.url), 'utf8')
+    const timelineSource = readFileSync(new URL('./components/chat/ExpertChatActivityTimeline.vue', import.meta.url), 'utf8')
 
     expect(chatSource).toContain('reply.userMessage')
     expect(chatSource).toContain('reply.assistantMessage')
     expect(chatSource).toContain('appendServerAssistantMessage')
     expect(chatSource).toContain('handleMessageAdded(wasNearBottom, false)')
-    expect(messageSource).toContain('Формируется ответ…')
+    expect(timelineSource).toContain('Формируется ответ…')
   })
 
   it('uses the shared Materials transfer flow without persisting composer chips as message attachments', () => {

@@ -112,6 +112,7 @@ final class ExpertChatStreamingService
         $status = 'completed';
         $finishReason = 'stop';
         $errorCode = 'expert_stream_interrupted';
+        $retryable = false;
         $hasVisibleOutput = false;
         $deltaSequence = 0;
         $reasoningSequence = 0;
@@ -223,12 +224,14 @@ final class ExpertChatStreamingService
             $status = $token->isCancellationRequested() ? 'stopped' : ($hasVisibleOutput || $content !== '' ? 'interrupted' : 'failed');
             $finishReason = $status === 'stopped' ? 'cancelled' : 'error';
             $errorCode = $this->errorCode($exception) ?? $errorCode;
-            $this->logFailure($runId, $errorCode, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt);
+            $retryable = $this->isRetryableError($errorCode, $hasVisibleOutput);
+            $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt);
         } catch (\Throwable $exception) {
             $status = $token->isCancellationRequested() ? 'stopped' : ($hasVisibleOutput || $content !== '' ? 'interrupted' : 'failed');
             $finishReason = $status === 'stopped' ? 'cancelled' : 'error';
             $errorCode = $this->errorCode($exception) ?? $errorCode;
-            $this->logFailure($runId, $errorCode, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt);
+            $retryable = $this->isRetryableError($errorCode, $hasVisibleOutput);
+            $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt);
         } finally {
             $activity->terminalize($status === 'stopped' ? 'skipped' : 'failed');
             $assistant = $this->chat->persistStreamingAssistant(
@@ -271,7 +274,10 @@ final class ExpertChatStreamingService
         $emit('error', [
             'version' => 1,
             'code' => $errorCode,
-            'retryable' => ! $hasVisibleOutput && ! in_array($errorCode, ['provider_auth_failed', 'provider_model_not_found', 'provider_validation_failed', 'streaming_not_supported', 'vision_not_supported'], true),
+            'error_code' => $errorCode,
+            'run_id' => $runId,
+            'retryable' => $retryable,
+            'last_activity_code' => $activity->lastActivityCode(),
             'assistant_message' => $assistant === null ? null : $this->messagePayload($assistant),
         ]);
     }
@@ -343,10 +349,12 @@ final class ExpertChatStreamingService
             return match (true) {
                 $exception->getErrorType() === 'stream_malformed' => 'stream_malformed',
                 $exception->getErrorType() === 'stream_eof_without_terminal' => 'stream_eof_without_terminal',
+                $exception->getErrorType() === 'unexpected_content_type' => 'provider_unexpected_content_type',
                 in_array($exception->getErrorType(), ['auth', 'config'], true) => 'provider_auth_failed',
                 $exception->getHttpStatus() === 404 => 'provider_model_not_found',
                 in_array($exception->getErrorType(), ['request_error'], true) => 'provider_validation_failed',
                 $exception->getErrorType() === 'http_429' => 'provider_rate_limited',
+                $exception->getErrorType() === 'http_5xx' => 'provider_server_error',
                 $exception->getErrorType() === 'timeout' => 'provider_timeout',
                 $exception->getErrorType() === 'network' => 'provider_connection_failed',
                 default => 'expert_stream_interrupted',
@@ -367,6 +375,7 @@ final class ExpertChatStreamingService
                 LLMErrorType::RATE_LIMIT => 'provider_rate_limited',
                 LLMErrorType::TIMEOUT => 'provider_timeout',
                 LLMErrorType::NETWORK => 'provider_connection_failed',
+                LLMErrorType::SERVER_ERROR => 'provider_server_error',
                 default => 'expert_stream_interrupted',
             };
         }
@@ -374,7 +383,19 @@ final class ExpertChatStreamingService
         return null;
     }
 
-    private function logFailure(string $runId, string $code, \Throwable $exception, ?string $activityCode, float $startedAt, ?float $firstDeltaAt): void
+    private function isRetryableError(string $errorCode, bool $hasVisibleOutput): bool
+    {
+        return ! $hasVisibleOutput && ! in_array($errorCode, [
+            'provider_auth_failed',
+            'provider_model_not_found',
+            'provider_validation_failed',
+            'streaming_not_supported',
+            'vision_not_supported',
+            'pdf_ocr_failed',
+        ], true);
+    }
+
+    private function logFailure(string $runId, string $code, bool $retryable, \Throwable $exception, ?string $activityCode, float $startedAt, ?float $firstDeltaAt): void
     {
         $rootException = $exception instanceof LLMChatUnavailableException && $exception->getPrevious() instanceof LLMProviderException
             ? $exception->getPrevious() : $exception;
@@ -389,6 +410,7 @@ final class ExpertChatStreamingService
             'provider' => $provider,
             'model' => $model,
             'root_error_code' => $code,
+            'retryable' => $retryable,
             'before_first_delta' => $firstDeltaAt === null,
             'last_activity_code' => $activityCode,
             'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),

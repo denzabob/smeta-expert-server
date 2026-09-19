@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Expert;
 
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -129,14 +128,6 @@ final class SseExpertRunActivitySink implements ExpertRunActivitySink
         }
         ($this->emit)('activity', $payload);
 
-        // Details can originate from user-visible file names, so never log them.
-        Log::info('Expert chat activity.', array_filter([
-            'run_id' => $this->runId,
-            'activity_code' => $activity['code'],
-            'status' => $status,
-            'duration_ms' => (int) round((microtime(true) - $activity['started_at']) * 1000),
-            'error_code' => $errorCode,
-        ], static fn (mixed $value): bool => $value !== null));
     }
 
     private function safeDetail(?string $detail): ?string

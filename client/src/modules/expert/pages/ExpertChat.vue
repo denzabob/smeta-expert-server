@@ -55,6 +55,7 @@
             :message="message"
             :allow-continue="Boolean(continuableAssistantIds[message.id])"
             :timeline-runs="timelineRunsFor(message.id)"
+            :show-slow-waiting="showSlowWaitingFor(message.id)"
             @action="notify"
             @open-source="contextOpen = true"
             @retry="retryMessage"
@@ -123,6 +124,7 @@ import {
   appendExpertReasoningSummary,
   applyExpertTimelineActivity,
   finishExpertTimelineRun,
+  EXPERT_SLOW_FIRST_TOKEN_MS,
   moveExpertTimelineRuns,
   removeExpertTimelineRuns,
   type ExpertReasoningSummaryEvent,
@@ -131,7 +133,7 @@ import {
 } from '../chatTimeline'
 import { useExpertMaterialTransfers } from '../composables/useExpertMaterialTransfers'
 import { expertApi, isExpertMaterialContextError, mapExpertApiError } from '../api'
-import type { ExpertConversation, ExpertMessage, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMode } from '../types'
+import type { ExpertConversation, ExpertMessage, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMode, ExpertRunDiagnostic } from '../types'
 
 const props = defineProps<{ project: ExpertProject; projectMode: ExpertProjectMode }>()
 const { mdAndDown } = useDisplay()
@@ -164,6 +166,8 @@ const activeAbort = ref<AbortController | null>(null)
 const continuationSnapshots = new Map<string, { content: string; materialIds: string[] }>()
 const continuableAssistantIds = ref<Record<string, true>>({})
 const timelineByAssistant = ref<Record<string, ExpertTimelineRun[]>>({})
+const slowWaitingRunIds = ref<Record<string, true>>({})
+const slowWaitingTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const streamActive = computed(() => ['starting', 'streaming', 'stopping'].includes(generationState.value))
 let conversationsSequence = 0
 let messagesSequence = 0
@@ -198,6 +202,12 @@ function updateMessageDelivery(messageId: string, deliveryState: NonNullable<Exp
     id,
     setExpertMessageDeliveryState(items, messageId, deliveryState, deliveryError),
   ]))
+}
+
+function updateMessageDiagnostic(messageId: string, diagnostic?: ExpertRunDiagnostic) {
+  const update = (items: ExpertMessage[]) => items.map((message) => message.id === messageId ? { ...message, diagnostic } : message)
+  pendingMessages.value = update(pendingMessages.value)
+  messagesByConversation.value = Object.fromEntries(Object.entries(messagesByConversation.value).map(([id, items]) => [id, update(items)]))
 }
 
 function replaceOptimisticMessage(optimisticId: string, savedMessage: ExpertMessage) {
@@ -251,6 +261,32 @@ function beginTimelineRun(assistantId: string, runId: string) {
     ...timelineByAssistant.value,
     [assistantId]: addExpertTimelineRun(timelineRunsFor(assistantId), runId),
   }
+  const timer = setTimeout(() => {
+    slowWaitingTimers.delete(runId)
+    if (timelineRunsFor(assistantId).some((run) => run.runId === runId && run.terminal === undefined)) {
+      slowWaitingRunIds.value = { ...slowWaitingRunIds.value, [runId]: true }
+    }
+  }, EXPERT_SLOW_FIRST_TOKEN_MS)
+  slowWaitingTimers.set(runId, timer)
+}
+
+function clearSlowWaiting(runId: string) {
+  const timer = slowWaitingTimers.get(runId)
+  if (timer !== undefined) clearTimeout(timer)
+  slowWaitingTimers.delete(runId)
+  if (!slowWaitingRunIds.value[runId]) return
+  const { [runId]: removed, ...remaining } = slowWaitingRunIds.value
+  void removed
+  slowWaitingRunIds.value = remaining
+}
+
+function showSlowWaitingFor(assistantId: string): boolean {
+  return timelineRunsFor(assistantId).some((run) => run.terminal === undefined && slowWaitingRunIds.value[run.runId] === true)
+}
+
+function clearAllSlowWaiting() {
+  for (const runId of [...slowWaitingTimers.keys()]) clearSlowWaiting(runId)
+  slowWaitingRunIds.value = {}
 }
 
 function applyTimelineActivity(assistantId: string, activity: ExpertRunActivity) {
@@ -268,6 +304,7 @@ function appendTimelineSummary(assistantId: string, summary: ExpertReasoningSumm
 }
 
 function finishTimelineRun(assistantId: string, runId: string, terminal: 'completed' | 'cancelled' | 'interrupted') {
+  clearSlowWaiting(runId)
   timelineByAssistant.value = {
     ...timelineByAssistant.value,
     [assistantId]: finishExpertTimelineRun(timelineRunsFor(assistantId), runId, terminal),
@@ -446,6 +483,7 @@ async function persistMessage(message: ExpertMessage) {
         onDelta: (runId, seq, text) => {
           if (runId !== activeRunId.value || seq <= lastSeq) return
           lastSeq = seq
+          clearSlowWaiting(runId)
           const wasNearBottom = targetConversationId === conversationId.value && isMessageAreaNearBottom()
           if (!localAssistantId) {
             localAssistantId = `local-stream-${runId}`
@@ -512,8 +550,11 @@ async function persistMessage(message: ExpertMessage) {
           }
           if (assistantMessage) {
             updateMessageDelivery(assistantMessage.id, 'error', mapped.message)
+            updateMessageDiagnostic(assistantMessage.id, mapped.diagnostic)
             continuationSnapshots.set(assistantMessage.id, { content: message.text, materialIds })
             continuableAssistantIds.value = { ...continuableAssistantIds.value, [assistantMessage.id]: true }
+          } else if (!useLegacyFallback) {
+            updateMessageDiagnostic(persistedUserId, mapped.diagnostic)
           }
           fallbackToLegacy = useLegacyFallback
         },
@@ -580,6 +621,7 @@ async function continueMessage(assistantId: string) {
       onDelta: (runId, seq, text) => {
         if (runId !== activeRunId.value || seq <= lastSeq) return
         lastSeq = seq
+        clearSlowWaiting(runId)
         const nearBottom = isMessageAreaNearBottom()
         updateMessageText(assistantId, text)
         void handleMessageAdded(nearBottom, false)
@@ -607,6 +649,7 @@ async function continueMessage(assistantId: string) {
         finishTimelineRun(assistantId, continuationRunId, 'interrupted')
         if (saved) replaceSavedMessage(assistantId, saved)
         updateMessageDelivery(assistantId, 'error', mapped.message)
+        updateMessageDiagnostic(assistantId, mapped.diagnostic)
       },
     }, activeAbort.value.signal, assistantId)
   } catch (error) {
@@ -728,10 +771,11 @@ watch(conversationId, (id) => { void loadMessages(id) })
 watch(() => props.project.id, () => {
   composerMaterialContexts.value = []
   timelineByAssistant.value = {}
+  clearAllSlowWaiting()
   transfers.clearUploads()
   transfers.syncImagePreviews(props.project.materials)
 })
-onBeforeUnmount(() => { activeAbort.value?.abort(); timelineByAssistant.value = {}; transfers.dispose() })
+onBeforeUnmount(() => { activeAbort.value?.abort(); clearAllSlowWaiting(); timelineByAssistant.value = {}; transfers.dispose() })
 </script>
 
 <style scoped>

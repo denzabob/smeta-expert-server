@@ -36,6 +36,16 @@ export interface ExpertTimelinePresentation {
 const MAX_RUNS_PER_ASSISTANT = 3
 const MAX_ACTIVITIES_PER_RUN = 24
 const MAX_REASONING_SUMMARY_CHARS = 4000
+export const EXPERT_SLOW_FIRST_TOKEN_MS = 800
+
+const significantActivityPrefixes = [
+  'materials.resolve.',
+  'material.text_extract.',
+  'material.image_prepare.',
+  'pdf.',
+  'tool.',
+  'web.',
+]
 
 const activityLabels: Record<string, string> = {
   'request.accepted': 'Запрос принят',
@@ -146,6 +156,14 @@ export function removeExpertTimelineRuns(timelines: Record<string, ExpertTimelin
 
 export function currentExpertTimelineActivity(run: ExpertTimelineRun): ExpertRunActivity | undefined {
   return [...run.activities].reverse().find((activity) => activity.status === 'started') ?? run.activities[run.activities.length - 1]
+}
+
+export function isSignificantExpertTimelineActivity(activity: ExpertRunActivity): boolean {
+  return significantActivityPrefixes.some((prefix) => activity.code.startsWith(prefix))
+}
+
+export function hasSignificantExpertTimelineActivity(run: ExpertTimelineRun): boolean {
+  return run.activities.some(isSignificantExpertTimelineActivity)
 }
 
 export function presentExpertTimelineActivity(activity: ExpertRunActivity): ExpertTimelinePresentation {

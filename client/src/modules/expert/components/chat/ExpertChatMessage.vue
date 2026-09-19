@@ -5,18 +5,31 @@
       <div class="expert-message__author">{{ message.role === 'assistant' ? 'Призма' : 'Вы' }} <span>{{ formattedTimestamp }}</span></div>
       <div v-if="message.role !== 'assistant' || message.text || !timelineRuns.length" class="expert-message__bubble">{{ message.text }}</div>
       <ExpertChatActivityTimeline v-if="message.role === 'assistant' && timelineRuns.length" :runs="timelineRuns" />
-      <div v-if="message.role === 'user' && message.deliveryState === 'sending'" class="expert-message__delivery" role="status">
-        <v-progress-circular indeterminate size="12" width="2" /> Формируется ответ…
-      </div>
-      <div v-else-if="message.role === 'user' && message.deliveryState === 'error'" class="expert-message__delivery expert-message__delivery--error" role="alert">
+      <div v-if="message.role === 'user' && message.deliveryState === 'error'" class="expert-message__delivery expert-message__delivery--error" role="alert">
         <span>{{ message.deliveryError || 'Не удалось отправить сообщение.' }}</span>
         <v-btn size="x-small" variant="text" @click="$emit('retry', message.id)">Повторить</v-btn>
+        <details v-if="message.diagnostic" class="expert-message__diagnostic">
+          <summary>Подробнее</summary>
+          <span>Код: {{ message.diagnostic.errorCode }}</span>
+          <span>ID: {{ message.diagnostic.runId }}</span>
+          <button type="button" :aria-label="`Копировать diagnostic ID ${message.diagnostic.runId}`" @click="copyDiagnosticId(message.diagnostic.runId)">
+            <v-icon :icon="copiedDiagnosticRunId === message.diagnostic.runId ? 'mdi-check' : 'mdi-content-copy'" size="14" />
+          </button>
+        </details>
       </div>
       <div v-else-if="message.role === 'user' && message.deliveryState === 'sent'" class="expert-message__delivery">
         <v-icon icon="mdi-check" size="13" /> Отправлено
       </div>
       <div v-if="message.role === 'assistant' && message.deliveryState === 'error'" class="expert-message__delivery expert-message__delivery--error" role="alert">
-        {{ message.deliveryError || 'Ответ прерван.' }}
+        <span>{{ message.deliveryError || 'Ответ прерван.' }}</span>
+        <details v-if="message.diagnostic" class="expert-message__diagnostic">
+          <summary>Подробнее</summary>
+          <span>Код: {{ message.diagnostic.errorCode }}</span>
+          <span>ID: {{ message.diagnostic.runId }}</span>
+          <button type="button" :aria-label="`Копировать diagnostic ID ${message.diagnostic.runId}`" @click="copyDiagnosticId(message.diagnostic.runId)">
+            <v-icon :icon="copiedDiagnosticRunId === message.diagnostic.runId ? 'mdi-check' : 'mdi-content-copy'" size="14" />
+          </button>
+        </details>
       </div>
       <div v-if="message.sources?.length" class="expert-message__sources">
         <div class="expert-message__sources-label">Источники</div>
@@ -40,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { ExpertMessage } from '../../types'
 import { formatExpertMessageTimestamp } from '../../chatPresentation'
 import ExpertChatActivityTimeline from './ExpertChatActivityTimeline.vue'
@@ -50,12 +63,22 @@ const props = withDefaults(defineProps<{ message: ExpertMessage; allowContinue?:
 defineEmits<{ (event: 'action', action: string): void; (event: 'open-source', sourceId: string): void; (event: 'retry', messageId: string): void; (event: 'continue', messageId: string): void }>()
 const formattedTimestamp = computed(() => formatExpertMessageTimestamp(props.message.createdAt))
 const canContinue = computed(() => props.allowContinue && (props.message.generationStatus === 'stopped' || props.message.generationStatus === 'interrupted'))
+const copiedDiagnosticRunId = ref('')
 const actions = [
   { label: 'Добавить как факт', icon: 'mdi-pin-outline' },
   { label: 'Добавить в исследование', icon: 'mdi-microscope' },
   { label: 'Добавить в заключение', icon: 'mdi-file-document-edit-outline' },
   { label: 'Открыть источники', icon: 'mdi-folder-open-outline' },
 ]
+
+async function copyDiagnosticId(runId: string) {
+  try {
+    await navigator.clipboard?.writeText(runId)
+    copiedDiagnosticRunId.value = runId
+  } catch {
+    copiedDiagnosticRunId.value = ''
+  }
+}
 </script>
 
 <style scoped>
@@ -71,6 +94,12 @@ const actions = [
 .expert-message__delivery { display: inline-flex; align-items: center; gap: 5px; margin: 5px 8px 0; color: rgba(var(--v-theme-on-surface-variant), .76); font-size: .68rem; }
 .expert-message__delivery--error { color: rgb(var(--v-theme-error)); }
 .expert-message__delivery--error :deep(.v-btn) { min-width: 0; margin-left: 2px; color: currentColor; text-transform: none; }
+.expert-message__diagnostic { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; margin-left: 2px; }
+.expert-message__diagnostic summary { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.expert-message__diagnostic span { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .64rem; }
+.expert-message__diagnostic button { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: var(--md-sys-shape-corner-small); color: inherit; background: transparent; cursor: pointer; }
+.expert-message__diagnostic button:hover { background: rgba(var(--v-theme-error), .1); }
+.expert-message__diagnostic button:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
 .expert-message__sources { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
 .expert-message__sources-label { width: 100%; color: rgba(var(--v-theme-on-surface-variant), .72); font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
 .expert-message__source { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 6px 9px; border: 1px solid rgba(var(--v-theme-outline-variant), .62); border-radius: var(--md-sys-shape-corner-medium); color: rgba(var(--v-theme-on-surface), .85); background: rgb(var(--v-theme-surface-container-low)); cursor: pointer; font: inherit; font-size: .72rem; }

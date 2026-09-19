@@ -18,9 +18,17 @@ export interface ExpertMessage {
   generationStatus?: 'completed' | 'stopped' | 'interrupted'
   deliveryState?: ExpertMessageDeliveryState
   deliveryError?: string
+  diagnostic?: ExpertRunDiagnostic
   clientMessageId?: string
   runtimeMaterialContext?: ExpertMessageMaterialContext[]
   sources?: ExpertSource[]
+}
+
+export interface ExpertRunDiagnostic {
+  runId: string
+  errorCode: string
+  retryable: boolean
+  lastActivityCode?: string
 }
 
 export type ExpertMessageDeliveryState = 'sending' | 'sent' | 'error'

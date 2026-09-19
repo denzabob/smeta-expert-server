@@ -114,7 +114,13 @@ export type ExpertProjectDto = {
 }
 export type ExpertCollection<T> = { data: T[] }
 export type ExpertValidationErrors = Record<string, string[]>
-export type ExpertApiError = { status?: number; code?: string; message: string; validationErrors: ExpertValidationErrors }
+export type ExpertRunDiagnostic = {
+  runId: string
+  errorCode: string
+  retryable: boolean
+  lastActivityCode?: string
+}
+export type ExpertApiError = { status?: number; code?: string; message: string; validationErrors: ExpertValidationErrors; diagnostic?: ExpertRunDiagnostic }
 const streamErrorMessages: Record<string, string> = {
   provider_auth_failed: 'Провайдер AI недоступен из-за настройки доступа.',
   provider_model_not_found: 'Выбранная модель AI недоступна.',
@@ -122,6 +128,8 @@ const streamErrorMessages: Record<string, string> = {
   provider_rate_limited: 'Провайдер AI временно ограничил запросы.',
   provider_timeout: 'Время ожидания ответа AI истекло.',
   provider_connection_failed: 'Не удалось подключиться к провайдеру AI.',
+  provider_server_error: 'Провайдер AI временно недоступен.',
+  provider_unexpected_content_type: 'Провайдер AI вернул ответ в неожиданном формате.',
   stream_malformed: 'Провайдер AI вернул некорректный поток.',
   stream_eof_without_terminal: 'Ответ AI оборвался до завершения.',
   streaming_not_supported: 'Текущая модель AI не поддерживает потоковый ответ.',
@@ -383,6 +391,27 @@ function mapStreamActivity(payload: Record<string, unknown>): ExpertRunActivity 
   }
 }
 
+function safeStreamDiagnosticValue(value: unknown, pattern: RegExp, maxLength: number): string | undefined {
+  return typeof value === 'string' && value.length <= maxLength && pattern.test(value) ? value : undefined
+}
+
+function mapStreamError(payload: Record<string, unknown>): ExpertApiError {
+  const errorCode = safeStreamDiagnosticValue(payload.error_code, /^[a-z][a-z0-9_]{0,99}$/i, 100)
+    ?? safeStreamDiagnosticValue(payload.code, /^[a-z][a-z0-9_]{0,99}$/i, 100)
+    ?? 'expert_stream_interrupted'
+  const runId = safeStreamDiagnosticValue(payload.run_id, /^[a-z0-9_-]{1,100}$/i, 100)
+  const lastActivityCode = safeStreamDiagnosticValue(payload.last_activity_code, /^[a-z][a-z0-9._-]{0,99}$/i, 100)
+
+  return {
+    code: errorCode,
+    message: streamErrorMessages[errorCode] ?? 'Потоковый ответ AI прерван.',
+    validationErrors: {},
+    diagnostic: runId
+      ? { runId, errorCode, retryable: payload.retryable === true, ...(lastActivityCode ? { lastActivityCode } : {}) }
+      : undefined,
+  }
+}
+
 function mapReasoningSummary(payload: Record<string, unknown>): ExpertReasoningSummaryEvent | null {
   if (payload.version !== 1
     || typeof payload.run_id !== 'string'
@@ -556,8 +585,7 @@ export function createExpertApi(http?: AxiosInstance) {
           handlers.onCancelled(isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
         } else if (event.event === 'error') {
           terminalReceived = true
-          const code = typeof payload.code === 'string' ? payload.code : 'expert_stream_interrupted'
-          handlers.onError({ code, message: streamErrorMessages[code] ?? 'Потоковый ответ AI прерван.', validationErrors: {} }, isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
+          handlers.onError(mapStreamError(payload), isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
         }
       }
     },

@@ -128,20 +128,31 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $terminal = end($events);
         $this->assertSame('error', $terminal['event']);
         $this->assertSame('provider_auth_failed', $terminal['data']['code']);
+        $this->assertSame('provider_auth_failed', $terminal['data']['error_code']);
+        $this->assertIsString($terminal['data']['run_id']);
         $this->assertFalse($terminal['data']['retryable']);
+        $this->assertSame('model.request.started', $terminal['data']['last_activity_code']);
         $this->assertStringNotContainsString('SECRET-UPSTREAM-BODY', json_encode($events, JSON_THROW_ON_ERROR));
         $this->assertSame('provider_auth_failed', $logged[0]['root_error_code'] ?? null);
+        $this->assertFalse($logged[0]['retryable'] ?? true);
         $this->assertTrue($logged[0]['before_first_delta'] ?? false);
         $this->assertSame('4xx', $logged[0]['http_status_class'] ?? null);
         $this->assertStringNotContainsString('PRIVATE-PROMPT', json_encode($logged, JSON_THROW_ON_ERROR));
         $this->assertStringNotContainsString('SECRET-UPSTREAM-BODY', json_encode($logged, JSON_THROW_ON_ERROR));
     }
 
-    public function test_stream_error_distinguishes_timeout_and_missing_model(): void
+    public function test_stream_error_preserves_safe_root_codes(): void
     {
         foreach ([
             [LLMProviderException::timeout('fake', 1), 'provider_timeout'],
+            [LLMProviderException::httpError('fake', 401), 'provider_auth_failed'],
             [LLMProviderException::httpError('fake', 404), 'provider_model_not_found'],
+            [LLMProviderException::httpError('fake', 422), 'provider_validation_failed'],
+            [LLMProviderException::httpError('fake', 429), 'provider_rate_limited'],
+            [LLMProviderException::httpError('fake', 503), 'provider_server_error'],
+            [new LLMProviderException('Unexpected response type', 'fake', 'unexpected_content_type'), 'provider_unexpected_content_type'],
+            [new LLMProviderException('Malformed stream', 'fake', 'stream_malformed'), 'stream_malformed'],
+            [new LLMProviderException('EOF before done', 'fake', 'stream_eof_without_terminal'), 'stream_eof_without_terminal'],
         ] as [$failure, $expectedCode]) {
             [$conversation] = $this->conversation();
             $provider = new ExpertStreamingFakeProvider([]);

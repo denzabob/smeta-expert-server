@@ -23,7 +23,7 @@ export function setExpertMessageDeliveryState(
   deliveryError?: string,
 ): ExpertMessage[] {
   return messages.map((message) => message.id === messageId
-    ? { ...message, deliveryState, deliveryError }
+    ? { ...message, deliveryState, deliveryError, ...(deliveryState === 'sending' ? { diagnostic: undefined } : {}) }
     : message)
 }
 

@@ -19,6 +19,7 @@ use App\Services\LLM\Parsing\LLMJsonParser;
 use App\Services\LLM\Parsing\OpenAiSseStreamParser;
 use App\Services\LLM\RouterAiFileAnnotationParser;
 use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\ConnectException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -54,6 +55,8 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
 
     private LLMJsonParser $jsonParser;
 
+    private ?ClientInterface $streamingClient;
+
     public function __construct(
         ?string $apiKey = null,
         ?string $baseUrl = null,
@@ -63,6 +66,7 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
         ?int $timeout = null,
         ?LLMJsonParser $jsonParser = null,
         ?int $connectTimeout = null,
+        ?ClientInterface $streamingClient = null,
     ) {
         $this->apiKey = (string) ($apiKey ?? config('services.routerai.key') ?? '');
         $this->baseUrl = (string) ($baseUrl ?? config('services.routerai.base_url') ?? self::DEFAULT_BASE_URL);
@@ -72,6 +76,7 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
         $this->timeout = $timeout ?? self::DEFAULT_TIMEOUT;
         $this->connectTimeout = $connectTimeout ?? (int) config('services.llm_transport.connect_timeout', 10);
         $this->jsonParser = $jsonParser ?? new LLMJsonParser;
+        $this->streamingClient = $streamingClient;
     }
 
     /**
@@ -289,7 +294,7 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
             throw LLMProviderException::configError(self::NAME, 'API key is not configured');
         }
 
-        $client = new Client([
+        $client = $this->streamingClient ?? new Client([
             'connect_timeout' => $this->connectTimeout,
             // A stream is bounded by ExpertChatStreamingService. Guzzle must not
             // apply the legacy whole-response timeout here.
@@ -337,6 +342,19 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
             }
         }
 
+        if (! $this->isSseContentType($response->getHeaderLine('Content-Type'))) {
+            $body = $response->getBody();
+            try {
+                $body->close();
+            } finally {
+                throw new LLMProviderException(
+                    'Streaming provider returned an unexpected content type',
+                    self::NAME,
+                    'unexpected_content_type',
+                );
+            }
+        }
+
         $body = $response->getBody();
 
         try {
@@ -370,5 +388,10 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
         return is_int($value) || (is_string($value) && ctype_digit($value))
             ? (int) $value
             : null;
+    }
+
+    private function isSseContentType(string $contentType): bool
+    {
+        return strtolower(trim(strtok($contentType, ';'))) === 'text/event-stream';
     }
 }

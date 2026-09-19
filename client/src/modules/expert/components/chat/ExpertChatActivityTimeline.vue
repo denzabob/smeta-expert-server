@@ -1,6 +1,11 @@
 <template>
-  <section v-if="runs.length" class="expert-activity-timeline" aria-label="Ход обработки">
-    <section v-for="run in runs" :key="run.runId" class="expert-activity-timeline__run">
+  <section v-if="showSlowWaiting || visibleRuns.length" class="expert-activity-timeline" aria-label="Ход обработки">
+    <div v-if="showSlowWaiting && !visibleRuns.length" class="expert-activity-timeline__current" role="status" aria-live="polite">
+      <v-progress-circular indeterminate size="14" width="2" />
+      <span>Формируется ответ…</span>
+    </div>
+
+    <section v-for="run in visibleRuns" :key="run.runId" class="expert-activity-timeline__run">
       <div v-if="currentActivity(run)?.status === 'started' && !run.terminal" class="expert-activity-timeline__current" role="status" aria-live="polite">
         <v-progress-circular indeterminate size="14" width="2" />
         <span>{{ currentPresentation(run).label }}</span>
@@ -20,7 +25,7 @@
       </button>
 
       <ul v-show="activityExpanded(run)" :id="activityAria(run).controlsId" class="expert-activity-timeline__items">
-        <li v-for="activity in run.activities" :key="activity.activityId" :class="`expert-activity-timeline__item--${activity.status}`">
+        <li v-for="activity in visibleActivities(run)" :key="activity.activityId" :class="`expert-activity-timeline__item--${activity.status}`">
           <v-progress-circular v-if="activity.status === 'started'" indeterminate size="14" width="2" />
           <v-icon v-else :icon="presentation(activity).icon" size="15" />
           <span>{{ presentation(activity).label }}</span>
@@ -47,22 +52,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import {
   currentExpertTimelineActivity,
   expertTimelineAria,
+  hasSignificantExpertTimelineActivity,
+  isSignificantExpertTimelineActivity,
   presentExpertTimelineActivity,
   type ExpertRunActivity,
   type ExpertTimelineRun,
 } from '../../chatTimeline'
 
-const props = defineProps<{ runs: ExpertTimelineRun[] }>()
+const props = withDefaults(defineProps<{ runs: ExpertTimelineRun[]; showSlowWaiting?: boolean }>(), { showSlowWaiting: false })
+const visibleRuns = computed(() => props.runs.filter(hasSignificantExpertTimelineActivity))
 
 const expandedActivities = ref<Record<string, boolean>>({})
 const expandedReasoning = ref<Record<string, boolean>>({})
 
 function currentActivity(run: ExpertTimelineRun): ExpertRunActivity | undefined {
-  return currentExpertTimelineActivity(run)
+  return currentExpertTimelineActivity({ ...run, activities: visibleActivities(run) })
+}
+
+function visibleActivities(run: ExpertTimelineRun): ExpertRunActivity[] {
+  return run.activities.filter(isSignificantExpertTimelineActivity)
 }
 
 function presentation(activity: ExpertRunActivity) {
@@ -75,7 +87,7 @@ function currentPresentation(run: ExpertTimelineRun) {
 }
 
 function activityExpanded(run: ExpertTimelineRun): boolean {
-  return expandedActivities.value[run.runId] ?? (!run.terminal && run.activities.some((activity) => activity.status === 'started'))
+  return expandedActivities.value[run.runId] ?? (!run.terminal && visibleActivities(run).some((activity) => activity.status === 'started'))
 }
 
 function reasoningExpanded(run: ExpertTimelineRun): boolean {
@@ -92,7 +104,7 @@ function reasoningAria(run: ExpertTimelineRun) {
 
 function toggleActivity(runId: string) {
   const run = props.runs.find((item) => item.runId === runId)
-  const defaultExpanded = run ? !run.terminal && run.activities.some((activity) => activity.status === 'started') : true
+  const defaultExpanded = run ? !run.terminal && visibleActivities(run).some((activity) => activity.status === 'started') : true
   expandedActivities.value = { ...expandedActivities.value, [runId]: !(expandedActivities.value[runId] ?? defaultExpanded) }
 }
 

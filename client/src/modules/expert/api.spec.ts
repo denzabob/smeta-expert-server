@@ -194,6 +194,48 @@ describe('Expert persistence mapping', () => {
     vi.unstubAllGlobals()
   })
 
+  it('exposes only safe terminal diagnostics for production support', async () => {
+    vi.stubGlobal('document', { cookie: '' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('event: error\ndata: {"version":1,"code":"expert_stream_interrupted","error_code":"provider_timeout","run_id":"run-48217","retryable":true,"last_activity_code":"model.request.started","raw":"SECRET-UPSTREAM-BODY"}\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } })))
+    const errors: unknown[] = []
+    const client = createExpertApi({ getUri: () => 'https://expert.test' } as unknown as AxiosInstance)
+
+    await client.streamMessage('conversation-1', 'Вопрос', 'request-1', [], {
+      onRun: () => undefined, onDelta: () => undefined, onDone: () => undefined, onCancelled: () => undefined,
+      onError: (error) => errors.push(error),
+    })
+
+    expect(errors).toEqual([expect.objectContaining({
+      code: 'provider_timeout',
+      diagnostic: { runId: 'run-48217', errorCode: 'provider_timeout', retryable: true, lastActivityCode: 'model.request.started' },
+    })])
+    expect(JSON.stringify(errors)).not.toContain('SECRET-UPSTREAM-BODY')
+    vi.unstubAllGlobals()
+  })
+
+  it('dispatches each assistant delta before done without buffering the response', async () => {
+    vi.stubGlobal('document', { cookie: '' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
+      'event: run\ndata: {"version":1,"run_id":"run-1","user_message":{"public_id":"u1","role":"user","content":"Вопрос","created_at":"2026-09-15T10:00:00Z"}}\n\n',
+      'event: delta\ndata: {"version":1,"seq":1,"text":"Первая часть. "}\n\n',
+      'event: delta\ndata: {"version":1,"seq":2,"text":"Вторая часть."}\n\n',
+      'event: done\ndata: {"version":1}\n\n',
+    ].join(''), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })))
+    const received: string[] = []
+    const client = createExpertApi({ getUri: () => 'https://expert.test' } as unknown as AxiosInstance)
+
+    await client.streamMessage('conversation-1', 'Вопрос', 'request-1', [], {
+      onRun: () => undefined,
+      onDelta: (_runId, _seq, text) => received.push(`delta:${text}`),
+      onDone: () => received.push('done'),
+      onCancelled: () => undefined,
+      onError: () => undefined,
+    })
+
+    expect(received).toEqual(['delta:Первая часть. ', 'delta:Вторая часть.', 'done'])
+    vi.unstubAllGlobals()
+  })
+
   it('ignores all events delivered after the first stream terminal event', async () => {
     vi.stubGlobal('document', { cookie: '' })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
