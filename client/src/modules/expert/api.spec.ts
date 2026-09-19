@@ -1,6 +1,6 @@
 import type { AxiosInstance } from 'axios'
 import { describe, expect, it, vi } from 'vitest'
-import { createExpertApi, isDemoProjectId, isExpertMaterialContextError, mapExpertApiError, mapExpertProject, mapFinding, mapMaterial, toProjectPayload } from './api'
+import { createExpertApi, isDemoProjectId, isExpertMaterialContextError, mapExpertApiError, mapExpertProject, mapFinding, mapMaterial, mapMessage, toProjectPayload } from './api'
 
 describe('Expert persistence mapping', () => {
   it('isolates exactly two demo ids', () => {
@@ -22,6 +22,16 @@ describe('Expert persistence mapping', () => {
     const material=mapMaterial({public_id:'m1',original_name:'evidence.pdf',mime_type:'application/pdf',extension:'pdf',size:2048,category:'document',status:'uploaded',created_at:'2026-09-12T10:00:00Z'})
     expect(material).toMatchObject({id:'m1',name:'evidence.pdf',kind:'document',size:'2.0 КБ',status:'Загружен'})
     expect(material).not.toHaveProperty('storagePath')
+  })
+  it('restores persisted user attachments and the retry ID from history', () => {
+    const message = mapMessage({
+      public_id: 'user-1', role: 'user', content: 'Прочитай', created_at: '2026-09-19T10:00:00Z',
+      metadata: { client_message_id: 'retry-1' },
+      attachments: [{ material_public_id: 'material-1', original_name: 'Акт.pdf', mime_type: 'application/pdf', size: 2048, kind: 'document', available: false }],
+    })
+    expect(message.clientMessageId).toBe('retry-1')
+    expect(message.attachments).toEqual([expect.objectContaining({ id: 'material-1', name: 'Акт.pdf', available: false })])
+    expect(message.attachments?.[0]).not.toHaveProperty('storagePath')
   })
   it('uses a safe display name when old material data has no original filename', () => {
     const material=mapMaterial({public_id:'m1',original_name:'',mime_type:'application/pdf',extension:'pdf',size:2048,category:'document',status:'uploaded',created_at:'2026-09-12T10:00:00Z'})

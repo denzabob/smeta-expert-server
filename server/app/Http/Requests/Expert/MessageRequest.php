@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Requests\Expert;
 
 use Illuminate\Contracts\Validation\Validator;
@@ -8,15 +9,19 @@ use Illuminate\Support\Str;
 
 class MessageRequest extends FormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
+
     public function rules(): array
     {
         return [
-            'content' => ['required', 'string', 'max:50000'],
+            'content' => [$this->route('assistant') === null ? 'required' : 'sometimes', 'string', 'max:50000'],
             'material_public_ids' => [
                 'sometimes',
                 'array',
-                'max:' . max(1, (int) config('expert.material_context.max_materials_per_message', 5)),
+                'max:'.max(1, (int) config('expert.material_context.max_materials_per_message', 5)),
             ],
             'material_public_ids.*' => ['uuid', 'distinct'],
         ];
@@ -27,7 +32,7 @@ class MessageRequest extends FormRequest
         $validator->after(function (Validator $validator): void {
             $clientMessageId = $this->header('X-Expert-Message-Id');
 
-            if ($clientMessageId !== null && (!is_string($clientMessageId) || !Str::isUuid($clientMessageId))) {
+            if ($clientMessageId !== null && (! is_string($clientMessageId) || ! Str::isUuid($clientMessageId))) {
                 $validator->errors()->add('message_id', 'Требуется корректный идентификатор сообщения.');
             }
         });
@@ -39,7 +44,7 @@ class MessageRequest extends FormRequest
             ->contains(fn (string $attribute): bool => $attribute === 'material_public_ids'
                 || Str::startsWith($attribute, 'material_public_ids.'));
 
-        if (!$materialValidationFailed) {
+        if (! $materialValidationFailed) {
             parent::failedValidation($validator);
         }
 

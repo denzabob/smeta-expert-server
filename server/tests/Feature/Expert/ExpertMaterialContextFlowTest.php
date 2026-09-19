@@ -6,6 +6,8 @@ use App\Models\Expert\ExpertConversation;
 use App\Models\Expert\ExpertProject;
 use App\Models\Expert\ExpertProjectMaterial;
 use App\Models\User;
+use App\Services\Expert\ExpertChatMaterialContextBuilder;
+use App\Services\Expert\ExpertChatService;
 use App\Services\Expert\ExpertMaterialContextBuilder;
 use App\Services\Expert\ExpertMaterialContextException;
 use App\Services\LLM\CircuitBreaker;
@@ -16,10 +18,10 @@ use App\Services\LLM\DTO\LLMChatResponse;
 use App\Services\LLM\DTO\LLMResponse;
 use App\Services\LLM\Enums\LLMCapability;
 use App\Services\LLM\Exceptions\LLMProviderException;
-use App\Services\LLM\OpenAiChatMessageMapper;
 use App\Services\LLM\LLMErrorClassifier;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
+use App\Services\LLM\OpenAiChatMessageMapper;
 use Dompdf\Dompdf;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -224,6 +226,34 @@ class ExpertMaterialContextFlowTest extends TestCase
         $this->assertStringContainsString('PDF-31415', $context[3]['text']);
     }
 
+    public function test_mixed_docx_jpeg_pdf_context_and_persisted_attachment_order(): void
+    {
+        [, $conversation] = $this->conversation();
+        $project = $conversation->project;
+        $docx = $this->material($project, 'Договор.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', $this->docxFixture());
+        $encoded = file_get_contents(base_path('tests/Fixtures/Expert/vision-defect.jpg.b64'));
+        $this->assertIsString($encoded);
+        $imageBytes = base64_decode(trim($encoded), true);
+        $this->assertIsString($imageBytes);
+        $image = $this->material($project, 'Дефект.jpg', 'image/jpeg', $imageBytes);
+        $pdf = $this->material($project, 'Заключение.pdf', 'application/pdf', $this->pdfFixture('Маркер смешанного контекста PDF-4E1'));
+        $ids = [$docx->public_id, $image->public_id, $pdf->public_id];
+
+        $context = app(ExpertChatMaterialContextBuilder::class)->build($project, $ids);
+        $this->assertCount(1, $context->images);
+        $textIds = array_column($context->textMaterials, 'public_id');
+        $ocrIds = array_map(static fn ($candidate): string => $candidate->materialPublicId, $context->ocrCandidates);
+        $this->assertEqualsCanonicalizing([$docx->public_id, $pdf->public_id], [...$textIds, ...$ocrIds]);
+        $message = app(ExpertChatService::class)->prepareStreamingUserMessage(
+            $conversation,
+            'Сравни все три материала',
+            (string) Str::uuid(),
+            app(ExpertChatService::class)->requestFingerprint('Сравни все три материала', $ids),
+            $ids,
+        );
+        $this->assertSame($ids, $message->attachments()->pluck('material_public_id_snapshot')->all());
+    }
+
     public function test_xlsx_ai_context_is_enabled_by_default_while_the_material_remains_stored(): void
     {
         [, $conversation] = $this->conversation();
@@ -251,7 +281,7 @@ class ExpertMaterialContextFlowTest extends TestCase
             app(ExpertMaterialContextBuilder::class)->build($project, [$emptyPdf->public_id]);
             $this->fail('Expected an extraction error for PDF without a text layer.');
         } catch (ExpertMaterialContextException $exception) {
-            $this->assertSame('material_context_extraction_failed', $exception->errorCode);
+            $this->assertSame('pdf_no_usable_text', $exception->errorCode);
         }
 
         try {
@@ -296,8 +326,12 @@ class ExpertMaterialContextFlowTest extends TestCase
             ),
         ];
 
-        foreach ($materials as $material) {
-            $this->assertMaterialContextError($project, $material, 'material_context_extraction_failed');
+        foreach ($materials as $index => $material) {
+            $this->assertMaterialContextError($project, $material, match ($index) {
+                0 => 'pdf_malformed',
+                3 => 'pdf_encrypted',
+                default => 'material_context_extraction_failed',
+            });
         }
     }
 
@@ -305,15 +339,15 @@ class ExpertMaterialContextFlowTest extends TestCase
     {
         [, $conversation] = $this->conversation();
         $project = $conversation->project;
-        $externalEntity = '<!DOCTYPE w:document [<!ENTITY outside SYSTEM "file:///not-readable-' . Str::uuid() . '">]>';
+        $externalEntity = '<!DOCTYPE w:document [<!ENTITY outside SYSTEM "file:///not-readable-'.Str::uuid().'">]>';
         $xxeDocx = $this->material(
             $project,
             'Внешняя-сущность.docx',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             $this->docxFixture(
                 '<?xml version="1.0" encoding="UTF-8"?>'
-                . $externalEntity
-                . '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>&outside;</w:t></w:r></w:p></w:body></w:document>',
+                .$externalEntity
+                .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>&outside;</w:t></w:r></w:p></w:body></w:document>',
             ),
         );
         $this->assertMaterialContextError($project, $xxeDocx, 'material_context_extraction_failed');
@@ -375,7 +409,7 @@ class ExpertMaterialContextFlowTest extends TestCase
 
         $context = app(ExpertMaterialContextBuilder::class)->build($conversation->project, [$material->public_id]);
 
-        $this->assertStringContainsString('[Формула] ' . $formula, $context[0]['text']);
+        $this->assertStringContainsString('[Формула] '.$formula, $context[0]['text']);
     }
 
     public function test_xlsx_preflight_and_cell_limits_remain_enforced_after_dependency_update(): void
@@ -456,8 +490,8 @@ class ExpertMaterialContextFlowTest extends TestCase
     public function test_rejected_materials_do_not_expose_contents_or_storage_paths_in_api_or_logs(): void
     {
         [$user, $conversation] = $this->conversation();
-        $secret = 'PRIVATE-MATERIAL-BODY-' . Str::uuid();
-        $material = $this->material($conversation->project, 'Двоичный.txt', 'text/plain', $secret . "\0");
+        $secret = 'PRIVATE-MATERIAL-BODY-'.Str::uuid();
+        $material = $this->material($conversation->project, 'Двоичный.txt', 'text/plain', $secret."\0");
         Log::spy();
 
         $response = $this->send($user, $conversation, [
@@ -601,7 +635,7 @@ class ExpertMaterialContextFlowTest extends TestCase
     private function material(ExpertProject $project, string $name, string $mimeType, string $contents): ExpertProjectMaterial
     {
         $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-        $path = "expert/{$project->public_id}/materials/" . Str::uuid() . '.' . $extension;
+        $path = "expert/{$project->public_id}/materials/".Str::uuid().'.'.$extension;
         Storage::disk('local')->put($path, $contents);
 
         return $project->materials()->create([
@@ -630,14 +664,14 @@ class ExpertMaterialContextFlowTest extends TestCase
     }
 
     /**
-     * @param array<string, string> $additionalEntries
+     * @param  array<string, string>  $additionalEntries
      */
     private function docxFixture(?string $documentXml = null, array $additionalEntries = []): string
     {
         $temporaryFile = tempnam(sys_get_temp_dir(), 'expert-docx-');
         $this->assertNotFalse($temporaryFile);
 
-        $archive = new ZipArchive();
+        $archive = new ZipArchive;
         $this->assertTrue($archive->open($temporaryFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
         $documentXml ??= '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Заголовок</w:t></w:r></w:p><w:p><w:r><w:t>Текст договора</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Пункт</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Значение</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>';
         $archive->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
@@ -657,7 +691,7 @@ class ExpertMaterialContextFlowTest extends TestCase
 
     private function xlsxFixture(?string $formula = null, string $code = 'XLSX-2718', ?string $additionalText = null): string
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $first = $spreadsheet->getActiveSheet();
         $first->setTitle('Лист1');
         $first->setCellValue('A1', 'Код');
@@ -691,8 +725,8 @@ class ExpertMaterialContextFlowTest extends TestCase
         $this->assertNotFalse($targetPath);
         file_put_contents($sourcePath, $this->xlsxFixture());
 
-        $source = new ZipArchive();
-        $target = new ZipArchive();
+        $source = new ZipArchive;
+        $target = new ZipArchive;
         $this->assertTrue($source->open($sourcePath) === true);
         $this->assertTrue($target->open($targetPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
 
@@ -726,8 +760,8 @@ class ExpertMaterialContextFlowTest extends TestCase
 
     private function pdfFixture(string $body): string
     {
-        $dompdf = new Dompdf();
-        $dompdf->loadHtml('<!doctype html><html><body>' . e($body) . '</body></html>');
+        $dompdf = new Dompdf;
+        $dompdf->loadHtml('<!doctype html><html><body>'.e($body).'</body></html>');
         $dompdf->render();
 
         return $dompdf->output();
@@ -772,15 +806,35 @@ final class ExpertMaterialContextFakeProvider implements LLMProviderInterface
 {
     /** @var list<LLMChatRequest> */
     public array $chatRequests = [];
+
     public ?LLMProviderException $failure = null;
 
     public function __construct(public string $reply) {}
 
-    public function name(): string { return 'fake'; }
-    public function model(): string { return 'fake-chat-model'; }
-    public function capabilities(): array { return [LLMCapability::TEXT_INPUT]; }
-    public function supportsJsonMode(): bool { return true; }
-    public function isAvailable(): bool { return true; }
+    public function name(): string
+    {
+        return 'fake';
+    }
+
+    public function model(): string
+    {
+        return 'fake-chat-model';
+    }
+
+    public function capabilities(): array
+    {
+        return [LLMCapability::TEXT_INPUT];
+    }
+
+    public function supportsJsonMode(): bool
+    {
+        return true;
+    }
+
+    public function isAvailable(): bool
+    {
+        return true;
+    }
 
     public function generateDecomposition(DecompositionPrompt $prompt): LLMResponse
     {

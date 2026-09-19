@@ -135,7 +135,7 @@ describe('Expert frontend prototype contracts', () => {
     expect(timelineSource).toContain('Формируется ответ…')
   })
 
-  it('uses the shared Materials transfer flow without persisting composer chips as message attachments', () => {
+  it('uses the shared Materials transfer flow and persisted message attachments', () => {
     const composerSource = readFileSync(new URL('./components/chat/ExpertChatComposer.vue', import.meta.url), 'utf8')
     const chatSource = readFileSync(new URL('./pages/ExpertChat.vue', import.meta.url), 'utf8')
 
@@ -146,7 +146,7 @@ describe('Expert frontend prototype contracts', () => {
     expect(chatSource).toContain('transfers.queueUploads')
     expect(chatSource).toContain('snapshotExpertMessageMaterialContext')
     expect(chatSource).toContain('runtimeMaterialContext')
-    expect(chatSource).toContain('message.runtimeMaterialContext?.map((context) => context.id) ?? []')
+    expect(chatSource).toContain('message.attachments?.map((attachment) => attachment.id)')
     expect(chatSource).toContain('isExpertMaterialContextError(mapped.code)')
     expect(chatSource).toContain('mergeExpertMessageMaterialContexts')
     expect(chatSource).not.toContain('expertApi.deleteMaterial')

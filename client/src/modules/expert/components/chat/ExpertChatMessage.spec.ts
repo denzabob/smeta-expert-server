@@ -47,4 +47,25 @@ describe('Expert chat failure diagnostics', () => {
     expect(html).toContain('Подробнее')
     expect(html).not.toContain('SECRET-UPSTREAM-BODY')
   })
+
+  it('renders persisted image and document attachments on the user message, including deleted history', async () => {
+    const message: ExpertMessage = {
+      id: 'user-1', role: 'user', text: 'Что на фото?', createdAt: '2026-09-19T10:00:00Z',
+      attachments: [
+        { id: 'image-1', name: 'Дефект.jpg', mimeType: 'image/jpeg', sizeBytes: 123, kind: 'image', available: true, icon: 'mdi-image-outline' },
+        { id: 'pdf-1', name: 'Акт.pdf', mimeType: 'application/pdf', sizeBytes: 456, kind: 'document', available: false, icon: 'mdi-file-pdf-box' },
+      ],
+    }
+    const app = createSSRApp({ render: () => h(ExpertChatMessage, { message, imagePreviews: { 'image-1': { status: 'ready', url: 'blob:thumbnail' } } }) })
+    app.component('v-icon', { template: '<i />' })
+    app.component('v-btn', { template: '<button><slot /></button>' })
+
+    const html = await renderToString(app)
+
+    expect(html).toContain('Дефект.jpg')
+    expect(html).toContain('blob:thumbnail')
+    expect(html).toContain('Акт.pdf')
+    expect(html).toContain('Материал удалён')
+    expect(html).toContain('disabled')
+  })
 })

@@ -1,15 +1,17 @@
 <?php
+
 namespace App\Http\Controllers\Api\Expert;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Expert\MessageRequest;
 use App\Http\Resources\Expert\MessageResource;
 use App\Models\Expert\ExpertConversation;
-use App\Services\Expert\ExpertChatRequestConflictException;
 use App\Services\Expert\ExpertChatMaterialContextBuilder;
+use App\Services\Expert\ExpertChatRequestConflictException;
 use App\Services\Expert\ExpertChatService;
 use App\Services\Expert\ExpertMaterialContextException;
-use App\Services\Expert\ExpertVisionException;
 use App\Services\Expert\ExpertPdfOcrException;
+use App\Services\Expert\ExpertVisionException;
 use App\Services\LLM\Exceptions\LLMChatUnavailableException;
 use App\Services\LLM\Exceptions\LLMUnsupportedCapabilityException;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -23,10 +25,14 @@ class MessageController extends Controller
     public function __construct(
         private readonly ExpertChatService $expertChat,
         private readonly ExpertChatMaterialContextBuilder $materialContextBuilder,
-    ) {
-    }
+    ) {}
 
-    public function index(ExpertConversation $conversation){$this->authorize('view',$conversation->project);return MessageResource::collection($conversation->messages);}
+    public function index(ExpertConversation $conversation)
+    {
+        $this->authorize('view', $conversation->project);
+
+        return MessageResource::collection($conversation->messages()->with('attachments.material')->get());
+    }
 
     public function store(MessageRequest $request, ExpertConversation $conversation): JsonResponse
     {
@@ -34,7 +40,11 @@ class MessageController extends Controller
 
         $content = $request->validated('content');
         $clientMessageId = $request->clientMessageId() ?? (string) Str::uuid();
-        $materialPublicIds = $request->validated('material_public_ids', []);
+        $materialPublicIds = $this->expertChat->requestMaterialPublicIds(
+            $conversation,
+            $clientMessageId,
+            $request->exists('material_public_ids') ? $request->validated('material_public_ids', []) : null,
+        );
         $requestFingerprint = $this->expertChat->requestFingerprint($content, $materialPublicIds);
 
         try {
@@ -52,6 +62,8 @@ class MessageController extends Controller
                 ]);
             }
 
+            $this->expertChat->assertExistingMaterialsAvailable($conversation, $clientMessageId);
+            $materialPublicIds = $this->expertChat->materialPublicIdsForExecution($conversation, $clientMessageId, $materialPublicIds);
             $materialContext = $this->materialContextBuilder->build(
                 $conversation->project,
                 $materialPublicIds,
@@ -63,6 +75,7 @@ class MessageController extends Controller
                 $clientMessageId,
                 $requestFingerprint,
                 $materialContext,
+                $materialPublicIds,
             );
         } catch (ExpertChatRequestConflictException $exception) {
             return response()->json([
@@ -78,13 +91,15 @@ class MessageController extends Controller
             return response()->json([
                 'message' => $exception->getMessage(),
                 'code' => $exception->errorCode,
-            ], $exception->status);        } catch (ExpertVisionException $exception) {
+            ], $exception->status);
+        } catch (ExpertVisionException $exception) {
             return response()->json([
                 'message' => $exception->getMessage(),
                 'code' => $exception->errorCode,
             ], $exception->status);
         } catch (LLMUnsupportedCapabilityException $exception) {
             $isPdf = $exception->capability->value === 'pdf_ocr';
+
             return response()->json([
                 'message' => $isPdf ? 'Текущая модель AI не поддерживает OCR PDF.' : 'Текущая модель AI не поддерживает анализ изображений.',
                 'code' => $isPdf ? 'pdf_ocr_not_supported' : 'vision_not_supported',

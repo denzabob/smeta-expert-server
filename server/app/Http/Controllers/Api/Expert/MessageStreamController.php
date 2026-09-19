@@ -35,7 +35,11 @@ final class MessageStreamController extends Controller
         $this->authorize('update', $conversation->project);
         $content = $request->validated('content');
         $clientMessageId = $request->clientMessageId() ?? (string) Str::uuid();
-        $materialPublicIds = $request->validated('material_public_ids', []);
+        $materialPublicIds = $this->chat->requestMaterialPublicIds(
+            $conversation,
+            $clientMessageId,
+            $request->exists('material_public_ids') ? $request->validated('material_public_ids', []) : null,
+        );
 
         try {
             $run = $this->streaming->start(
@@ -58,18 +62,8 @@ final class MessageStreamController extends Controller
         if ((int) $assistant->expert_conversation_id !== (int) $conversation->id) {
             abort(404);
         }
-        $content = $request->validated('content');
-        $materialPublicIds = $request->validated('material_public_ids', []);
         try {
-            $run = $this->streaming->continueRun(
-                $conversation,
-                $assistant,
-                $content,
-                $this->chat->requestFingerprint($content, $materialPublicIds),
-                $materialPublicIds,
-            );
-        } catch (ExpertChatRequestConflictException) {
-            return response()->json(['message' => 'Исходный запрос изменён.', 'code' => 'expert_continue_snapshot_conflict'], 409);
+            $run = $this->streaming->continueRun($conversation, $assistant);
         } catch (\Throwable $exception) {
             return $this->startError($exception);
         }

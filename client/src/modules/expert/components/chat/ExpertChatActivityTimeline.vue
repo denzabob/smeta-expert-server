@@ -57,7 +57,6 @@ import {
   currentExpertTimelineActivity,
   expertTimelineAria,
   hasSignificantExpertTimelineActivity,
-  isSignificantExpertTimelineActivity,
   presentExpertTimelineActivity,
   type ExpertRunActivity,
   type ExpertTimelineRun,
@@ -74,7 +73,7 @@ function currentActivity(run: ExpertTimelineRun): ExpertRunActivity | undefined 
 }
 
 function visibleActivities(run: ExpertTimelineRun): ExpertRunActivity[] {
-  return run.activities.filter(isSignificantExpertTimelineActivity)
+  return run.activities
 }
 
 function presentation(activity: ExpertRunActivity) {

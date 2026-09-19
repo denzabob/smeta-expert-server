@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Expert;
 
+use App\Http\Resources\Expert\MessageResource;
 use App\Models\Expert\ExpertConversation;
 use App\Models\Expert\ExpertMessage;
 use App\Services\LLM\DTO\LLMCancellationToken;
@@ -44,7 +45,8 @@ final class ExpertChatStreamingService
     ): ExpertChatStreamingRun {
         $lock = $this->runs->acquireConversation($conversation);
         try {
-            $userMessage = $this->chat->prepareStreamingUserMessage($conversation, $content, $clientMessageId, $fingerprint);
+            $materialPublicIds = $this->materialPublicIds($materialContextOrPublicIds);
+            $userMessage = $this->chat->prepareStreamingUserMessage($conversation, $content, $clientMessageId, $fingerprint, $materialPublicIds);
             $existingAssistant = $this->chat->assistantReplyFor($conversation, $userMessage);
             $registryRun = $this->runs->create($conversation, $existingAssistant?->public_id);
 
@@ -52,7 +54,7 @@ final class ExpertChatStreamingService
                 $conversation,
                 $userMessage,
                 $materialContextOrPublicIds instanceof ExpertChatMaterialContext ? $materialContextOrPublicIds : null,
-                $this->materialPublicIds($materialContextOrPublicIds),
+                $materialContextOrPublicIds instanceof ExpertChatMaterialContext ? [] : $this->chat->persistedMaterialPublicIds($userMessage),
                 $registryRun,
                 $lock,
                 $existingAssistant,
@@ -63,13 +65,9 @@ final class ExpertChatStreamingService
         }
     }
 
-    /** @param ExpertChatMaterialContext|list<string> $materialContextOrPublicIds */
     public function continueRun(
         ExpertConversation $conversation,
         ExpertMessage $assistantMessage,
-        string $content,
-        string $fingerprint,
-        ExpertChatMaterialContext|array $materialContextOrPublicIds,
     ): ExpertChatStreamingRun {
         if ($assistantMessage->role !== 'assistant' || ! in_array((is_array($assistantMessage->metadata) ? $assistantMessage->metadata['generation_status'] ?? null : null), ['stopped', 'interrupted'], true)) {
             throw new ExpertChatStreamException('Этот ответ нельзя продолжить.');
@@ -81,7 +79,7 @@ final class ExpertChatStreamingService
         if ($userMessage === null) {
             throw new ExpertChatStreamException('Исходное сообщение для продолжения не найдено.');
         }
-        $this->chat->assertStreamingSnapshot($userMessage, $content, $fingerprint);
+        $persistedPublicIds = $this->chat->persistedMaterialPublicIds($userMessage);
 
         $lock = $this->runs->acquireConversation($conversation);
         try {
@@ -90,8 +88,8 @@ final class ExpertChatStreamingService
             return new ExpertChatStreamingRun(
                 $conversation,
                 $userMessage,
-                $materialContextOrPublicIds instanceof ExpertChatMaterialContext ? $materialContextOrPublicIds : null,
-                $this->materialPublicIds($materialContextOrPublicIds),
+                null,
+                $persistedPublicIds,
                 $registryRun,
                 $lock,
                 $assistantMessage,
@@ -438,13 +436,6 @@ final class ExpertChatStreamingService
     /** @return array<string, mixed> */
     private function messagePayload(ExpertMessage $message): array
     {
-        return [
-            'public_id' => $message->public_id,
-            'role' => $message->role,
-            'content' => $message->content,
-            'metadata' => $message->metadata,
-            'created_at' => $message->created_at?->toIso8601String(),
-            'updated_at' => $message->updated_at?->toIso8601String(),
-        ];
+        return (new MessageResource($message->loadMissing('attachments.material')))->resolve();
     }
 }

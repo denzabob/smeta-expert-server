@@ -12,6 +12,7 @@ use App\Services\LLM\DTO\LLMTextContent;
 use App\Services\LLM\LLMRouter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 final class ExpertChatService
 {
@@ -19,11 +20,11 @@ final class ExpertChatService
         private readonly LLMRouter $llmRouter,
         private readonly ExpertChatPrompt $prompt,
         private readonly ExpertPdfOcrCache $ocrCache,
-    ) {
-    }
+        private readonly ExpertMessageAttachments $attachments,
+    ) {}
 
     /**
-     * @param list<string> $materialPublicIds
+     * @param  list<string>  $materialPublicIds
      */
     public function requestFingerprint(string $content, array $materialPublicIds): string
     {
@@ -38,6 +39,56 @@ final class ExpertChatService
             [$normalisedContent, $normalisedMaterialIds],
             JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
         ));
+    }
+
+    /** @param list<string>|null $submittedIds @return list<string> */
+    public function requestMaterialPublicIds(ExpertConversation $conversation, string $clientMessageId, ?array $submittedIds): array
+    {
+        if ($submittedIds !== null) {
+            return $submittedIds;
+        }
+
+        $message = $this->findUserMessage($conversation, $clientMessageId);
+
+        return $message === null ? [] : $this->attachments->publicIds($message);
+    }
+
+    /** @param list<string> $submittedIds @return list<string> */
+    public function materialPublicIdsForExecution(ExpertConversation $conversation, string $clientMessageId, array $submittedIds): array
+    {
+        $message = $this->findUserMessage($conversation, $clientMessageId);
+
+        return $message === null ? $submittedIds : $this->persistedMaterialPublicIds($message);
+    }
+
+    public function assertExistingMaterialsAvailable(ExpertConversation $conversation, string $clientMessageId): void
+    {
+        $message = $this->findUserMessage($conversation, $clientMessageId);
+        if ($message === null) {
+            return;
+        }
+
+        $ids = $this->attachments->publicIds($message);
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if ($ids === [] && ($metadata['expert_request_fingerprint'] ?? null) !== $this->requestFingerprint($message->content, [])) {
+            throw ExpertMaterialContextException::originalUnavailable();
+        }
+
+        $this->attachments->assertAvailable($message);
+    }
+
+    /** @return list<string> */
+    public function persistedMaterialPublicIds(ExpertMessage $message): array
+    {
+        $this->attachments->assertAvailable($message);
+
+        $ids = $this->attachments->publicIds($message);
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if ($ids === [] && ($metadata['expert_request_fingerprint'] ?? null) !== $this->requestFingerprint($message->content, [])) {
+            throw ExpertMaterialContextException::originalUnavailable();
+        }
+
+        return $ids;
     }
 
     public function completedReplyOrFail(
@@ -66,6 +117,7 @@ final class ExpertChatService
         string $clientMessageId,
         string $requestFingerprint,
         ExpertChatMaterialContext $materialContext,
+        array $materialPublicIds = [],
     ): ExpertChatResult {
         $lock = Cache::lock(
             "expert-chat:{$conversation->id}:{$clientMessageId}",
@@ -74,20 +126,14 @@ final class ExpertChatService
 
         return $lock->block(
             (int) config('expert.chat.idempotency_wait_seconds', 5),
-            function () use ($conversation, $content, $clientMessageId, $requestFingerprint, $materialContext): ExpertChatResult {
+            function () use ($conversation, $content, $clientMessageId, $requestFingerprint, $materialContext, $materialPublicIds): ExpertChatResult {
                 $userMessage = $this->findUserMessage($conversation, $clientMessageId);
 
                 if ($userMessage !== null) {
                     $this->assertRequestMatches($userMessage, $content, $requestFingerprint);
+                    $this->attachments->assertAvailable($userMessage);
                 } else {
-                    $userMessage = $conversation->messages()->create([
-                        'role' => 'user',
-                        'content' => $content,
-                        'metadata' => [
-                            'client_message_id' => $clientMessageId,
-                            'expert_request_fingerprint' => $requestFingerprint,
-                        ],
-                    ]);
+                    $userMessage = $this->createUserMessage($conversation, $content, $clientMessageId, $requestFingerprint, $materialPublicIds);
                 }
 
                 $assistantMessage = $this->findAssistantMessage($conversation, $userMessage);
@@ -100,7 +146,9 @@ final class ExpertChatService
                     ->chat($this->buildRequest($conversation, $userMessage, $materialContext));
                 foreach ($materialContext->ocrCandidates as $candidate) {
                     $parsed = collect($response->parsedFiles)->first(fn ($file) => strtolower($file->sha256) === strtolower($candidate->sha256));
-                    if ($parsed === null) throw ExpertPdfOcrException::failed();
+                    if ($parsed === null) {
+                        throw ExpertPdfOcrException::failed();
+                    }
                     $this->ocrCache->put($candidate, $parsed);
                 }
 
@@ -124,21 +172,17 @@ final class ExpertChatService
         string $content,
         string $clientMessageId,
         string $requestFingerprint,
+        array $materialPublicIds = [],
     ): ExpertMessage {
         $userMessage = $this->findUserMessage($conversation, $clientMessageId);
         if ($userMessage !== null) {
             $this->assertRequestMatches($userMessage, $content, $requestFingerprint);
+            $this->attachments->assertAvailable($userMessage);
+
             return $userMessage;
         }
 
-        return $conversation->messages()->create([
-            'role' => 'user',
-            'content' => $content,
-            'metadata' => [
-                'client_message_id' => $clientMessageId,
-                'expert_request_fingerprint' => $requestFingerprint,
-            ],
-        ]);
+        return $this->createUserMessage($conversation, $content, $clientMessageId, $requestFingerprint, $materialPublicIds);
     }
 
     public function assistantReplyFor(ExpertConversation $conversation, ExpertMessage $userMessage): ?ExpertMessage
@@ -218,6 +262,7 @@ final class ExpertChatService
                 'content' => $content,
                 'metadata' => [...(is_array($existingAssistant->metadata) ? $existingAssistant->metadata : []), ...$technicalMetadata],
             ])->save();
+
             return $existingAssistant->refresh();
         }
 
@@ -236,6 +281,29 @@ final class ExpertChatService
             ->first();
     }
 
+    /** @param list<string> $materialPublicIds */
+    private function createUserMessage(
+        ExpertConversation $conversation,
+        string $content,
+        string $clientMessageId,
+        string $requestFingerprint,
+        array $materialPublicIds,
+    ): ExpertMessage {
+        return DB::transaction(function () use ($conversation, $content, $clientMessageId, $requestFingerprint, $materialPublicIds): ExpertMessage {
+            $message = $conversation->messages()->create([
+                'role' => 'user',
+                'content' => $content,
+                'metadata' => [
+                    'client_message_id' => $clientMessageId,
+                    'expert_request_fingerprint' => $requestFingerprint,
+                ],
+            ]);
+            $this->attachments->persist($conversation, $message, $materialPublicIds);
+
+            return $message;
+        });
+    }
+
     private function findAssistantMessage(ExpertConversation $conversation, ExpertMessage $userMessage): ?ExpertMessage
     {
         return $conversation->messages()
@@ -249,7 +317,7 @@ final class ExpertChatService
         string $content,
         string $requestFingerprint,
     ): void {
-        if (!hash_equals($userMessage->content, $content)) {
+        if (! hash_equals($userMessage->content, $content)) {
             throw new ExpertChatRequestConflictException(
                 'Идентификатор сообщения уже использован с другим содержимым.',
             );
@@ -259,7 +327,7 @@ final class ExpertChatService
         $storedFingerprint = $metadata['expert_request_fingerprint'] ?? null;
 
         if (is_string($storedFingerprint) && $storedFingerprint !== '') {
-            if (!hash_equals($storedFingerprint, $requestFingerprint)) {
+            if (! hash_equals($storedFingerprint, $requestFingerprint)) {
                 throw new ExpertChatRequestConflictException(
                     'Идентификатор сообщения уже использован с другим набором материалов.',
                 );
@@ -269,7 +337,7 @@ final class ExpertChatService
         }
 
         $legacyTextOnlyFingerprint = $this->requestFingerprint($userMessage->content, []);
-        if (!hash_equals($legacyTextOnlyFingerprint, $requestFingerprint)) {
+        if (! hash_equals($legacyTextOnlyFingerprint, $requestFingerprint)) {
             throw new ExpertChatRequestConflictException(
                 'Невозможно подтвердить совпадение повторного запроса с исходным сообщением.',
             );

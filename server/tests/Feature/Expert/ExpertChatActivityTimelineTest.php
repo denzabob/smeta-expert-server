@@ -89,6 +89,36 @@ final class ExpertChatActivityTimelineTest extends TestCase
         $this->assertSame('done', end($events)['event']);
     }
 
+    public function test_material_activity_is_emitted_in_live_order_before_first_delta(): void
+    {
+        [, $conversation] = $this->conversation();
+        $image = $this->material($conversation->project, 'defect.jpg', 'image/jpeg', $this->jpegFixture());
+        $pdf = $this->material($conversation->project, 'document.pdf', 'application/pdf', $this->textPdfFixture());
+        $this->installRouter(new ExpertTimelineFakeProvider(['Ответ.']));
+        $observed = [];
+
+        $this->runStream($conversation, 'Проверь оба', [$image->public_id, $pdf->public_id],
+            function (string $event, array $data) use (&$observed): void {
+                if ($event === 'activity' && in_array($data['code'], [
+                    'material.image_prepare.started', 'material.image_prepare.completed',
+                    'pdf.local_extract.started', 'pdf.local_extract.completed',
+                ], true)) {
+                    $observed[] = [$data['code'], microtime(true)];
+                    usleep(20_000);
+                } elseif ($event === 'delta') {
+                    $observed[] = ['delta', microtime(true)];
+                }
+            });
+
+        $this->assertSame([
+            'material.image_prepare.started', 'material.image_prepare.completed',
+            'pdf.local_extract.started', 'pdf.local_extract.completed', 'delta',
+        ], array_column($observed, 0));
+        for ($index = 1; $index < count($observed); $index++) {
+            $this->assertGreaterThanOrEqual(0.015, $observed[$index][1] - $observed[$index - 1][1]);
+        }
+    }
+
     public function test_scanned_pdf_stream_persists_ocr_cache_then_reuses_it_without_new_ocr(): void
     {
         [, $conversation] = $this->conversation();

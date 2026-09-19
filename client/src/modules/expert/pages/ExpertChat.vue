@@ -53,11 +53,13 @@
             v-else
             :key="message.id"
             :message="message"
-            :allow-continue="Boolean(continuableAssistantIds[message.id])"
+            :allow-continue="Boolean(continuableAssistantIds[message.id]) || message.generationStatus === 'stopped' || message.generationStatus === 'interrupted'"
+            :image-previews="transfers.thumbnailPreviews.value"
             :timeline-runs="timelineRunsFor(message.id)"
             :show-slow-waiting="showSlowWaitingFor(message.id)"
             @action="notify"
             @open-source="contextOpen = true"
+            @open-material="openMessageMaterial"
             @retry="retryMessage"
             @continue="continueMessage"
           />
@@ -103,6 +105,12 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="libraryOpen" max-width="760" scrollable>
+      <v-card v-if="libraryLoading"><v-card-title>Библиотека проекта</v-card-title><v-card-text><v-progress-linear indeterminate /></v-card-text></v-card>
+      <ExpertProjectLibraryPicker v-else-if="libraryOpen" :materials="project.materials" :initially-selected="composerMaterialContexts.map((context) => context.id)" @cancel="libraryOpen = false" @confirm="confirmLibrarySelection" />
+    </v-dialog>
+    <ExpertMaterialDrawer v-if="materialDrawerOpen" v-model="materialDrawerOpen" :material="selectedMaterial" :project-mode="projectMode" :image-preview="selectedMaterial ? transfers.imagePreviews.value[selectedMaterial.id] : undefined" :downloading="selectedMaterial ? transfers.isDownloading(selectedMaterial.id) : false" @action="handleMaterialAction" />
+
     <v-snackbar v-model="snackbarOpen" :timeout="2600">{{ snackbarText }}</v-snackbar>
   </div>
 </template>
@@ -112,6 +120,8 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import ExpertChatComposer from '../components/chat/ExpertChatComposer.vue'
 import ExpertChatMessage from '../components/chat/ExpertChatMessage.vue'
+import ExpertProjectLibraryPicker from '../components/chat/ExpertProjectLibraryPicker.vue'
+import ExpertMaterialDrawer from '../components/materials/ExpertMaterialDrawer.vue'
 import ExpertContextPanel from '../components/chat/ExpertContextPanel.vue'
 import { createWholeProjectContext, removeChatContext, selectWholeProjectChatContext, type ExpertChatContextChip } from '../chatContext'
 import { addExpertMessageMaterialContext, getExpertChatAttachmentSendBlockReason, mergeExpertMessageMaterialContexts, snapshotExpertMessageMaterialContext } from '../chatAttachments'
@@ -125,6 +135,8 @@ import {
   applyExpertTimelineActivity,
   finishExpertTimelineRun,
   EXPERT_SLOW_FIRST_TOKEN_MS,
+  EXPERT_SIGNIFICANT_WAIT_MS,
+  markExpertTimelineSignificant,
   moveExpertTimelineRuns,
   removeExpertTimelineRuns,
   type ExpertReasoningSummaryEvent,
@@ -133,7 +145,7 @@ import {
 } from '../chatTimeline'
 import { useExpertMaterialTransfers } from '../composables/useExpertMaterialTransfers'
 import { expertApi, isExpertMaterialContextError, mapExpertApiError } from '../api'
-import type { ExpertConversation, ExpertMessage, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMode, ExpertRunDiagnostic } from '../types'
+import type { ExpertConversation, ExpertMessage, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMaterial, ExpertProjectMode, ExpertRunDiagnostic } from '../types'
 
 const props = defineProps<{ project: ExpertProject; projectMode: ExpertProjectMode }>()
 const { mdAndDown } = useDisplay()
@@ -154,6 +166,10 @@ const messageArea = ref<HTMLElement | null>(null)
 const showScrollToBottom = ref(false)
 const transfers = useExpertMaterialTransfers()
 const composerMaterialContexts = ref<ExpertMessageMaterialContext[]>([])
+const libraryOpen = ref(false)
+const libraryLoading = ref(false)
+const materialDrawerOpen = ref(false)
+const selectedMaterial = ref<ExpertProjectMaterial | null>(null)
 const composerUploadItems = computed(() => transfers.uploads.value)
 const composerImagePreviews = computed(() => transfers.imagePreviews.value)
 const composerSendBlockedReason = computed(() => getExpertChatAttachmentSendBlockReason(
@@ -163,11 +179,11 @@ const composerSendBlockedReason = computed(() => getExpertChatAttachmentSendBloc
 const generationState = ref<'idle' | 'starting' | 'streaming' | 'stopping' | 'completed' | 'stopped' | 'interrupted' | 'error'>('idle')
 const activeRunId = ref<string | null>(null)
 const activeAbort = ref<AbortController | null>(null)
-const continuationSnapshots = new Map<string, { content: string; materialIds: string[] }>()
 const continuableAssistantIds = ref<Record<string, true>>({})
 const timelineByAssistant = ref<Record<string, ExpertTimelineRun[]>>({})
 const slowWaitingRunIds = ref<Record<string, true>>({})
 const slowWaitingTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const significantWaitTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const streamActive = computed(() => ['starting', 'streaming', 'stopping'].includes(generationState.value))
 let conversationsSequence = 0
 let messagesSequence = 0
@@ -214,8 +230,14 @@ function replaceOptimisticMessage(optimisticId: string, savedMessage: ExpertMess
   const optimistic = findMessage(optimisticId)
   const savedWithRuntime: ExpertMessage = {
     ...savedMessage,
+    ...(savedMessage.role === 'user' ? { deliveryState: 'sent' as const } : {}),
     ...(optimistic?.clientMessageId ? { clientMessageId: optimistic.clientMessageId } : {}),
     ...(optimistic?.runtimeMaterialContext ? { runtimeMaterialContext: optimistic.runtimeMaterialContext } : {}),
+  }
+  if (savedMessage.role === 'user') {
+    for (const attachment of savedMessage.attachments ?? []) {
+      if (attachment.available && attachment.kind === 'image') void transfers.loadImageThumbnail({ id: attachment.id, kind: 'image' })
+    }
   }
   pendingMessages.value = replaceOptimisticExpertMessage(pendingMessages.value, optimisticId, savedWithRuntime)
   messagesByConversation.value = Object.fromEntries(Object.entries(messagesByConversation.value).map(([id, items]) => [
@@ -256,11 +278,17 @@ function timelineRunsFor(assistantId: string): ExpertTimelineRun[] {
   return timelineByAssistant.value[assistantId] ?? []
 }
 
-function beginTimelineRun(assistantId: string, runId: string) {
+function beginTimelineRun(assistantId: string, runId: string, materialCount = 0) {
   timelineByAssistant.value = {
     ...timelineByAssistant.value,
-    [assistantId]: addExpertTimelineRun(timelineRunsFor(assistantId), runId),
+    [assistantId]: materialCount > 1
+      ? markExpertTimelineSignificant(addExpertTimelineRun(timelineRunsFor(assistantId), runId), runId)
+      : addExpertTimelineRun(timelineRunsFor(assistantId), runId),
   }
+  significantWaitTimers.set(runId, setTimeout(() => {
+    significantWaitTimers.delete(runId)
+    markTimelineSignificant(assistantId, runId)
+  }, EXPERT_SIGNIFICANT_WAIT_MS))
   const timer = setTimeout(() => {
     slowWaitingTimers.delete(runId)
     if (timelineRunsFor(assistantId).some((run) => run.runId === runId && run.terminal === undefined)) {
@@ -268,6 +296,19 @@ function beginTimelineRun(assistantId: string, runId: string) {
     }
   }, EXPERT_SLOW_FIRST_TOKEN_MS)
   slowWaitingTimers.set(runId, timer)
+}
+
+function markTimelineSignificant(assistantId: string, runId: string) {
+  timelineByAssistant.value = {
+    ...timelineByAssistant.value,
+    [assistantId]: markExpertTimelineSignificant(timelineRunsFor(assistantId), runId),
+  }
+}
+
+function clearSignificantWait(runId: string) {
+  const timer = significantWaitTimers.get(runId)
+  if (timer !== undefined) clearTimeout(timer)
+  significantWaitTimers.delete(runId)
 }
 
 function clearSlowWaiting(runId: string) {
@@ -286,10 +327,14 @@ function showSlowWaitingFor(assistantId: string): boolean {
 
 function clearAllSlowWaiting() {
   for (const runId of [...slowWaitingTimers.keys()]) clearSlowWaiting(runId)
+  for (const runId of [...significantWaitTimers.keys()]) clearSignificantWait(runId)
   slowWaitingRunIds.value = {}
 }
 
 function applyTimelineActivity(assistantId: string, activity: ExpertRunActivity) {
+  if (activity.code.startsWith('pdf.ocr.') || activity.code.startsWith('tool.') || activity.code.startsWith('web.')) {
+    markTimelineSignificant(assistantId, activity.runId)
+  }
   timelineByAssistant.value = {
     ...timelineByAssistant.value,
     [assistantId]: applyExpertTimelineActivity(timelineRunsFor(assistantId), activity),
@@ -305,6 +350,7 @@ function appendTimelineSummary(assistantId: string, summary: ExpertReasoningSumm
 
 function finishTimelineRun(assistantId: string, runId: string, terminal: 'completed' | 'cancelled' | 'interrupted') {
   clearSlowWaiting(runId)
+  clearSignificantWait(runId)
   timelineByAssistant.value = {
     ...timelineByAssistant.value,
     [assistantId]: finishExpertTimelineRun(timelineRunsFor(assistantId), runId, terminal),
@@ -389,7 +435,16 @@ async function loadMessages(id: string, force = false) {
   try {
     const loaded = await expertApi.listMessages(id)
     if (sequence !== messagesSequence) return
-    messagesByConversation.value = { ...messagesByConversation.value, [id]: loaded }
+    const repliedTo = new Set(loaded.filter((message) => message.role === 'assistant').map((message) => message.metadata?.in_reply_to).filter((value): value is string => typeof value === 'string'))
+    const history = loaded.map((message) => message.role === 'user' && !repliedTo.has(message.id)
+      ? { ...message, deliveryState: 'error' as const, deliveryError: 'Ответ не получен. Можно повторить запрос.' }
+      : message)
+    messagesByConversation.value = { ...messagesByConversation.value, [id]: history }
+    for (const message of history) {
+      for (const attachment of message.attachments ?? []) {
+        if (attachment.available && attachment.kind === 'image') void transfers.loadImageThumbnail({ id: attachment.id, kind: 'image' })
+      }
+    }
     await scrollToLatest('auto')
   } catch (error) {
     if (sequence === messagesSequence) errorMessage.value = mapExpertApiError(error).message
@@ -460,13 +515,15 @@ async function persistMessage(message: ExpertMessage) {
     return
   }
 
+  let persistedUserId = message.id
+  let localAssistantId = ''
   try {
     const targetConversationId = await ensureConversation()
-    const materialIds = message.runtimeMaterialContext?.map((context) => context.id) ?? []
+    const materialIds = message.attachments?.map((attachment) => attachment.id)
+      ?? message.runtimeMaterialContext?.map((context) => context.id)
+      ?? []
     generationState.value = 'starting'
     activeAbort.value = new AbortController()
-    let localAssistantId = ''
-    let persistedUserId = message.id
     let lastSeq = 0
     let fallbackToLegacy = false
     try {
@@ -477,18 +534,19 @@ async function persistMessage(message: ExpertMessage) {
           replaceOptimisticMessage(message.id, userMessage)
           persistedUserId = userMessage.id
           localAssistantId = `local-stream-${runId}`
-          appendServerAssistantMessage(targetConversationId, { id: localAssistantId, role: 'assistant', text: '', createdAt: new Date().toISOString() })
-          beginTimelineRun(localAssistantId, runId)
+          appendServerAssistantMessage(targetConversationId, { id: localAssistantId, role: 'assistant', text: '', createdAt: new Date().toISOString(), deliveryState: 'sending' })
+          beginTimelineRun(localAssistantId, runId, materialIds.length)
         },
         onDelta: (runId, seq, text) => {
           if (runId !== activeRunId.value || seq <= lastSeq) return
           lastSeq = seq
           clearSlowWaiting(runId)
+          clearSignificantWait(runId)
           const wasNearBottom = targetConversationId === conversationId.value && isMessageAreaNearBottom()
           if (!localAssistantId) {
             localAssistantId = `local-stream-${runId}`
-            appendServerAssistantMessage(targetConversationId, { id: localAssistantId, role: 'assistant', text: '', createdAt: new Date().toISOString() })
-            beginTimelineRun(localAssistantId, runId)
+            appendServerAssistantMessage(targetConversationId, { id: localAssistantId, role: 'assistant', text: '', createdAt: new Date().toISOString(), deliveryState: 'sending' })
+            beginTimelineRun(localAssistantId, runId, materialIds.length)
           }
           updateMessageText(localAssistantId, text)
           if (targetConversationId === conversationId.value) void handleMessageAdded(wasNearBottom, false)
@@ -513,7 +571,7 @@ async function persistMessage(message: ExpertMessage) {
             removeMessage(localAssistantId)
             discardTimelineRun(localAssistantId)
           }
-          if (assistantMessage) { continuationSnapshots.delete(assistantMessage.id); delete continuableAssistantIds.value[assistantMessage.id] }
+          if (assistantMessage) delete continuableAssistantIds.value[assistantMessage.id]
         },
         onCancelled: (assistantMessage) => {
           generationState.value = 'stopped'
@@ -529,7 +587,7 @@ async function persistMessage(message: ExpertMessage) {
             removeMessage(localAssistantId)
             discardTimelineRun(localAssistantId)
           }
-          if (assistantMessage) { continuationSnapshots.set(assistantMessage.id, { content: message.text, materialIds }); continuableAssistantIds.value = { ...continuableAssistantIds.value, [assistantMessage.id]: true } }
+          if (assistantMessage) continuableAssistantIds.value = { ...continuableAssistantIds.value, [assistantMessage.id]: true }
         },
         onError: (mapped, assistantMessage) => {
           generationState.value = 'interrupted'
@@ -546,14 +604,13 @@ async function persistMessage(message: ExpertMessage) {
             removeMessage(localAssistantId)
             discardTimelineRun(localAssistantId)
             if (isExpertMaterialContextError(mapped.code)) restoreMessageMaterialContext(message)
-            if (!useLegacyFallback) updateMessageDelivery(persistedUserId, 'error', mapped.message)
           }
           if (assistantMessage) {
             updateMessageDelivery(assistantMessage.id, 'error', mapped.message)
             updateMessageDiagnostic(assistantMessage.id, mapped.diagnostic)
-            continuationSnapshots.set(assistantMessage.id, { content: message.text, materialIds })
             continuableAssistantIds.value = { ...continuableAssistantIds.value, [assistantMessage.id]: true }
           } else if (!useLegacyFallback) {
+            updateMessageDelivery(persistedUserId, 'error', mapped.message)
             updateMessageDiagnostic(persistedUserId, mapped.diagnostic)
           }
           fallbackToLegacy = useLegacyFallback
@@ -575,6 +632,7 @@ async function persistMessage(message: ExpertMessage) {
         throw error
       }
     } finally {
+      clearAllSlowWaiting()
       activeAbort.value = null
       activeRunId.value = null
       resetTransientGenerationState()
@@ -582,7 +640,17 @@ async function persistMessage(message: ExpertMessage) {
   } catch (error) {
     const mapped = mapExpertApiError(error)
     if (isExpertMaterialContextError(mapped.code)) restoreMessageMaterialContext(message)
-    updateMessageDelivery(message.id, 'error', mapped.message)
+    if (localAssistantId && findMessage(localAssistantId)?.text) {
+      updateMessageDelivery(localAssistantId, 'error', mapped.message)
+    } else if (localAssistantId) {
+      removeMessage(localAssistantId)
+      discardTimelineRun(localAssistantId)
+    }
+    if (!localAssistantId || !findMessage(localAssistantId)?.text) updateMessageDelivery(persistedUserId, 'error', mapped.message)
+    clearAllSlowWaiting()
+    activeAbort.value = null
+    activeRunId.value = null
+    resetTransientGenerationState()
   }
 }
 
@@ -598,11 +666,7 @@ function stopStream() {
 }
 
 async function continueMessage(assistantId: string) {
-  const snapshot = continuationSnapshots.get(assistantId)
-  if (!snapshot || !conversationId.value || streamActive.value) {
-    updateMessageDelivery(assistantId, 'error', 'Продолжение доступно только в текущем сеансе с исходным контекстом.')
-    return
-  }
+  if (!conversationId.value || streamActive.value) return
   const assistant = findMessage(assistantId)
   if (!assistant) return
   updateMessageDelivery(assistantId, 'sending')
@@ -611,7 +675,7 @@ async function continueMessage(assistantId: string) {
   let lastSeq = 0
   let continuationRunId = ''
   try {
-    await expertApi.streamMessage(conversationId.value, snapshot.content, crypto.randomUUID(), snapshot.materialIds, {
+    await expertApi.streamMessage(conversationId.value, '', crypto.randomUUID(), [], {
       onRun: (runId) => {
         continuationRunId = runId
         activeRunId.value = runId
@@ -622,6 +686,7 @@ async function continueMessage(assistantId: string) {
         if (runId !== activeRunId.value || seq <= lastSeq) return
         lastSeq = seq
         clearSlowWaiting(runId)
+        clearSignificantWait(runId)
         const nearBottom = isMessageAreaNearBottom()
         updateMessageText(assistantId, text)
         void handleMessageAdded(nearBottom, false)
@@ -633,7 +698,6 @@ async function continueMessage(assistantId: string) {
         finishTimelineRun(assistantId, continuationRunId, 'completed')
         if (saved) replaceSavedMessage(assistantId, saved)
         else updateMessageDelivery(assistantId, 'sent')
-        continuationSnapshots.delete(assistantId)
         const { [assistantId]: removed, ...rest } = continuableAssistantIds.value
         void removed
         continuableAssistantIds.value = rest
@@ -656,6 +720,7 @@ async function continueMessage(assistantId: string) {
     if ((error as DOMException).name !== 'AbortError') updateMessageDelivery(assistantId, 'error', mapExpertApiError(error).message)
     else updateMessageDelivery(assistantId, 'sent')
   } finally {
+    clearAllSlowWaiting()
     activeAbort.value = null
     activeRunId.value = null
     resetTransientGenerationState()
@@ -691,7 +756,7 @@ function sendMessage(text: string, accepted: () => void = () => undefined) {
 
   const optimisticMessage: ExpertMessage = {
     ...createOptimisticUserMessage(normalizedText),
-    // Runtime-only material snapshot is reused unchanged by retry and never persisted in messages.
+    // Keep the pending selection visible until the server returns persisted attachments.
     runtimeMaterialContext: snapshotExpertMessageMaterialContext(composerMaterialContexts.value),
   }
   appendMessages([optimisticMessage])
@@ -712,6 +777,60 @@ function attachComposerFiles(files: File[]) {
     composerMaterialContexts.value = addExpertMessageMaterialContext(composerMaterialContexts.value, material)
     void transfers.loadImagePreview(material)
   })
+}
+
+async function openLibrary() {
+  if (props.projectMode !== 'real') return
+  libraryOpen.value = true
+  libraryLoading.value = true
+  try {
+    props.project.materials = await expertApi.listMaterials(props.project.id)
+  } catch (error) {
+    snackbarText.value = mapExpertApiError(error).message
+    snackbarOpen.value = true
+    libraryOpen.value = false
+  } finally {
+    libraryLoading.value = false
+  }
+}
+
+function confirmLibrarySelection(ids: string[]) {
+  const byId = new Map(props.project.materials.map((material) => [material.id, material]))
+  composerMaterialContexts.value = ids.flatMap((id) => {
+    const material = byId.get(id)
+    if (!material) return []
+    if (material.kind === 'image') void transfers.loadImagePreview(material)
+    return [addExpertMessageMaterialContext([], material)[0]!]
+  })
+  libraryOpen.value = false
+}
+
+async function openMessageMaterial(id: string) {
+  let material = props.project.materials.find((item) => item.id === id)
+  if (!material) {
+    try {
+      props.project.materials = await expertApi.listMaterials(props.project.id)
+      material = props.project.materials.find((item) => item.id === id)
+    } catch (error) {
+      snackbarText.value = mapExpertApiError(error).message
+      snackbarOpen.value = true
+      return
+    }
+  }
+  if (!material) return
+  selectedMaterial.value = material
+  materialDrawerOpen.value = true
+  if (material.kind === 'image') void transfers.loadImagePreview(material)
+}
+
+function handleMaterialAction(action: string) {
+  if (!selectedMaterial.value) return
+  if (action === 'download') void transfers.downloadMaterial(selectedMaterial.value)
+  if (action === 'delete') {
+    materialDrawerOpen.value = false
+    snackbarText.value = 'Удалите материал в библиотеке проекта.'
+    snackbarOpen.value = true
+  }
 }
 
 function retryComposerUpload(id: string) {
@@ -757,6 +876,7 @@ function notify(action: string) {
   snackbarOpen.value = true
 }
 function handleAttachment(action: string) {
+  if (action === 'library') { void openLibrary(); return }
   notify(action === 'materials' ? 'Контекст материалов' : 'Добавление вложения')
 }
 function removeContext(id: string) {
@@ -767,7 +887,7 @@ function selectWholeProject() {
 }
 
 watch(() => props.project.id, () => { void requestConversations() }, { immediate: true })
-watch(conversationId, (id) => { void loadMessages(id) })
+watch(conversationId, (id) => { composerMaterialContexts.value = []; transfers.clearUploads(); void loadMessages(id) })
 watch(() => props.project.id, () => {
   composerMaterialContexts.value = []
   timelineByAssistant.value = {}

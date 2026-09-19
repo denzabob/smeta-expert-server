@@ -20,6 +20,7 @@ export interface ExpertReasoningSummaryEvent {
 
 export interface ExpertTimelineRun {
   runId: string
+  significant?: boolean
   activities: ExpertRunActivity[]
   lastActivitySeq: number
   lastReasoningSeq: number
@@ -37,6 +38,7 @@ const MAX_RUNS_PER_ASSISTANT = 3
 const MAX_ACTIVITIES_PER_RUN = 24
 const MAX_REASONING_SUMMARY_CHARS = 4000
 export const EXPERT_SLOW_FIRST_TOKEN_MS = 800
+export const EXPERT_SIGNIFICANT_WAIT_MS = 1600
 
 const significantActivityPrefixes = [
   'materials.resolve.',
@@ -57,6 +59,7 @@ const activityLabels: Record<string, string> = {
   'material.image_prepare.completed': 'Изображение подготовлено',
   'pdf.local_extract.started': 'Проверяю текстовый слой PDF',
   'pdf.local_extract.completed': 'Текстовый слой PDF проверен',
+  'pdf.local_extract.unavailable': 'Локальное извлечение недоступно',
   'pdf.ocr_cache.hit': 'Использован OCR-кеш',
   'pdf.ocr_cache.miss': 'OCR-кеш не найден',
   'pdf.ocr.started': 'Распознаю сканированный документ',
@@ -163,7 +166,12 @@ export function isSignificantExpertTimelineActivity(activity: ExpertRunActivity)
 }
 
 export function hasSignificantExpertTimelineActivity(run: ExpertTimelineRun): boolean {
-  return run.activities.some(isSignificantExpertTimelineActivity)
+  return run.significant === true || run.activities.some((activity) =>
+    activity.code.startsWith('pdf.ocr.') || activity.code.startsWith('tool.') || activity.code.startsWith('web.'))
+}
+
+export function markExpertTimelineSignificant(runs: ExpertTimelineRun[], runId: string): ExpertTimelineRun[] {
+  return runs.map((run) => run.runId === runId && run.terminal === undefined ? { ...run, significant: true } : run)
 }
 
 export function presentExpertTimelineActivity(activity: ExpertRunActivity): ExpertTimelinePresentation {

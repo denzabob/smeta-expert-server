@@ -1,7 +1,7 @@
 <template>
   <div class="expert-section-page">
     <div class="expert-section-page__header">
-      <div><span>Материалы</span><h1>Материалы проекта</h1><p>Приватные документы, изображения и таблицы проекта.</p></div>
+      <div><span>Материалы</span><h1>Библиотека проекта</h1><p>Приватные документы, изображения и таблицы проекта.</p></div>
       <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="requestUpload">Добавить материалы</v-btn>
       <input ref="fileInput" hidden type="file" multiple accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png,.webp" @change="uploadFiles" />
     </div>

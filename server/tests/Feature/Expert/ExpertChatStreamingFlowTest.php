@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Expert\ExpertChatMaterialContext;
 use App\Services\Expert\ExpertChatRunRegistry;
 use App\Services\Expert\ExpertChatStreamingService;
+use App\Services\Expert\ExpertMaterialService;
 use App\Services\LLM\CircuitBreaker;
 use App\Services\LLM\Contracts\LLMProviderInterface;
 use App\Services\LLM\Contracts\LLMStreamingProviderInterface;
@@ -27,6 +28,7 @@ use App\Services\LLM\LLMSettingsRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -52,6 +54,43 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $assistant = $conversation->messages()->where('role', 'assistant')->sole();
         $this->assertSame('Это потоковый ответ.', $assistant->content);
         $this->assertSame('completed', $assistant->metadata['generation_status']);
+    }
+
+    public function test_failed_pdf_run_releases_lock_and_next_text_message_succeeds(): void
+    {
+        [$conversation] = $this->conversation();
+        Storage::fake('local');
+        $path = "expert/{$conversation->project->public_id}/materials/broken.pdf";
+        Storage::disk('local')->put($path, 'not a PDF');
+        $material = $conversation->project->materials()->create([
+            'uploaded_by' => $conversation->project->user_id,
+            'original_name' => 'broken.pdf',
+            'storage_path' => $path,
+            'mime_type' => 'application/pdf',
+            'extension' => 'pdf',
+            'size' => 9,
+            'category' => 'document',
+            'status' => 'uploaded',
+        ]);
+        $provider = new ExpertStreamingFakeProvider(['OK']);
+        $this->installRouter($provider);
+        $service = app(ExpertChatStreamingService::class);
+        $content = 'Проверь PDF';
+        $run = $service->start($conversation, $content, (string) Str::uuid(),
+            app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint($content, [$material->public_id]),
+            [$material->public_id]);
+        $events = [];
+        $service->emit($run, function (string $event, array $data) use (&$events): void {
+            $events[] = compact('event', 'data');
+        });
+        $this->assertSame('error', end($events)['event']);
+        $this->assertSame('pdf_malformed', end($events)['data']['code']);
+        $this->assertSame(0, $provider->streamCalls);
+
+        $next = $this->runStream($conversation, 'Ответь: OK', function () {});
+        $this->assertSame('done', end($next)['event']);
+        $this->assertSame('OK', $conversation->messages()->where('role', 'assistant')->sole()->content);
+        $this->assertSame(2, $conversation->messages()->where('role', 'user')->count());
     }
 
     public function test_stop_closes_provider_after_partial_and_persists_stopped_answer(): void
@@ -188,9 +227,6 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $run = app(ExpertChatStreamingService::class)->continueRun(
             $conversation,
             $assistant,
-            'Продолжи',
-            app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint('Продолжи', []),
-            new ExpertChatMaterialContext([], []),
         );
         app(ExpertChatStreamingService::class)->emit($run, function (): void {});
 
@@ -199,6 +235,87 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertSame('completed', $assistant->metadata['generation_status']);
         $this->assertSame(1, $conversation->messages()->where('role', 'user')->count());
         $this->assertSame(1, $conversation->messages()->where('role', 'assistant')->count());
+    }
+
+    public function test_continue_after_reload_uses_original_persisted_material_without_frontend_snapshot(): void
+    {
+        [$conversation] = $this->conversation();
+        Storage::fake('local');
+        $path = "expert/{$conversation->project->public_id}/materials/original.txt";
+        Storage::disk('local')->put($path, 'Исходный материал для продолжения');
+        $material = $conversation->project->materials()->create([
+            'uploaded_by' => $conversation->project->user_id,
+            'original_name' => 'original.txt',
+            'storage_path' => $path,
+            'mime_type' => 'text/plain',
+            'extension' => 'txt',
+            'size' => strlen('Исходный материал для продолжения'),
+            'category' => 'document',
+            'status' => 'uploaded',
+        ]);
+        $provider = new ExpertStreamingFakeProvider(['Первая часть.']);
+        $this->installRouter($provider);
+        $service = app(ExpertChatStreamingService::class);
+        $content = 'Продолжи анализ файла';
+        $run = $service->start($conversation, $content, (string) Str::uuid(),
+            app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint($content, [$material->public_id]),
+            [$material->public_id]);
+        $registry = app(ExpertChatRunRegistry::class);
+        $runId = null;
+        $service->emit($run, function (string $event, array $data) use ($registry, &$runId): void {
+            if ($event === 'run') {
+                $runId = $data['run_id'];
+            }
+            if ($event === 'delta') {
+                $registry->requestCancellation($runId);
+            }
+        });
+        $assistant = $conversation->messages()->where('role', 'assistant')->sole();
+        $this->assertSame('stopped', $assistant->metadata['generation_status']);
+
+        $provider->chunks = [' Вторая часть.'];
+        $response = $this->actingAs($conversation->project->user, 'sanctum')->postJson(
+            "/api/expert/conversations/{$conversation->public_id}/messages/{$assistant->public_id}/continue/stream",
+            [],
+        );
+        $response->assertOk();
+        $this->assertStringContainsString('event: done', $response->streamedContent());
+
+        $this->assertSame('Первая часть. Вторая часть.', $assistant->refresh()->content);
+        $this->assertSame(1, $conversation->messages()->where('role', 'user')->count());
+        $this->assertSame(1, $conversation->messages()->where('role', 'assistant')->count());
+        $this->assertSame([$material->public_id], array_column($provider->chatRequests[1]->materialContext, 'public_id'));
+    }
+
+    public function test_continue_reports_deleted_original_material_without_substituting_a_file(): void
+    {
+        [$conversation] = $this->conversation();
+        Storage::fake('local');
+        $path = "expert/{$conversation->project->public_id}/materials/original.txt";
+        Storage::disk('local')->put($path, 'Исходный файл');
+        $material = $conversation->project->materials()->create([
+            'uploaded_by' => $conversation->project->user_id,
+            'original_name' => 'original.txt',
+            'storage_path' => $path,
+            'mime_type' => 'text/plain',
+            'extension' => 'txt',
+            'size' => strlen('Исходный файл'),
+            'category' => 'document',
+            'status' => 'uploaded',
+        ]);
+        $chat = app(\App\Services\Expert\ExpertChatService::class);
+        $content = 'Исходный вопрос';
+        $user = $chat->prepareStreamingUserMessage($conversation, $content, (string) Str::uuid(),
+            $chat->requestFingerprint($content, [$material->public_id]), [$material->public_id]);
+        $assistant = $chat->persistStreamingAssistant($conversation, $user, 'Частичный ответ', 'stopped', (string) Str::uuid(), 'cancelled');
+        $this->assertNotNull($assistant);
+        app(ExpertMaterialService::class)->delete($material);
+
+        $this->actingAs($conversation->project->user, 'sanctum')->postJson(
+            "/api/expert/conversations/{$conversation->public_id}/messages/{$assistant->public_id}/continue/stream",
+            [],
+        )->assertStatus(422)->assertJsonPath('code', 'original_material_unavailable');
+        $this->assertSame(2, $conversation->messages()->count());
     }
 
     /** @return list<array{event:string,data:array<string,mixed>}> */
@@ -232,6 +349,9 @@ final class ExpertChatStreamingFlowTest extends TestCase
 
 final class ExpertStreamingFakeProvider implements LLMProviderInterface, LLMStreamingProviderInterface
 {
+    /** @var list<LLMChatRequest> */
+    public array $chatRequests = [];
+
     public int $streamCalls = 0;
 
     public bool $transportClosed = false;
@@ -283,6 +403,7 @@ final class ExpertStreamingFakeProvider implements LLMProviderInterface, LLMStre
     public function streamChat(LLMChatRequest $request, LLMCancellationToken $token): iterable
     {
         $this->streamCalls++;
+        $this->chatRequests[] = $request;
         if ($this->failure !== null) {
             throw $this->failure;
         }

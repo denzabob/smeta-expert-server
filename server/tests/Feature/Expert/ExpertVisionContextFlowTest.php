@@ -90,7 +90,13 @@ class ExpertVisionContextFlowTest extends TestCase
         $this->send($user, $conversation, [
             'content' => 'Опиши видимый дефект',
             'material_public_ids' => [$text->public_id, $image->public_id],
-        ])->assertCreated()->assertJsonPath('assistant_message.content', 'На изображении обнаружен тестовый объект.');
+        ])->assertCreated()->assertJsonPath('assistant_message.content', 'На изображении обнаружен тестовый объект.')
+            ->assertJsonPath('user_message.attachments.0.material_public_id', $text->public_id)
+            ->assertJsonPath('user_message.attachments.1.material_public_id', $image->public_id);
+
+        $this->actingAs($user, 'sanctum')->getJson("/api/expert/conversations/{$conversation->public_id}/messages")
+            ->assertOk()->assertJsonPath('data.0.attachments.1.kind', 'image')
+            ->assertJsonPath('data.0.attachments.1.available', true);
 
         Http::assertSentCount(1);
         $this->assertDatabaseHas('expert_messages', ['role' => 'assistant', 'content' => 'На изображении обнаружен тестовый объект.']);

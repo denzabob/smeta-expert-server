@@ -8,13 +8,15 @@ use App\Models\Expert\ExpertProjectMaterial;
 use DOMDocument;
 use DOMNode;
 use DOMXPath;
-use PhpOffice\PhpSpreadsheet\RichText\RichText;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx;
+use PhpOffice\PhpSpreadsheet\RichText\RichText;
 use Smalot\PdfParser\Parser;
 use ZipArchive;
 
 final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorInterface
 {
+    public function __construct(private readonly ?Parser $pdfParser = null) {}
+
     public function supports(ExpertProjectMaterial $material): bool
     {
         $extension = $this->extension($material);
@@ -32,7 +34,7 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
     {
         $extension = $this->extension($material);
 
-        if (!$this->supports($material)) {
+        if (! $this->supports($material)) {
             throw ExpertMaterialContextException::unsupported();
         }
 
@@ -52,12 +54,12 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
 
     private function extractDocx(string $absolutePath): string
     {
-        if (!class_exists(ZipArchive::class)) {
+        if (! class_exists(ZipArchive::class)) {
             throw ExpertMaterialContextException::extractionFailed();
         }
 
         $this->assertZipSignature($absolutePath);
-        $archive = new ZipArchive();
+        $archive = new ZipArchive;
         if ($archive->open($absolutePath) !== true) {
             throw ExpertMaterialContextException::extractionFailed();
         }
@@ -75,7 +77,7 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
             $archive->close();
         }
 
-        if (!is_string($documentXml) || $documentXml === '') {
+        if (! is_string($documentXml) || $documentXml === '') {
             throw ExpertMaterialContextException::extractionFailed();
         }
 
@@ -95,6 +97,7 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
                 if ($paragraph !== '') {
                     $blocks[] = $paragraph;
                 }
+
                 continue;
             }
 
@@ -127,7 +130,7 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
         try {
             $this->assertSpreadsheetArchiveWithinLimit($absolutePath);
 
-            $reader = new Xlsx();
+            $reader = new Xlsx;
             $reader->setReadDataOnly(true);
             $spreadsheet = $reader->load($absolutePath);
             $maxCells = max(1, (int) config('expert.material_context.max_spreadsheet_cells', 5000));
@@ -141,7 +144,7 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
                     $value = $cell->getValue();
 
                     if (is_string($value) && str_starts_with($value, '=')) {
-                        $text = '[Формула] ' . $value;
+                        $text = '[Формула] '.$value;
                     } else {
                         $text = $this->spreadsheetValue($value);
                     }
@@ -155,11 +158,11 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
                         throw ExpertMaterialContextException::tooLarge();
                     }
 
-                    $sheetLines[] = $coordinate . ': ' . $text;
+                    $sheetLines[] = $coordinate.': '.$text;
                 }
 
                 if ($sheetLines !== []) {
-                    $lines[] = '[Sheet: ' . $worksheet->getTitle() . ']';
+                    $lines[] = '[Sheet: '.$worksheet->getTitle().']';
                     array_push($lines, ...$sheetLines);
                 }
             }
@@ -172,12 +175,12 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
 
     private function assertSpreadsheetArchiveWithinLimit(string $absolutePath): void
     {
-        if (!class_exists(ZipArchive::class)) {
+        if (! class_exists(ZipArchive::class)) {
             throw ExpertMaterialContextException::extractionFailed();
         }
 
         $this->assertZipSignature($absolutePath);
-        $archive = new ZipArchive();
+        $archive = new ZipArchive;
         if ($archive->open($absolutePath) !== true) {
             throw ExpertMaterialContextException::extractionFailed();
         }
@@ -197,19 +200,43 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
 
     private function extractPdf(string $contents): string
     {
-        if (!str_starts_with($contents, '%PDF-') || preg_match('/\\/Encrypt\\b/', $contents) === 1) {
-            throw ExpertMaterialContextException::extractionFailed();
+        if (! str_starts_with($contents, '%PDF-')) {
+            throw ExpertMaterialContextException::pdfMalformed();
+        }
+        if (preg_match('/\\/Encrypt\\b/', $contents) === 1) {
+            throw ExpertMaterialContextException::pdfEncrypted();
         }
 
-        $document = (new Parser())->parseContent($contents);
-        $pageCount = count($document->getPages());
-        $text = (string) $document->getText();
+        try {
+            $document = ($this->pdfParser ?? new Parser)->parseContent($contents);
+            $pageCount = count($document->getPages());
+            if ($pageCount === 0) {
+                throw ExpertMaterialContextException::pdfMalformed();
+            }
+        } catch (ExpertMaterialContextException $exception) {
+            throw $exception;
+        } catch (\Throwable) {
+            throw ExpertMaterialContextException::pdfMalformed();
+        }
+
+        try {
+            $text = (string) $document->getText();
+            if (! mb_check_encoding($text, 'UTF-8')) {
+                throw new \UnexpectedValueException('PDF text is not UTF-8.');
+            }
+        } catch (\Throwable) {
+            throw ExpertMaterialContextException::pdfLocalExtractionFailed($pageCount);
+        }
         $meaningfulChars = preg_match_all('/[\p{L}\p{N}]/u', $text) ?: 0;
         if ($meaningfulChars < max(1, (int) config('expert.pdf_ocr.min_usable_text_chars', 16))) {
             throw ExpertMaterialContextException::pdfWithoutUsableText($pageCount);
         }
 
-        return $this->normaliseText($text);
+        try {
+            return $this->normaliseText($text);
+        } catch (\Throwable) {
+            throw ExpertMaterialContextException::pdfLocalExtractionFailed($pageCount);
+        }
     }
 
     private function wordText(DOMXPath $xpath, DOMNode $node): string
@@ -242,7 +269,7 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
 
     private function normaliseText(string $text): string
     {
-        if (str_contains($text, "\0") || !mb_check_encoding($text, 'UTF-8')) {
+        if (str_contains($text, "\0") || ! mb_check_encoding($text, 'UTF-8')) {
             throw ExpertMaterialContextException::extractionFailed();
         }
 
@@ -267,7 +294,7 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
     }
 
     /**
-     * @param list<string> $requiredEntries
+     * @param  list<string>  $requiredEntries
      */
     private function assertArchiveWithinLimits(
         ZipArchive $archive,
@@ -285,7 +312,7 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
 
         for ($index = 0; $index < $archive->numFiles; $index++) {
             $entry = $archive->statIndex($index);
-            if (!is_array($entry) || !isset($entry['name'])) {
+            if (! is_array($entry) || ! isset($entry['name'])) {
                 throw ExpertMaterialContextException::extractionFailed();
             }
 
@@ -312,7 +339,7 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
         }
 
         foreach ($requiredEntries as $entryName) {
-            if (!is_array($archive->statName($entryName))) {
+            if (! is_array($archive->statName($entryName))) {
                 throw ExpertMaterialContextException::extractionFailed();
             }
         }
@@ -336,11 +363,11 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
         $previousErrors = libxml_use_internal_errors(true);
 
         try {
-            $document = new DOMDocument();
+            $document = new DOMDocument;
             $document->resolveExternals = false;
             $document->substituteEntities = false;
 
-            if (!$document->loadXML($xml, LIBXML_NONET | LIBXML_COMPACT)) {
+            if (! $document->loadXML($xml, LIBXML_NONET | LIBXML_COMPACT)) {
                 throw ExpertMaterialContextException::extractionFailed();
             }
 

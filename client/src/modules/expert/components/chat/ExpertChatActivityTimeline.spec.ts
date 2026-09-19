@@ -29,7 +29,7 @@ describe('Expert activity timeline presentation', () => {
   })
 
   it('renders significant material activities sequentially before a terminal event', async () => {
-    let runs = [createExpertTimelineRun('run-1')]
+    let runs: ExpertTimelineRun[] = [{ ...createExpertTimelineRun('run-1'), significant: true }]
     runs = applyExpertTimelineActivity(runs, { runId: 'run-1', seq: 1, activityId: 'image', code: 'material.image_prepare.started', status: 'started', category: 'material', detail: 'photo.jpg' })
     const first = await renderTimeline(runs)
 
@@ -43,5 +43,12 @@ describe('Expert activity timeline presentation', () => {
     expect(second).toContain('Изображение подготовлено')
     expect(third).toContain('Изображение подготовлено')
     expect(third).toContain('Распознаю сканированный документ')
+  })
+
+  it('omits the full timeline after a fast single image preparation', async () => {
+    let runs = [createExpertTimelineRun('run-fast')]
+    runs = applyExpertTimelineActivity(runs, { runId: 'run-fast', seq: 1, activityId: 'image', code: 'material.image_prepare.started', status: 'started', category: 'material' })
+    runs = applyExpertTimelineActivity(runs, { runId: 'run-fast', seq: 2, activityId: 'image', code: 'material.image_prepare.completed', status: 'completed', category: 'material' })
+    await expect(renderTimeline(runs)).resolves.not.toContain('Ход обработки')
   })
 })

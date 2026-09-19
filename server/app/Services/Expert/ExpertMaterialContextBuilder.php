@@ -13,11 +13,10 @@ final class ExpertMaterialContextBuilder
 {
     public function __construct(
         private readonly ExpertMaterialTextExtractorInterface $extractor,
-    ) {
-    }
+    ) {}
 
     /**
-     * @param list<string> $publicIds
+     * @param  list<string>  $publicIds
      * @return list<array{public_id: string, name: string, mime_type: string, text: string}>
      *
      * @throws ExpertMaterialContextException
@@ -55,11 +54,11 @@ final class ExpertMaterialContextBuilder
                     throw ExpertMaterialContextException::temporarilyDisabled();
                 }
 
-                if (!$this->extractor->supports($material)) {
+                if (! $this->extractor->supports($material)) {
                     throw ExpertMaterialContextException::unsupported();
                 }
 
-                if (!$disk->exists($material->storage_path)) {
+                if (! $disk->exists($material->storage_path)) {
                     throw ExpertMaterialContextException::extractionFailed();
                 }
 
@@ -137,7 +136,7 @@ final class ExpertMaterialContextBuilder
     private function xlsxContextIsDisabled(ExpertProjectMaterial $material): bool
     {
         return strtolower(ltrim(trim((string) $material->extension), '.')) === 'xlsx'
-            && !(bool) config('expert.material_context.xlsx_enabled', false);
+            && ! (bool) config('expert.material_context.xlsx_enabled', false);
     }
 
     private function logMaterialContextFailure(
@@ -167,12 +166,15 @@ final class ExpertMaterialContextBuilder
 
         $extension = strtolower(ltrim(trim((string) $material->extension), '.'));
 
-        return 'Материал без названия' . ($extension === '' ? '' : '.' . $extension);
+        return 'Материал без названия'.($extension === '' ? '' : '.'.$extension);
     }
+
     public function buildForChat(ExpertProject $project, array $publicIds, ?ExpertRunActivitySink $activity = null): ExpertMaterialContextBuildResult
     {
-        $activity ??= new NoOpExpertRunActivitySink();
-        if ($publicIds === []) return new ExpertMaterialContextBuildResult([], []);
+        $activity ??= new NoOpExpertRunActivitySink;
+        if ($publicIds === []) {
+            return new ExpertMaterialContextBuildResult([], []);
+        }
         $textMaterials = [];
         $ocrCandidates = [];
         $ocrLimit = max(1, (int) config('expert.pdf_ocr.max_source_bytes', 20 * 1024 * 1024));
@@ -182,7 +184,7 @@ final class ExpertMaterialContextBuilder
             $activityId = null;
             try {
                 if ($activity->isCancellationRequested()) {
-                    throw new ExpertChatStreamingCancelledException();
+                    throw new ExpertChatStreamingCancelledException;
                 }
                 /** @var ?ExpertProjectMaterial $material */
                 $material = $project->materials()->where('public_id', $publicId)->first();
@@ -194,26 +196,43 @@ final class ExpertMaterialContextBuilder
                 );
                 $textMaterials = [...$textMaterials, ...$this->build($project, [(string) $publicId])];
                 $activity->complete($activityId, $isPdf ? 'pdf.local_extract.completed' : 'material.text_extract.completed');
+
                 continue;
             } catch (ExpertChatStreamingCancelledException $exception) {
                 throw $exception;
             } catch (ExpertMaterialContextException $exception) {
-                if ($exception->reason === null || ! str_starts_with($exception->reason, 'pdf_no_usable_text:')) {
-                    if ($activityId !== null) $activity->fail($activityId, $exception->errorCode);
+                $ocrReason = $exception->reason;
+                if ($ocrReason === null || (! str_starts_with($ocrReason, 'pdf_no_usable_text:') && ! str_starts_with($ocrReason, 'pdf_local_extraction_failed:'))) {
+                    if ($activityId !== null) {
+                        $activity->fail($activityId, $exception->errorCode);
+                    }
                     throw $exception;
                 }
-                if ($activityId !== null) $activity->complete($activityId, 'pdf.local_extract.completed');
-                $pageCount = (int) substr($exception->reason, strlen('pdf_no_usable_text:'));
+                $localFailure = str_starts_with($ocrReason, 'pdf_local_extraction_failed:');
+                if ($activityId !== null) {
+                    $activity->complete($activityId, $localFailure ? 'pdf.local_extract.unavailable' : 'pdf.local_extract.completed');
+                }
+                $pageCount = (int) substr($ocrReason, strlen($localFailure ? 'pdf_local_extraction_failed:' : 'pdf_no_usable_text:'));
                 $material = $project->materials()->where('public_id', $publicId)->first();
-                if (! $material) throw ExpertMaterialContextException::notFound();
+                if (! $material) {
+                    throw ExpertMaterialContextException::notFound();
+                }
                 $disk = Storage::disk('local');
                 $bytes = (int) $disk->size($material->storage_path);
-                if ($bytes <= 0 || $bytes > $ocrLimit) throw ExpertPdfOcrException::tooLarge();
+                if ($bytes <= 0 || $bytes > $ocrLimit) {
+                    throw ExpertPdfOcrException::tooLarge();
+                }
                 $ocrCount++;
-                if ($ocrCount > max(1, (int) config('expert.pdf_ocr.max_pdfs', 2))) throw ExpertPdfOcrException::tooManyPages();
-                if ($pageCount <= 0 || $pageCount > max(1, (int) config('expert.pdf_ocr.max_pages_per_pdf', 100))) throw ExpertPdfOcrException::tooManyPages();
+                if ($ocrCount > max(1, (int) config('expert.pdf_ocr.max_pdfs', 2))) {
+                    throw ExpertPdfOcrException::tooManyPages();
+                }
+                if ($pageCount <= 0 || $pageCount > max(1, (int) config('expert.pdf_ocr.max_pages_per_pdf', 100))) {
+                    throw ExpertPdfOcrException::tooManyPages();
+                }
                 $ocrPages += $pageCount;
-                if ($ocrPages > max(1, (int) config('expert.pdf_ocr.max_total_pages', 150))) throw ExpertPdfOcrException::tooManyPages();
+                if ($ocrPages > max(1, (int) config('expert.pdf_ocr.max_total_pages', 150))) {
+                    throw ExpertPdfOcrException::tooManyPages();
+                }
                 $raw = $disk->get($material->storage_path);
                 $ocrCandidates[] = new ExpertPdfOcrCandidate(
                     (string) $project->public_id,
@@ -225,10 +244,13 @@ final class ExpertMaterialContextBuilder
                     $pageCount,
                 );
             } catch (\Throwable $exception) {
-                if ($activityId !== null) $activity->fail($activityId);
+                if ($activityId !== null) {
+                    $activity->fail($activityId);
+                }
                 throw $exception;
             }
         }
+
         return new ExpertMaterialContextBuildResult($textMaterials, $ocrCandidates);
     }
 

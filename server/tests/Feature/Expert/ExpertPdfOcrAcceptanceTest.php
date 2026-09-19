@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Expert;
 
-use Dompdf\Dompdf;
 use App\Models\Expert\ExpertConversation;
 use App\Models\Expert\ExpertProject;
 use App\Models\Expert\ExpertProjectMaterial;
@@ -16,13 +15,12 @@ use App\Services\Expert\ExpertPdfOcrCache;
 use App\Services\Expert\ExpertPdfOcrCandidate;
 use App\Services\LLM\CircuitBreaker;
 use App\Services\LLM\Contracts\LLMProviderInterface;
-use App\Services\LLM\DTO\LLMChatMessage;
-use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMParsedFile;
 use App\Services\LLM\LLMErrorClassifier;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
 use App\Services\LLM\Providers\RouterAiProvider;
+use Dompdf\Dompdf;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Http\UploadedFile;
@@ -30,6 +28,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery;
+use Smalot\PdfParser\Document;
+use Smalot\PdfParser\Parser;
 use Tests\TestCase;
 
 final class ExpertPdfOcrAcceptanceTest extends TestCase
@@ -109,6 +109,46 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
         $this->assertArrayNotHasKey('plugins', $secondPayload);
     }
 
+    public function test_structurally_valid_pdf_with_local_text_extraction_failure_uses_bounded_ocr(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $fixture = $this->textPdfFixture();
+        $material = $this->uploadPdf($user, $conversation->project, $fixture);
+        $this->forceLocalPdfTextFailure($fixture);
+
+        $this->installRouterAi();
+        $sha = hash('sha256', $fixture);
+        Http::fake(function (ClientRequest $request) use ($sha) {
+            $this->assertSame([['id' => 'file-parser', 'pdf' => ['engine' => 'mistral-ocr']]], $request->data()['plugins']);
+
+            return Http::response($this->routerResponse($sha), 200);
+        });
+
+        $this->send($user, $conversation, ['content' => 'Прочитай PDF', 'material_public_ids' => [$material->public_id]])
+            ->assertCreated()
+            ->assertJsonPath('assistant_message.content', 'OCR-ответ для OCR-EXPERT-48217.');
+        Http::assertSentCount(1);
+        $this->assertDatabaseHas('expert_messages', ['role' => 'assistant', 'content' => 'OCR-ответ для OCR-EXPERT-48217.']);
+    }
+
+    public function test_local_pdf_extraction_failure_obeys_ocr_size_and_enabled_limits(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $fixture = $this->textPdfFixture();
+        $material = $this->uploadPdf($user, $conversation->project, $fixture);
+        $this->forceLocalPdfTextFailure($fixture);
+        Http::fake();
+
+        config(['expert.pdf_ocr.max_source_bytes' => strlen($fixture) - 1]);
+        $this->send($user, $conversation, ['content' => 'Первый запрос', 'material_public_ids' => [$material->public_id]])
+            ->assertStatus(413)->assertJsonPath('code', 'pdf_ocr_too_large');
+
+        config(['expert.pdf_ocr.max_source_bytes' => strlen($fixture) + 1, 'expert.pdf_ocr.enabled' => false]);
+        $this->send($user, $conversation, ['content' => 'Второй запрос', 'material_public_ids' => [$material->public_id]])
+            ->assertStatus(422)->assertJsonPath('code', 'pdf_ocr_disabled');
+        Http::assertNothingSent();
+    }
+
     public function test_ocr_cache_is_project_scoped_changed_sha_misses_and_material_delete_invalidates_it(): void
     {
         $fixture = $this->scannedPdfFixture();
@@ -132,7 +172,7 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
         $cache->put($candidate, new LLMParsedFile($sha, $material->original_name, 'OCR-EXPERT-48217', []));
         $this->assertTrue(Storage::disk('local')->exists($cache->path($candidate)));
 
-        $changed = $fixture . "\n% changed source fingerprint\n";
+        $changed = $fixture."\n% changed source fingerprint\n";
         Storage::disk('local')->put($material->storage_path, $changed);
         $material->forceFill(['size' => strlen($changed)])->save();
 
@@ -210,10 +250,10 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
         Http::fake();
         $this->send($user, $conversation, ['content' => 'malformed', 'material_public_ids' => [$malformed->public_id]])
             ->assertStatus(422)
-            ->assertJsonPath('code', 'material_context_extraction_failed');
+            ->assertJsonPath('code', 'pdf_malformed');
         $this->send($user, $conversation, ['content' => 'encrypted', 'material_public_ids' => [$encrypted->public_id]])
             ->assertStatus(422)
-            ->assertJsonPath('code', 'material_context_extraction_failed');
+            ->assertJsonPath('code', 'pdf_encrypted');
         $this->send($user, $conversation, ['content' => 'oversized', 'material_public_ids' => [$oversized->public_id]])
             ->assertStatus(413)
             ->assertJsonPath('code', 'pdf_ocr_too_large');
@@ -304,9 +344,21 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
             );
             $this->fail('The scanned fixture unexpectedly exposed a usable local PDF text layer.');
         } catch (ExpertMaterialContextException $exception) {
-            $this->assertSame('material_context_extraction_failed', $exception->errorCode);
+            $this->assertSame('pdf_no_usable_text', $exception->errorCode);
             $this->assertSame('pdf_no_usable_text:1', $exception->reason);
         }
+    }
+
+    private function forceLocalPdfTextFailure(string $fixture): void
+    {
+        $pages = (new Parser)->parseContent($fixture)->getPages();
+        $this->assertNotEmpty($pages);
+        $document = Mockery::mock(Document::class);
+        $document->shouldReceive('getPages')->andReturn($pages);
+        $document->shouldReceive('getText')->andThrow(new \RuntimeException('Unsupported local text extraction'));
+        $parser = Mockery::mock(Parser::class);
+        $parser->shouldReceive('parseContent')->with($fixture)->andReturn($document);
+        $this->app->instance(Parser::class, $parser);
     }
 
     private function candidate(ExpertProjectMaterial $material, string $bytes): ExpertPdfOcrCandidate
@@ -350,7 +402,7 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
 
     private function textPdfFixture(): string
     {
-        $dompdf = new Dompdf();
+        $dompdf = new Dompdf;
         $dompdf->loadHtml('<!doctype html><html><body>TEXT-PDF-48217-EXTRACTABLE</body></html>');
         $dompdf->render();
 

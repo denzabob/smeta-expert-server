@@ -7,6 +7,7 @@ export async function* parseExpertSseStream(stream: ReadableStream<Uint8Array>):
   let buffer = ''
   let event = 'message'
   let data: string[] = []
+  let ended = false
 
   const consumeLine = (line: string): ExpertSseEvent | undefined => {
     if (line === '') {
@@ -39,13 +40,17 @@ export async function* parseExpertSseStream(stream: ReadableStream<Uint8Array>):
         const parsed = consumeLine(line)
         if (parsed) yield parsed
       }
-      if (done) break
+      if (done) {
+        ended = true
+        break
+      }
     }
     if (buffer !== '') {
       const parsed = consumeLine(buffer.replace(/\r$/, ''))
       if (parsed) yield parsed
     }
   } finally {
+    if (!ended) await reader.cancel().catch(() => undefined)
     reader.releaseLock()
   }
 }

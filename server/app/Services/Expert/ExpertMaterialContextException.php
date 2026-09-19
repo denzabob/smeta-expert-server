@@ -43,7 +43,22 @@ class ExpertMaterialContextException extends RuntimeException
 
     public static function pdfWithoutUsableText(int $pageCount): self
     {
-        return new self('material_context_extraction_failed', 'В PDF не найден пригодный текстовый слой.', 422, 'pdf_no_usable_text:' . max(0, $pageCount));
+        return new self('pdf_no_usable_text', 'В PDF не найден пригодный текстовый слой.', 422, 'pdf_no_usable_text:'.max(0, $pageCount));
+    }
+
+    public static function pdfLocalExtractionFailed(int $pageCount): self
+    {
+        return new self('pdf_local_extraction_failed', 'Локальное извлечение текста из PDF недоступно.', 422, 'pdf_local_extraction_failed:'.max(0, $pageCount));
+    }
+
+    public static function pdfEncrypted(): self
+    {
+        return new self('pdf_encrypted', 'Зашифрованный PDF нельзя использовать в Chat.', 422);
+    }
+
+    public static function pdfMalformed(): self
+    {
+        return new self('pdf_malformed', 'Структура PDF повреждена или некорректна.', 422);
     }
 
     public static function tooLarge(): self
@@ -61,5 +76,10 @@ class ExpertMaterialContextException extends RuntimeException
             'Один или несколько выбранных материалов недоступны.',
             404,
         );
+    }
+
+    public static function originalUnavailable(): self
+    {
+        return new self('original_material_unavailable', 'Исходный материал сообщения удалён и больше недоступен.', 422);
     }
 }

@@ -6,6 +6,7 @@ import type {
   ExpertFindingType,
   ExpertMaterialKind,
   ExpertMessage,
+  ExpertMessageAttachment,
   ExpertProject,
   ExpertProjectDraft,
   ExpertProjectMaterial,
@@ -47,6 +48,7 @@ export type ExpertMessageDto = {
   role: string
   content: string
   metadata?: Record<string, unknown> | null
+  attachments?: { material_public_id: string; original_name: string; mime_type: string; size: number; kind: ExpertMaterialKind; available: boolean }[]
   created_at: string
   updated_at?: string
 }
@@ -211,12 +213,23 @@ export function mapConversation(dto: ExpertConversationDto): ExpertConversation 
 export function mapMessage(dto: ExpertMessageDto): ExpertMessage {
   const metadata = dto.metadata ?? undefined
   const generationStatus = metadata?.generation_status
+  const attachments: ExpertMessageAttachment[] = (dto.attachments ?? []).map((attachment) => ({
+    id: attachment.material_public_id,
+    name: safeMaterialDisplayName(attachment.original_name, attachment.original_name.split('.').pop() ?? ''),
+    mimeType: attachment.mime_type,
+    sizeBytes: attachment.size,
+    kind: attachment.kind,
+    available: attachment.available,
+    icon: describeProjectMaterial({ kind: attachment.kind, format: attachment.original_name.split('.').pop() ?? '', mimeType: attachment.mime_type }).icon,
+  }))
   return {
     id: dto.public_id,
     role: dto.role === 'user' ? 'user' : 'assistant',
     text: dto.content,
     createdAt: dto.created_at,
     metadata,
+    attachments,
+    clientMessageId: typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : undefined,
     generationStatus: generationStatus === 'completed' || generationStatus === 'stopped' || generationStatus === 'interrupted' ? generationStatus : undefined,
   }
 }
@@ -354,6 +367,10 @@ export function isExpertMaterialContextError(code?: string): boolean {
   return code === 'material_context_unsupported'
     || code === 'material_context_temporarily_disabled'
     || code === 'material_context_extraction_failed'
+    || code === 'pdf_no_usable_text'
+    || code === 'pdf_local_extraction_failed'
+    || code === 'pdf_encrypted'
+    || code === 'pdf_malformed'
     || code === 'material_context_too_large'
     || code === 'material_context_not_found'
     || code === 'vision_not_supported'
@@ -554,7 +571,7 @@ export function createExpertApi(http?: AxiosInstance) {
           'X-Expert-Message-Id': clientMessageId,
           ...(csrf ? { 'X-XSRF-TOKEN': decodeURIComponent(csrf) } : {}),
         },
-        body: JSON.stringify(materialPublicIds.length ? { content, material_public_ids: materialPublicIds } : { content }),
+        body: JSON.stringify(assistantId ? {} : materialPublicIds.length ? { content, material_public_ids: materialPublicIds } : { content }),
       })
       if (!response.ok || !response.body) {
         let data: { message?: string; code?: string; errors?: ExpertValidationErrors } = {}
@@ -580,12 +597,15 @@ export function createExpertApi(http?: AxiosInstance) {
         } else if (event.event === 'done') {
           terminalReceived = true
           handlers.onDone(isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
+          break
         } else if (event.event === 'cancelled') {
           terminalReceived = true
           handlers.onCancelled(isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
+          break
         } else if (event.event === 'error') {
           terminalReceived = true
           handlers.onError(mapStreamError(payload), isMessageDto(payload.assistant_message) ? mapMessage(payload.assistant_message) : undefined)
+          break
         }
       }
     },

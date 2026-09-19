@@ -21,6 +21,7 @@ export interface ExpertMessage {
   diagnostic?: ExpertRunDiagnostic
   clientMessageId?: string
   runtimeMaterialContext?: ExpertMessageMaterialContext[]
+  attachments?: ExpertMessageAttachment[]
   sources?: ExpertSource[]
 }
 
@@ -38,6 +39,16 @@ export interface ExpertMessageMaterialContext {
   name: string
   kind: ExpertMaterialKind
   format: string
+  icon: string
+}
+
+export interface ExpertMessageAttachment {
+  id: string
+  name: string
+  mimeType: string
+  sizeBytes: number
+  kind: ExpertMaterialKind
+  available: boolean
   icon: string
 }
 
