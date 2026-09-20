@@ -189,6 +189,10 @@ final class ExpertLlmProfileTest extends TestCase
             'id' => 'vendor/image-only',
             'architecture' => ['input_modalities' => ['text'], 'output_modalities' => ['image']],
         ];
+        $models[0]['pricing'] = ['prompt' => '0.000005', 'completion' => '0.000020'];
+        $models[0]['pricing_units'] = ['prompt' => 'token', 'completion' => 'token'];
+        $models[1]['pricing'] = ['prompt' => '0.000001', 'completion' => '0.000002'];
+        $models[1]['pricing_units'] = ['prompt' => 'token', 'completion' => 'token'];
         $this->catalogFake($models);
         $base = '/api/admin/llm-model-catalog/routerai';
         $this->actingAs($admin, 'sanctum')->getJson($base.'?filter[]=compatible')->assertOk()
@@ -196,6 +200,9 @@ final class ExpertLlmProfileTest extends TestCase
         $this->getJson($base.'?filter[]=compatible&page=2')->assertOk()->assertJsonCount(5, 'models');
         $this->getJson($base.'?q=model-42&filter[]=compatible')->assertOk()
             ->assertJsonPath('total', 1)->assertJsonPath('models.0.id', 'vendor/model-42');
+        $this->getJson($base.'?filter[]=compatible&sort=typical_cost')->assertOk()
+            ->assertJsonPath('models.0.id', 'vendor/model-1')
+            ->assertJsonPath('models.1.id', 'vendor/model-0');
         Http::assertSentCount(1);
     }
 
