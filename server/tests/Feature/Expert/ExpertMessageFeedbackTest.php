@@ -50,7 +50,13 @@ final class ExpertMessageFeedbackTest extends TestCase
         $this->actingAs($stranger, 'sanctum')->getJson('/api/admin/expert-feedback')->assertForbidden();
 
         $list = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/expert-feedback');
-        $list->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.comment', 'Долго.');
+        $list->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.comment', 'Долго.')
+            ->assertJsonPath('counts.all', 1)->assertJsonPath('counts.negative', 1)->assertJsonPath('counts.positive', 0);
+        $this->actingAs($owner, 'sanctum')->putJson($url, ['rating' => 'positive'])->assertOk();
+        $this->actingAs($admin, 'sanctum')->getJson('/api/admin/expert-feedback')
+            ->assertOk()->assertJsonCount(0, 'data')
+            ->assertJsonPath('counts.all', 1)->assertJsonPath('counts.negative', 0)->assertJsonPath('counts.positive', 1);
+        $this->actingAs($owner, 'sanctum')->putJson($url, ['rating' => 'negative', 'reason_code' => 'too_slow', 'comment' => 'Долго.'])->assertOk();
         $feedbackId = $list->json('data.0.id');
         $this->actingAs($admin, 'sanctum')->getJson('/api/admin/expert-feedback/'.$feedbackId)
             ->assertOk()->assertJsonPath('request', 'Проверь документ.')

@@ -10,7 +10,6 @@ use App\Services\LLM\DTO\LLMChatMessage;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMImageContent;
 use App\Services\LLM\DTO\LLMTextContent;
-use App\Services\LLM\Exceptions\LLMUnsupportedCapabilityException;
 use App\Services\LLM\LLMEffectiveCapabilityResolver;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
@@ -19,6 +18,7 @@ use App\Services\LLM\RouterAiModelCatalogService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 final class ExpertLlmProfileTest extends TestCase
@@ -100,6 +100,8 @@ final class ExpertLlmProfileTest extends TestCase
         $this->assertTrue($capabilities['tools']);
         $this->assertFalse($capabilities['structured_output']);
         $this->assertTrue($capabilities['pdf_ocr']);
+        $this->assertSame('dynamic_catalog', app(LLMEffectiveCapabilityResolver::class)->source('routerai', 'openai/gpt-4o', \App\Services\LLM\Enums\LLMCapability::IMAGE_INPUT));
+        $this->assertSame('routerai_gateway', app(LLMEffectiveCapabilityResolver::class)->source('routerai', 'openai/gpt-4o', \App\Services\LLM\Enums\LLMCapability::PDF_OCR));
     }
 
     public function test_profile_fallback_policy_uses_existing_global_chain_only_when_enabled(): void
@@ -122,36 +124,88 @@ final class ExpertLlmProfileTest extends TestCase
         $this->assertSame(['routerai', 'deepseek'], app(LLMRouter::class)->buildExecutionPlan('expert_chat'));
     }
 
-    public function test_profile_rejects_unsupported_image_and_uses_synchronous_completion_when_streaming_is_unsupported(): void
+    public function test_routerai_image_capability_refreshes_once_and_two_requests_use_the_pinned_model(): void
     {
-        $this->catalogFake([[
-            'id' => 'custom/text-only', 'architecture' => ['input_modalities' => ['text'], 'output_modalities' => ['text']],
-            'streaming' => false,
-        ]]);
+        $catalogCalls = 0;
+        Http::fake(static function ($request) use (&$catalogCalls) {
+            if (str_ends_with($request->url(), '/models')) {
+                $catalogCalls++;
+                $inputs = $catalogCalls === 1 ? ['text'] : ['text', 'image'];
+
+                return Http::response(['data' => [[
+                    'id' => 'custom/luna-vision',
+                    'architecture' => ['input_modalities' => $inputs, 'output_modalities' => ['text']],
+                    'streaming' => false,
+                ]]], 200);
+            }
+
+            return Http::response([
+                'provider' => 'routerai-upstream', 'model' => 'custom/luna-vision',
+                'choices' => [['message' => ['content' => 'OK']]],
+            ], 200);
+        });
         app(RouterAiModelCatalogService::class)->snapshot();
         app(LLMSettingsRepository::class)->saveTaskProfile('expert_chat', [
-            'provider' => 'routerai', 'model' => 'custom/text-only', 'enabled' => true, 'fallback_policy' => 'none',
+            'provider' => 'routerai', 'model' => 'custom/luna-vision', 'enabled' => true, 'fallback_policy' => 'none',
         ]);
         $router = app(LLMRouter::class);
         $image = new LLMChatRequest('Test', [new LLMChatMessage('user', [
             new LLMTextContent('Test'), new LLMImageContent('fixture', 'red.png', 'image/png', 'bytes', 1, 1),
         ])]);
-        try {
-            $router->chat($image, taskProfile: 'expert_chat');
-            $this->fail('Image input should be rejected before transport.');
-        } catch (LLMUnsupportedCapabilityException $exception) {
-            $this->assertSame('image_input', $exception->capability->value);
-        }
+        Log::spy();
+        $first = iterator_to_array($router->streamChat($image, new LLMCancellationToken(static fn (): bool => false), taskProfile: 'expert_chat'));
+        $second = iterator_to_array($router->streamChat($image, new LLMCancellationToken(static fn (): bool => false), taskProfile: 'expert_chat'));
 
-        Http::fake(['*/chat/completions' => Http::response(['choices' => [['message' => ['content' => 'OK']]]], 200)]);
-        $events = iterator_to_array($router->streamChat(
-            new LLMChatRequest('Test', [LLMChatMessage::text('user', 'Ответь: OK')]),
-            new LLMCancellationToken(static fn (): bool => false),
-            taskProfile: 'expert_chat',
-        ));
-        $this->assertSame(['delta', 'done'], array_map(static fn ($event) => $event->type, $events));
-        $this->assertTrue($events[1]->metadata['sync_fallback']);
-        $this->assertSame('custom/text-only', Http::recorded()[0][0]['model']);
+        $this->assertSame(['delta', 'done'], array_map(static fn ($event) => $event->type, $first));
+        $this->assertSame(['delta', 'done'], array_map(static fn ($event) => $event->type, $second));
+        $this->assertTrue($first[1]->metadata['sync_fallback']);
+        $this->assertSame(2, $catalogCalls);
+        $chatRequests = Http::recorded(static fn ($request): bool => str_ends_with($request->url(), '/chat/completions'))->values();
+        $this->assertCount(2, $chatRequests);
+        $this->assertSame('custom/luna-vision', $chatRequests[0][0]['model']);
+        $this->assertSame('custom/luna-vision', $chatRequests[1][0]['model']);
+        Log::shouldHaveReceived('warning')->with(
+            'LLMRouter: RouterAI media capability self-healing decision.',
+            \Mockery::on(static fn (array $context): bool => $context['task_profile'] === 'expert_chat'
+                && $context['effective_model'] === 'custom/luna-vision'
+                && $context['catalog_refreshed'] === true
+                && $context['image_input'] === true),
+        )->once();
+        Log::shouldHaveReceived('info')->with(
+            'LLMRouter: RouterAI media request completed.',
+            \Mockery::on(static fn (array $context): bool => $context['actual_upstream_provider'] === 'routerai-upstream'
+                && $context['actual_upstream_model'] === 'custom/luna-vision'),
+        )->twice();
+    }
+
+    public function test_routerai_negative_catalog_capability_is_advisory_after_refresh(): void
+    {
+        $catalogCalls = 0;
+        Http::fake(static function ($request) use (&$catalogCalls) {
+            if (str_ends_with($request->url(), '/models')) {
+                $catalogCalls++;
+
+                return Http::response(['data' => [[
+                    'id' => 'custom/luna-advisory',
+                    'architecture' => ['input_modalities' => ['text'], 'output_modalities' => ['text']],
+                ]]], 200);
+            }
+
+            return Http::response(['model' => 'custom/luna-advisory', 'choices' => [['message' => ['content' => 'OK']]]], 200);
+        });
+        app(RouterAiModelCatalogService::class)->snapshot();
+        app(LLMSettingsRepository::class)->saveTaskProfile('expert_chat', [
+            'provider' => 'routerai', 'model' => 'custom/luna-advisory', 'enabled' => true, 'fallback_policy' => 'none',
+        ]);
+        $request = new LLMChatRequest('Test', [new LLMChatMessage('user', [
+            new LLMTextContent('Test'), new LLMImageContent('fixture', 'red.png', 'image/png', 'bytes', 1, 1),
+        ])]);
+
+        $response = app(LLMRouter::class)->chat($request, taskProfile: 'expert_chat');
+
+        $this->assertSame('OK', $response->content);
+        $this->assertSame(2, $catalogCalls);
+        Http::assertSent(static fn ($sent): bool => str_ends_with($sent->url(), '/chat/completions'));
     }
 
     public function test_admin_can_save_unknown_model_with_audit_but_non_admin_cannot_read_or_test(): void

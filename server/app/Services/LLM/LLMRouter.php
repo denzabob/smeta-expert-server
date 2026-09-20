@@ -56,6 +56,9 @@ class LLMRouter
     /** @var array<string, LLMProviderInterface> */
     private array $providerInstances = [];
 
+    /** @var array<string, true> */
+    private array $capabilityRefreshAttempts = [];
+
     /** @var (\Closure(string, array): ?LLMProviderInterface)|null */
     private ?\Closure $providerFactory;
 
@@ -285,6 +288,7 @@ class LLMRouter
     public function chat(LLMChatRequest $request, ?string $correlationId = null, ?string $taskProfile = null): LLMChatResponse
     {
         $this->lastCorrelationId = $correlationId ?? (string) Str::uuid();
+        $this->capabilityRefreshAttempts = [];
         $executionPlan = $this->buildExecutionPlan($taskProfile);
         $profile = $this->activeProfile($taskProfile);
         $failoverChain = [];
@@ -295,8 +299,9 @@ class LLMRouter
             $executionPlan = array_slice($executionPlan, 0, 1);
             $providerName = $executionPlan[0] ?? $this->settings->getPrimaryProvider();
             $provider = $this->getProvider($providerName, $profile['model'] ?? null);
-            if ($request->hasPdfOcrFiles() && ($provider === null || ! $this->supports($provider, LLMCapability::PDF_OCR, $profile))) {
-                throw new LLMUnsupportedCapabilityException($provider?->name() ?? $providerName, $provider?->model() ?? 'unknown', LLMCapability::PDF_OCR);
+            $requiredCapability = $request->hasPdfOcrFiles() ? LLMCapability::PDF_OCR : LLMCapability::FILE_INPUT;
+            if ($provider === null || ! $this->supportsMediaRequest($provider, $requiredCapability, $profile, $taskProfile, $request)) {
+                throw new LLMUnsupportedCapabilityException($provider?->name() ?? $providerName, $provider?->model() ?? 'unknown', $requiredCapability);
             }
         }
 
@@ -307,7 +312,7 @@ class LLMRouter
             $providerName = $executionPlan[0] ?? $this->settings->getPrimaryProvider();
             $provider = $this->getProvider($providerName, $profile['model'] ?? null);
 
-            if ($provider !== null && ! $this->supports($provider, LLMCapability::IMAGE_INPUT, $profile)) {
+            if ($provider !== null && ! $this->supportsMediaRequest($provider, LLMCapability::IMAGE_INPUT, $profile, $taskProfile, $request)) {
                 Log::warning('LLMRouter: configured profile rejected image input.', [
                     'correlation_id' => $this->lastCorrelationId,
                     'provider' => $provider->name(),
@@ -345,6 +350,7 @@ class LLMRouter
                 try {
                     $response = $provider->chat($request);
                     $this->circuitBreaker->recordSuccess($providerName);
+                    $this->logMediaCompletion($request, $taskProfile, $provider, $response->metadata['upstream_provider'] ?? $response->provider, $response->model);
 
                     Log::info('LLMRouter: text chat completed', [
                         'correlation_id' => $this->lastCorrelationId,
@@ -427,6 +433,7 @@ class LLMRouter
     public function streamChat(LLMChatRequest $request, LLMCancellationToken $cancellationToken, ?string $correlationId = null, ?string $taskProfile = null): iterable
     {
         $this->lastCorrelationId = $correlationId ?? (string) Str::uuid();
+        $this->capabilityRefreshAttempts = [];
         $executionPlan = $this->buildExecutionPlan($taskProfile);
         $profile = $this->activeProfile($taskProfile);
         // Multimodal runs must remain on the selected model exactly like chat().
@@ -443,11 +450,14 @@ class LLMRouter
             if ($profile !== null && $provider !== null && ! $supportsStreaming) {
                 // The response arrives as a whole; this is a synchronous completion,
                 // never a claim that the selected model streamed tokens.
-                if ($request->hasImages() && ! $this->supports($provider, LLMCapability::IMAGE_INPUT, $profile)) {
+                if ($request->hasImages() && ! $this->supportsMediaRequest($provider, LLMCapability::IMAGE_INPUT, $profile, $taskProfile, $request)) {
                     throw new LLMUnsupportedCapabilityException($providerName, $provider->model(), LLMCapability::IMAGE_INPUT);
                 }
-                if ($request->hasPdfOcrFiles() && ! $this->supports($provider, LLMCapability::PDF_OCR, $profile)) {
-                    throw new LLMUnsupportedCapabilityException($providerName, $provider->model(), LLMCapability::PDF_OCR);
+                if ($request->hasFiles()) {
+                    $requiredCapability = $request->hasPdfOcrFiles() ? LLMCapability::PDF_OCR : LLMCapability::FILE_INPUT;
+                    if (! $this->supportsMediaRequest($provider, $requiredCapability, $profile, $taskProfile, $request)) {
+                        throw new LLMUnsupportedCapabilityException($providerName, $provider->model(), $requiredCapability);
+                    }
                 }
                 if ($cancellationToken->isCancellationRequested()) {
                     return;
@@ -468,6 +478,7 @@ class LLMRouter
                 if ($cancellationToken->isCancellationRequested()) {
                     return;
                 }
+                $this->logMediaCompletion($request, $taskProfile, $provider, $response->metadata['upstream_provider'] ?? $response->provider, $response->model);
                 yield LLMStreamEvent::delta($response->content);
                 yield LLMStreamEvent::done([...$response->metadata, 'provider' => $response->provider, 'model' => $response->model, 'sync_fallback' => true], $response->parsedFiles);
                 return;
@@ -476,11 +487,14 @@ class LLMRouter
                 $failoverChain[] = "{$providerName}:streaming_not_supported";
                 continue;
             }
-            if ($request->hasImages() && ! $this->supports($provider, LLMCapability::IMAGE_INPUT, $profile)) {
+            if ($request->hasImages() && ! $this->supportsMediaRequest($provider, LLMCapability::IMAGE_INPUT, $profile, $taskProfile, $request)) {
                 throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), LLMCapability::IMAGE_INPUT);
             }
-            if ($request->hasPdfOcrFiles() && ! $this->supports($provider, LLMCapability::PDF_OCR, $profile)) {
-                throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), LLMCapability::PDF_OCR);
+            if ($request->hasFiles()) {
+                $requiredCapability = $request->hasPdfOcrFiles() ? LLMCapability::PDF_OCR : LLMCapability::FILE_INPUT;
+                if (! $this->supportsMediaRequest($provider, $requiredCapability, $profile, $taskProfile, $request)) {
+                    throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), $requiredCapability);
+                }
             }
 
             for ($attempt = 0; $attempt < self::MAX_ATTEMPTS_PER_PROVIDER; $attempt++) {
@@ -489,6 +503,15 @@ class LLMRouter
                     foreach ($provider->streamChat($request, $cancellationToken) as $event) {
                         if (in_array($event->type, ['delta', 'reasoning_summary'], true) && $event->text !== '') {
                             $emitted = true;
+                        }
+                        if ($event->type === 'done') {
+                            $this->logMediaCompletion(
+                                $request,
+                                $taskProfile,
+                                $provider,
+                                $event->metadata['provider'] ?? $event->metadata['upstream_provider'] ?? $provider->name(),
+                                $event->metadata['model'] ?? $provider->model(),
+                            );
                         }
                         yield $event->type === 'done'
                             ? LLMStreamEvent::done([
@@ -632,6 +655,88 @@ class LLMRouter
         }
 
         return in_array($capability, $provider->capabilities(), true);
+    }
+
+    private function supportsMediaRequest(
+        LLMProviderInterface $provider,
+        LLMCapability $capability,
+        ?array $profile,
+        ?string $taskProfile,
+        LLMChatRequest $request,
+    ): bool {
+        if ($this->supports($provider, $capability, $profile)) {
+            return true;
+        }
+        if ($provider->name() !== 'routerai') {
+            return false;
+        }
+
+        $key = $provider->name().'|'.$provider->model();
+        $catalog = app(RouterAiModelCatalogService::class);
+        $snapshot = null;
+        if (! isset($this->capabilityRefreshAttempts[$key])) {
+            $this->capabilityRefreshAttempts[$key] = true;
+            $snapshot = $catalog->snapshot(true);
+        }
+
+        $resolver = app(LLMEffectiveCapabilityResolver::class);
+        $capabilities = $resolver->resolve($provider->name(), $provider->model());
+        $supportedAfterRefresh = (bool) ($capabilities[$capability->value] ?? false);
+        Log::warning('LLMRouter: RouterAI media capability self-healing decision.', [
+            'correlation_id' => $this->lastCorrelationId,
+            'task_profile' => $taskProfile,
+            'effective_provider' => $provider->name(),
+            'effective_model' => $provider->model(),
+            'catalog_status' => is_array($snapshot) ? ($snapshot['status'] ?? $catalog->cachedStatus()) : $catalog->cachedStatus(),
+            'capability_source' => $resolver->source($provider->name(), $provider->model(), $capability),
+            'required_capability' => $capability->value,
+            'image_input' => (bool) ($capabilities[LLMCapability::IMAGE_INPUT->value] ?? false),
+            'file_input' => (bool) ($capabilities[LLMCapability::FILE_INPUT->value] ?? false),
+            'pdf_ocr' => (bool) ($capabilities[LLMCapability::PDF_OCR->value] ?? false),
+            'catalog_refreshed' => is_array($snapshot),
+            'advisory_forwarded' => ! $supportedAfterRefresh,
+            'request_has_image' => $request->hasImages(),
+            'request_has_file' => $request->hasFiles(),
+            'actual_upstream_provider' => null,
+            'actual_upstream_model' => null,
+        ]);
+
+        // RouterAI catalog negatives can be stale or incomplete. The pinned model remains
+        // unchanged and the upstream API is the final authority for this media request.
+        return true;
+    }
+
+    private function logMediaCompletion(
+        LLMChatRequest $request,
+        ?string $taskProfile,
+        LLMProviderInterface $provider,
+        mixed $actualProvider,
+        mixed $actualModel,
+    ): void {
+        if ($provider->name() !== 'routerai' || (! $request->hasImages() && ! $request->hasFiles())) {
+            return;
+        }
+
+        $resolver = app(LLMEffectiveCapabilityResolver::class);
+        $capabilities = $resolver->resolve($provider->name(), $provider->model());
+        $requiredCapability = $request->hasImages()
+            ? LLMCapability::IMAGE_INPUT
+            : ($request->hasPdfOcrFiles() ? LLMCapability::PDF_OCR : LLMCapability::FILE_INPUT);
+
+        Log::info('LLMRouter: RouterAI media request completed.', [
+            'correlation_id' => $this->lastCorrelationId,
+            'task_profile' => $taskProfile,
+            'effective_provider' => $provider->name(),
+            'effective_model' => $provider->model(),
+            'catalog_status' => app(RouterAiModelCatalogService::class)->cachedStatus(),
+            'capability_source' => $resolver->source($provider->name(), $provider->model(), $requiredCapability),
+            'image_input' => (bool) ($capabilities[LLMCapability::IMAGE_INPUT->value] ?? false),
+            'file_input' => (bool) ($capabilities[LLMCapability::FILE_INPUT->value] ?? false),
+            'pdf_ocr' => (bool) ($capabilities[LLMCapability::PDF_OCR->value] ?? false),
+            'catalog_refreshed' => $this->capabilityRefreshAttempts !== [],
+            'actual_upstream_provider' => is_string($actualProvider) ? $actualProvider : null,
+            'actual_upstream_model' => is_string($actualModel) ? $actualModel : null,
+        ]);
     }
 
     /**

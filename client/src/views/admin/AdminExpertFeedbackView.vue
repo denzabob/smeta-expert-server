@@ -1,8 +1,13 @@
 <template>
   <PageContainer>
     <PageHeader title="Обратная связь Expert Chat" subtitle="Оценки ответов и комментарии пользователей" />
+    <div class="expert-feedback-summary" aria-label="Сводка оценок">
+      <button type="button" :aria-pressed="filters.rating === 'all'" @click="selectRating('all')">Все <strong>{{ counts.all }}</strong></button>
+      <button type="button" :aria-pressed="filters.rating === 'negative'" @click="selectRating('negative')">👎 Отрицательные <strong>{{ counts.negative }}</strong></button>
+      <button type="button" :aria-pressed="filters.rating === 'positive'" @click="selectRating('positive')">👍 Положительные <strong>{{ counts.positive }}</strong></button>
+      <button type="button" class="expert-feedback-refresh" :disabled="loading" @click="load">Обновить</button>
+    </div>
     <div class="expert-feedback-filters">
-      <label>Оценка<select v-model="filters.rating"><option value="negative">👎 Отрицательные</option><option value="positive">👍 Положительные</option><option value="all">Все</option></select></label>
       <label>Провайдер<input v-model.trim="filters.provider" placeholder="Все" /></label>
       <label>Модель<input v-model.trim="filters.model" placeholder="Все" /></label>
       <label>Причина<select v-model="filters.reason_code"><option value="">Все</option><option v-for="reason in reasons" :key="reason.code" :value="reason.code">{{ reason.label }}</option></select></label>
@@ -63,6 +68,7 @@ interface FeedbackRow {
   comment: string | null
 }
 interface FeedbackDetail { request: string | null; answer: string | null; materials: string[]; provider: string | null; model: string | null; run_id: string | null; latency_ms: number | null }
+interface FeedbackCounts { all: number; positive: number; negative: number }
 const reasons = [
   { code: 'incorrect_or_incomplete', label: 'Неправильно или неполно' },
   { code: 'not_requested', label: 'Не то, что я просил' },
@@ -73,6 +79,7 @@ const reasons = [
 ]
 const filters = reactive({ rating: 'negative', provider: '', model: '', reason_code: '', from: '', to: '' })
 const rows = ref<FeedbackRow[]>([])
+const counts = reactive<FeedbackCounts>({ all: 0, positive: 0, negative: 0 })
 const details = ref<Record<string, FeedbackDetail>>({})
 const expandedId = ref('')
 const detailLoading = ref(false)
@@ -88,19 +95,21 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const { data } = await api.get<{ data: FeedbackRow[]; current_page: number; last_page: number }>('/api/admin/expert-feedback', {
+    const { data } = await api.get<{ data: FeedbackRow[]; current_page: number; last_page: number; counts?: FeedbackCounts }>('/api/admin/expert-feedback', {
       params: { ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '')), page: page.value },
     })
     if (sequence !== requestSequence) return
     rows.value = data.data
     page.value = data.current_page
     lastPage.value = data.last_page
+    if (data.counts) Object.assign(counts, data.counts)
   } catch {
     if (sequence === requestSequence) error.value = 'Не удалось загрузить отзывы.'
   } finally {
     if (sequence === requestSequence) loading.value = false
   }
 }
+function selectRating(rating: 'all' | 'positive' | 'negative') { filters.rating = rating; applyFilters() }
 function applyFilters() { page.value = 1; expandedId.value = ''; void load() }
 function goToPage(next: number) { page.value = next; expandedId.value = ''; void load() }
 async function toggleDetail(id: string) {
@@ -121,6 +130,11 @@ onMounted(() => { void load() })
 </script>
 
 <style scoped>
+.expert-feedback-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 14px; }
+.expert-feedback-summary button { min-height: 34px; padding: 5px 11px; border: 1px solid rgb(var(--v-theme-outline-variant)); border-radius: var(--md-sys-shape-corner-medium); color: inherit; background: rgb(var(--v-theme-surface)); cursor: pointer; font: inherit; }
+.expert-feedback-summary button[aria-pressed="true"] { border-color: rgba(var(--v-theme-primary), .65); color: rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .1); }
+.expert-feedback-summary strong { margin-left: 4px; font-variant-numeric: tabular-nums; }
+.expert-feedback-summary .expert-feedback-refresh { margin-left: auto; }
 .expert-feedback-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-bottom: 18px; }
 .expert-feedback-filters label { display: grid; gap: 4px; min-width: 130px; font-size: .8rem; }
 .expert-feedback-filters input, .expert-feedback-filters select { min-height: 34px; padding: 5px 7px; border: 1px solid rgb(var(--v-theme-outline-variant)); border-radius: var(--md-sys-shape-corner-small); color: inherit; background: rgb(var(--v-theme-surface)); font: inherit; }

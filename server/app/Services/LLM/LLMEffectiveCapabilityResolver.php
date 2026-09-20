@@ -61,4 +61,34 @@ final class LLMEffectiveCapabilityResolver
 
         return $result;
     }
+
+    public function source(string $provider, string $model, LLMCapability $capability): string
+    {
+        if ($provider === 'routerai') {
+            if ($capability === LLMCapability::PDF_OCR) {
+                return 'routerai_gateway';
+            }
+            $entry = $this->catalog->cachedModel($model);
+            if ($entry !== null && $this->catalogDefines($entry, $capability)) {
+                return 'dynamic_catalog';
+            }
+        }
+
+        $overrides = config("services.{$provider}.capability_overrides.{$model}");
+        if (is_array($overrides) && array_key_exists($capability->value, $overrides)) {
+            return 'local_override';
+        }
+
+        return 'legacy_catalog';
+    }
+
+    private function catalogDefines(array $entry, LLMCapability $capability): bool
+    {
+        return match ($capability) {
+            LLMCapability::TEXT_INPUT, LLMCapability::IMAGE_INPUT, LLMCapability::FILE_INPUT => is_array($entry['input_modalities'] ?? null),
+            LLMCapability::REASONING, LLMCapability::TOOLS, LLMCapability::STRUCTURED_OUTPUT => is_array($entry['supported_parameters'] ?? null),
+            LLMCapability::STREAMING => is_bool($entry['streaming'] ?? null),
+            default => false,
+        };
+    }
 }

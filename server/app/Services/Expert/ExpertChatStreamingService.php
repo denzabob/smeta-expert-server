@@ -352,6 +352,7 @@ final class ExpertChatStreamingService
             return match ($exception->capability) {
                 LLMCapability::IMAGE_INPUT => 'vision_not_supported',
                 LLMCapability::PDF_OCR => 'pdf_ocr_failed',
+                LLMCapability::FILE_INPUT => 'material_not_supported',
                 default => 'streaming_not_supported',
             };
         }
@@ -402,6 +403,7 @@ final class ExpertChatStreamingService
             'streaming_not_supported',
             'vision_not_supported',
             'pdf_ocr_failed',
+            'material_not_supported',
         ], true);
     }
 

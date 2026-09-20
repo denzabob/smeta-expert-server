@@ -24,6 +24,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -39,6 +40,7 @@ class ExpertVisionContextFlowTest extends TestCase
     {
         parent::setUp();
         Storage::fake('local');
+        Cache::forget('llm:routerai:model_catalog:v1');
     }
 
     public function test_real_jpeg_and_text_reach_routerai_and_original_stays_unchanged(): void
@@ -141,14 +143,14 @@ class ExpertVisionContextFlowTest extends TestCase
         $this->assertVisionError(fn () => app(ExpertVisionImagePreparer::class)->prepare($valid), 'vision_material_too_large');
     }
 
-    public function test_limits_ownership_capability_and_idempotency_fail_before_transport(): void
+    public function test_limits_and_ownership_fail_before_transport_while_routerai_capability_is_advisory(): void
     {
         [$user, $conversation] = $this->conversation();
         $first = $this->material($conversation->project, 'Первое.jpg', 'image/jpeg', $this->jpegFixture());
         $second = $this->material($conversation->project, 'Второе.png', 'image/png', $this->imageFixture('png', 20, 20));
         [, $foreignProject] = $this->project();
         $foreign = $this->material($foreignProject, 'Чужое.jpg', 'image/jpeg', $this->jpegFixture());
-        Http::fake();
+        $this->installRouterAi('deepseek/deepseek-chat');
 
         config(['expert.vision.max_images_per_message' => 1]);
         $this->send($user, $conversation, ['content' => 'Много', 'material_public_ids' => [$first->public_id, $second->public_id]])
@@ -161,21 +163,32 @@ class ExpertVisionContextFlowTest extends TestCase
             ->assertStatus(413)->assertJsonPath('code', 'vision_material_too_large');
 
         config(['expert.vision.max_total_vision_bytes' => 12 * 1024 * 1024]);
-        $this->installRouterAi('deepseek/deepseek-chat');
+        Http::assertNothingSent();
+        Http::fake([
+            '*/models' => Http::response(['data' => [[
+                'id' => 'deepseek/deepseek-chat',
+                'architecture' => ['input_modalities' => ['text'], 'output_modalities' => ['text']],
+            ]]], 200),
+            '*/chat/completions' => Http::response([
+                'model' => 'deepseek/deepseek-chat',
+                'choices' => [['message' => ['content' => 'Изображение обработано.']]],
+            ], 200),
+        ]);
         $messageId = (string) Str::uuid();
         $payload = ['content' => 'Проверь', 'material_public_ids' => [$first->public_id]];
+        $firstResponse = $this->send($user, $conversation, $payload, $messageId);
+        $this->assertSame(201, $firstResponse->status(), json_encode($firstResponse->json(), JSON_UNESCAPED_UNICODE));
+        $firstResponse->assertJsonPath('assistant_message.content', 'Изображение обработано.');
         $this->send($user, $conversation, $payload, $messageId)
-            ->assertUnprocessable()->assertJsonPath('code', 'vision_not_supported');
-        $this->send($user, $conversation, $payload, $messageId)
-            ->assertUnprocessable()->assertJsonPath('code', 'vision_not_supported');
+            ->assertOk()->assertJsonPath('assistant_message.content', 'Изображение обработано.');
         $this->send($user, $conversation, [
             'content' => 'Проверь',
             'material_public_ids' => [$second->public_id],
         ], $messageId)->assertConflict()->assertJsonPath('code', 'expert_request_conflict');
 
-        Http::assertNothingSent();
+        Http::assertSentCount(2);
         $this->assertSame(1, $conversation->messages()->where('role', 'user')->count());
-        $this->assertSame(0, $conversation->messages()->where('role', 'assistant')->count());
+        $this->assertSame(1, $conversation->messages()->where('role', 'assistant')->count());
         $this->assertTrue(Storage::disk('local')->exists($first->storage_path));
     }
 

@@ -42,10 +42,12 @@
       <div class="expert-materials__view-controls">
         <div class="expert-materials__view-picker">
           <span class="expert-materials__control-label">Вид</span>
-          <v-btn-toggle v-model="viewMode" mandatory density="compact" color="primary" variant="outlined" aria-label="Вид материалов">
-            <v-btn value="list" icon="mdi-format-list-bulleted" size="small" aria-label="Компактный список"><v-tooltip activator="parent" location="bottom">Компактный список</v-tooltip></v-btn>
-            <v-btn value="grid" icon="mdi-view-grid-outline" size="small" aria-label="Плитка"><v-tooltip activator="parent" location="bottom">Плитка</v-tooltip></v-btn>
-          </v-btn-toggle>
+          <div class="expert-materials__view-toggle">
+            <v-btn-toggle v-model="viewMode" mandatory density="compact" color="primary" variant="text" aria-label="Вид материалов">
+              <v-btn value="list" icon="mdi-format-list-bulleted" size="small" aria-label="Компактный список" title="Компактный список"><v-tooltip activator="parent" location="bottom">Компактный список</v-tooltip></v-btn>
+              <v-btn value="grid" icon="mdi-view-grid-outline" size="small" aria-label="Плитка" title="Плитка"><v-tooltip activator="parent" location="bottom">Плитка</v-tooltip></v-btn>
+            </v-btn-toggle>
+          </div>
         </div>
         <div class="expert-materials__page-size">
           <span class="expert-materials__control-label">На странице</span>
@@ -387,8 +389,11 @@ function writeStorage(key: string, value: string) {
 .expert-materials__view-controls { justify-content: flex-end; gap: 18px; }
 .expert-materials__view-picker, .expert-materials__page-size { gap: 8px; }
 .expert-materials__control-label { color: rgba(var(--v-theme-on-surface-variant), .72); font-size: .72rem; font-weight: 700; white-space: nowrap; }
-.expert-materials__view-picker :deep(.v-btn-toggle) { height: 34px; }
-.expert-materials__view-picker :deep(.v-btn) { width: 38px; min-width: 38px; height: 34px; padding: 0; }
+.expert-materials__view-toggle { display: inline-flex; overflow: hidden; border: 1px solid rgba(var(--v-theme-outline-variant), .9); border-radius: var(--md-sys-shape-corner-medium); }
+.expert-materials__view-toggle :deep(.v-btn-toggle) { height: 34px; border: 0; border-radius: 0; }
+.expert-materials__view-toggle :deep(.v-btn) { width: 40px; min-width: 40px; height: 34px; padding: 0; border: 0 !important; border-radius: 0 !important; color: rgb(var(--v-theme-on-surface-variant)); background: transparent; }
+.expert-materials__view-toggle :deep(.v-btn + .v-btn) { border-left: 1px solid rgba(var(--v-theme-outline-variant), .9) !important; }
+.expert-materials__view-toggle :deep(.v-btn--active) { color: rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .12); }
 .expert-materials__page-size :deep(.v-select) { width: 92px; }
 .expert-materials__page-size :deep(.v-field) { min-height: 36px; }
 .expert-material-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 64px; padding: 8px 12px; border: 1px solid rgba(var(--v-theme-outline-variant), .62); border-radius: var(--md-sys-shape-corner-large); color: rgb(var(--v-theme-on-surface)); background: rgb(var(--v-theme-surface)); }

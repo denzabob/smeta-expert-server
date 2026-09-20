@@ -136,9 +136,11 @@ const streamErrorMessages: Record<string, string> = {
   provider_unexpected_content_type: 'Провайдер AI вернул ответ в неожиданном формате.',
   stream_malformed: 'Провайдер AI вернул некорректный поток.',
   stream_eof_without_terminal: 'Ответ AI оборвался до завершения.',
-  streaming_not_supported: 'Текущая модель AI не поддерживает потоковый ответ.',
-  pdf_ocr_failed: 'Не удалось распознать PDF.',
-  vision_not_supported: 'Текущая модель AI не поддерживает изображения.',
+  streaming_not_supported: 'Не удалось получить ответ AI. Повторите запрос.',
+  pdf_ocr_failed: 'Не удалось обработать документ. Повторите запрос.',
+  pdf_ocr_not_supported: 'Не удалось обработать документ. Повторите запрос.',
+  vision_not_supported: 'Не удалось обработать изображение. Повторите запрос.',
+  material_not_supported: 'Не удалось обработать приложенный материал.',
 }
 export type ExpertUploadOptions = { onProgress?: (progress: number) => void }
 export type ExpertDownloadOptions = { onProgress?: (progress: number | null) => void }
@@ -376,6 +378,7 @@ export function isExpertMaterialContextError(code?: string): boolean {
     || code === 'pdf_malformed'
     || code === 'material_context_too_large'
     || code === 'material_context_not_found'
+    || code === 'material_not_supported'
     || code === 'vision_not_supported'
     || code === 'pdf_ocr_not_supported'
     || code === 'pdf_ocr_disabled'

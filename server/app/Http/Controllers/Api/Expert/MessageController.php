@@ -102,11 +102,15 @@ class MessageController extends Controller
                 'code' => $exception->errorCode,
             ], $exception->status);
         } catch (LLMUnsupportedCapabilityException $exception) {
-            $isPdf = $exception->capability->value === 'pdf_ocr';
+            [$message, $code] = match ($exception->capability->value) {
+                'image_input' => ['Не удалось обработать изображение. Повторите запрос.', 'vision_not_supported'],
+                'pdf_ocr' => ['Не удалось обработать документ. Повторите запрос.', 'pdf_ocr_not_supported'],
+                default => ['Не удалось обработать приложенный материал.', 'material_not_supported'],
+            };
 
             return response()->json([
-                'message' => $isPdf ? 'Текущая модель AI не поддерживает OCR PDF.' : 'Текущая модель AI не поддерживает анализ изображений.',
-                'code' => $isPdf ? 'pdf_ocr_not_supported' : 'vision_not_supported',
+                'message' => $message,
+                'code' => $code,
             ], 422);
         } catch (LockTimeoutException) {
             return response()->json([

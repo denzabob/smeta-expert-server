@@ -21,7 +21,6 @@
           <summary>Подробнее</summary>
           <span>Код: {{ message.diagnostic.errorCode }}</span>
           <span>ID: {{ message.diagnostic.runId }}</span>
-          <span v-if="message.diagnostic.lastActivityCode">Этап: {{ message.diagnostic.lastActivityCode }}</span>
           <button type="button" :aria-label="`Копировать diagnostic ID ${message.diagnostic.runId}`" @click="copyDiagnosticId(message.diagnostic.runId)">
             <v-icon :icon="copiedDiagnosticRunId === message.diagnostic.runId ? 'mdi-check' : 'mdi-content-copy'" size="14" />
           </button>
@@ -37,7 +36,6 @@
           <summary>Подробнее</summary>
           <span>Код: {{ message.diagnostic.errorCode }}</span>
           <span>ID: {{ message.diagnostic.runId }}</span>
-          <span v-if="message.diagnostic.lastActivityCode">Этап: {{ message.diagnostic.lastActivityCode }}</span>
           <button type="button" :aria-label="`Копировать diagnostic ID ${message.diagnostic.runId}`" @click="copyDiagnosticId(message.diagnostic.runId)">
             <v-icon :icon="copiedDiagnosticRunId === message.diagnostic.runId ? 'mdi-check' : 'mdi-content-copy'" size="14" />
           </button>
@@ -61,8 +59,8 @@
         </v-menu>
       </div>
       <div v-if="canRate" class="expert-message__feedback" aria-label="Оценить ответ">
-        <v-btn icon="mdi-thumb-up-outline" size="x-small" variant="text" aria-label="Хороший ответ" :aria-pressed="message.feedback?.rating === 'positive'" :disabled="feedbackSaving" @click="rate('positive')" />
-        <v-btn icon="mdi-thumb-down-outline" size="x-small" variant="text" aria-label="Плохой ответ" :aria-pressed="message.feedback?.rating === 'negative'" :disabled="feedbackSaving" @click="rate('negative')" />
+        <v-btn :icon="message.feedback?.rating === 'positive' ? 'mdi-thumb-up' : 'mdi-thumb-up-outline'" size="x-small" :variant="message.feedback?.rating === 'positive' ? 'tonal' : 'text'" :color="message.feedback?.rating === 'positive' ? 'success' : undefined" aria-label="Хороший ответ" :aria-pressed="message.feedback?.rating === 'positive'" :disabled="feedbackSaving" @click="rate('positive')" />
+        <v-btn :icon="message.feedback?.rating === 'negative' ? 'mdi-thumb-down' : 'mdi-thumb-down-outline'" size="x-small" :variant="message.feedback?.rating === 'negative' ? 'tonal' : 'text'" :color="message.feedback?.rating === 'negative' ? 'error' : undefined" aria-label="Плохой ответ" :aria-pressed="message.feedback?.rating === 'negative'" :disabled="feedbackSaving" @click="rate('negative')" />
         <span v-if="feedbackError" class="expert-message__feedback-error" role="alert">{{ feedbackError }}</span>
       </div>
     </div>
@@ -77,9 +75,10 @@
           <p class="expert-message__feedback-privacy">Оценка и комментарий остаются внутри PrismCore и доступны администраторам.</p>
           <p v-if="feedbackDialogError" role="alert" class="expert-message__feedback-error">{{ feedbackDialogError }}</p>
         </v-card-text>
-        <v-card-actions><v-spacer /><v-btn variant="text" @click="feedbackDialog = false">Закрыть</v-btn><v-btn color="primary" :loading="feedbackSaving" @click="submitFeedback">Отправить</v-btn></v-card-actions>
+        <v-card-actions><v-spacer /><v-btn variant="text" @click="closeFeedbackDialog">Закрыть</v-btn><v-btn color="primary" :loading="feedbackSaving" @click="submitFeedback">Отправить</v-btn></v-card-actions>
       </v-card>
     </v-dialog>
+    <v-snackbar v-model="feedbackNoticeOpen" timeout="2600">{{ feedbackNotice }}</v-snackbar>
   </article>
 </template>
 
@@ -97,7 +96,13 @@ const props = withDefaults(defineProps<{ message: ExpertMessage; allowContinue?:
 const emit = defineEmits<{ (event: 'action', action: string): void; (event: 'open-source', sourceId: string): void; (event: 'open-material', materialId: string): void; (event: 'retry', messageId: string): void; (event: 'continue', messageId: string): void; (event: 'feedback-updated', messageId: string, feedback: ExpertMessageFeedback | null): void }>()
 const displayAttachments = computed(() => props.message.attachments ?? (props.message.runtimeMaterialContext ?? []).map((item) => ({ ...item, available: true, mimeType: '', sizeBytes: 0 })))
 const formattedTimestamp = computed(() => formatExpertMessageTimestamp(props.message.createdAt))
-const displayError = computed(() => props.message.diagnostic?.errorCode.startsWith('pdf_') ? 'Не удалось обработать документ.' : (props.message.deliveryError || 'Не удалось обработать запрос.'))
+const displayError = computed(() => {
+  const code = props.message.diagnostic?.errorCode ?? ''
+  if (code.startsWith('pdf_')) return 'Не удалось обработать документ. Повторите запрос.'
+  if (code.startsWith('vision_')) return 'Не удалось обработать изображение. Повторите запрос.'
+  if (code === 'material_not_supported') return 'Не удалось обработать приложенный материал.'
+  return props.message.deliveryError || 'Не удалось обработать запрос.'
+})
 const canContinue = computed(() => props.allowContinue && (props.message.deliveryState === 'error' || props.message.generationStatus === 'stopped' || props.message.generationStatus === 'interrupted'))
 const canRate = computed(() => props.feedbackEnabled && props.message.role === 'assistant' && props.message.text.trim() !== '' && props.message.deliveryState !== 'sending' && props.message.deliveryState !== 'error' && !['stopped', 'interrupted'].includes(props.message.generationStatus ?? 'completed'))
 const feedbackSaving = ref(false)
@@ -106,6 +111,8 @@ const feedbackDialogError = ref('')
 const feedbackDialog = ref(false)
 const selectedReason = ref<string | null>(null)
 const feedbackComment = ref('')
+const feedbackNoticeOpen = ref(false)
+const feedbackNotice = ref('')
 const feedbackReasons = [
   { code: 'incorrect_or_incomplete', label: 'Неправильно или неполно' },
   { code: 'not_requested', label: 'Не то, что я просил' },
@@ -117,22 +124,25 @@ const feedbackReasons = [
 async function rate(rating: ExpertMessageFeedback['rating']) {
   if (feedbackSaving.value) return
   feedbackError.value = ''
+  if (rating === 'negative' && props.message.feedback?.rating !== 'negative') {
+    selectedReason.value = null
+    feedbackComment.value = ''
+    feedbackDialogError.value = ''
+    feedbackDialog.value = true
+    return
+  }
   feedbackSaving.value = true
   try {
     if (props.message.feedback?.rating === rating) {
       await expertApi.deleteMessageFeedback(props.message.id)
       emit('feedback-updated', props.message.id, null)
       feedbackDialog.value = false
+      showFeedbackNotice('Оценка удалена.')
     } else {
       const saved = await expertApi.saveMessageFeedback(props.message.id, { rating })
       emit('feedback-updated', props.message.id, saved)
-      if (rating === 'negative') {
-        selectedReason.value = saved.reasonCode ?? null
-        feedbackComment.value = saved.comment ?? ''
-        feedbackDialog.value = true
-      } else {
-        feedbackDialog.value = false
-      }
+      feedbackDialog.value = false
+      showFeedbackNotice('Спасибо, оценка сохранена.')
     }
   } catch (error) {
     feedbackError.value = mapExpertApiError(error).message
@@ -148,11 +158,20 @@ async function submitFeedback() {
     const saved = await expertApi.saveMessageFeedback(props.message.id, { rating: 'negative', reasonCode: selectedReason.value, comment: feedbackComment.value.trim() || null })
     emit('feedback-updated', props.message.id, saved)
     feedbackDialog.value = false
+    showFeedbackNotice('Спасибо за обратную связь.')
   } catch (error) {
     feedbackDialogError.value = mapExpertApiError(error).message
   } finally {
     feedbackSaving.value = false
   }
+}
+function closeFeedbackDialog() {
+  feedbackDialog.value = false
+  feedbackDialogError.value = ''
+}
+function showFeedbackNotice(message: string) {
+  feedbackNotice.value = message
+  feedbackNoticeOpen.value = true
 }
 const copiedDiagnosticRunId = ref('')
 const renderedMarkdown = ref('')
@@ -232,6 +251,7 @@ async function copyDiagnosticId(runId: string) {
 .expert-message__source small { color: rgba(var(--v-theme-on-surface-variant), .7); }
 .expert-message__actions { display: flex; align-items: center; gap: 2px; margin-top: 4px; }
 .expert-message__feedback { display: flex; align-items: center; gap: 2px; margin-top: 3px; }
+.expert-message__feedback :deep(.v-btn[aria-pressed="true"]) { box-shadow: inset 0 0 0 1px currentColor; }
 .expert-message__feedback-error { color: rgb(var(--v-theme-error)); font-size: .72rem; }
 .expert-message__feedback-reasons { display: flex; flex-wrap: wrap; gap: 6px; }
 .expert-message__feedback-reasons button { padding: 6px 9px; border: 1px solid rgb(var(--v-theme-outline-variant)); border-radius: var(--md-sys-shape-corner-medium); background: transparent; color: inherit; cursor: pointer; font: inherit; }

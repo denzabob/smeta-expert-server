@@ -9,6 +9,7 @@ vi.mock('vuetify/components', () => ({
   VListItem: { template: '<li />' },
   VMenu: { template: '<div><slot name="activator" :props="{}" /><slot /></div>' },
   VProgressCircular: { template: '<i />' },
+  VSnackbar: { template: '<div><slot /></div>' },
 }))
 vi.mock('vuetify/components/VIcon', () => ({ VIcon: { template: '<i />' } }))
 vi.mock('vuetify/components/VProgressCircular', () => ({ VProgressCircular: { template: '<i />' } }))
@@ -17,6 +18,7 @@ vi.mock('vuetify/components/VList', () => ({ VList: { template: '<ul><slot /></u
 vi.mock('vuetify/components/VListItem', () => ({ VListItem: { template: '<li />' } }))
 vi.mock('vuetify/components/VMenu', () => ({ VMenu: { template: '<div><slot name="activator" :props="{}" /><slot /></div>' } }))
 vi.mock('vuetify/components/VDialog', () => ({ VDialog: { template: '<div><slot /></div>' } }))
+vi.mock('vuetify/components/VSnackbar', () => ({ VSnackbar: { template: '<div><slot /></div>' } }))
 vi.mock('vuetify/components/VCard', () => ({ VCard: { template: '<div><slot /></div>' }, VCardTitle: { template: '<div><slot /></div>' }, VCardText: { template: '<div><slot /></div>' }, VCardActions: { template: '<div><slot /></div>' } }))
 vi.mock('vuetify/components/VGrid', () => ({ VSpacer: { template: '<span />' } }))
 import { createExpertApi } from '../../api'

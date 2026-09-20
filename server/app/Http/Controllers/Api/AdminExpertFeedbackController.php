@@ -25,10 +25,7 @@ final class AdminExpertFeedbackController extends Controller
             'to' => ['nullable', 'date_format:Y-m-d'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $query = ExpertMessageFeedback::query()->with(['user:id,name,email', 'message.conversation.project:id,public_id,name']);
-        if (($filters['rating'] ?? 'negative') !== 'all') {
-            $query->where('rating', $filters['rating'] ?? 'negative');
-        }
+        $query = ExpertMessageFeedback::query();
         foreach (['provider', 'model', 'reason_code'] as $field) {
             if (! empty($filters[$field])) {
                 $query->where($field, $filters[$field]);
@@ -41,17 +38,29 @@ final class AdminExpertFeedbackController extends Controller
             $query->whereDate('created_at', '<=', $filters['to']);
         }
 
-        return response()->json($query->latest()->paginate($filters['per_page'] ?? 25)->through(static fn (ExpertMessageFeedback $item): array => [
-            'id' => $item->public_id,
-            'created_at' => $item->created_at?->toIso8601String(),
-            'user' => ['name' => $item->user?->name, 'email' => $item->user?->email],
-            'project' => ['id' => $item->message?->conversation?->project?->public_id, 'name' => $item->message?->conversation?->project?->name],
-            'provider' => $item->provider,
-            'model' => $item->model,
-            'rating' => $item->rating,
-            'reason_code' => $item->reason_code,
-            'comment' => $item->comment,
-        ]));
+        $ratingCounts = (clone $query)->selectRaw('rating, COUNT(*) as aggregate')->groupBy('rating')->pluck('aggregate', 'rating');
+        $positive = (int) ($ratingCounts['positive'] ?? 0);
+        $negative = (int) ($ratingCounts['negative'] ?? 0);
+        if (($filters['rating'] ?? 'negative') !== 'all') {
+            $query->where('rating', $filters['rating'] ?? 'negative');
+        }
+        $paginator = $query->with(['user:id,name,email', 'message.conversation.project:id,public_id,name'])
+            ->latest()->paginate($filters['per_page'] ?? 25)->through(static fn (ExpertMessageFeedback $item): array => [
+                'id' => $item->public_id,
+                'created_at' => $item->created_at?->toIso8601String(),
+                'user' => ['name' => $item->user?->name, 'email' => $item->user?->email],
+                'project' => ['id' => $item->message?->conversation?->project?->public_id, 'name' => $item->message?->conversation?->project?->name],
+                'provider' => $item->provider,
+                'model' => $item->model,
+                'rating' => $item->rating,
+                'reason_code' => $item->reason_code,
+                'comment' => $item->comment,
+            ]);
+
+        return response()->json([
+            ...$paginator->toArray(),
+            'counts' => ['all' => $positive + $negative, 'positive' => $positive, 'negative' => $negative],
+        ]);
     }
 
     public function show(Request $request, ExpertMessageFeedback $feedback): JsonResponse

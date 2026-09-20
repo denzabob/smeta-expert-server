@@ -119,7 +119,14 @@ final class MessageStreamController extends Controller
             return response()->json(['message' => $exception->getMessage(), 'code' => $exception->errorCode], $exception->status);
         }
         if ($exception instanceof LLMUnsupportedCapabilityException) {
-            return response()->json(['message' => 'Текущая модель AI не поддерживает потоковый режим.', 'code' => 'streaming_not_supported'], 422);
+            [$message, $code] = match ($exception->capability->value) {
+                'image_input' => ['Не удалось обработать изображение. Повторите запрос.', 'vision_not_supported'],
+                'pdf_ocr' => ['Не удалось обработать документ. Повторите запрос.', 'pdf_ocr_failed'],
+                'file_input' => ['Не удалось обработать приложенный материал.', 'material_not_supported'],
+                default => ['Не удалось получить ответ AI. Повторите запрос.', 'streaming_not_supported'],
+            };
+
+            return response()->json(['message' => $message, 'code' => $code], 422);
         }
         report($exception);
 

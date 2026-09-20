@@ -148,6 +148,7 @@ describe('Expert persistence mapping', () => {
     expect(isExpertMaterialContextError(mapped.code)).toBe(true)
     expect(isExpertMaterialContextError('material_context_temporarily_disabled')).toBe(true)
     expect(isExpertMaterialContextError('vision_not_supported')).toBe(true)
+    expect(isExpertMaterialContextError('material_not_supported')).toBe(true)
 
     const conflict = mapExpertApiError({
       isAxiosError: true,

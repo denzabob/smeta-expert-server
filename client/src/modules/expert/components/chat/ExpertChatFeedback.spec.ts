@@ -23,6 +23,7 @@ vi.mock('vuetify/components/VMenu', () => ({ VMenu: { template: '<div><slot name
 vi.mock('vuetify/components/VDialog', () => ({ VDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' } }))
 vi.mock('vuetify/components/VCard', () => ({ VCard: { template: '<div><slot /></div>' }, VCardTitle: { template: '<div><slot /></div>' }, VCardText: { template: '<div><slot /></div>' }, VCardActions: { template: '<div><slot /></div>' } }))
 vi.mock('vuetify/components/VGrid', () => ({ VSpacer: { template: '<span />' } }))
+vi.mock('vuetify/components/VSnackbar', () => ({ VSnackbar: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' } }))
 
 import ExpertChatMessage from './ExpertChatMessage.vue'
 
@@ -42,7 +43,7 @@ function mountMessage() {
 afterEach(() => { calls.save.mockReset(); calls.remove.mockReset(); document.body.innerHTML = '' })
 
 describe('Expert Chat feedback', () => {
-  it('saves, removes, and changes reaction with a negative reason and comment', async () => {
+  it('keeps the current rating until negative feedback is submitted and shows active states', async () => {
     calls.save.mockImplementation(async (_id: string, input: ExpertMessageFeedback) => input)
     calls.remove.mockResolvedValue(undefined)
     const { root, app } = mountMessage()
@@ -52,12 +53,20 @@ describe('Expert Chat feedback', () => {
     positive().click()
     await vi.waitFor(() => expect(calls.save).toHaveBeenCalledWith('assistant-1', { rating: 'positive' }))
     await vi.waitFor(() => expect(positive().getAttribute('aria-pressed')).toBe('true'))
-    positive().click()
-    await vi.waitFor(() => expect(calls.remove).toHaveBeenCalledWith('assistant-1'))
-    await vi.waitFor(() => expect(negative().disabled).toBe(false))
+    expect(positive().getAttribute('icon')).toBe('mdi-thumb-up')
+    expect(root.textContent).toContain('Спасибо, оценка сохранена.')
+
     negative().click()
-    await vi.waitFor(() => expect(calls.save).toHaveBeenCalledWith('assistant-1', { rating: 'negative' }))
     await vi.waitFor(() => expect(root.textContent).toContain('Что было не так?'))
+    expect(calls.save).toHaveBeenCalledTimes(1)
+    const close = [...root.querySelectorAll('button')].find((button) => button.textContent === 'Закрыть')!
+    close.click()
+    await nextTick()
+    expect(positive().getAttribute('aria-pressed')).toBe('true')
+    expect(calls.save).toHaveBeenCalledTimes(1)
+
+    negative().click()
+    await nextTick()
     ;(root.querySelector('.expert-message__feedback-reasons button') as HTMLButtonElement).click()
     const comment = root.querySelector('.expert-message__feedback-comment textarea') as HTMLTextAreaElement
     comment.value = 'Не учтён документ.'
@@ -68,6 +77,16 @@ describe('Expert Chat feedback', () => {
     await vi.waitFor(() => expect(calls.save).toHaveBeenCalledWith('assistant-1', {
       rating: 'negative', reasonCode: 'incorrect_or_incomplete', comment: 'Не учтён документ.',
     }))
+    await vi.waitFor(() => expect(negative().getAttribute('aria-pressed')).toBe('true'))
+    expect(negative().getAttribute('icon')).toBe('mdi-thumb-down')
+    expect(root.textContent).toContain('Спасибо за обратную связь.')
+
+    positive().click()
+    await vi.waitFor(() => expect(calls.save).toHaveBeenLastCalledWith('assistant-1', { rating: 'positive' }))
+    await vi.waitFor(() => expect(positive().getAttribute('aria-pressed')).toBe('true'))
+    positive().click()
+    await vi.waitFor(() => expect(calls.remove).toHaveBeenCalledWith('assistant-1'))
+    await vi.waitFor(() => expect(root.textContent).toContain('Оценка удалена.'))
     app.unmount()
   })
 

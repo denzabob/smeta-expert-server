@@ -22,6 +22,7 @@ vi.mock('vuetify/components/VProgressCircular', () => ({ VProgressCircular: { te
 vi.mock('vuetify/components/VDialog', () => ({ VDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' } }))
 vi.mock('vuetify/components/VCard', () => ({ VCard: { template: '<div><slot /></div>' }, VCardTitle: { template: '<div><slot /></div>' }, VCardText: { template: '<div><slot /></div>' }, VCardActions: { template: '<div><slot /></div>' } }))
 vi.mock('vuetify/components/VGrid', () => ({ VSpacer: { template: '<span />' } }))
+vi.mock('vuetify/components/VSnackbar', () => ({ VSnackbar: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' } }))
 import type { ExpertMessage } from '../../types'
 import ExpertChatMessage from './ExpertChatMessage.vue'
 
@@ -59,6 +60,28 @@ describe('Expert chat failure diagnostics', () => {
     expect(html).toContain('Повторить')
     expect(html).toContain('Подробнее')
     expect(html).not.toContain('SECRET-UPSTREAM-BODY')
+  })
+
+  it('hides model capability details behind a material-specific user message', async () => {
+    const message: ExpertMessage = {
+      id: 'assistant-vision', role: 'assistant', text: 'Частичный ответ.', createdAt: '2026-09-19T10:00:00Z',
+      deliveryState: 'error', deliveryError: 'Model luna does not support image_input.',
+      diagnostic: { runId: 'run-vision', errorCode: 'vision_not_supported', retryable: false, lastActivityCode: 'model.request.started' },
+    }
+    const app = createSSRApp({ render: () => h(ExpertChatMessage, { message, allowContinue: true }) })
+    app.component('v-icon', { template: '<i />' })
+    app.component('v-btn', { template: '<button><slot /></button>' })
+    app.component('v-menu', { template: '<div><slot name="activator" :props="{}" /><slot /></div>' })
+    app.component('v-list', { template: '<ul><slot /></ul>' })
+    app.component('v-list-item', { template: '<li />' })
+
+    const html = await renderToString(app)
+
+    expect(html).toContain('Не удалось обработать изображение. Повторите запрос.')
+    expect(html).toContain('Код: vision_not_supported')
+    expect(html).toContain('ID: run-vision')
+    expect(html).not.toContain('Model luna')
+    expect(html).not.toContain('model.request.started')
   })
 
   it('renders persisted image and document attachments on the user message, including deleted history', async () => {

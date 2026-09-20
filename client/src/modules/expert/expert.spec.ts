@@ -184,9 +184,21 @@ describe('Expert frontend prototype contracts', () => {
     expect(materialsSource).toContain('-webkit-line-clamp: 2')
     expect(materialsSource).toContain('aria-label="Компактный список"')
     expect(materialsSource).toContain('aria-label="Плитка"')
+    expect(materialsSource).toContain('class="expert-materials__view-toggle"')
+    expect(materialsSource).toContain('.expert-materials__view-toggle :deep(.v-btn + .v-btn)')
+    expect(materialsSource).toContain('border-radius: 0 !important')
     expect(materialsSource).toContain('class="expert-material-card__actions" @click.stop')
     expect(materialsSource).not.toContain('{{ material.category }}')
     expect(materialsSource).not.toContain('min-height: 220px')
     expect(materialsSource).not.toContain('height: 148px')
+  })
+
+  it('shows feedback counters and a manual refresh in the admin screen', () => {
+    const feedbackSource = readFileSync(new URL('../../views/admin/AdminExpertFeedbackView.vue', import.meta.url), 'utf8')
+
+    expect(feedbackSource).toContain('counts.negative')
+    expect(feedbackSource).toContain('counts.positive')
+    expect(feedbackSource).toContain("selectRating('negative')")
+    expect(feedbackSource).toContain('>Обновить</button>')
   })
 })
