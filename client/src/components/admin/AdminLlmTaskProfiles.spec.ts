@@ -94,7 +94,11 @@ describe('Expert task profile admin', () => {
     vi.mocked(api.get).mockImplementation(async (url) => {
       if (url.includes('/preview')) return { data: { capabilities, model_in_catalog: true, provider_configured: true } } as never
       if (url.includes('/llm-model-catalog/')) return { data: {
-        models: [{ id: 'new/model', display_name: 'New Model', context_length: 128000, capabilities, pricing: null, pricing_units: null }],
+        models: [{
+          id: 'new/model', display_name: 'New Model', context_length: 128000, capabilities,
+          pricing: { prompt: '0.000002', completion: '0.00001' },
+          pricing_units: { prompt: 'token', completion: 'token' },
+        }],
         total: 1, status: 'fresh', error_code: null,
       } } as never
       return { data: profile } as never
@@ -104,7 +108,7 @@ describe('Expert task profile admin', () => {
     Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('Настроить'))?.click()
     await settle()
     expect(vi.mocked(api.get)).toHaveBeenCalledWith('/api/admin/llm-model-catalog/routerai', {
-      params: { q: undefined, filter: ['compatible'], page: 1 },
+      params: { q: undefined, filter: ['compatible'], sort: 'catalog', page: 1 },
     })
 
     const searchInput = Array.from(root.querySelectorAll('label')).find(label => label.textContent?.includes('Поиск модели'))?.querySelector('input')
@@ -115,7 +119,7 @@ describe('Expert task profile admin', () => {
     }
     await new Promise(resolve => setTimeout(resolve, 300))
     expect(vi.mocked(api.get)).toHaveBeenCalledWith('/api/admin/llm-model-catalog/routerai', {
-      params: { q: 'new', filter: ['compatible'], page: 1 },
+      params: { q: 'new', filter: ['compatible'], sort: 'catalog', page: 1 },
     })
     const modelInput = Array.from(root.querySelectorAll('label')).find(label => label.textContent?.includes('Model ID'))?.querySelector('input')
     expect(modelInput).toBeTruthy()
@@ -124,6 +128,9 @@ describe('Expert task profile admin', () => {
       modelInput.dispatchEvent(new Event('input', { bubbles: true }))
     }
     await settle()
+    expect(root.textContent).toContain('Вход:')
+    expect(root.textContent).toContain('2 ₽ / 1M токенов')
+    expect(root.textContent).toContain('20K вход + 2K выход')
     expect(root.textContent).toContain('Есть несохранённые изменения')
     expect(vi.mocked(api.put)).not.toHaveBeenCalled()
     Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('Сохранить профиль'))?.click()
