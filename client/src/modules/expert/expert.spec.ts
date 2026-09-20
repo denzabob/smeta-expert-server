@@ -131,7 +131,8 @@ describe('Expert frontend prototype contracts', () => {
     expect(chatSource).toContain('reply.userMessage')
     expect(chatSource).toContain('reply.assistantMessage')
     expect(chatSource).toContain('appendServerAssistantMessage')
-    expect(chatSource).toContain('handleMessageAdded(wasNearBottom, false)')
+    expect(chatSource).toContain('scheduleActiveResponseFollow()')
+    expect(chatSource).toContain('followActiveResponse.value')
     expect(timelineSource).toContain('Формируется ответ…')
   })
 

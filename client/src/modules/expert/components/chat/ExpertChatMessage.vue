@@ -119,6 +119,9 @@ async function copyDiagnosticId(runId: string) {
 .expert-message__author span { margin-left: 5px; font-weight: 500; opacity: .75; }
 .expert-message__bubble { padding: 13px 15px; border: 0; border-radius: 6px var(--md-sys-shape-corner-large) var(--md-sys-shape-corner-large); color: rgba(var(--v-theme-on-surface), .9); background: rgb(var(--v-theme-surface-container-low)); font-size: .86rem; line-height: 1.55; white-space: pre-line; }
 .expert-message__markdown { white-space: normal; overflow-wrap: anywhere; }
+.expert-message__markdown :deep(ul), .expert-message__markdown :deep(ol) { margin-inline: 0; padding-inline-start: 1.65rem; list-style-position: outside; }
+.expert-message__markdown :deep(li) { padding-inline-start: .15rem; overflow-wrap: anywhere; }
+.expert-message__markdown :deep(li > ul), .expert-message__markdown :deep(li > ol) { margin-block: .35rem; padding-inline-start: 1.45rem; }
 .expert-message__markdown :deep(:first-child) { margin-top: 0; }
 .expert-message__markdown :deep(:last-child) { margin-bottom: 0; }
 .expert-message__markdown :deep(pre) { overflow-x: auto; padding: 10px; border-radius: var(--md-sys-shape-corner-small); background: rgb(var(--v-theme-surface-container)); }

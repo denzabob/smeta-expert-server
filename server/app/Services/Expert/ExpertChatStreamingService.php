@@ -15,7 +15,6 @@ use App\Services\LLM\Exceptions\LLMChatUnavailableException;
 use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\Exceptions\LLMUnsupportedCapabilityException;
 use App\Services\LLM\LLMRouter;
-use App\Services\LLM\LLMSettingsRepository;
 use App\Services\LLM\LLMTaskProfileResolver;
 use Illuminate\Support\Facades\Log;
 
@@ -27,7 +26,7 @@ final class ExpertChatStreamingService
         private readonly LLMRouter $router,
         private readonly ExpertChatMaterialContextBuilder $materialContextBuilder,
         private readonly ExpertPdfOcrCache $ocrCache,
-        private readonly LLMSettingsRepository $settings,
+        private readonly LLMTaskProfileResolver $profiles,
     ) {}
 
     /**
@@ -156,8 +155,10 @@ final class ExpertChatStreamingService
         }
 
         try {
+            $historicalIds = $this->chat->historicalMaterialPublicIds($run->conversation, $run->userMessage->content, $run->userMessage);
             $materialContext = $run->materialContext
-                ?? $this->materialContextBuilder->build($run->conversation->project, $run->materialPublicIds, $activity);
+                ?? $this->materialContextBuilder->build($run->conversation->project,
+                    array_values(array_unique([...$run->materialPublicIds, ...$historicalIds])), $activity);
 
             $request = $run->isContinuation
                 ? $this->chat->buildContinuationRequest($run->conversation, $run->userMessage, $run->existingAssistant, $materialContext)
@@ -398,16 +399,22 @@ final class ExpertChatStreamingService
     {
         $rootException = $exception instanceof LLMChatUnavailableException && $exception->getPrevious() instanceof LLMProviderException
             ? $exception->getPrevious() : $exception;
-        $provider = $rootException instanceof LLMProviderException ? $rootException->getProvider() : $this->settings->getPrimaryProvider();
-        $provider = preg_match('/^[a-z0-9_-]{1,40}$/i', $provider) ? $provider : 'unknown';
-        $model = $this->settings->getProviderSettings($provider)['model'] ?? null;
-        $model = is_string($model) && preg_match('/^[a-z0-9._\/-]{1,100}$/i', $model) ? $model : null;
+        $profile = $this->profiles->effective(LLMTaskProfileResolver::EXPERT_CHAT);
+        $effectiveProvider = $profile['effective']['provider'] ?? null;
+        $effectiveModel = $profile['effective']['model'] ?? null;
+        $actualProvider = $rootException instanceof LLMProviderException ? $rootException->getProvider() : null;
+        $safeProvider = static fn (mixed $value): ?string => is_string($value) && preg_match('/^[a-z0-9_-]{1,40}$/i', $value) ? $value : null;
+        $safeModel = static fn (mixed $value): ?string => is_string($value) && preg_match('/^[a-z0-9._\/-]{1,100}$/i', $value) ? $value : null;
         $httpStatus = $rootException instanceof LLMProviderException ? $rootException->getHttpStatus() : null;
 
-        Log::warning('Expert chat stream failed.', array_filter([
+        Log::warning('Expert chat stream failed.', [
             'run_id' => $runId,
-            'provider' => $provider,
-            'model' => $model,
+            'task_profile' => LLMTaskProfileResolver::EXPERT_CHAT,
+            'effective_provider' => $safeProvider($effectiveProvider),
+            'effective_model' => $safeModel($effectiveModel),
+            'profile_source' => $profile['source'] ?? null,
+            'actual_upstream_provider' => $safeProvider($actualProvider),
+            'actual_upstream_model' => null,
             'root_error_code' => $code,
             'retryable' => $retryable,
             'before_first_delta' => $firstDeltaAt === null,
@@ -415,7 +422,7 @@ final class ExpertChatStreamingService
             'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
             'ttft_ms' => $firstDeltaAt === null ? null : (int) round(($firstDeltaAt - $startedAt) * 1000),
             'http_status_class' => $httpStatus === null ? null : intdiv($httpStatus, 100).'xx',
-        ], static fn (mixed $value): bool => $value !== null));
+        ]);
     }
 
     /** @param list<mixed> $failoverChain */

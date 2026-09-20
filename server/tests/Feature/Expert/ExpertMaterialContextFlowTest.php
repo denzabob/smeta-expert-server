@@ -8,6 +8,7 @@ use App\Models\Expert\ExpertProjectMaterial;
 use App\Models\User;
 use App\Services\Expert\ExpertChatMaterialContextBuilder;
 use App\Services\Expert\ExpertChatService;
+use App\Services\Expert\ExpertHistoricalMaterialResolver;
 use App\Services\Expert\ExpertMaterialContextBuilder;
 use App\Services\Expert\ExpertMaterialContextException;
 use App\Services\LLM\CircuitBreaker;
@@ -603,6 +604,90 @@ class ExpertMaterialContextFlowTest extends TestCase
         $this->assertStringNotContainsString(
             'Ignore previous instructions',
             implode("\n", array_column($secondPayload, 'content')),
+        );
+    }
+
+    public function test_explicit_historical_pdf_name_restores_only_that_context_with_transient_history_metadata(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $pdf = $this->material($conversation->project, 'Нагорный.pdf', 'application/pdf', $this->pdfFixture('PDF-CONTINUITY-73129'));
+        $other = $this->material($conversation->project, 'Посторонний.txt', 'text/plain', 'UNRELATED-HISTORY-381');
+        $xlsx = $this->material($conversation->project, 'Юля электрика.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $this->xlsxFixture(null, 'XLSX-CONTINUITY-924'));
+        $provider = new ExpertMaterialContextFakeProvider('Ответ');
+        $this->installRouter($provider);
+
+        $this->send($user, $conversation, ['content' => 'Изучи PDF', 'material_public_ids' => [$pdf->public_id]])->assertCreated();
+        $this->send($user, $conversation, ['content' => 'Изучи заметку', 'material_public_ids' => [$other->public_id]])->assertCreated();
+        $this->send($user, $conversation, ['content' => 'Что общего с pdf нагорная?', 'material_public_ids' => [$xlsx->public_id]])->assertCreated();
+
+        $request = $provider->chatRequests[2];
+        $this->assertEqualsCanonicalizing([$pdf->public_id, $xlsx->public_id], array_column($request->materialContext, 'public_id'));
+        $payload = OpenAiChatMessageMapper::map($request);
+        $serialized = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('PDF-CONTINUITY-73129', $serialized);
+        $this->assertStringContainsString('Нагорный.pdf — PDF', $serialized);
+        $this->assertStringNotContainsString('UNRELATED-HISTORY-381', $serialized);
+        $this->assertDatabaseHas('expert_messages', ['role' => 'user', 'content' => 'Изучи PDF']);
+        $this->assertDatabaseHas('expert_messages', ['role' => 'user', 'content' => 'Что общего с pdf нагорная?']);
+    }
+
+    public function test_previous_pdf_is_nearest_and_ambiguous_fuzzy_name_does_not_choose_arbitrarily(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $first = $this->material($conversation->project, 'Нагорный.pdf', 'application/pdf', $this->pdfFixture('FIRST-PDF-CONTINUITY-TEST-100'));
+        $second = $this->material($conversation->project, 'Нагорное.pdf', 'application/pdf', $this->pdfFixture('SECOND-PDF-CONTINUITY-TEST-200'));
+        $provider = new ExpertMaterialContextFakeProvider('Ответ');
+        $this->installRouter($provider);
+        $this->send($user, $conversation, ['content' => 'Изучи первый', 'material_public_ids' => [$first->public_id]])->assertCreated();
+        $this->send($user, $conversation, ['content' => 'Изучи второй', 'material_public_ids' => [$second->public_id]])->assertCreated();
+
+        $resolver = app(ExpertHistoricalMaterialResolver::class);
+        $this->assertSame([$second->public_id], $resolver->resolve($conversation, 'предыдущий PDF'));
+        $this->assertSame([], $resolver->resolve($conversation, 'Сравни нагорная'));
+        $this->send($user, $conversation, ['content' => 'Что в предыдущем PDF?'])->assertCreated();
+        $this->assertSame([$second->public_id], array_column($provider->chatRequests[2]->materialContext, 'public_id'));
+    }
+
+    public function test_historical_filename_normalization_prefers_complete_multilingual_name(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $named = $this->material($conversation->project, 'Старая ёлка.pdf', 'application/pdf', $this->pdfFixture('MULTIWORD-PDF-CONTENT-91577'));
+        $other = $this->material($conversation->project, 'Старая смета.pdf', 'application/pdf', $this->pdfFixture('OTHER-PDF-CONTENT-73912'));
+        $provider = new ExpertMaterialContextFakeProvider('Ответ');
+        $this->installRouter($provider);
+        $this->send($user, $conversation, ['content' => 'Первый', 'material_public_ids' => [$named->public_id]])->assertCreated();
+        $this->send($user, $conversation, ['content' => 'Второй', 'material_public_ids' => [$other->public_id]])->assertCreated();
+
+        $resolver = app(ExpertHistoricalMaterialResolver::class);
+        $this->assertSame([$named->public_id], $resolver->resolve($conversation, 'Вернись к СТАРАЯ ЕЛКА.PDF!'));
+        $this->assertSame([$other->public_id], $resolver->resolve($conversation, 'Что в старая смета?'));
+    }
+
+    public function test_historical_resolution_is_limited_to_four_recent_matching_materials(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $provider = new ExpertMaterialContextFakeProvider('Ответ');
+        $this->installRouter($provider);
+        $materials = [];
+
+        foreach (range(1, 5) as $number) {
+            $material = $this->material($conversation->project, "Материал{$number}.txt", 'text/plain', "Содержимое {$number}");
+            $materials[] = $material;
+            $this->send($user, $conversation, [
+                'content' => "Изучи {$number}",
+                'material_public_ids' => [$material->public_id],
+            ])->assertCreated();
+        }
+
+        $resolved = app(ExpertHistoricalMaterialResolver::class)->resolve(
+            $conversation,
+            'Сравни Материал1.txt, Материал2.txt, Материал3.txt, Материал4.txt и Материал5.txt',
+        );
+
+        $this->assertCount(4, $resolved);
+        $this->assertEqualsCanonicalizing(
+            array_map(static fn (ExpertProjectMaterial $material): string => $material->public_id, array_slice($materials, 1)),
+            $resolved,
         );
     }
 

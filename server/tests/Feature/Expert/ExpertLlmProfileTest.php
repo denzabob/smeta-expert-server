@@ -199,6 +199,34 @@ final class ExpertLlmProfileTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_price_sort_uses_token_units_across_all_pages_and_preserves_pinned_model_on_refresh(): void
+    {
+        $admin = User::factory()->create(['id' => 1]);
+        $settings = app(LLMSettingsRepository::class);
+        $settings->saveTaskProfile('expert_chat', [
+            'provider' => 'routerai', 'model' => 'legacy/unknown', 'enabled' => true, 'fallback_policy' => 'none',
+        ]);
+        $models = [];
+        for ($index = 0; $index < 43; $index++) {
+            $models[] = [
+                'id' => 'vendor/model-'.str_pad((string) $index, 2, '0', STR_PAD_LEFT),
+                'architecture' => ['input_modalities' => ['text'], 'output_modalities' => ['text']],
+                'pricing' => ['prompt' => $index === 42 ? '0.000001' : '0.000010', 'completion' => '0.000002'],
+                'pricing_units' => ['prompt' => $index === 41 ? 'request' : 'token', 'completion' => 'token'],
+            ];
+        }
+        $models[40]['pricing']['completion'] = 'invalid';
+        $this->catalogFake($models);
+        $base = '/api/admin/llm-model-catalog/routerai';
+        $this->actingAs($admin, 'sanctum')->getJson($base.'?sort=typical_cost')->assertOk()
+            ->assertJsonPath('models.0.id', 'vendor/model-42')->assertJsonCount(40, 'models');
+        $this->getJson($base.'?sort=typical_cost&page=2')->assertOk()
+            ->assertJsonPath('models.1.id', 'vendor/model-40')->assertJsonPath('models.2.id', 'vendor/model-41');
+        $this->getJson($base.'?sort=input_cost')->assertOk()->assertJsonPath('models.0.id', 'vendor/model-42');
+        $this->postJson($base.'/refresh')->assertOk();
+        $this->assertSame('legacy/unknown', $settings->getTaskProfile('expert_chat')['model']);
+    }
+
     private function catalogFake(array $models): void
     {
         Http::fake(['*/models' => Http::response(['data' => $models], 200)]);

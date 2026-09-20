@@ -9,7 +9,7 @@ vi.mock('vuetify/components', () => ({
   VCard: { template: '<div><slot /></div>' }, VCardTitle: { template: '<div><slot /></div>' },
   VCardText: { template: '<div><slot /></div>' }, VAlert: { template: '<div><slot /></div>' },
   VRow: { template: '<div><slot /></div>' }, VCol: { template: '<div><slot /></div>' },
-  VSelect: { template: '<div />' }, VTextField: { props: ['modelValue', 'label'], emits: ['update:modelValue'], template: '<label>{{ label }}<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /></label>' },
+  VSelect: { props: ['modelValue', 'label'], emits: ['update:modelValue'], template: '<label>{{ label }}<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option value="catalog">Порядок</option><option value="typical_cost">Типовой</option></select></label>' }, VTextField: { props: ['modelValue', 'label'], emits: ['update:modelValue'], template: '<label>{{ label }}<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /></label>' },
   VSwitch: { template: '<div />' }, VChip: { template: '<span><slot /></span>' },
   VBtn: { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' },
   VDivider: { template: '<hr />' }, VCheckboxBtn: { template: '<div />' },
@@ -21,7 +21,7 @@ vi.mock('vuetify/components', () => ({
 vi.mock('vuetify/components/VCard', () => ({ VCard: { template: '<div><slot /></div>' }, VCardTitle: { template: '<div><slot /></div>' }, VCardText: { template: '<div><slot /></div>' } }))
 vi.mock('vuetify/components/VAlert', () => ({ VAlert: { template: '<div><slot /></div>' } }))
 vi.mock('vuetify/components/VGrid', () => ({ VRow: { template: '<div><slot /></div>' }, VCol: { template: '<div><slot /></div>' }, VSpacer: { template: '<div />' } }))
-vi.mock('vuetify/components/VSelect', () => ({ VSelect: { template: '<div />' } }))
+vi.mock('vuetify/components/VSelect', () => ({ VSelect: { props: ['modelValue', 'label'], emits: ['update:modelValue'], template: '<label>{{ label }}<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option value="catalog">Порядок</option><option value="typical_cost">Типовой</option></select></label>' } }))
 vi.mock('vuetify/components/VTextField', () => ({ VTextField: { props: ['modelValue', 'label'], emits: ['update:modelValue'], template: '<label>{{ label }}<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /></label>' } }))
 vi.mock('vuetify/components/VSwitch', () => ({ VSwitch: { template: '<div />' } }))
 vi.mock('vuetify/components/VChip', () => ({ VChip: { template: '<span><slot /></span>' } }))
@@ -94,7 +94,10 @@ describe('Expert task profile admin', () => {
     vi.mocked(api.get).mockImplementation(async (url) => {
       if (url.includes('/preview')) return { data: { capabilities, model_in_catalog: true, provider_configured: true } } as never
       if (url.includes('/llm-model-catalog/')) return { data: {
-        models: [{ id: 'new/model', display_name: 'New Model', context_length: 128000, capabilities, pricing: null, pricing_units: null }],
+        models: [{ id: 'new/model', display_name: 'New Model', context_length: 128000, capabilities,
+          pricing: { prompt: '0.00000328', completion: '0.00001423', input_cache_read: '0.00000066', web_search: '2' },
+          pricing_units: { prompt: 'token', completion: 'token', input_cache_read: 'token', web_search: 'request' },
+        }],
         total: 1, status: 'fresh', error_code: null,
       } } as never
       return { data: profile } as never
@@ -104,7 +107,7 @@ describe('Expert task profile admin', () => {
     Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('Настроить'))?.click()
     await settle()
     expect(vi.mocked(api.get)).toHaveBeenCalledWith('/api/admin/llm-model-catalog/routerai', {
-      params: { q: undefined, filter: ['compatible'], page: 1 },
+      params: { q: undefined, filter: ['compatible'], sort: 'catalog', page: 1 },
     })
 
     const searchInput = Array.from(root.querySelectorAll('label')).find(label => label.textContent?.includes('Поиск модели'))?.querySelector('input')
@@ -115,7 +118,18 @@ describe('Expert task profile admin', () => {
     }
     await new Promise(resolve => setTimeout(resolve, 300))
     expect(vi.mocked(api.get)).toHaveBeenCalledWith('/api/admin/llm-model-catalog/routerai', {
-      params: { q: 'new', filter: ['compatible'], page: 1 },
+      params: { q: 'new', filter: ['compatible'], sort: 'catalog', page: 1 },
+    })
+    expect(root.textContent).toContain('3,28 ₽ / 1M токенов')
+    expect(root.textContent).toContain('14,23 ₽ / 1M токенов')
+    expect(root.textContent).toContain('0,66 ₽ / 1M токенов')
+    expect(root.textContent).toContain('Web search: 2 ₽ / запрос')
+    expect(root.textContent).toContain('20K вход + 2K выход')
+    const sortInput = Array.from(root.querySelectorAll('label')).find(label => label.textContent?.includes('Сортировка по стоимости'))?.querySelector('select')
+    if (sortInput) { sortInput.value = 'typical_cost'; sortInput.dispatchEvent(new Event('change', { bubbles: true })) }
+    await new Promise(resolve => setTimeout(resolve, 300))
+    expect(vi.mocked(api.get)).toHaveBeenCalledWith('/api/admin/llm-model-catalog/routerai', {
+      params: { q: 'new', filter: ['compatible'], sort: 'typical_cost', page: 1 },
     })
     const modelInput = Array.from(root.querySelectorAll('label')).find(label => label.textContent?.includes('Model ID'))?.querySelector('input')
     expect(modelInput).toBeTruthy()

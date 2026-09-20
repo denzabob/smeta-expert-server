@@ -1,6 +1,7 @@
 import { createSSRApp, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 
 vi.mock('vuetify/components', () => ({
   VBtn: { template: '<button><slot /></button>' },
@@ -22,6 +23,14 @@ import type { ExpertMessage } from '../../types'
 import ExpertChatMessage from './ExpertChatMessage.vue'
 
 describe('Expert chat failure diagnostics', () => {
+  it('keeps nested list markers inside the padded Markdown bubble without inside positioning', () => {
+    const source = readFileSync(new URL('./ExpertChatMessage.vue', import.meta.url), 'utf8')
+    expect(source).toMatch(/:deep\(ul\).*:deep\(ol\).*margin-inline: 0; padding-inline-start: 1\.65rem; list-style-position: outside/)
+    expect(source).toMatch(/:deep\(li\).*overflow-wrap: anywhere/)
+    expect(source).toMatch(/:deep\(li > ul\).*:deep\(li > ol\).*padding-inline-start: 1\.45rem/)
+    expect(source).toContain(':deep(pre) { overflow-x: auto;')
+    expect(source).toContain(':deep(table) { display: block; max-width: 100%; overflow-x: auto;')
+  })
   it('renders only the safe error code and run ID inside collapsed details', async () => {
     const message: ExpertMessage = {
       id: 'assistant-1',

@@ -25,6 +25,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery;
@@ -97,7 +98,7 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
             'content' => 'OCR-ответ для OCR-EXPERT-48217.',
         ]);
 
-        $this->send($user, $conversation, ['content' => 'Второй вопрос', 'material_public_ids' => [$material->public_id]])
+        $this->send($user, $conversation, ['content' => 'Что в предыдущем PDF?', 'material_public_ids' => []])
             ->assertCreated()
             ->assertJsonPath('assistant_message.content', 'OCR-ответ для OCR-EXPERT-48217.');
 
@@ -129,6 +130,40 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
             ->assertJsonPath('assistant_message.content', 'OCR-ответ для OCR-EXPERT-48217.');
         Http::assertSentCount(1);
         $this->assertDatabaseHas('expert_messages', ['role' => 'assistant', 'content' => 'OCR-ответ для OCR-EXPERT-48217.']);
+    }
+
+    public function test_valid_pdf_parser_exception_uses_ocr_instead_of_misleading_pdf_malformed(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $fixture = $this->textPdfFixture();
+        $material = $this->uploadPdf($user, $conversation->project, $fixture);
+        $parser = Mockery::mock(Parser::class);
+        $parser->shouldReceive('parseContent')->with($fixture)->andThrow(new \Error('Smalot\\PdfParser\\Parser class missing'));
+        $this->app->instance(Parser::class, $parser);
+        Log::spy();
+        $this->installRouterAi();
+        Http::fake(['*/chat/completions' => Http::response($this->routerResponse(hash('sha256', $fixture)), 200)]);
+
+        $this->send($user, $conversation, ['content' => 'Прочитай PDF', 'material_public_ids' => [$material->public_id]])
+            ->assertCreated();
+        Http::assertSentCount(1);
+        Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => $message === 'Expert PDF local parser failed.' && $context['exception_class'] === \Error::class
+            && str_contains($context['exception_message'], 'Parser class missing'))->once();
+    }
+
+    public function test_pdf_like_bytes_with_invalid_xref_fail_closed_before_ocr(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $bytes = "%PDF-1.7\n1 0 obj <</Type /Page>> endobj\nstartxref\n0\n%%EOF";
+        $material = $this->material($conversation->project, 'fake.pdf', 'application/pdf', $bytes);
+        $parser = Mockery::mock(Parser::class);
+        $parser->shouldReceive('parseContent')->with($bytes)->andThrow(new \RuntimeException('Unsupported parser construction'));
+        $this->app->instance(Parser::class, $parser);
+        Http::fake();
+
+        $this->send($user, $conversation, ['content' => 'Проверь PDF', 'material_public_ids' => [$material->public_id]])
+            ->assertStatus(422)->assertJsonPath('code', 'pdf_malformed');
+        Http::assertNothingSent();
     }
 
     public function test_local_pdf_extraction_failure_obeys_ocr_size_and_enabled_limits(): void

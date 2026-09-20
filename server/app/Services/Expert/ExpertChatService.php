@@ -22,6 +22,7 @@ final class ExpertChatService
         private readonly ExpertChatPrompt $prompt,
         private readonly ExpertPdfOcrCache $ocrCache,
         private readonly ExpertMessageAttachments $attachments,
+        private readonly ExpertHistoricalMaterialResolver $historicalMaterials,
     ) {}
 
     /**
@@ -90,6 +91,14 @@ final class ExpertChatService
         }
 
         return $ids;
+    }
+
+    /** @return list<string> */
+    public function historicalMaterialPublicIds(ExpertConversation $conversation, string $content, ?ExpertMessage $current = null, ?string $clientMessageId = null): array
+    {
+        $current ??= $clientMessageId === null ? null : $this->findUserMessage($conversation, $clientMessageId);
+
+        return $this->historicalMaterials->resolve($conversation, $content, $current);
     }
 
     public function completedReplyOrFail(
@@ -217,8 +226,9 @@ final class ExpertChatService
             ->orderBy('created_at')
             ->orderBy('id')
             ->limit(max(0, (int) config('expert.chat.history_limit', 20)))
+            ->with('attachments')
             ->get()
-            ->map(fn (ExpertMessage $message): LLMChatMessage => LLMChatMessage::text($message->role, $message->content))
+            ->map(fn (ExpertMessage $message): LLMChatMessage => $this->historyMessage($message))
             ->all();
 
         $history[] = new LLMChatMessage('user', [
@@ -355,10 +365,7 @@ final class ExpertChatService
         ExpertChatMaterialContext $materialContext,
     ): LLMChatRequest {
         $history = $this->recentHistory($conversation, $currentMessage)
-            ->map(fn (ExpertMessage $message): LLMChatMessage => LLMChatMessage::text(
-                $message->role,
-                $message->content,
-            ))
+            ->map(fn (ExpertMessage $message): LLMChatMessage => $this->historyMessage($message))
             ->all();
 
         $history[] = new LLMChatMessage('user', [
@@ -368,6 +375,12 @@ final class ExpertChatService
         ]);
 
         return new LLMChatRequest($this->prompt->systemMessage(), $history, $materialContext->textMaterials);
+    }
+
+    private function historyMessage(ExpertMessage $message): LLMChatMessage
+    {
+        return LLMChatMessage::text($message->role, $message->role === 'user'
+            ? $this->historicalMaterials->historyText($message) : $message->content);
     }
 
     /**
@@ -388,6 +401,7 @@ final class ExpertChatService
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit($limit)
+            ->with('attachments')
             ->get()
             ->reverse()
             ->values();

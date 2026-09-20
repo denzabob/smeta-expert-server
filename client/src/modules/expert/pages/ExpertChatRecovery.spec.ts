@@ -62,9 +62,63 @@ vi.mock('vuetify/components/VListSubheader', () => ({ VListSubheader: { template
 
 import ExpertChat from './ExpertChat.vue'
 
-afterEach(() => { vi.restoreAllMocks() })
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Expert Chat recovery', () => {
+  it('follows stream growth until the user scrolls up and restores follow from New messages', async () => {
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 0))
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id))
+    const project = { id: 'project-1', title: 'Проект', conversations: [], materials: [], quickActions: [] } as unknown as ExpertProject
+    vi.spyOn(expertApi, 'listConversations').mockResolvedValue([{ id: 'conversation-1', title: 'Чат', messages: [] }])
+    vi.spyOn(expertApi, 'listMessages').mockResolvedValue([])
+    let handlers!: Parameters<typeof expertApi.streamMessage>[4]
+    let finish!: () => void
+    vi.spyOn(expertApi, 'streamMessage').mockImplementation(async (_conversationId, _content, _id, _materials, callbacks) => {
+      handlers = callbacks
+      await new Promise<void>((resolve) => { finish = resolve })
+    })
+    const root = document.createElement('div')
+    document.body.append(root)
+    const app = createApp(ExpertChat, { project, projectMode: 'real' })
+    app.mount(root)
+    await vi.waitFor(() => expect(expertApi.listMessages).toHaveBeenCalled())
+    const area = root.querySelector('.expert-chat__messages') as HTMLElement
+    let height = 1000
+    Object.defineProperty(area, 'scrollHeight', { get: () => height })
+    Object.defineProperty(area, 'clientHeight', { get: () => 100 })
+    area.scrollTop = 900
+    area.scrollTo = vi.fn(({ top }: ScrollToOptions) => { area.scrollTop = Number(top) })
+    const input = root.querySelector('input[aria-label="Текст сообщения"]') as HTMLInputElement
+    input.value = 'Вопрос'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    ;(Array.from(root.querySelectorAll('button')).find(button => button.textContent === 'Отправить') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(handlers).toBeDefined())
+    handlers.onRun('run-1', { id: 'user-1', role: 'user', text: 'Вопрос', createdAt: new Date().toISOString() })
+    height = 1200
+    handlers.onDelta('run-1', 1, 'Первый фрагмент')
+    area.dispatchEvent(new Event('scroll'))
+    await vi.waitFor(() => expect(area.scrollTop).toBe(1200))
+    expect(root.textContent).not.toContain('Новые сообщения')
+
+    area.dispatchEvent(new Event('wheel'))
+    area.scrollTop = 500
+    area.dispatchEvent(new Event('scroll'))
+    await nextTick()
+    expect(root.textContent).toContain('Новые сообщения')
+    height = 1400
+    handlers.onDelta('run-1', 2, ' Второй фрагмент')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(area.scrollTop).toBe(500)
+    ;(Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('Новые сообщения')) as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(area.scrollTop).toBe(1400))
+    expect(root.textContent).not.toContain('Новые сообщения')
+    height = 1500
+    handlers.onDelta('run-1', 3, ' Третий фрагмент')
+    await vi.waitFor(() => expect(area.scrollTop).toBe(1500))
+    finish()
+    app.unmount()
+    root.remove()
+  })
   it('routes a dropped pair through project uploads and selects both completed materials', async () => {
     Element.prototype.scrollTo = vi.fn()
     const project = { id: 'project-1', title: 'Проект', conversations: [], materials: [], quickActions: [] } as unknown as ExpertProject

@@ -37,7 +37,7 @@
       </v-alert>
 
       <div class="expert-chat__messages-wrap">
-        <div ref="messageArea" class="expert-chat__messages" @scroll.passive="updateScrollPosition">
+        <div ref="messageArea" class="expert-chat__messages" tabindex="0" @scroll.passive="updateScrollPosition" @wheel.passive="markUserScrollIntent" @touchmove.passive="markUserScrollIntent" @pointerdown="markPointerScrollIntent" @keydown="markKeyboardScrollIntent">
           <div v-if="!loading && !messages.length" class="expert-chat__empty">
             <div class="expert-chat__empty-icon"><v-icon :icon="projectMode === 'demo' ? 'mdi-prism' : 'mdi-message-text-outline'" size="30" /></div>
             <h1>{{ projectMode === 'demo' ? 'Чем помочь в этом исследовании?' : 'Экспертный чат' }}</h1>
@@ -128,7 +128,7 @@ import { addExpertMessageMaterialContext, getExpertChatAttachmentSendBlockReason
 import { normalizeExpertChatDraft } from '../chatComposer'
 import { shouldUseLegacyExpertChatFallback } from '../chatStreamingFallback'
 import { appendUniqueExpertMessage, createOptimisticUserMessage, replaceOptimisticExpertMessage, setExpertMessageDeliveryState } from '../chatMessageState'
-import { isNearExpertChatBottom, shouldFollowNewExpertMessage } from '../chatScroll'
+import { isNearExpertChatBottom, nextExpertChatFollowState } from '../chatScroll'
 import {
   addExpertTimelineRun,
   appendExpertReasoningSummary,
@@ -164,6 +164,9 @@ const snackbarOpen = ref(false)
 const snackbarText = ref('')
 const messageArea = ref<HTMLElement | null>(null)
 const showScrollToBottom = ref(false)
+const followActiveResponse = ref(true)
+let userScrollIntentUntil = 0
+let followFrame = 0
 const transfers = useExpertMaterialTransfers()
 const composerMaterialContexts = ref<ExpertMessageMaterialContext[]>([])
 const libraryOpen = ref(false)
@@ -542,20 +545,19 @@ async function persistMessage(message: ExpertMessage) {
           lastSeq = seq
           clearSlowWaiting(runId)
           clearSignificantWait(runId)
-          const wasNearBottom = targetConversationId === conversationId.value && isMessageAreaNearBottom()
           if (!localAssistantId) {
             localAssistantId = `local-stream-${runId}`
             appendServerAssistantMessage(targetConversationId, { id: localAssistantId, role: 'assistant', text: '', createdAt: new Date().toISOString(), deliveryState: 'sending' })
             beginTimelineRun(localAssistantId, runId, materialIds.length)
           }
           updateMessageText(localAssistantId, text)
-          if (targetConversationId === conversationId.value) void handleMessageAdded(wasNearBottom, false)
+          if (targetConversationId === conversationId.value) scheduleActiveResponseFollow()
         },
         onActivity: (activity) => {
-          if (activity.runId === activeRunId.value && localAssistantId) applyTimelineActivity(localAssistantId, activity)
+          if (activity.runId === activeRunId.value && localAssistantId) { applyTimelineActivity(localAssistantId, activity); scheduleActiveResponseFollow() }
         },
         onReasoningSummary: (summary) => {
-          if (summary.runId === activeRunId.value && localAssistantId) appendTimelineSummary(localAssistantId, summary)
+          if (summary.runId === activeRunId.value && localAssistantId) { appendTimelineSummary(localAssistantId, summary); scheduleActiveResponseFollow() }
         },
         onDone: (assistantMessage) => {
           generationState.value = 'completed'
@@ -687,12 +689,11 @@ async function continueMessage(assistantId: string) {
         lastSeq = seq
         clearSlowWaiting(runId)
         clearSignificantWait(runId)
-        const nearBottom = isMessageAreaNearBottom()
         updateMessageText(assistantId, text)
-        void handleMessageAdded(nearBottom, false)
+        scheduleActiveResponseFollow()
       },
-      onActivity: (activity) => { if (activity.runId === continuationRunId) applyTimelineActivity(assistantId, activity) },
-      onReasoningSummary: (summary) => { if (summary.runId === continuationRunId) appendTimelineSummary(assistantId, summary) },
+      onActivity: (activity) => { if (activity.runId === continuationRunId) { applyTimelineActivity(assistantId, activity); scheduleActiveResponseFollow() } },
+      onReasoningSummary: (summary) => { if (summary.runId === continuationRunId) { appendTimelineSummary(assistantId, summary); scheduleActiveResponseFollow() } },
       onDone: (saved) => {
         generationState.value = 'completed'
         finishTimelineRun(assistantId, continuationRunId, 'completed')
@@ -737,7 +738,8 @@ function retryMessage(messageId: string) {
 function sendMessage(text: string, accepted: () => void = () => undefined) {
   const normalizedText = normalizeExpertChatDraft(text)
   if (!normalizedText || (props.projectMode === 'real' && composerSendBlockedReason.value)) return
-  const wasNearBottom = isMessageAreaNearBottom()
+  followActiveResponse.value = nextExpertChatFollowState(followActiveResponse.value, 'own-message')
+  userScrollIntentUntil = 0
 
   if (props.projectMode === 'demo') {
     const userMessage = { ...createOptimisticUserMessage(normalizedText), deliveryState: 'sent' as const }
@@ -750,7 +752,7 @@ function sendMessage(text: string, accepted: () => void = () => undefined) {
     }
     appendMessages([userMessage, reply])
     accepted()
-    void handleMessageAdded(wasNearBottom, true)
+    void scrollToLatest('smooth')
     return
   }
 
@@ -762,7 +764,7 @@ function sendMessage(text: string, accepted: () => void = () => undefined) {
   appendMessages([optimisticMessage])
   accepted()
   composerMaterialContexts.value = []
-  void handleMessageAdded(wasNearBottom, true)
+  void scrollToLatest('smooth')
   void persistMessage(optimisticMessage)
 }
 
@@ -851,24 +853,45 @@ function isMessageAreaNearBottom(): boolean {
 }
 
 function updateScrollPosition() {
-  showScrollToBottom.value = !isMessageAreaNearBottom()
+  if (performance.now() > userScrollIntentUntil) return
+  const nearBottom = isMessageAreaNearBottom()
+  followActiveResponse.value = nextExpertChatFollowState(followActiveResponse.value, nearBottom ? 'user-scroll-bottom' : 'user-scroll-up')
+  showScrollToBottom.value = !followActiveResponse.value
+  if (!followActiveResponse.value && followFrame) { cancelAnimationFrame(followFrame); followFrame = 0 }
+}
+
+function markUserScrollIntent() {
+  userScrollIntentUntil = performance.now() + 1000
+}
+
+function markPointerScrollIntent(event: PointerEvent) {
+  const element = messageArea.value
+  if (element && event.target === element && event.offsetX >= element.clientWidth - 16) markUserScrollIntent()
+}
+
+function markKeyboardScrollIntent(event: KeyboardEvent) {
+  if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) markUserScrollIntent()
+}
+
+function scheduleActiveResponseFollow() {
+  if (!nextExpertChatFollowState(followActiveResponse.value, 'stream-growth') || followFrame) return
+  followFrame = requestAnimationFrame(async () => {
+    followFrame = 0
+    await nextTick()
+    if (!followActiveResponse.value) return
+    const element = messageArea.value
+    if (element) element.scrollTop = element.scrollHeight
+  })
 }
 
 async function scrollToLatest(behavior: ScrollBehavior) {
+  followActiveResponse.value = nextExpertChatFollowState(followActiveResponse.value, 'new-messages-click')
+  userScrollIntentUntil = 0
   await nextTick()
   const element = messageArea.value
   if (!element) return
   element.scrollTo({ top: element.scrollHeight, behavior })
   showScrollToBottom.value = false
-}
-
-async function handleMessageAdded(wasNearBottom: boolean, isOwnMessage: boolean) {
-  await nextTick()
-  if (shouldFollowNewExpertMessage(wasNearBottom, isOwnMessage)) {
-    await scrollToLatest('smooth')
-    return
-  }
-  showScrollToBottom.value = true
 }
 
 function notify(action: string) {
@@ -887,7 +910,13 @@ function selectWholeProject() {
 }
 
 watch(() => props.project.id, () => { void requestConversations() }, { immediate: true })
-watch(conversationId, (id) => { composerMaterialContexts.value = []; transfers.clearUploads(); void loadMessages(id) })
+watch(conversationId, (id) => { composerMaterialContexts.value = []; transfers.clearUploads(); followActiveResponse.value = true; showScrollToBottom.value = false; void loadMessages(id) })
+watch(messageArea, (element, _, onCleanup) => {
+  if (!element) return
+  const observer = new MutationObserver(() => { if (streamActive.value) scheduleActiveResponseFollow() })
+  observer.observe(element, { childList: true, characterData: true, subtree: true })
+  onCleanup(() => observer.disconnect())
+})
 watch(() => props.project.id, () => {
   composerMaterialContexts.value = []
   timelineByAssistant.value = {}
@@ -895,7 +924,7 @@ watch(() => props.project.id, () => {
   transfers.clearUploads()
   transfers.syncImagePreviews(props.project.materials)
 })
-onBeforeUnmount(() => { activeAbort.value?.abort(); clearAllSlowWaiting(); timelineByAssistant.value = {}; transfers.dispose() })
+onBeforeUnmount(() => { activeAbort.value?.abort(); if (followFrame) cancelAnimationFrame(followFrame); clearAllSlowWaiting(); timelineByAssistant.value = {}; transfers.dispose() })
 </script>
 
 <style scoped>

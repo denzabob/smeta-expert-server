@@ -27,6 +27,21 @@ git pull --ff-only
 
 docker compose $COMPOSE_FILES up -d --build
 
+# The server bind mount covers image-built vendor; reconcile it with the checked-out lockfile.
+docker compose $COMPOSE_FILES exec -T app composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+docker compose $COMPOSE_FILES exec -T app composer check-platform-reqs --no-dev
+docker compose $COMPOSE_FILES exec -T worker composer check-platform-reqs --no-dev
+app_vendor=$(docker compose $COMPOSE_FILES exec -T app sha256sum /var/www/html/vendor/composer/installed.php)
+worker_vendor=$(docker compose $COMPOSE_FILES exec -T worker sha256sum /var/www/html/vendor/composer/installed.php)
+if [ -z "$app_vendor" ] || [ "$app_vendor" != "$worker_vendor" ]; then
+  echo "ERROR: app and worker Composer runtime differs" >&2
+  exit 1
+fi
+docker compose $COMPOSE_FILES exec -T app php -r 'require "/var/www/html/vendor/autoload.php"; exit(class_exists("Smalot\\PdfParser\\Parser") ? 0 : 1);'
+docker compose $COMPOSE_FILES exec -T worker php -r 'require "/var/www/html/vendor/autoload.php"; exit(class_exists("Smalot\\PdfParser\\Parser") ? 0 : 1);'
+# Restart long-lived processes so they load the newly reconciled vendor tree.
+docker compose $COMPOSE_FILES restart app worker
+
 # Ensure Playwright browser binaries are present in runtime container.
 # Install only Chromium, because that is usually enough for capture/automation tasks.
 docker compose $COMPOSE_FILES exec -T worker sh -lc '

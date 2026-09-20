@@ -15,6 +15,7 @@ cat > "$test_dir/bin/docker" <<'MOCK'
 printf '%s\n' "$*" >> "$CALLS"
 case "$*" in
   *'exec -T db '*) echo 3 ;;
+  *'sha256sum /var/www/html/vendor/composer/installed.php'*) echo 'same-lock-runtime  /var/www/html/vendor/composer/installed.php' ;;
   *'inspect -f '*) echo healthy ;;
 esac
 MOCK
@@ -27,6 +28,9 @@ export PATH
 cd "$test_dir"
 
 ./deploy-app --skip-migrate > "$test_dir/skip-output"
+grep -q 'exec -T app composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction' "$CALLS"
+grep -q 'exec -T worker composer check-platform-reqs --no-dev' "$CALLS"
+grep -q 'restart app worker' "$CALLS"
 grep -q 'Migrations skipped by request' "$test_dir/skip-output"
 if grep -q 'artisan migrate --force' "$CALLS"; then
   echo 'skip mode called migrate' >&2

@@ -76,6 +76,7 @@ final class AdminLLMProfileController extends Controller
             'q' => ['sometimes', 'string', 'max:100'],
             'filter' => ['sometimes', 'array'],
             'filter.*' => [Rule::in(['vision', 'streaming', 'reasoning', 'tools', 'structured_output', 'compatible'])],
+            'sort' => ['sometimes', Rule::in(['catalog', 'typical_cost', 'input_cost', 'output_cost'])],
             'page' => ['sometimes', 'integer', 'min:1'],
         ]);
 
@@ -139,6 +140,21 @@ final class AdminLLMProfileController extends Controller
             }
         }
 
+        $sort = (string) ($query['sort'] ?? 'catalog');
+        if ($sort !== 'catalog') {
+            usort($matches, function (array $left, array $right) use ($sort): int {
+                $leftPrice = $this->catalogPriceMetric($left, $sort);
+                $rightPrice = $this->catalogPriceMetric($right, $sort);
+
+                if ($leftPrice === null || $rightPrice === null) {
+                    return $leftPrice === null && $rightPrice === null
+                        ? strcmp($left['id'], $right['id']) : ($leftPrice === null ? 1 : -1);
+                }
+
+                return ($leftPrice <=> $rightPrice) ?: strcmp($left['id'], $right['id']);
+            });
+        }
+
         $page = (int) ($query['page'] ?? 1);
 
         return [
@@ -150,6 +166,34 @@ final class AdminLLMProfileController extends Controller
             'per_page' => 40,
             'models' => array_slice($matches, ($page - 1) * 40, 40),
         ];
+    }
+
+    private function catalogPriceMetric(array $model, string $sort): ?float
+    {
+        $pricing = is_array($model['pricing'] ?? null) ? $model['pricing'] : [];
+        $units = is_array($model['pricing_units'] ?? null) ? $model['pricing_units'] : [];
+        $inputKey = array_key_exists('prompt', $pricing) ? 'prompt' : (array_key_exists('input', $pricing) ? 'input' : null);
+        $outputKey = array_key_exists('completion', $pricing) ? 'completion' : (array_key_exists('output', $pricing) ? 'output' : null);
+        $input = $inputKey === null ? null : $this->tokenPrice($pricing[$inputKey], $units[$inputKey] ?? null);
+        $output = $outputKey === null ? null : $this->tokenPrice($pricing[$outputKey], $units[$outputKey] ?? null);
+
+        return match ($sort) {
+            'input_cost' => $input,
+            'output_cost' => $output,
+            'typical_cost' => $input === null || $output === null ? null : $input * 20000 + $output * 2000,
+            default => null,
+        };
+    }
+
+    private function tokenPrice(mixed $value, mixed $unit): ?float
+    {
+        if (! is_numeric($value) || ! is_string($unit) || strtolower($unit) !== 'token') {
+            return null;
+        }
+
+        $price = (float) $value;
+
+        return is_finite($price) && $price >= 0 ? $price : null;
     }
 
     private function authorizeAdmin(Request $request): void

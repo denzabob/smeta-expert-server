@@ -57,7 +57,10 @@
             <v-btn size="small" variant="tonal" :loading="refreshing" @click="refreshCatalog">Обновить каталог</v-btn>
           </div>
           <v-alert v-if="catalogError" type="warning" variant="tonal" density="compact" class="mb-2">{{ catalogError }}</v-alert>
-          <v-text-field v-model="search" label="Поиск модели" variant="outlined" density="compact" clearable prepend-inner-icon="mdi-magnify" />
+          <v-row dense>
+            <v-col cols="12" md="8"><v-text-field v-model="search" label="Поиск модели" variant="outlined" density="compact" clearable prepend-inner-icon="mdi-magnify" /></v-col>
+            <v-col cols="12" md="4"><v-select v-model="sort" :items="sortOptions" item-title="title" item-value="value" label="Сортировка по стоимости" variant="outlined" density="compact" /></v-col>
+          </v-row>
           <div class="d-flex flex-wrap ga-2 mb-2">
             <v-checkbox-btn v-for="filter in filterOptions" :key="filter.value" v-model="filters" :value="filter.value" :label="filter.title" density="compact" />
           </div>
@@ -69,7 +72,14 @@
               <div class="d-flex flex-wrap ga-1 mt-1">
                 <v-chip v-for="capability in capabilityLabels.filter(item => model.capabilities[item.key])" :key="capability.key" size="x-small" variant="tonal">{{ capability.label }}</v-chip>
               </div>
-              <div v-if="model.pricing" class="text-caption text-medium-emphasis mt-1">Цена каталога: {{ pricingLabel(model) }}</div>
+              <div v-if="model.pricing" class="text-caption text-medium-emphasis mt-2">
+                <div class="d-flex flex-wrap ga-x-3 ga-y-1">
+                  <span v-for="item in pricingItems(model)" :key="item.key"><strong>{{ item.label }}:</strong> {{ item.value }}</span>
+                </div>
+                <div v-if="typicalRequestCost(model) !== null" class="mt-1">
+                  Оценка типового запроса 20K вход + 2K выход: <strong>≈ {{ formatRub(typicalRequestCost(model)!) }} ₽</strong>
+                </div>
+              </div>
             </v-list-item>
             <v-list-item v-if="!models.length" title="Модели не найдены" />
           </v-list>
@@ -137,6 +147,12 @@ const smokeKinds = [
   { title: 'Текст', value: 'text' }, { title: 'Streaming', value: 'streaming' },
   { title: 'Vision', value: 'vision' }, { title: 'PDF/OCR', value: 'pdf_ocr' },
 ]
+const sortOptions = [
+  { title: 'Порядок каталога', value: 'catalog' },
+  { title: 'Дешевле — типовой запрос', value: 'typical_cost' },
+  { title: 'Дешевле — вход', value: 'input_cost' },
+  { title: 'Дешевле — выход', value: 'output_cost' },
+]
 const loading = ref(false)
 const loadError = ref('')
 const editing = ref(false)
@@ -148,6 +164,7 @@ const preview = ref<{ capabilities: Capabilities; model_in_catalog: boolean | nu
 const saving = ref(false)
 const saveError = ref('')
 const search = ref('')
+const sort = ref<'catalog' | 'typical_cost' | 'input_cost' | 'output_cost'>('catalog')
 const filters = ref<string[]>(['compatible'])
 const models = ref<ModelRecord[]>([])
 const catalogTotal = ref(0)
@@ -165,8 +182,41 @@ let catalogSequence = 0
 function catalogLabel(status: string): string {
   return ({ fresh: 'Актуален', stale: 'Кэш, RouterAI недоступен', unavailable: 'Недоступен', unsupported: 'Нет каталога' } as Record<string, string>)[status] || status
 }
-function pricingLabel(model: ModelRecord): string {
-  return Object.entries(model.pricing || {}).slice(0, 3).map(([key, value]) => `${key}: ${value}${model.pricing_units?.[key] ? ` / ${model.pricing_units[key]}` : ''}`).join('; ')
+const pricingNames: Record<string, string> = {
+  prompt: 'Вход', input: 'Вход', completion: 'Выход', output: 'Выход',
+  input_cache_read: 'Кэш read', cache_read: 'Кэш read',
+  input_cache_write: 'Кэш write', cache_write: 'Кэш write',
+  web_search: 'Web search', request: 'Запрос',
+}
+function numericPricing(model: ModelRecord, key: string): number | null {
+  const raw = model.pricing?.[key]
+  if (raw === undefined || raw === null || raw === '') return null
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 ? value : null
+}
+function formatRub(value: number): string {
+  const abs = Math.abs(value)
+  const maximumFractionDigits = abs >= 100 ? 2 : abs >= 1 ? 2 : 4
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits }).format(value)
+}
+function pricingItems(model: ModelRecord): Array<{ key: string; label: string; value: string }> {
+  return Object.keys(model.pricing || {}).flatMap((key) => {
+    const price = numericPricing(model, key)
+    if (price === null) return []
+    const unit = String(model.pricing_units?.[key] ?? '').toLowerCase()
+    const label = pricingNames[key] || key
+    if (unit === 'token') return [{ key, label, value: `${formatRub(price * 1_000_000)} ₽ / 1M токенов` }]
+    if (unit === 'request') return [{ key, label, value: `${formatRub(price)} ₽ / запрос` }]
+    return [{ key, label, value: unit ? `${formatRub(price)} ₽ / ${unit}` : `${formatRub(price)} ₽ (единица не указана)` }]
+  })
+}
+function typicalRequestCost(model: ModelRecord): number | null {
+  const inputKey = model.pricing?.prompt != null ? 'prompt' : (model.pricing?.input != null ? 'input' : null)
+  const outputKey = model.pricing?.completion != null ? 'completion' : (model.pricing?.output != null ? 'output' : null)
+  if (!inputKey || !outputKey || model.pricing_units?.[inputKey]?.toString().toLowerCase() !== 'token' || model.pricing_units?.[outputKey]?.toString().toLowerCase() !== 'token') return null
+  const input = numericPricing(model, inputKey)
+  const output = numericPricing(model, outputKey)
+  return input === null || output === null ? null : input * 20_000 + output * 2_000
 }
 async function loadProfile(): Promise<void> {
   loading.value = true
@@ -198,7 +248,7 @@ async function loadCatalog(more = false): Promise<void> {
   catalogError.value = ''
   const page = more ? catalogPage.value + 1 : 1
   try {
-    const { data } = await api.get('/api/admin/llm-model-catalog/routerai', { params: { q: search.value || undefined, filter: filters.value, page } })
+    const { data } = await api.get('/api/admin/llm-model-catalog/routerai', { params: { q: search.value || undefined, filter: filters.value, sort: sort.value, page } })
     if (sequence !== catalogSequence) return
     models.value = more ? [...models.value, ...data.models] : data.models
     catalogPage.value = page
@@ -252,7 +302,7 @@ watch(() => [draft.provider, draft.model], () => {
   void loadPreview()
   for (const key of Object.keys(smokeResults)) delete smokeResults[key]
 })
-watch(() => [search.value, ...filters.value, draft.provider], () => {
+watch(() => [search.value, sort.value, ...filters.value, draft.provider], () => {
   if (searchTimer) clearTimeout(searchTimer)
   if (draft.provider === 'routerai') searchTimer = setTimeout(() => { void loadCatalog() }, 250)
 })

@@ -74,6 +74,15 @@ final class ExpertChatStreamingFlowTest extends TestCase
         ]);
         $provider = new ExpertStreamingFakeProvider(['OK']);
         $this->installRouter($provider);
+        app(LLMSettingsRepository::class)->saveTaskProfile('expert_chat', [
+            'provider' => 'routerai', 'model' => 'profile/selected-model', 'enabled' => true, 'fallback_policy' => 'none',
+        ]);
+        $logged = [];
+        Log::listen(static function (MessageLogged $event) use (&$logged): void {
+            if ($event->message === 'Expert chat stream failed.') {
+                $logged[] = $event->context;
+            }
+        });
         $service = app(ExpertChatStreamingService::class);
         $content = 'Проверь PDF';
         $run = $service->start($conversation, $content, (string) Str::uuid(),
@@ -86,6 +95,10 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertSame('error', end($events)['event']);
         $this->assertSame('pdf_malformed', end($events)['data']['code']);
         $this->assertSame(0, $provider->streamCalls);
+        $this->assertSame('profile/selected-model', $logged[0]['effective_model']);
+        $this->assertSame('PROFILE', $logged[0]['profile_source']);
+        $this->assertNull($logged[0]['actual_upstream_provider']);
+        $this->assertNull($logged[0]['actual_upstream_model']);
 
         $next = $this->runStream($conversation, 'Ответь: OK', function () {});
         $this->assertSame('done', end($next)['event']);
@@ -156,6 +169,9 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $provider = new ExpertStreamingFakeProvider([]);
         $provider->failure = LLMProviderException::httpError('fake', 401, 'SECRET-UPSTREAM-BODY');
         $this->installRouter($provider);
+        app(LLMSettingsRepository::class)->saveTaskProfile('expert_chat', [
+            'provider' => 'routerai', 'model' => 'profile/selected-model', 'enabled' => true, 'fallback_policy' => 'none',
+        ]);
         $logged = [];
         Log::listen(static function (MessageLogged $event) use (&$logged): void {
             if ($event->message === 'Expert chat stream failed.') {
@@ -176,6 +192,11 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertFalse($logged[0]['retryable'] ?? true);
         $this->assertTrue($logged[0]['before_first_delta'] ?? false);
         $this->assertSame('4xx', $logged[0]['http_status_class'] ?? null);
+        $this->assertSame('expert_chat', $logged[0]['task_profile'] ?? null);
+        $this->assertSame('routerai', $logged[0]['effective_provider'] ?? null);
+        $this->assertSame('profile/selected-model', $logged[0]['effective_model'] ?? null);
+        $this->assertSame('PROFILE', $logged[0]['profile_source'] ?? null);
+        $this->assertNull($logged[0]['actual_upstream_model'] ?? null);
         $this->assertStringNotContainsString('PRIVATE-PROMPT', json_encode($logged, JSON_THROW_ON_ERROR));
         $this->assertStringNotContainsString('SECRET-UPSTREAM-BODY', json_encode($logged, JSON_THROW_ON_ERROR));
     }

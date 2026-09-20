@@ -8,6 +8,7 @@ use App\Models\Expert\ExpertProjectMaterial;
 use DOMDocument;
 use DOMNode;
 use DOMXPath;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
 use Smalot\PdfParser\Parser;
@@ -207,6 +208,15 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
             throw ExpertMaterialContextException::pdfEncrypted();
         }
 
+        // A missing/unsupported local parser is not proof that the source PDF is corrupt.
+        $fallbackPages = preg_match_all('/\/Type\s*\/Page\b/', $contents);
+        $hasTrailer = preg_match('/startxref\s+(\d+)\s+%%EOF\s*$/s', $contents, $trailer) === 1;
+        $xrefOffset = $hasTrailer ? (int) $trailer[1] : -1;
+        $xref = $xrefOffset >= 0 && $xrefOffset < strlen($contents) ? substr($contents, $xrefOffset, 512) : '';
+        $hasXref = str_starts_with($xref, 'xref')
+            || (preg_match('/^\d+\s+\d+\s+obj\b/', $xref) === 1 && preg_match('/\/Type\s*\/XRef\b/', $xref) === 1);
+        $hasStructure = $fallbackPages > 0 && $hasTrailer && $hasXref;
+
         try {
             $document = ($this->pdfParser ?? new Parser)->parseContent($contents);
             $pageCount = count($document->getPages());
@@ -215,8 +225,14 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
             }
         } catch (ExpertMaterialContextException $exception) {
             throw $exception;
-        } catch (\Throwable) {
-            throw ExpertMaterialContextException::pdfMalformed();
+        } catch (\Throwable $exception) {
+            Log::warning('Expert PDF local parser failed.', [
+                'exception_class' => $exception::class,
+                'exception_message' => mb_substr($exception->getMessage(), 0, 300),
+            ]);
+            throw $hasStructure
+                ? ExpertMaterialContextException::pdfLocalExtractionFailed($fallbackPages)
+                : ExpertMaterialContextException::pdfMalformed();
         }
 
         try {
