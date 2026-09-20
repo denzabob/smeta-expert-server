@@ -39,7 +39,7 @@
       </v-menu>
       <textarea ref="textarea" v-model="text" rows="1" :placeholder="persistenceOnly ? 'Введите сообщение…' : 'Спросить Prism AI...'" :aria-label="persistenceOnly ? 'Сообщение' : 'Сообщение Prism AI'" :disabled="busy" aria-keyshortcuts="Enter" @input="resizeTextarea" @keydown="handleKeydown" />
       <v-select v-if="!persistenceOnly" v-model="mode" :items="modes" variant="plain" density="compact" hide-details class="expert-composer__mode" aria-label="Режим Prism AI" />
-      <v-btn :icon="busy ? 'mdi-stop' : 'mdi-arrow-up'" color="primary" variant="flat" size="small" :disabled="busy ? false : sendDisabled" :aria-label="busy ? 'Остановить ответ' : 'Отправить'" @click="busy ? $emit('stop') : send" />
+      <v-btn :icon="busy ? 'mdi-stop' : 'mdi-arrow-up'" color="primary" variant="flat" size="small" :disabled="busy ? false : sendDisabled" :aria-label="busy ? 'Остановить ответ' : 'Отправить'" @click="busy ? $emit('stop') : send()" />
       <div v-if="dragDepth > 0" class="expert-composer__drop-overlay">Перетащите файлы сюда</div>
     </div>
     <div v-if="dropError" class="expert-composer__blocked" role="alert">{{ dropError }}</div>
@@ -193,7 +193,7 @@ const sendDisabled = computed(() => props.busy || Boolean(props.sendBlockedReaso
 .expert-composer__box:focus-within { border-color: rgba(var(--v-theme-primary), .74); box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), .12), var(--ds-shadow-soft); }
 .expert-composer__box--dragging { border-color: rgb(var(--v-theme-primary)); }
 .expert-composer__drop-overlay { position: absolute; inset: 3px; z-index: 2; display: grid; place-items: center; border-radius: inherit; color: rgb(var(--v-theme-on-primary-container)); background: rgb(var(--v-theme-primary-container)); font-weight: 700; pointer-events: none; }
-.expert-composer textarea { align-self: center; width: 100%; min-height: 34px; max-height: 144px; padding: 7px 2px; resize: none; outline: none; border: 0; color: rgb(var(--v-theme-on-surface)); background: transparent; font: inherit; font-size: .86rem; line-height: 1.4; }
+.expert-composer textarea { align-self: center; width: 100%; min-height: 34px; max-height: 144px; padding: 7px 2px; resize: none; outline: none; border: 0; color: rgb(var(--v-theme-on-surface)); background: transparent; font: inherit; line-height: 1.4; }
 .expert-composer__mode { align-self: center; font-size: .75rem; }
 .expert-composer__blocked { width: min(960px, 100%); margin: 6px auto 0; color: rgb(var(--v-theme-error)); font-size: .7rem; }
 .expert-composer__hint { margin-top: 6px; color: rgba(var(--v-theme-on-surface-variant), .62); text-align: center; font-size: .64rem; }

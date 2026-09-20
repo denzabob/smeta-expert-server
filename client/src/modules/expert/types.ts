@@ -15,6 +15,7 @@ export interface ExpertMessage {
   text: string
   createdAt: string
   metadata?: Record<string, unknown>
+  feedback?: ExpertMessageFeedback | null
   generationStatus?: 'completed' | 'stopped' | 'interrupted'
   deliveryState?: ExpertMessageDeliveryState
   deliveryError?: string
@@ -23,6 +24,12 @@ export interface ExpertMessage {
   runtimeMaterialContext?: ExpertMessageMaterialContext[]
   attachments?: ExpertMessageAttachment[]
   sources?: ExpertSource[]
+}
+
+export interface ExpertMessageFeedback {
+  rating: 'positive' | 'negative'
+  reasonCode?: string | null
+  comment?: string | null
 }
 
 export interface ExpertRunDiagnostic {

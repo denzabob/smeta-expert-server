@@ -12,7 +12,7 @@
       Не удалось загрузить {{ failedUploads.length }} {{ pluralizeFiles(failedUploads.length) }}. Повторите загрузку только для отмеченных файлов.
     </v-alert>
 
-    <div v-if="uploadItems.length" class="expert-materials__uploads" aria-live="polite">
+    <div v-if="uploadItems.length" class="expert-materials__uploads" :class="{ 'expert-materials__uploads--tiles': viewMode === 'grid' }" aria-live="polite">
       <div v-if="uploadingCount" class="expert-materials__upload-summary">Загрузка: {{ uploadingCount }} {{ pluralizeFiles(uploadingCount) }}</div>
       <article v-for="item in uploadItems" :key="item.id" class="expert-material-card expert-material-card--transfer">
         <div class="expert-material-card__visual" :class="`expert-material-card__visual--${item.accent}`">
@@ -26,8 +26,11 @@
             color="primary"
           ><span class="expert-material-card__progress-value">{{ item.state === 'queued' ? '…' : `${item.progress}%` }}</span></v-progress-circular>
         </div>
-        <div class="expert-material-card__body"><strong>{{ item.name }}</strong><span>{{ item.format }} · {{ item.size }}</span><small :class="{ 'text-error': item.state === 'error' }">{{ item.state === 'error' ? uploadError(item) : uploadStateLabel(item.state) }}</small></div>
-        <v-btn v-if="item.state === 'error'" color="primary" variant="tonal" size="small" prepend-icon="mdi-reload" @click="retryUpload(item.id)">Повторить</v-btn>
+        <div class="expert-material-card__body"><strong :title="item.name">{{ item.name }}</strong><span>{{ item.format }} · {{ item.size }}</span></div>
+        <div class="expert-material-card__status">
+          <v-chip size="x-small" variant="tonal" :color="item.state === 'error' ? 'error' : item.state === 'completed' ? undefined : 'primary'" :title="item.state === 'error' ? uploadError(item) : undefined">{{ uploadStateLabel(item.state) }}</v-chip>
+        </div>
+        <v-btn v-if="item.state === 'error'" class="expert-material-card__transfer-action" color="primary" variant="tonal" size="small" icon="mdi-reload" :aria-label="`Повторить загрузку: ${item.name}`" @click="retryUpload(item.id)"><v-tooltip activator="parent" location="bottom">Повторить</v-tooltip></v-btn>
       </article>
     </div>
 
@@ -37,11 +40,17 @@
         <v-chip v-for="item in filters" :key="item.value" :value="item.value" filter variant="tonal" size="small">{{ item.label }}</v-chip>
       </v-chip-group>
       <div class="expert-materials__view-controls">
-        <v-btn-toggle v-model="viewMode" mandatory density="compact" color="primary" variant="outlined" aria-label="Вид материалов">
-          <v-btn value="list" prepend-icon="mdi-format-list-bulleted">Компактный список</v-btn>
-          <v-btn value="grid" prepend-icon="mdi-view-grid-outline">Плитка</v-btn>
-        </v-btn-toggle>
-        <v-select v-model="pageSize" :items="pageSizeOptions" label="На странице" density="compact" variant="outlined" hide-details aria-label="Количество материалов на странице" />
+        <div class="expert-materials__view-picker">
+          <span class="expert-materials__control-label">Вид</span>
+          <v-btn-toggle v-model="viewMode" mandatory density="compact" color="primary" variant="outlined" aria-label="Вид материалов">
+            <v-btn value="list" icon="mdi-format-list-bulleted" size="small" aria-label="Компактный список"><v-tooltip activator="parent" location="bottom">Компактный список</v-tooltip></v-btn>
+            <v-btn value="grid" icon="mdi-view-grid-outline" size="small" aria-label="Плитка"><v-tooltip activator="parent" location="bottom">Плитка</v-tooltip></v-btn>
+          </v-btn-toggle>
+        </div>
+        <div class="expert-materials__page-size">
+          <span class="expert-materials__control-label">На странице</span>
+          <v-select v-model="pageSize" :items="pageSizeOptions" density="compact" variant="outlined" hide-details aria-label="Количество материалов на странице" />
+        </div>
       </div>
     </div>
 
@@ -56,17 +65,21 @@
             </template>
             <v-icon v-else :icon="material.icon" size="28" />
           </div>
-          <div class="expert-material-card__body"><strong>{{ material.name }}</strong><span>{{ material.format }} · {{ material.size }}</span><small>{{ material.category }}</small></div>
+          <div class="expert-material-card__body"><strong :title="material.name">{{ material.name }}</strong><span>{{ material.format }} · {{ material.size }}</span></div>
         </button>
-        <v-chip v-if="isDownloading(material.id)" size="x-small" color="primary" variant="tonal"><v-progress-circular indeterminate size="12" width="2" class="mr-1" />{{ downloadLabel(material.id) }}</v-chip>
-        <v-chip v-else size="x-small" variant="tonal" :color="statusColor(material.status)">{{ material.status }}</v-chip>
-        <v-menu>
-          <template #activator="{ props: menuProps }"><v-btn v-bind="menuProps" icon="mdi-dots-vertical" size="small" variant="text" :aria-label="`Действия материала: ${material.name}`" /></template>
-          <v-list density="compact">
-            <v-list-item :title="downloadLabel(material.id)" :disabled="isDownloading(material.id)" @click="download(material)"><template #prepend><v-progress-circular v-if="isDownloading(material.id)" indeterminate size="18" width="2" /><v-icon v-else icon="mdi-download-outline" /></template></v-list-item>
-            <v-list-item v-if="projectMode === 'real'" title="Удалить" prepend-icon="mdi-delete-outline" base-color="error" @click="requestRemove(material)" />
-          </v-list>
-        </v-menu>
+        <div class="expert-material-card__status">
+          <v-chip v-if="isDownloading(material.id)" size="x-small" color="primary" variant="tonal"><v-progress-circular indeterminate size="12" width="2" class="mr-1" />{{ downloadLabel(material.id) }}</v-chip>
+          <v-chip v-else size="x-small" variant="tonal" :color="statusColor(material.status)">{{ material.status }}</v-chip>
+        </div>
+        <div class="expert-material-card__actions" @click.stop>
+          <v-menu>
+            <template #activator="{ props: menuProps }"><v-btn v-bind="menuProps" icon="mdi-dots-vertical" size="small" variant="text" :aria-label="`Действия материала: ${material.name}`" @click.stop /></template>
+            <v-list density="compact" @click.stop>
+              <v-list-item :title="downloadLabel(material.id)" :disabled="isDownloading(material.id)" @click.stop="download(material)"><template #prepend><v-progress-circular v-if="isDownloading(material.id)" indeterminate size="18" width="2" /><v-icon v-else icon="mdi-download-outline" /></template></v-list-item>
+              <v-list-item v-if="projectMode === 'real'" title="Удалить" prepend-icon="mdi-delete-outline" base-color="error" @click.stop="requestRemove(material)" />
+            </v-list>
+          </v-menu>
+        </div>
       </article>
     </div>
     <div v-else-if="!loading && !uploadItems.length && !props.project.materials.length" class="expert-empty">
@@ -284,7 +297,7 @@ if (typeof IntersectionObserver !== 'undefined') {
   }, { rootMargin: '160px' })
 }
 
-function setThumbnailTarget(id: string, element: Element | null) {
+function setThumbnailTarget(id: string, element: unknown) {
   if (!(element instanceof HTMLElement)) return
   element.dataset.materialId = id
   thumbnailObserver?.observe(element)
@@ -326,7 +339,7 @@ function showSnackbar(message: string, color?: string) {
 }
 
 function statusColor(status: ExpertMaterialStatus) {
-  return status === 'Ошибка' ? 'error' : status === 'Обрабатывается' ? 'warning' : status === 'Загружен' ? 'primary' : 'success'
+  return status === 'Ошибка' ? 'error' : status === 'Обрабатывается' ? 'warning' : status === 'Загружен' ? undefined : 'success'
 }
 
 watch(() => props.project.id, loadMaterials, { immediate: true })
@@ -369,13 +382,21 @@ function writeStorage(key: string, value: string) {
 .expert-materials__uploads, .expert-materials__grid { display: grid; gap: 9px; }
 .expert-materials__uploads { margin-bottom: 16px; }
 .expert-materials__upload-summary { color: rgba(var(--v-theme-on-surface-variant), .76); font-size: .75rem; font-weight: 700; }
-.expert-materials__controls { display: grid; grid-template-columns: minmax(240px, 380px) minmax(0, 1fr); align-items: center; gap: 18px; margin-bottom: 16px; }
-.expert-materials__view-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; grid-column: 1 / -1; }
-.expert-materials__view-controls :deep(.v-select) { max-width: 150px; }
+.expert-materials__controls { display: grid; grid-template-columns: minmax(260px, 380px) minmax(0, 1fr) auto; align-items: center; gap: 12px 18px; margin-bottom: 16px; }
+.expert-materials__view-controls, .expert-materials__view-picker, .expert-materials__page-size { display: flex; align-items: center; }
+.expert-materials__view-controls { justify-content: flex-end; gap: 18px; }
+.expert-materials__view-picker, .expert-materials__page-size { gap: 8px; }
+.expert-materials__control-label { color: rgba(var(--v-theme-on-surface-variant), .72); font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.expert-materials__view-picker :deep(.v-btn-toggle) { height: 34px; }
+.expert-materials__view-picker :deep(.v-btn) { width: 38px; min-width: 38px; height: 34px; padding: 0; }
+.expert-materials__page-size :deep(.v-select) { width: 92px; }
+.expert-materials__page-size :deep(.v-field) { min-height: 36px; }
 .expert-material-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 64px; padding: 8px 12px; border: 1px solid rgba(var(--v-theme-outline-variant), .62); border-radius: var(--md-sys-shape-corner-large); color: rgb(var(--v-theme-on-surface)); background: rgb(var(--v-theme-surface)); }
-.expert-material-card--transfer { background: rgb(var(--v-theme-surface-container-low)); }
+.expert-material-card--transfer { grid-template-columns: auto minmax(0, 1fr) auto auto; background: rgb(var(--v-theme-surface-container-low)); }
 .expert-material-card__open { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; min-width: 0; gap: 13px; padding: 0; border: 0; color: inherit; background: transparent; cursor: pointer; font: inherit; text-align: left; }
-.expert-material-card:not(.expert-material-card--transfer):hover { border-color: rgba(var(--v-theme-primary), .45); background: rgba(var(--v-theme-primary), .035); }
+.expert-material-card:not(.expert-material-card--transfer) { transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease; }
+.expert-material-card:not(.expert-material-card--transfer):hover { border-color: rgba(var(--v-theme-primary), .45); background: rgba(var(--v-theme-primary), .035); box-shadow: 0 2px 10px rgba(var(--v-theme-on-surface), .06); }
+.expert-material-card__open:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 3px; border-radius: var(--md-sys-shape-corner-small); }
 .expert-material-card__visual { display: grid; place-items: center; width: 44px; height: 44px; overflow: hidden; border-radius: var(--md-sys-shape-corner-medium); color: rgb(var(--v-theme-on-surface-variant)); background: rgba(var(--v-theme-on-surface-variant), .1); }
 .expert-material-card__visual--pdf { color: rgb(var(--v-theme-error)); background: rgba(var(--v-theme-error), .1); }
 .expert-material-card__visual--word { color: rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .1); }
@@ -389,14 +410,24 @@ function writeStorage(key: string, value: string) {
 .expert-material-card__body strong { font-size: .84rem; }
 .expert-material-card__body span { margin-top: 3px; color: rgba(var(--v-theme-on-surface-variant), .76); font-size: .71rem; }
 .expert-material-card__body small { margin-top: 2px; color: rgba(var(--v-theme-on-surface-variant), .58); font-size: .66rem; }
-.expert-materials__grid--tiles { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-.expert-materials__grid--tiles .expert-material-card { grid-template-columns: 1fr auto; align-items: start; min-height: 220px; padding: 10px; }
-.expert-materials__grid--tiles .expert-material-card__open { grid-template-columns: 1fr; align-content: start; gap: 9px; }
-.expert-materials__grid--tiles .expert-material-card__visual { width: 100%; height: 148px; }
-.expert-materials__grid--tiles .expert-material-card__thumbnail { object-fit: cover; }
+.expert-materials__grid--tiles, .expert-materials__uploads--tiles { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.expert-materials__uploads--tiles .expert-materials__upload-summary { grid-column: 1 / -1; }
+.expert-materials__grid--tiles .expert-material-card, .expert-materials__uploads--tiles .expert-material-card { position: relative; display: block; min-height: 0; padding: 0; overflow: hidden; }
+.expert-materials__grid--tiles .expert-material-card__open { display: block; width: 100%; }
+.expert-materials__grid--tiles .expert-material-card__visual, .expert-materials__uploads--tiles .expert-material-card__visual { width: 100%; height: auto; aspect-ratio: 4 / 3; border-radius: 0; }
+.expert-materials__grid--tiles .expert-material-card__visual > .v-icon { font-size: 58px !important; }
+.expert-materials__grid--tiles .expert-material-card__body, .expert-materials__uploads--tiles .expert-material-card__body { min-height: 70px; padding: 12px 14px 13px; }
+.expert-materials__grid--tiles .expert-material-card__body strong, .expert-materials__uploads--tiles .expert-material-card__body strong { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; line-height: 1.3; }
+.expert-materials__grid--tiles .expert-material-card__status, .expert-materials__uploads--tiles .expert-material-card__status { position: absolute; z-index: 2; top: 10px; right: 50px; max-width: calc(100% - 64px); }
+.expert-materials__grid--tiles .expert-material-card__status :deep(.v-chip), .expert-materials__uploads--tiles .expert-material-card__status :deep(.v-chip) { max-width: 100%; background: rgba(var(--v-theme-surface), .9); backdrop-filter: blur(5px); }
+.expert-materials__grid--tiles .expert-material-card__status :deep(.v-chip__content), .expert-materials__uploads--tiles .expert-material-card__status :deep(.v-chip__content) { overflow: hidden; text-overflow: ellipsis; }
+.expert-materials__grid--tiles .expert-material-card__actions { position: absolute; z-index: 3; top: 5px; right: 5px; border-radius: 999px; background: rgba(var(--v-theme-surface), .86); backdrop-filter: blur(5px); }
+.expert-materials__uploads--tiles .expert-material-card__transfer-action { position: absolute; z-index: 3; top: 5px; right: 5px; }
 .expert-materials__pagination { margin-top: 18px; }
 .expert-empty { display: grid; justify-items: center; padding: 64px 20px; text-align: center; color: rgba(var(--v-theme-on-surface-variant), .75); }
 .expert-empty h2 { margin: 14px 0 4px; color: rgb(var(--v-theme-on-surface)); font-size: 1.05rem; }
 .expert-empty p { max-width: 440px; margin: 0 0 18px; font-size: .8rem; }
-@media (max-width: 760px) { .expert-section-page { padding: 18px 13px 76px; } .expert-section-page__header { align-items: stretch; flex-direction: column; } .expert-materials__controls { grid-template-columns: 1fr; gap: 8px; } .expert-materials__controls :deep(.v-slide-group) { max-width: calc(100vw - 60px); } .expert-materials__view-controls { justify-content: stretch; } .expert-materials__view-controls :deep(.v-btn-toggle) { flex: 1; } .expert-materials__view-controls :deep(.v-btn) { flex: 1; padding-inline: 8px; } .expert-material-card { grid-template-columns: minmax(0, 1fr) auto auto; } .expert-material-card > .v-chip { grid-column: 2; grid-row: 1; } .expert-material-card > .v-menu { grid-column: 3; grid-row: 1; } .expert-material-card--transfer > .v-btn { grid-column: 1 / -1; justify-self: start; } }
+@media (max-width: 1100px) { .expert-materials__controls { grid-template-columns: minmax(240px, 380px) minmax(0, 1fr); } .expert-materials__view-controls { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .expert-section-page { padding: 18px 13px 76px; } .expert-section-page__header { align-items: stretch; flex-direction: column; } .expert-materials__controls { grid-template-columns: 1fr; gap: 8px; } .expert-materials__controls :deep(.v-slide-group) { max-width: calc(100vw - 26px); } .expert-materials__view-controls { grid-column: 1; justify-content: space-between; gap: 10px; } .expert-materials__control-label { display: none; } .expert-materials__grid--tiles, .expert-materials__uploads--tiles { grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); } .expert-material-card { grid-template-columns: minmax(0, 1fr) auto auto; } .expert-material-card--transfer { grid-template-columns: auto minmax(0, 1fr) auto auto; } }
+@media (prefers-reduced-motion: reduce) { .expert-material-card:not(.expert-material-card--transfer) { transition: none; } }
 </style>

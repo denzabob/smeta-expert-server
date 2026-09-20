@@ -469,7 +469,7 @@ class LLMRouter
                     return;
                 }
                 yield LLMStreamEvent::delta($response->content);
-                yield LLMStreamEvent::done([...$response->metadata, 'sync_fallback' => true], $response->parsedFiles);
+                yield LLMStreamEvent::done([...$response->metadata, 'provider' => $response->provider, 'model' => $response->model, 'sync_fallback' => true], $response->parsedFiles);
                 return;
             }
             if (! $provider instanceof LLMStreamingProviderInterface || ! $supportsStreaming) {
@@ -490,7 +490,14 @@ class LLMRouter
                         if (in_array($event->type, ['delta', 'reasoning_summary'], true) && $event->text !== '') {
                             $emitted = true;
                         }
-                        yield $event;
+                        yield $event->type === 'done'
+                            ? LLMStreamEvent::done([
+                                ...$event->metadata,
+                                'upstream_provider' => $event->metadata['provider'] ?? null,
+                                'provider' => $provider->name(),
+                                'model' => is_string($event->metadata['model'] ?? null) ? $event->metadata['model'] : $provider->model(),
+                            ], $event->parsedFiles)
+                            : $event;
                     }
                     $this->circuitBreaker->recordSuccess($providerName);
                     return;

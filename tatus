@@ -1,0 +1,29 @@
+warning: in the working copy of 'client/src/modules/expert/api.ts', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'server/app/Services/LLM/LLMRouter.php', CRLF will be replaced by LF the next time Git touches it
+ client/src/layouts/AdminLayout.vue                 |   6 [32m+[m
+ client/src/modules/expert/api.spec.ts              |  24 [32m++++[m
+ client/src/modules/expert/api.ts                   |  14 [32m++[m
+ .../chat/ExpertChatActivityTimeline.spec.ts        |  40 [32m++++[m[31m--[m
+ .../components/chat/ExpertChatActivityTimeline.vue | 159 [32m+++++[m[31m----------------[m
+ .../expert/components/chat/ExpertChatComposer.vue  |   4 [32m+[m[31m-[m
+ .../components/chat/ExpertChatDomStream.spec.ts    |  16 [32m++[m[31m-[m
+ .../components/chat/ExpertChatMessage.spec.ts      |   6 [32m+[m[31m-[m
+ .../expert/components/chat/ExpertChatMessage.vue   | 107 [32m++++++++++++[m[31m--[m
+ client/src/modules/expert/expert.spec.ts           |  19 [32m++[m[31m-[m
+ client/src/modules/expert/pages/ExpertChat.vue     |  69 [32m+++++[m[31m----[m
+ .../src/modules/expert/pages/ExpertMaterials.vue   |  93 [32m++++++++[m[31m----[m
+ client/src/modules/expert/types.ts                 |   7 [32m+[m
+ client/src/router/index.ts                         |   6 [32m+[m
+ .../Controllers/Api/Expert/MessageController.php   |   5 [32m+[m[31m-[m
+ .../app/Http/Resources/Expert/MessageResource.php  |   2 [32m+[m[31m-[m
+ server/app/Models/Expert/ExpertMessage.php         |   5 [32m+[m
+ server/app/Services/Expert/ExpertChatService.php   |  15 [32m+[m[31m-[m
+ .../Services/Expert/ExpertChatStreamingService.php |  14 [32m+[m[31m-[m
+ .../Services/Expert/SseExpertRunActivitySink.php   |  12 [32m+[m[31m-[m
+ server/app/Services/LLM/LLMRouter.php              |  11 [32m+[m[31m-[m
+ .../Services/LLM/Parsing/OpenAiSseStreamParser.php |   1 [32m+[m
+ server/routes/api.php                              |   2 [32m+[m
+ server/routes/expert.php                           |   4 [32m+[m
+ .../Feature/Expert/ExpertChatStreamingFlowTest.php |   4 [32m+[m
+ .../Feature/Expert/OpenAiSseStreamParserTest.php   |   3 [32m+[m[31m-[m
+ 26 files changed, 431 insertions(+), 217 deletions(-)

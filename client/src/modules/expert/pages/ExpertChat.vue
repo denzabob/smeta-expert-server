@@ -57,11 +57,13 @@
             :image-previews="transfers.thumbnailPreviews.value"
             :timeline-runs="timelineRunsFor(message.id)"
             :show-slow-waiting="showSlowWaitingFor(message.id)"
+            :feedback-enabled="projectMode === 'real'"
             @action="notify"
             @open-source="contextOpen = true"
             @open-material="openMessageMaterial"
             @retry="retryMessage"
             @continue="continueMessage"
+            @feedback-updated="updateMessageFeedback"
           />
         </div>
         <v-btn v-if="showScrollToBottom" class="expert-chat__new-messages" color="surface" variant="flat" size="small" append-icon="mdi-arrow-down" aria-label="Показать новые сообщения" @click="scrollToLatest('smooth')">Новые сообщения</v-btn>
@@ -145,7 +147,7 @@ import {
 } from '../chatTimeline'
 import { useExpertMaterialTransfers } from '../composables/useExpertMaterialTransfers'
 import { expertApi, isExpertMaterialContextError, mapExpertApiError } from '../api'
-import type { ExpertConversation, ExpertMessage, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMaterial, ExpertProjectMode, ExpertRunDiagnostic } from '../types'
+import type { ExpertConversation, ExpertMessage, ExpertMessageFeedback, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMaterial, ExpertProjectMode, ExpertRunDiagnostic } from '../types'
 
 const props = defineProps<{ project: ExpertProject; projectMode: ExpertProjectMode }>()
 const { mdAndDown } = useDisplay()
@@ -194,8 +196,10 @@ let conversationCreationPromise: Promise<string> | null = null
 let conversationsLoadPromise: Promise<void> | null = null
 
 function resetTransientGenerationState() {
-  const currentState: string = generationState.value
-  if (['starting', 'streaming', 'stopping'].includes(currentState)) generationState.value = 'idle'
+  generationState.value = 'idle'
+  activeRunId.value = null
+  activeAbort.value = null
+  clearAllSlowWaiting()
 }
 
 const conversation = computed(() => props.project.conversations.find((item) => item.id === conversationId.value))
@@ -225,6 +229,12 @@ function updateMessageDelivery(messageId: string, deliveryState: NonNullable<Exp
 
 function updateMessageDiagnostic(messageId: string, diagnostic?: ExpertRunDiagnostic) {
   const update = (items: ExpertMessage[]) => items.map((message) => message.id === messageId ? { ...message, diagnostic } : message)
+  pendingMessages.value = update(pendingMessages.value)
+  messagesByConversation.value = Object.fromEntries(Object.entries(messagesByConversation.value).map(([id, items]) => [id, update(items)]))
+}
+
+function updateMessageFeedback(messageId: string, feedback: ExpertMessageFeedback | null) {
+  const update = (items: ExpertMessage[]) => items.map((message) => message.id === messageId ? { ...message, feedback } : message)
   pendingMessages.value = update(pendingMessages.value)
   messagesByConversation.value = Object.fromEntries(Object.entries(messagesByConversation.value).map(([id, items]) => [id, update(items)]))
 }
@@ -519,14 +529,14 @@ async function persistMessage(message: ExpertMessage) {
   }
 
   let persistedUserId = message.id
-  let localAssistantId = ''
+  let localAssistantId = `local-pending-${message.id}`
+  generationState.value = 'starting'
+  activeAbort.value = new AbortController()
   try {
     const targetConversationId = await ensureConversation()
     const materialIds = message.attachments?.map((attachment) => attachment.id)
       ?? message.runtimeMaterialContext?.map((context) => context.id)
       ?? []
-    generationState.value = 'starting'
-    activeAbort.value = new AbortController()
     let lastSeq = 0
     let fallbackToLegacy = false
     try {
@@ -536,8 +546,6 @@ async function persistMessage(message: ExpertMessage) {
           generationState.value = 'streaming'
           replaceOptimisticMessage(message.id, userMessage)
           persistedUserId = userMessage.id
-          localAssistantId = `local-stream-${runId}`
-          appendServerAssistantMessage(targetConversationId, { id: localAssistantId, role: 'assistant', text: '', createdAt: new Date().toISOString(), deliveryState: 'sending' })
           beginTimelineRun(localAssistantId, runId, materialIds.length)
         },
         onDelta: (runId, seq, text) => {
@@ -592,8 +600,8 @@ async function persistMessage(message: ExpertMessage) {
           if (assistantMessage) continuableAssistantIds.value = { ...continuableAssistantIds.value, [assistantMessage.id]: true }
         },
         onError: (mapped, assistantMessage) => {
-          generationState.value = 'interrupted'
           const useLegacyFallback = shouldUseLegacyExpertChatFallback(mapped.code, assistantMessage)
+          generationState.value = useLegacyFallback ? 'starting' : 'interrupted'
           if (assistantMessage && localAssistantId) {
             replaceOptimisticMessage(localAssistantId, assistantMessage)
             moveTimelineRun(localAssistantId, assistantMessage.id)
@@ -601,7 +609,7 @@ async function persistMessage(message: ExpertMessage) {
             localAssistantId = assistantMessage.id
           } else if (assistantMessage) {
             appendServerAssistantMessage(targetConversationId, assistantMessage)
-          } else if (localAssistantId) {
+          } else if (localAssistantId && !useLegacyFallback) {
             finishTimelineRun(localAssistantId, activeRunId.value ?? '', 'interrupted')
             removeMessage(localAssistantId)
             discardTimelineRun(localAssistantId)
@@ -621,7 +629,8 @@ async function persistMessage(message: ExpertMessage) {
       if (fallbackToLegacy) {
         const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId, materialIds)
         replaceSavedMessage(persistedUserId, reply.userMessage)
-        appendServerAssistantMessage(targetConversationId, reply.assistantMessage)
+        replaceOptimisticMessage(localAssistantId, reply.assistantMessage)
+        discardTimelineRun(localAssistantId)
         generationState.value = 'completed'
       }
     } catch (error) {
@@ -629,14 +638,21 @@ async function persistMessage(message: ExpertMessage) {
       if (mapped.code === 'streaming_not_supported') {
         const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId, materialIds)
         replaceOptimisticMessage(message.id, reply.userMessage)
-        appendServerAssistantMessage(targetConversationId, reply.assistantMessage)
+        replaceOptimisticMessage(localAssistantId, reply.assistantMessage)
+        discardTimelineRun(localAssistantId)
+        generationState.value = 'completed'
       } else if ((error as DOMException).name !== 'AbortError') {
         throw error
+      } else {
+        removeMessage(localAssistantId)
+        discardTimelineRun(localAssistantId)
+        updateMessageDelivery(persistedUserId, 'error', 'Запрос остановлен.')
       }
     } finally {
-      clearAllSlowWaiting()
-      activeAbort.value = null
-      activeRunId.value = null
+      if (findMessage(localAssistantId)?.deliveryState === 'sending' && !findMessage(localAssistantId)?.text) {
+        removeMessage(localAssistantId)
+        discardTimelineRun(localAssistantId)
+      }
       resetTransientGenerationState()
     }
   } catch (error) {
@@ -649,9 +665,6 @@ async function persistMessage(message: ExpertMessage) {
       discardTimelineRun(localAssistantId)
     }
     if (!localAssistantId || !findMessage(localAssistantId)?.text) updateMessageDelivery(persistedUserId, 'error', mapped.message)
-    clearAllSlowWaiting()
-    activeAbort.value = null
-    activeRunId.value = null
     resetTransientGenerationState()
   }
 }
@@ -659,7 +672,12 @@ async function persistMessage(message: ExpertMessage) {
 function stopStream() {
   const runId = activeRunId.value
   const targetConversationId = conversationId.value
-  if (!runId || !targetConversationId || generationState.value === 'stopping') return
+  if (generationState.value === 'stopping') return
+  if (!runId || !targetConversationId) {
+    activeAbort.value?.abort()
+    generationState.value = 'stopping'
+    return
+  }
   generationState.value = 'stopping'
   void expertApi.cancelStream(targetConversationId, runId).catch((error) => {
     generationState.value = 'streaming'
@@ -721,9 +739,6 @@ async function continueMessage(assistantId: string) {
     if ((error as DOMException).name !== 'AbortError') updateMessageDelivery(assistantId, 'error', mapExpertApiError(error).message)
     else updateMessageDelivery(assistantId, 'sent')
   } finally {
-    clearAllSlowWaiting()
-    activeAbort.value = null
-    activeRunId.value = null
     resetTransientGenerationState()
   }
 }
@@ -737,7 +752,7 @@ function retryMessage(messageId: string) {
 
 function sendMessage(text: string, accepted: () => void = () => undefined) {
   const normalizedText = normalizeExpertChatDraft(text)
-  if (!normalizedText || (props.projectMode === 'real' && composerSendBlockedReason.value)) return
+  if (!normalizedText || streamActive.value || (props.projectMode === 'real' && composerSendBlockedReason.value)) return
   followActiveResponse.value = nextExpertChatFollowState(followActiveResponse.value, 'own-message')
   userScrollIntentUntil = 0
 
@@ -761,7 +776,13 @@ function sendMessage(text: string, accepted: () => void = () => undefined) {
     // Keep the pending selection visible until the server returns persisted attachments.
     runtimeMaterialContext: snapshotExpertMessageMaterialContext(composerMaterialContexts.value),
   }
-  appendMessages([optimisticMessage])
+  appendMessages([optimisticMessage, {
+    id: `local-pending-${optimisticMessage.id}`,
+    role: 'assistant',
+    text: '',
+    createdAt: new Date().toISOString(),
+    deliveryState: 'sending',
+  }])
   accepted()
   composerMaterialContexts.value = []
   void scrollToLatest('smooth')

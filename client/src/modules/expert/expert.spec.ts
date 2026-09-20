@@ -124,7 +124,7 @@ describe('Expert frontend prototype contracts', () => {
     expect(chatSource).not.toContain('AI-ответы подключаются на следующем этапе.')
   })
 
-  it('uses the Expert Chat AI response envelope without a fake assistant placeholder', () => {
+  it('uses the Expert Chat AI response envelope with an immediate assistant placeholder', () => {
     const chatSource = readFileSync(new URL('./pages/ExpertChat.vue', import.meta.url), 'utf8')
     const timelineSource = readFileSync(new URL('./components/chat/ExpertChatActivityTimeline.vue', import.meta.url), 'utf8')
 
@@ -133,7 +133,8 @@ describe('Expert frontend prototype contracts', () => {
     expect(chatSource).toContain('appendServerAssistantMessage')
     expect(chatSource).toContain('scheduleActiveResponseFollow()')
     expect(chatSource).toContain('followActiveResponse.value')
-    expect(timelineSource).toContain('Формируется ответ…')
+    expect(chatSource).toContain('local-pending-')
+    expect(timelineSource).toContain('Подготавливаю запрос…')
   })
 
   it('uses the shared Materials transfer flow and persisted message attachments', () => {
@@ -173,5 +174,19 @@ describe('Expert frontend prototype contracts', () => {
     expect(materialsSource).toContain('v-if="drawerOpen"')
     expect(materialsSource).not.toContain('window.confirm')
     expect(materialsSource).toContain('Материал используется в результатах исследования')
+  })
+
+  it('keeps grid materials in a dedicated media-card layout', () => {
+    const materialsSource = readFileSync(new URL('./pages/ExpertMaterials.vue', import.meta.url), 'utf8')
+
+    expect(materialsSource).toContain('repeat(auto-fill, minmax(240px, 1fr))')
+    expect(materialsSource).toContain('aspect-ratio: 4 / 3')
+    expect(materialsSource).toContain('-webkit-line-clamp: 2')
+    expect(materialsSource).toContain('aria-label="Компактный список"')
+    expect(materialsSource).toContain('aria-label="Плитка"')
+    expect(materialsSource).toContain('class="expert-material-card__actions" @click.stop')
+    expect(materialsSource).not.toContain('{{ material.category }}')
+    expect(materialsSource).not.toContain('min-height: 220px')
+    expect(materialsSource).not.toContain('height: 148px')
   })
 })

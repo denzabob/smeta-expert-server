@@ -165,7 +165,14 @@ final class ExpertChatService
                 $assistantMessage = $conversation->messages()->create([
                     'role' => 'assistant',
                     'content' => $response->content,
-                    'metadata' => ['in_reply_to' => $userMessage->public_id],
+                    'metadata' => [
+                        'in_reply_to' => $userMessage->public_id,
+                        'provider' => $response->provider,
+                        'model' => $response->model,
+                        'run_id' => (string) \Illuminate\Support\Str::uuid(),
+                        'service_tier' => is_string($response->metadata['service_tier'] ?? null) ? $response->metadata['service_tier'] : null,
+                        'latency_ms' => $response->latencyMs,
+                    ],
                 ]);
 
                 return new ExpertChatResult($userMessage, $assistantMessage, true);
@@ -263,10 +270,14 @@ final class ExpertChatService
             'generation_status' => $generationStatus,
             'run_id' => $runId,
             'finish_reason' => $finishReason,
+            'provider' => is_string($metadata['provider'] ?? null) ? $metadata['provider'] : null,
+            'model' => is_string($metadata['model'] ?? null) ? $metadata['model'] : null,
             'upstream_id' => is_string($metadata['upstream_id'] ?? null) ? $metadata['upstream_id'] : null,
-            'upstream_provider' => is_string($metadata['provider'] ?? null) ? $metadata['provider'] : null,
+            'upstream_provider' => is_string($metadata['upstream_provider'] ?? null) ? $metadata['upstream_provider'] : null,
             'service_tier' => is_string($metadata['service_tier'] ?? null) ? $metadata['service_tier'] : null,
+            'latency_ms' => is_int($metadata['latency_ms'] ?? null) ? $metadata['latency_ms'] : null,
         ], static fn (mixed $value): bool => $value !== null);
+        $technicalMetadata['service_tier'] = is_string($metadata['service_tier'] ?? null) ? $metadata['service_tier'] : null;
 
         if ($existingAssistant !== null) {
             $existingAssistant->forceFill([

@@ -40,6 +40,7 @@ final class OpenAiSseStreamParser
                 ...$metadata,
                 'upstream_id' => is_string($decoded['id'] ?? null) ? $decoded['id'] : ($metadata['upstream_id'] ?? null),
                 'provider' => is_string($decoded['provider'] ?? null) ? $decoded['provider'] : ($metadata['provider'] ?? null),
+                'model' => is_string($decoded['model'] ?? null) ? $decoded['model'] : ($metadata['model'] ?? null),
                 'service_tier' => is_string($decoded['service_tier'] ?? null) ? $decoded['service_tier'] : ($metadata['service_tier'] ?? null),
                 'prompt_tokens' => $usage['prompt_tokens'] ?? ($metadata['prompt_tokens'] ?? null),
                 'completion_tokens' => $usage['completion_tokens'] ?? ($metadata['completion_tokens'] ?? null),

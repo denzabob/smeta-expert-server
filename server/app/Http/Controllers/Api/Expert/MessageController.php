@@ -31,7 +31,10 @@ class MessageController extends Controller
     {
         $this->authorize('view', $conversation->project);
 
-        return MessageResource::collection($conversation->messages()->with('attachments.material')->get());
+        return MessageResource::collection($conversation->messages()->with([
+            'attachments.material',
+            'feedback' => fn ($query) => $query->where('user_id', auth()->id()),
+        ])->get());
     }
 
     public function store(MessageRequest $request, ExpertConversation $conversation): JsonResponse

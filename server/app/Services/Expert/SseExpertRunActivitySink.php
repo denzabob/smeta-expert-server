@@ -20,8 +20,8 @@ final class SseExpertRunActivitySink implements ExpertRunActivitySink
     private ?string $lastActivityCode = null;
 
     /**
-     * @param \Closure(string, array<string, mixed>): void $emit
-     * @param \Closure(): bool $isCancellationRequested
+     * @param  \Closure(string, array<string, mixed>): void  $emit
+     * @param  \Closure(): bool  $isCancellationRequested
      */
     public function __construct(
         private readonly string $runId,
@@ -79,11 +79,17 @@ final class SseExpertRunActivitySink implements ExpertRunActivitySink
 
     public function terminalize(string $status): void
     {
-        $terminalStatus = in_array($status, ['failed', 'skipped'], true) ? $status : 'failed';
+        $terminalStatus = in_array($status, ['completed', 'failed', 'skipped'], true) ? $status : 'failed';
         foreach ($this->open as $activityId => $activity) {
             unset($this->open[$activityId]);
             $this->emitActivity($activityId, $activity, $terminalStatus);
         }
+    }
+
+    /** @return list<string> */
+    public function openActivityCodes(): array
+    {
+        return array_values(array_map(static fn (array $activity): string => $activity['code'], $this->open));
     }
 
     public function isCancellationRequested(): bool

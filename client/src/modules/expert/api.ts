@@ -6,6 +6,7 @@ import type {
   ExpertFindingType,
   ExpertMaterialKind,
   ExpertMessage,
+  ExpertMessageFeedback,
   ExpertMessageAttachment,
   ExpertProject,
   ExpertProjectDraft,
@@ -48,6 +49,7 @@ export type ExpertMessageDto = {
   role: string
   content: string
   metadata?: Record<string, unknown> | null
+  feedback?: { rating: 'positive' | 'negative'; reason_code?: string | null; comment?: string | null } | null
   attachments?: { material_public_id: string; original_name: string; mime_type: string; size: number; kind: ExpertMaterialKind; available: boolean }[]
   created_at: string
   updated_at?: string
@@ -228,6 +230,7 @@ export function mapMessage(dto: ExpertMessageDto): ExpertMessage {
     text: dto.content,
     createdAt: dto.created_at,
     metadata,
+    feedback: dto.feedback ? { rating: dto.feedback.rating, reasonCode: dto.feedback.reason_code, comment: dto.feedback.comment } : null,
     attachments,
     clientMessageId: typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : undefined,
     generationStatus: generationStatus === 'completed' || generationStatus === 'stopped' || generationStatus === 'interrupted' ? generationStatus : undefined,
@@ -528,6 +531,16 @@ export function createExpertApi(http?: AxiosInstance) {
       )
       return data.data.map(mapMessage)
     },
+    async saveMessageFeedback(messageId: string, input: ExpertMessageFeedback) {
+      const { data } = await (await resolveHttp()).put<NonNullable<ExpertMessageDto['feedback']>>(
+        `/api/expert/messages/${encodeURIComponent(messageId)}/feedback`,
+        { rating: input.rating, reason_code: input.reasonCode ?? null, comment: input.comment ?? null },
+      )
+      return { rating: data.rating, reasonCode: data.reason_code, comment: data.comment } satisfies ExpertMessageFeedback
+    },
+    async deleteMessageFeedback(messageId: string) {
+      await (await resolveHttp()).delete(`/api/expert/messages/${encodeURIComponent(messageId)}/feedback`)
+    },
     async sendMessage(
       conversationId: string,
       content: string,
@@ -608,6 +621,7 @@ export function createExpertApi(http?: AxiosInstance) {
           break
         }
       }
+      if (!terminalReceived) throw new ExpertStreamApiError({ code: 'stream_eof_without_terminal', message: 'Ответ AI оборвался до завершения.', validationErrors: {} })
     },
     async cancelStream(conversationId: string, runId: string) {
       await (await resolveHttp()).post(`/api/expert/conversations/${encodeURIComponent(conversationId)}/runs/${encodeURIComponent(runId)}/cancel`)

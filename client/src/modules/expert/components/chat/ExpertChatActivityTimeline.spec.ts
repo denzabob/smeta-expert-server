@@ -1,4 +1,5 @@
-import { createSSRApp, h } from 'vue'
+// @vitest-environment jsdom
+import { createApp, createSSRApp, h, nextTick } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -19,13 +20,36 @@ async function renderTimeline(runs: ExpertTimelineRun[], showSlowWaiting = false
 }
 
 describe('Expert activity timeline presentation', () => {
-  it('hides fast text-only technical stages and shows only the slow transient status', async () => {
+  it('advances elapsed time without receiving another SSE event', async () => {
+    vi.useFakeTimers()
+    try {
+      const root = document.createElement('div')
+      const app = createApp({ render: () => h(ExpertChatActivityTimeline, { runs: [] }) })
+      app.component('v-icon', { template: '<i />' })
+      app.mount(root)
+      expect(root.textContent).toContain('Подготавливаю запрос…')
+      vi.advanceTimersByTime(5000)
+      await nextTick()
+      expect(root.textContent).toContain('5 с')
+      app.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows a live placeholder before the first SSE event', async () => {
+    await expect(renderTimeline([])).resolves.toContain('Подготавливаю запрос…')
+  })
+
+  it('shows one operation without the technical history', async () => {
     let runs = [createExpertTimelineRun('run-1')]
     runs = applyExpertTimelineActivity(runs, { runId: 'run-1', seq: 1, activityId: 'request', code: 'request.accepted', status: 'completed', category: 'request' })
     runs = applyExpertTimelineActivity(runs, { runId: 'run-1', seq: 2, activityId: 'model', code: 'model.first_token', status: 'completed', category: 'model' })
 
-    await expect(renderTimeline(runs)).resolves.not.toContain('Ход обработки')
-    await expect(renderTimeline(runs, true)).resolves.toContain('Формируется ответ')
+    const html = await renderTimeline(runs)
+    expect(html).toContain('Формирую ответ…')
+    expect(html).not.toContain('Запрос принят')
+    expect(html).not.toContain('Ход обработки')
   })
 
   it('renders significant material activities sequentially before a terminal event', async () => {
@@ -39,10 +63,10 @@ describe('Expert activity timeline presentation', () => {
     runs = applyExpertTimelineActivity(runs, { runId: 'run-1', seq: 3, activityId: 'ocr', code: 'pdf.ocr.started', status: 'started', category: 'material', detail: 'scan.pdf' })
     const third = await renderTimeline(runs)
 
-    expect(first).toContain('Подготавливаю изображение')
-    expect(second).toContain('Изображение подготовлено')
-    expect(third).toContain('Изображение подготовлено')
-    expect(third).toContain('Распознаю сканированный документ')
+    expect(first).toContain('Подготавливаю материалы…')
+    expect(second).toContain('Подготавливаю материалы…')
+    expect(third).not.toContain('Изображение подготовлено')
+    expect(third).toContain('Распознаю scan.pdf…')
   })
 
   it('omits the full timeline after a fast single image preparation', async () => {

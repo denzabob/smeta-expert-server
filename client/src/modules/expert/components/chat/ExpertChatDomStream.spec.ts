@@ -16,6 +16,9 @@ vi.mock('vuetify/components/VBtn', () => ({ VBtn: { template: '<button><slot /><
 vi.mock('vuetify/components/VList', () => ({ VList: { template: '<ul><slot /></ul>' }, VListItem: { template: '<li />' } }))
 vi.mock('vuetify/components/VListItem', () => ({ VListItem: { template: '<li />' } }))
 vi.mock('vuetify/components/VMenu', () => ({ VMenu: { template: '<div><slot name="activator" :props="{}" /><slot /></div>' } }))
+vi.mock('vuetify/components/VDialog', () => ({ VDialog: { template: '<div><slot /></div>' } }))
+vi.mock('vuetify/components/VCard', () => ({ VCard: { template: '<div><slot /></div>' }, VCardTitle: { template: '<div><slot /></div>' }, VCardText: { template: '<div><slot /></div>' }, VCardActions: { template: '<div><slot /></div>' } }))
+vi.mock('vuetify/components/VGrid', () => ({ VSpacer: { template: '<span />' } }))
 import { createExpertApi } from '../../api'
 import { renderExpertAssistantMarkdown } from '../../chatMarkdown'
 import type { ExpertMessage } from '../../types'
@@ -112,8 +115,9 @@ describe('Expert Chat real DOM stream', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })))
     const client = createExpertApi({ getUri: () => 'https://expert.test' } as unknown as AxiosInstance)
     const runs = ref<ExpertTimelineRun[]>([])
+    const active = ref(true)
     const root = document.createElement('div')
-    const app = createApp({ render: () => h(ExpertChatActivityTimeline, { runs: runs.value }) })
+    const app = createApp({ render: () => active.value ? h(ExpertChatActivityTimeline, { runs: runs.value }) : null })
     app.component('v-icon', { template: '<i />' })
     app.component('v-progress-circular', { template: '<i />' })
     app.mount(root)
@@ -122,20 +126,20 @@ describe('Expert Chat real DOM stream', () => {
       onRun: (runId) => { runs.value = [{ ...createExpertTimelineRun(runId), significant: true }] },
       onDelta: () => { firstDelta = true },
       onActivity: (activity) => { runs.value = applyExpertTimelineActivity(runs.value, activity) },
-      onDone: () => { runs.value = finishExpertTimelineRun(runs.value, 'run-1', 'completed') },
+      onDone: () => { runs.value = finishExpertTimelineRun(runs.value, 'run-1', 'completed'); active.value = false },
       onCancelled: () => undefined,
       onError: () => undefined,
     })
     controller.enqueue(frame('run', { version: 1, run_id: 'run-1', user_message: { public_id: 'u1', role: 'user', content: 'Вопрос', created_at: '2026-09-19T10:00:00Z' } }))
     controller.enqueue(frame('activity', { version: 1, run_id: 'run-1', seq: 1, activity_id: 'a', code: 'material.image_prepare.started', status: 'started', category: 'material' }))
-    await vi.waitFor(() => expect(root.textContent).toContain('Подготавливаю изображение'))
+    await vi.waitFor(() => expect(root.textContent).toContain('Подготавливаю материалы'))
     expect(root.textContent).not.toContain('Проверяю текстовый слой PDF')
     expect(firstDelta).toBe(false)
 
     controller.enqueue(frame('activity', { version: 1, run_id: 'run-1', seq: 2, activity_id: 'a', code: 'material.image_prepare.completed', status: 'completed', category: 'material' }))
     controller.enqueue(frame('activity', { version: 1, run_id: 'run-1', seq: 3, activity_id: 'b', code: 'pdf.local_extract.started', status: 'started', category: 'material' }))
-    await vi.waitFor(() => expect(root.textContent).toContain('Проверяю текстовый слой PDF'))
-    expect(root.textContent).toContain('Изображение подготовлено')
+    await vi.waitFor(() => expect(root.textContent).toContain('Проверяю PDF'))
+    expect(root.textContent).not.toContain('Изображение подготовлено')
     expect(firstDelta).toBe(false)
 
     controller.enqueue(frame('delta', { version: 1, seq: 1, text: 'Ответ.' }))
@@ -144,7 +148,7 @@ describe('Expert Chat real DOM stream', () => {
     controller.close()
     await request
     await nextTick()
-    expect(root.querySelector('button')?.getAttribute('aria-expanded')).toBe('false')
+    expect(root.textContent).toBe('')
     app.unmount()
   })
 })

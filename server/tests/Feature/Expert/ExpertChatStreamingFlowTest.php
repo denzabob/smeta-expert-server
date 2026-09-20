@@ -54,6 +54,10 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $assistant = $conversation->messages()->where('role', 'assistant')->sole();
         $this->assertSame('Это потоковый ответ.', $assistant->content);
         $this->assertSame('completed', $assistant->metadata['generation_status']);
+        $this->assertSame('fake', $assistant->metadata['provider']);
+        $this->assertSame('fake-stream', $assistant->metadata['model']);
+        $this->assertTrue(Str::isUuid($assistant->metadata['run_id']));
+        $this->assertArrayHasKey('latency_ms', $assistant->metadata);
     }
 
     public function test_failed_pdf_run_releases_lock_and_next_text_message_succeeds(): void

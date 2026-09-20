@@ -1,8 +1,10 @@
 <?php
+
 use App\Http\Controllers\Api\Expert\ConversationController;
 use App\Http\Controllers\Api\Expert\FindingController;
 use App\Http\Controllers\Api\Expert\MaterialController;
 use App\Http\Controllers\Api\Expert\MessageController;
+use App\Http\Controllers\Api\Expert\MessageFeedbackController;
 use App\Http\Controllers\Api\Expert\MessageStreamController;
 use App\Http\Controllers\Api\Expert\ProjectController;
 use App\Http\Controllers\Api\Expert\ResearchObjectController;
@@ -28,6 +30,8 @@ Route::prefix('expert')->middleware('auth:sanctum')->group(function () {
     Route::post('conversations/{conversation}/messages', [MessageController::class, 'store']);
     Route::post('conversations/{conversation}/messages/stream', [MessageStreamController::class, 'store']);
     Route::post('conversations/{conversation}/messages/{assistant}/continue/stream', [MessageStreamController::class, 'continue']);
+    Route::put('messages/{message}/feedback', [MessageFeedbackController::class, 'upsert']);
+    Route::delete('messages/{message}/feedback', [MessageFeedbackController::class, 'destroy']);
     Route::post('conversations/{conversation}/runs/{runId}/cancel', [MessageStreamController::class, 'cancel'])->whereUuid('runId');
     Route::get('projects/{project}/materials', [MaterialController::class, 'index']);
     Route::post('projects/{project}/materials', [MaterialController::class, 'store']);

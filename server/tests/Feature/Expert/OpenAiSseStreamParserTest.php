@@ -14,7 +14,7 @@ final class OpenAiSseStreamParserTest extends TestCase
     public function test_fragmented_openai_sse_keeps_incremental_text_and_metadata(): void
     {
         $frames = [
-            'data: {"id":"upstream-1","choices":[{"delta":{"content":"Это "}}]}', "\n\n",
+            'data: {"id":"upstream-1","model":"upstream/actual-model","choices":[{"delta":{"content":"Это "}}]}', "\n\n",
             "data: {\"choices\":[{\"delta\":{\"content\":\"поток\"}}]}\n\ndata: {\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":2,\"total_tokens\":9}}\n\n",
             'data: [DO', "NE]\n\n",
         ];
@@ -24,6 +24,7 @@ final class OpenAiSseStreamParserTest extends TestCase
         $this->assertSame('поток', $events[1]->text);
         $this->assertSame('done', $events[2]->type);
         $this->assertSame('upstream-1', $events[2]->metadata['upstream_id']);
+        $this->assertSame('upstream/actual-model', $events[2]->metadata['model']);
         $this->assertSame(9, $events[2]->metadata['total_tokens']);
     }
 

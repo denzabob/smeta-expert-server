@@ -642,6 +642,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('admin/llm-model-catalog/routerai/refresh', [AdminLLMProfileController::class, 'refreshCatalog']);
     Route::post('admin/llm-profiles/expert-chat/smoke', [AdminLLMProfileController::class, 'smoke']);
     Route::get('admin/llm-profiles/expert-chat/preview', [AdminLLMProfileController::class, 'preview']);
+    Route::get('admin/expert-feedback', [\App\Http\Controllers\Api\AdminExpertFeedbackController::class, 'index']);
+    Route::get('admin/expert-feedback/{feedback}', [\App\Http\Controllers\Api\AdminExpertFeedbackController::class, 'show']);
     
     // ========== Admin LLM Prompts API ==========
     Route::get('admin/llm-prompts', [AdminLLMController::class, 'getPrompts']);

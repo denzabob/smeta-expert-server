@@ -280,6 +280,12 @@ const router = createRouter({
           meta: { title: 'LLM' }
         },
         {
+          path: 'ai/feedback',
+          name: 'admin-ai-feedback',
+          component: () => import('@/views/admin/AdminExpertFeedbackView.vue'),
+          meta: { title: 'Обратная связь AI' }
+        },
+        {
           path: 'system/prompts',
           name: 'admin-system-prompts',
           component: () => import('@/views/admin/AdminSystemView.vue'),

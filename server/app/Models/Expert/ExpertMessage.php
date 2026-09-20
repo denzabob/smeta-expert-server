@@ -23,4 +23,9 @@ class ExpertMessage extends Model
     {
         return $this->hasMany(ExpertMessageMaterial::class)->orderBy('position');
     }
+
+    public function feedback(): HasMany
+    {
+        return $this->hasMany(ExpertMessageFeedback::class, 'message_id');
+    }
 }

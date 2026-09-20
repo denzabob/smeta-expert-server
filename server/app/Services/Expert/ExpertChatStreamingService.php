@@ -233,7 +233,17 @@ final class ExpertChatStreamingService
             $retryable = $this->isRetryableError($errorCode, $hasVisibleOutput);
             $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt);
         } finally {
-            $activity->terminalize($status === 'stopped' ? 'skipped' : 'failed');
+            if ($status === 'completed' && $activity->openActivityCodes() !== []) {
+                Log::warning('Expert chat completed with open activities.', [
+                    'run_id' => $runId,
+                    'activity_codes' => $activity->openActivityCodes(),
+                ]);
+            }
+            $activity->terminalize(match ($status) {
+                'completed' => 'completed',
+                'stopped' => 'skipped',
+                default => 'failed',
+            });
             $assistant = $this->chat->persistStreamingAssistant(
                 $run->conversation,
                 $run->userMessage,
@@ -241,7 +251,7 @@ final class ExpertChatStreamingService
                 $status === 'completed' ? 'completed' : ($status === 'stopped' ? 'stopped' : 'interrupted'),
                 $runId,
                 $finishReason,
-                $metadata,
+                [...$metadata, 'latency_ms' => (int) round((microtime(true) - $startedAt) * 1000)],
                 $run->existingAssistant,
             );
             if ($assistant !== null) {

@@ -19,6 +19,9 @@ vi.mock('vuetify/components/VList', () => ({
 vi.mock('vuetify/components/VListItem', () => ({ VListItem: { template: '<li />' } }))
 vi.mock('vuetify/components/VMenu', () => ({ VMenu: { template: '<div><slot /><slot name="activator" :props="{}" /></div>' } }))
 vi.mock('vuetify/components/VProgressCircular', () => ({ VProgressCircular: { template: '<i />' } }))
+vi.mock('vuetify/components/VDialog', () => ({ VDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' } }))
+vi.mock('vuetify/components/VCard', () => ({ VCard: { template: '<div><slot /></div>' }, VCardTitle: { template: '<div><slot /></div>' }, VCardText: { template: '<div><slot /></div>' }, VCardActions: { template: '<div><slot /></div>' } }))
+vi.mock('vuetify/components/VGrid', () => ({ VSpacer: { template: '<span />' } }))
 import type { ExpertMessage } from '../../types'
 import ExpertChatMessage from './ExpertChatMessage.vue'
 
@@ -41,7 +44,7 @@ describe('Expert chat failure diagnostics', () => {
       deliveryError: 'Потоковый ответ AI прерван.',
       diagnostic: { runId: 'run-48217', errorCode: 'provider_timeout', retryable: true },
     }
-    const app = createSSRApp({ render: () => h(ExpertChatMessage, { message }) })
+    const app = createSSRApp({ render: () => h(ExpertChatMessage, { message, allowContinue: true }) })
     app.component('v-icon', { template: '<i />' })
     app.component('v-btn', { template: '<button><slot /></button>' })
     app.component('v-menu', { template: '<div><slot name="activator" :props="{}" /><slot /></div>' })
@@ -53,6 +56,7 @@ describe('Expert chat failure diagnostics', () => {
     expect(html).toContain('Потоковый ответ AI прерван.')
     expect(html).toContain('Код: provider_timeout')
     expect(html).toContain('ID: run-48217')
+    expect(html).toContain('Повторить')
     expect(html).toContain('Подробнее')
     expect(html).not.toContain('SECRET-UPSTREAM-BODY')
   })

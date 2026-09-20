@@ -33,6 +33,20 @@ describe('Expert persistence mapping', () => {
     expect(message.attachments).toEqual([expect.objectContaining({ id: 'material-1', name: 'Акт.pdf', available: false })])
     expect(message.attachments?.[0]).not.toHaveProperty('storagePath')
   })
+  it('maps only the current user feedback and writes it through the scoped message endpoint', async () => {
+    const mapped = mapMessage({
+      public_id: 'assistant-1', role: 'assistant', content: 'Ответ', created_at: '2026-09-20T10:00:00Z',
+      feedback: { rating: 'negative', reason_code: 'too_slow', comment: 'Долго.' },
+    })
+    expect(mapped.feedback).toEqual({ rating: 'negative', reasonCode: 'too_slow', comment: 'Долго.' })
+    const put = vi.fn().mockResolvedValue({ data: { rating: 'positive', reason_code: null, comment: null } })
+    const remove = vi.fn().mockResolvedValue({ data: null })
+    const client = createExpertApi({ put, delete: remove } as unknown as AxiosInstance)
+    await expect(client.saveMessageFeedback('assistant/1', { rating: 'positive' })).resolves.toEqual({ rating: 'positive', reasonCode: null, comment: null })
+    await client.deleteMessageFeedback('assistant/1')
+    expect(put).toHaveBeenCalledWith('/api/expert/messages/assistant%2F1/feedback', { rating: 'positive', reason_code: null, comment: null })
+    expect(remove).toHaveBeenCalledWith('/api/expert/messages/assistant%2F1/feedback')
+  })
   it('uses a safe display name when old material data has no original filename', () => {
     const material=mapMaterial({public_id:'m1',original_name:'',mime_type:'application/pdf',extension:'pdf',size:2048,category:'document',status:'uploaded',created_at:'2026-09-12T10:00:00Z'})
     expect(material.name).toBe('Материал без названия.pdf')
@@ -201,6 +215,16 @@ describe('Expert persistence mapping', () => {
     })
 
     expect(errors).toEqual(['provider_auth_failed: Провайдер AI недоступен из-за настройки доступа.'])
+    vi.unstubAllGlobals()
+  })
+
+  it('rejects a stream that closes without a terminal event', async () => {
+    vi.stubGlobal('document', { cookie: '' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('event: run\ndata: {"run_id":"run-1","user_message":{"public_id":"u1","role":"user","content":"Вопрос","created_at":"2026-09-20T10:00:00Z"}}\n\n', { status: 200 })))
+    const client = createExpertApi({ getUri: () => 'https://expert.test' } as unknown as AxiosInstance)
+    await expect(client.streamMessage('conversation-1', 'Вопрос', 'request-1', [], {
+      onRun: () => undefined, onDelta: () => undefined, onDone: () => undefined, onCancelled: () => undefined, onError: () => undefined,
+    })).rejects.toMatchObject({ mapped: { code: 'stream_eof_without_terminal' } })
     vi.unstubAllGlobals()
   })
 

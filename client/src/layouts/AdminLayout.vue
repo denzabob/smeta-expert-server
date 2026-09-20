@@ -204,6 +204,12 @@ const navSections = computed(() => [
     ]
   },
   {
+    title: 'AI',
+    items: [
+      { to: '/admin/ai/feedback', label: 'Обратная связь', icon: 'mdi-message-text-outline' },
+    ]
+  },
+  {
     title: 'Система',
     items: [
       { to: '/admin/system/llm', label: 'LLM', icon: 'mdi-robot-outline' },
