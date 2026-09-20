@@ -48,6 +48,7 @@ return [
     'openrouter' => [
         'key' => env('OPENROUTER_API_KEY'),
         'model' => env('OPENROUTER_MODEL', 'google/gemini-2.0-flash-001'),
+        'model_source' => env('OPENROUTER_MODEL') !== null ? 'ENV' : 'DEFAULT',
         'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
         'temperature' => env('OPENROUTER_TEMPERATURE', 0.2),
         'max_tokens' => env('OPENROUTER_MAX_TOKENS', 4096),
@@ -63,6 +64,7 @@ return [
     'deepseek' => [
         'key' => env('DEEPSEEK_API_KEY'),
         'model' => env('DEEPSEEK_MODEL', 'deepseek-chat'),
+        'model_source' => env('DEEPSEEK_MODEL') !== null ? 'ENV' : 'DEFAULT',
         'base_url' => env('DEEPSEEK_BASE_URL', 'https://api.deepseek.com/v1'),
         'temperature' => env('DEEPSEEK_TEMPERATURE', 0.2),
         'max_tokens' => env('DEEPSEEK_MAX_TOKENS', 4096),
@@ -78,6 +80,7 @@ return [
     'mistral' => [
         'key' => env('MISTRAL_API_KEY'),
         'model' => env('MISTRAL_MODEL', 'mistral-small-latest'),
+        'model_source' => env('MISTRAL_MODEL') !== null ? 'ENV' : 'DEFAULT',
         'base_url' => env('MISTRAL_BASE_URL', 'https://api.mistral.ai/v1'),
         'temperature' => env('MISTRAL_TEMPERATURE', 0.2),
         'max_tokens' => env('MISTRAL_MAX_TOKENS', 4096),
@@ -93,6 +96,7 @@ return [
     'routerai' => [
         'key' => env('ROUTERAI_API_KEY'),
         'model' => env('ROUTERAI_MODEL', 'openai/gpt-4o'),
+        'model_source' => env('ROUTERAI_MODEL') !== null ? 'ENV' : 'DEFAULT',
         'base_url' => env('ROUTERAI_BASE_URL', 'https://routerai.ru/api/v1'),
         'temperature' => env('ROUTERAI_TEMPERATURE', 0.2),
         'max_tokens' => env('ROUTERAI_MAX_TOKENS', 4096),

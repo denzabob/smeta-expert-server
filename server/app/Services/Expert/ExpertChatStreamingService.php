@@ -16,6 +16,7 @@ use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\Exceptions\LLMUnsupportedCapabilityException;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
+use App\Services\LLM\LLMTaskProfileResolver;
 use Illuminate\Support\Facades\Log;
 
 final class ExpertChatStreamingService
@@ -167,7 +168,7 @@ final class ExpertChatStreamingService
             }
             $modelActivityId = $activity->start('model.request.started', 'model');
 
-            foreach ($this->router->setUserId($run->conversation->project->user_id)->streamChat($request, $token, $runId) as $event) {
+            foreach ($this->router->setUserId($run->conversation->project->user_id)->streamChat($request, $token, $runId, LLMTaskProfileResolver::EXPERT_CHAT) as $event) {
                 if ($token->isCancellationRequested()) {
                     $status = 'stopped';
                     $finishReason = 'cancelled';

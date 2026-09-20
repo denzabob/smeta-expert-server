@@ -219,6 +219,8 @@
       <v-divider class="my-5" />
 
       <!-- Provider Settings (Expandable) -->
+      <AdminLlmTaskProfiles :providers="availableProviders" />
+
       <div class="text-subtitle-1 font-weight-medium mb-3">Настройки провайдеров</div>
 
       <v-expansion-panels variant="accordion">
@@ -321,6 +323,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import api from '@/api/axios'
+import AdminLlmTaskProfiles from './AdminLlmTaskProfiles.vue'
 
 interface ProviderForm {
   api_key: string

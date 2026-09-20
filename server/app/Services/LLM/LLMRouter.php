@@ -51,6 +51,7 @@ class LLMRouter
 
     private ?int $currentUserId = null;
     private ?string $lastCorrelationId = null;
+    private ?LLMTaskProfileResolver $taskProfiles;
 
     /** @var array<string, LLMProviderInterface> */
     private array $providerInstances = [];
@@ -63,11 +64,13 @@ class LLMRouter
         LLMSettingsRepository $settings,
         LLMErrorClassifier $errorClassifier,
         ?\Closure $providerFactory = null,
+        ?LLMTaskProfileResolver $taskProfiles = null,
     ) {
         $this->circuitBreaker = $circuitBreaker;
         $this->settings = $settings;
         $this->errorClassifier = $errorClassifier;
         $this->providerFactory = $providerFactory;
+        $this->taskProfiles = $taskProfiles;
     }
 
     /**
@@ -279,10 +282,11 @@ class LLMRouter
      *
      * @throws LLMChatUnavailableException
      */
-    public function chat(LLMChatRequest $request, ?string $correlationId = null): LLMChatResponse
+    public function chat(LLMChatRequest $request, ?string $correlationId = null, ?string $taskProfile = null): LLMChatResponse
     {
         $this->lastCorrelationId = $correlationId ?? (string) Str::uuid();
-        $executionPlan = $this->buildExecutionPlan();
+        $executionPlan = $this->buildExecutionPlan($taskProfile);
+        $profile = $this->activeProfile($taskProfile);
         $failoverChain = [];
         $attemptIndex = 0;
         $lastErrorType = null;
@@ -290,8 +294,8 @@ class LLMRouter
         if ($request->hasFiles()) {
             $executionPlan = array_slice($executionPlan, 0, 1);
             $providerName = $executionPlan[0] ?? $this->settings->getPrimaryProvider();
-            $provider = $this->getProvider($providerName);
-            if ($request->hasPdfOcrFiles() && ($provider === null || ! in_array(LLMCapability::PDF_OCR, $provider->capabilities(), true))) {
+            $provider = $this->getProvider($providerName, $profile['model'] ?? null);
+            if ($request->hasPdfOcrFiles() && ($provider === null || ! $this->supports($provider, LLMCapability::PDF_OCR, $profile))) {
                 throw new LLMUnsupportedCapabilityException($provider?->name() ?? $providerName, $provider?->model() ?? 'unknown', LLMCapability::PDF_OCR);
             }
         }
@@ -301,9 +305,9 @@ class LLMRouter
             // Keep the current primary only until an explicit vision routing policy exists.
             $executionPlan = array_slice($executionPlan, 0, 1);
             $providerName = $executionPlan[0] ?? $this->settings->getPrimaryProvider();
-            $provider = $this->getProvider($providerName);
+            $provider = $this->getProvider($providerName, $profile['model'] ?? null);
 
-            if ($provider !== null && ! in_array(LLMCapability::IMAGE_INPUT, $provider->capabilities(), true)) {
+            if ($provider !== null && ! $this->supports($provider, LLMCapability::IMAGE_INPUT, $profile)) {
                 Log::warning('LLMRouter: configured profile rejected image input.', [
                     'correlation_id' => $this->lastCorrelationId,
                     'provider' => $provider->name(),
@@ -328,7 +332,7 @@ class LLMRouter
                 continue;
             }
 
-            $provider = $this->getProvider($providerName);
+            $provider = $this->getProvider($providerName, $providerName === ($profile['provider'] ?? null) ? $profile['model'] : null);
             if ($provider === null) {
                 $failoverChain[] = "{$providerName}:not_configured";
                 $lastErrorType = LLMErrorType::CONFIG;
@@ -420,10 +424,11 @@ class LLMRouter
      * @return iterable<LLMStreamEvent>
      * @throws LLMChatUnavailableException
      */
-    public function streamChat(LLMChatRequest $request, LLMCancellationToken $cancellationToken, ?string $correlationId = null): iterable
+    public function streamChat(LLMChatRequest $request, LLMCancellationToken $cancellationToken, ?string $correlationId = null, ?string $taskProfile = null): iterable
     {
         $this->lastCorrelationId = $correlationId ?? (string) Str::uuid();
-        $executionPlan = $this->buildExecutionPlan();
+        $executionPlan = $this->buildExecutionPlan($taskProfile);
+        $profile = $this->activeProfile($taskProfile);
         // Multimodal runs must remain on the selected model exactly like chat().
         if ($request->hasFiles() || $request->hasImages()) {
             $executionPlan = array_slice($executionPlan, 0, 1);
@@ -433,15 +438,48 @@ class LLMRouter
         $lastProviderException = null;
 
         foreach ($executionPlan as $providerName) {
-            $provider = $this->getProvider($providerName);
-            if (! $provider instanceof LLMStreamingProviderInterface || ! in_array(LLMCapability::STREAMING, $provider->capabilities(), true)) {
+            $provider = $this->getProvider($providerName, $providerName === ($profile['provider'] ?? null) ? $profile['model'] : null);
+            $supportsStreaming = $provider !== null && $this->supports($provider, LLMCapability::STREAMING, $profile);
+            if ($profile !== null && $provider !== null && ! $supportsStreaming) {
+                // The response arrives as a whole; this is a synchronous completion,
+                // never a claim that the selected model streamed tokens.
+                if ($request->hasImages() && ! $this->supports($provider, LLMCapability::IMAGE_INPUT, $profile)) {
+                    throw new LLMUnsupportedCapabilityException($providerName, $provider->model(), LLMCapability::IMAGE_INPUT);
+                }
+                if ($request->hasPdfOcrFiles() && ! $this->supports($provider, LLMCapability::PDF_OCR, $profile)) {
+                    throw new LLMUnsupportedCapabilityException($providerName, $provider->model(), LLMCapability::PDF_OCR);
+                }
+                if ($cancellationToken->isCancellationRequested()) {
+                    return;
+                }
+                try {
+                    $response = $provider->chat($request);
+                    $this->circuitBreaker->recordSuccess($providerName);
+                } catch (LLMProviderException $exception) {
+                    $lastProviderException = $exception;
+                    $lastErrorType = $this->errorClassifier->classify($exception, $exception->getHttpStatus());
+                    $failoverChain[] = "{$providerName}:{$lastErrorType->value}";
+                    $this->circuitBreaker->recordFailure($providerName, $lastErrorType->value);
+                    if (count($executionPlan) === 1 || ! $lastErrorType->isFailoverAllowed()) {
+                        throw $exception;
+                    }
+                    continue;
+                }
+                if ($cancellationToken->isCancellationRequested()) {
+                    return;
+                }
+                yield LLMStreamEvent::delta($response->content);
+                yield LLMStreamEvent::done([...$response->metadata, 'sync_fallback' => true], $response->parsedFiles);
+                return;
+            }
+            if (! $provider instanceof LLMStreamingProviderInterface || ! $supportsStreaming) {
                 $failoverChain[] = "{$providerName}:streaming_not_supported";
                 continue;
             }
-            if ($request->hasImages() && ! in_array(LLMCapability::IMAGE_INPUT, $provider->capabilities(), true)) {
+            if ($request->hasImages() && ! $this->supports($provider, LLMCapability::IMAGE_INPUT, $profile)) {
                 throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), LLMCapability::IMAGE_INPUT);
             }
-            if ($request->hasPdfOcrFiles() && ! in_array(LLMCapability::PDF_OCR, $provider->capabilities(), true)) {
+            if ($request->hasPdfOcrFiles() && ! $this->supports($provider, LLMCapability::PDF_OCR, $profile)) {
                 throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), LLMCapability::PDF_OCR);
             }
 
@@ -482,8 +520,11 @@ class LLMRouter
      *
      * @return string[]
      */
-    public function buildExecutionPlan(): array
+    public function buildExecutionPlan(?string $taskProfile = null): array
     {
+        if ($taskProfile !== null && $this->profileResolver()->active($taskProfile) !== null) {
+            return $this->profileResolver()->executionPlan($taskProfile);
+        }
         $mode = $this->settings->getMode();
         $primary = $this->settings->getPrimaryProvider();
 
@@ -545,22 +586,45 @@ class LLMRouter
     // Internal helpers
     // -------------------------------------------------------------------
 
-    private function getProvider(string $name): ?LLMProviderInterface
+    private function getProvider(string $name, ?string $modelOverride = null): ?LLMProviderInterface
     {
-        if (isset($this->providerInstances[$name])) {
-            return $this->providerInstances[$name];
+        $cacheKey = $name.'|'.($modelOverride ?? '');
+        if (isset($this->providerInstances[$cacheKey])) {
+            return $this->providerInstances[$cacheKey];
         }
 
         $providerSettings = $this->settings->getProviderSettings($name);
+        if ($modelOverride !== null) {
+            $providerSettings['model'] = $modelOverride;
+        }
         $provider = $this->providerFactory !== null
             ? ($this->providerFactory)($name, $providerSettings)
             : ProviderRegistry::createProvider($name, $providerSettings);
 
         if ($provider !== null) {
-            $this->providerInstances[$name] = $provider;
+            $this->providerInstances[$cacheKey] = $provider;
         }
 
         return $provider;
+    }
+
+    private function profileResolver(): LLMTaskProfileResolver
+    {
+        return $this->taskProfiles ??= app(LLMTaskProfileResolver::class);
+    }
+
+    private function activeProfile(?string $task): ?array
+    {
+        return $task === null ? null : $this->profileResolver()->active($task);
+    }
+
+    private function supports(LLMProviderInterface $provider, LLMCapability $capability, ?array $profile): bool
+    {
+        if ($profile !== null && $provider->name() === $profile['provider']) {
+            return app(LLMEffectiveCapabilityResolver::class)->resolve($provider->name(), $provider->model())[$capability->value] ?? false;
+        }
+
+        return in_array($capability, $provider->capabilities(), true);
     }
 
     /**

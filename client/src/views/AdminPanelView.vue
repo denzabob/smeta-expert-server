@@ -215,6 +215,7 @@
                 </v-btn>
               </v-card-actions>
             </v-card>
+            <AdminLlmTaskProfiles :providers="availableProviders" />
           </v-col>
         </v-row>
       </v-window-item>
@@ -767,6 +768,7 @@ import AdminSystemLogsTab from '@/components/admin/AdminSystemLogsTab.vue'
 import AdminMaterialDimensionRulesTab from '@/components/admin/AdminMaterialDimensionRulesTab.vue'
 import AdminMaterialDimensionFailuresTab from '@/components/admin/AdminMaterialDimensionFailuresTab.vue'
 import AdminMaterialTypePatternsTab from '@/components/admin/AdminMaterialTypePatternsTab.vue'
+import AdminLlmTaskProfiles from '@/components/admin/AdminLlmTaskProfiles.vue'
 import type { MaterialDimensionRulePreset } from '@/api/materialDimensions'
 
 type TabType =

@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\EvidenceRunController;
 use App\Http\Controllers\Api\ProjectProfileRateController;
 use App\Http\Controllers\Api\WorkDecomposeController;
 use App\Http\Controllers\Api\AdminLLMController;
+use App\Http\Controllers\Api\AdminLLMProfileController;
 use App\Http\Controllers\Api\AdminLLMStatsController;
 use App\Http\Controllers\Api\AdminMaterialDimensionParseFailureController;
 use App\Http\Controllers\Api\AdminMaterialDimensionRuleController;
@@ -635,6 +636,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('admin/llm-settings', [AdminLLMController::class, 'update']);
     Route::post('admin/llm-test', [AdminLLMController::class, 'test']);
     Route::post('admin/llm-reset-circuit', [AdminLLMController::class, 'resetCircuit']);
+    Route::get('admin/llm-profiles/expert-chat', [AdminLLMProfileController::class, 'effective']);
+    Route::put('admin/llm-profiles/expert-chat', [AdminLLMProfileController::class, 'save']);
+    Route::get('admin/llm-model-catalog/routerai', [AdminLLMProfileController::class, 'catalog']);
+    Route::post('admin/llm-model-catalog/routerai/refresh', [AdminLLMProfileController::class, 'refreshCatalog']);
+    Route::post('admin/llm-profiles/expert-chat/smoke', [AdminLLMProfileController::class, 'smoke']);
+    Route::get('admin/llm-profiles/expert-chat/preview', [AdminLLMProfileController::class, 'preview']);
     
     // ========== Admin LLM Prompts API ==========
     Route::get('admin/llm-prompts', [AdminLLMController::class, 'getPrompts']);

@@ -10,6 +10,7 @@ use App\Services\LLM\DTO\LLMChatMessage;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMTextContent;
 use App\Services\LLM\LLMRouter;
+use App\Services\LLM\LLMTaskProfileResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -143,7 +144,7 @@ final class ExpertChatService
 
                 $response = $this->llmRouter
                     ->setUserId($conversation->project->user_id)
-                    ->chat($this->buildRequest($conversation, $userMessage, $materialContext));
+                    ->chat($this->buildRequest($conversation, $userMessage, $materialContext), taskProfile: LLMTaskProfileResolver::EXPERT_CHAT);
                 foreach ($materialContext->ocrCandidates as $candidate) {
                     $parsed = collect($response->parsedFiles)->first(fn ($file) => strtolower($file->sha256) === strtolower($candidate->sha256));
                     if ($parsed === null) {

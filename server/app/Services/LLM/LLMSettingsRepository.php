@@ -28,6 +28,7 @@ class LLMSettingsRepository
         'llm.fallback_providers',
         'llm.mode',
         'llm.providers',
+        'llm.profiles.expert_chat',
     ];
 
     private const ENCRYPTED_FIELDS = ['api_key'];
@@ -56,6 +57,40 @@ class LLMSettingsRepository
     {
         $providers = $this->get('llm.fallback_providers');
         return is_array($providers) ? $providers : ['deepseek'];
+    }
+
+    /** A missing or disabled task profile leaves the legacy global route intact. */
+    public function getTaskProfile(string $task): ?array
+    {
+        $profile = $this->get('llm.profiles.'.$task);
+
+        return is_array($profile) ? $profile : null;
+    }
+
+    public function saveTaskProfile(string $task, array $profile): void
+    {
+        $this->set('llm.profiles.'.$task, $profile);
+    }
+
+    /** Source labels describe the stored configuration, never the secret value. */
+    public function getGlobalModelSource(string $provider): string
+    {
+        $settings = $this->get('llm.providers');
+        if (is_array($settings) && ! empty($settings[$provider]['api_key']) && ! empty($settings[$provider]['model'])) {
+            return 'DB';
+        }
+
+        return config("services.{$provider}.model_source", 'DEFAULT');
+    }
+
+    public function getProviderKeySource(string $provider): string
+    {
+        $settings = $this->get('llm.providers');
+        if (is_array($settings) && ! empty($settings[$provider]['api_key'])) {
+            return 'DB';
+        }
+
+        return config("services.{$provider}.key") ? 'ENV' : 'NONE';
     }
 
     /**
