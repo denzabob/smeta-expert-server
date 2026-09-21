@@ -69,6 +69,16 @@ class ExpertMaterialContextException extends RuntimeException
         );
     }
 
+    public static function pdfTextTooLarge(int $pageCount, int $extractedChars): self
+    {
+        return new self(
+            'material_context_too_large',
+            'Текст PDF превышает локальный порог и требует обработки как исходный документ.',
+            422,
+            'pdf_text_too_large:'.max(0, $pageCount).':'.max(0, $extractedChars),
+        );
+    }
+
     public static function notFound(): self
     {
         return new self(

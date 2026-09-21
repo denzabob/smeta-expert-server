@@ -235,7 +235,7 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
                     'messages' => OpenAiChatMessageMapper::map($request),
                     'temperature' => $this->temperature,
                     'max_tokens' => $this->maxTokens,
-                    'plugins' => $request->hasPdfOcrFiles() ? [['id' => 'file-parser', 'pdf' => ['engine' => (string) config('expert.pdf_ocr.engine', 'mistral-ocr')]]] : null,
+                    'plugins' => $this->pdfParserPlugin($request),
                 ], static fn (mixed $value): bool => $value !== null));
 
             $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
@@ -322,7 +322,7 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
                     'max_tokens' => $this->maxTokens,
                     'stream' => true,
                     'stream_options' => ['include_usage' => true],
-                    'plugins' => $request->hasPdfOcrFiles() ? [['id' => 'file-parser', 'pdf' => ['engine' => (string) config('expert.pdf_ocr.engine', 'mistral-ocr')]]] : null,
+                    'plugins' => $this->pdfParserPlugin($request),
                 ], static fn (mixed $value): bool => $value !== null),
                 'stream' => true,
             ]);
@@ -388,6 +388,31 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
         return is_int($value) || (is_string($value) && ctype_digit($value))
             ? (int) $value
             : null;
+    }
+
+    /** @return array{0: array{id: string, pdf: array{engine: string}}}|null */
+    private function pdfParserPlugin(LLMChatRequest $request): ?array
+    {
+        $intents = $request->pdfProcessingIntents();
+        if ($intents === []) {
+            return null;
+        }
+
+        // A mixed request uses the OCR-capable path deliberately. This is the
+        // conservative RouterAI contract until per-file parser settings are
+        // verified and supported by the upstream API.
+        $hasOcr = $request->hasPdfOcrFiles();
+        $engine = $hasOcr
+            ? (string) config('expert.pdf_processing.ocr_engine', config('expert.pdf_ocr.engine', 'mistral-ocr'))
+            : (string) config('expert.pdf_processing.text_engine', 'cloudflare-ai');
+
+        Log::info('RouterAI PDF parser selected.', [
+            'processing_intents' => $intents,
+            'selected_engine' => $engine,
+            'ocr_priority' => $hasOcr,
+        ]);
+
+        return [['id' => 'file-parser', 'pdf' => ['engine' => $engine]]];
     }
 
     private function isSseContentType(string $contentType): bool

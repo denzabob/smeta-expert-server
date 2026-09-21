@@ -60,10 +60,14 @@ const activityLabels: Record<string, string> = {
   'pdf.local_extract.started': 'Проверяю текстовый слой PDF',
   'pdf.local_extract.completed': 'Текстовый слой PDF проверен',
   'pdf.local_extract.unavailable': 'Локальное извлечение недоступно',
-  'pdf.ocr_cache.hit': 'Использован OCR-кеш',
-  'pdf.ocr_cache.miss': 'OCR-кеш не найден',
-  'pdf.ocr.started': 'Распознаю сканированный документ',
-  'pdf.ocr.completed': 'Документ распознан',
+  'pdf.ocr_cache.hit': 'Использован кеш документа',
+  'pdf.ocr_cache.miss': 'Подготавливаю документ',
+  'pdf.ocr.started': 'Обрабатываю документ',
+  'pdf.ocr.completed': 'Документ обработан',
+  'pdf.text_cache.hit': 'Использован кеш разбора документа',
+  'pdf.text_cache.miss': 'Подготавливаю большой документ',
+  'pdf.text.started': 'Обрабатываю большой документ',
+  'pdf.text.completed': 'Большой документ обработан',
   'context.build.completed': 'Контекст подготовлен',
   'model.request.started': 'Запрос отправлен модели',
   'model.first_token': 'Формируется ответ',
@@ -167,7 +171,7 @@ export function isSignificantExpertTimelineActivity(activity: ExpertRunActivity)
 
 export function hasSignificantExpertTimelineActivity(run: ExpertTimelineRun): boolean {
   return run.significant === true || run.activities.some((activity) =>
-    activity.code.startsWith('pdf.ocr.') || activity.code.startsWith('tool.') || activity.code.startsWith('web.'))
+    activity.code.startsWith('pdf.ocr.') || activity.code.startsWith('pdf.text.') || activity.code.startsWith('pdf.text_cache.') || activity.code.startsWith('tool.') || activity.code.startsWith('web.'))
 }
 
 export function markExpertTimelineSignificant(runs: ExpertTimelineRun[], runId: string): ExpertTimelineRun[] {

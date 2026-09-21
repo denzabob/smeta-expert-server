@@ -6,6 +6,7 @@ namespace App\Services\Expert;
 
 use App\Models\Expert\ExpertProject;
 use App\Models\Expert\ExpertProjectMaterial;
+use App\Services\LLM\Enums\LLMFileProcessingIntent;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -110,6 +111,10 @@ final class ExpertMaterialContextBuilder
 
             $chars = mb_strlen($text, 'UTF-8');
             if ($chars > $maxCharsPerMaterial) {
+                if ($this->isPdf($material)) {
+                    throw ExpertMaterialContextException::pdfTextTooLarge($this->pdfPageCount($contents), $chars);
+                }
+
                 $failure = ExpertMaterialContextException::tooLarge();
                 $this->logMaterialContextFailure($material, $resolved['bytes'], $failure);
                 throw $failure;
@@ -122,12 +127,22 @@ final class ExpertMaterialContextBuilder
                 throw $failure;
             }
 
-            $context[] = [
+            $contextEntry = [
                 'public_id' => (string) $material->public_id,
                 'name' => $this->presentationName($material),
                 'mime_type' => (string) $material->mime_type,
                 'text' => $text,
             ];
+            if ($this->isPdf($material)) {
+                $contextEntry += [
+                    'processing_strategy' => 'local_text',
+                    'source_bytes' => $resolved['bytes'],
+                    'extracted_chars' => $chars,
+                    'page_count' => $this->pdfPageCount($contents),
+                    'cache_hit' => false,
+                ];
+            }
+            $context[] = $contextEntry;
         }
 
         return $context;
@@ -202,6 +217,48 @@ final class ExpertMaterialContextBuilder
                 throw $exception;
             } catch (ExpertMaterialContextException $exception) {
                 $ocrReason = $exception->reason;
+                if ($ocrReason !== null && str_starts_with($ocrReason, 'pdf_text_too_large:')) {
+                    if ($activityId !== null) {
+                        $activity->complete($activityId, 'pdf.local_extract.completed');
+                    }
+                    $details = explode(':', $ocrReason);
+                    $material = $project->materials()->where('public_id', $publicId)->first();
+                    if (! $material) {
+                        throw ExpertMaterialContextException::notFound();
+                    }
+                    $disk = Storage::disk('local');
+                    $raw = $disk->get($material->storage_path);
+                    $bytes = strlen($raw);
+                    $pageCount = (int) ($details[1] ?? 0);
+                    $extractedChars = (int) ($details[2] ?? 0);
+                    if ($bytes <= 0 || $bytes > $ocrLimit) {
+                        throw ExpertPdfOcrException::processingTooLarge();
+                    }
+                    $ocrCount++;
+                    if ($ocrCount > max(1, (int) config('expert.pdf_ocr.max_pdfs', 2))) {
+                        throw ExpertPdfOcrException::tooManyPages();
+                    }
+                    if ($pageCount <= 0 || $pageCount > max(1, (int) config('expert.pdf_ocr.max_pages_per_pdf', 100))) {
+                        throw ExpertPdfOcrException::tooManyPages();
+                    }
+                    $ocrPages += $pageCount;
+                    if ($ocrPages > max(1, (int) config('expert.pdf_ocr.max_total_pages', 150))) {
+                        throw ExpertPdfOcrException::tooManyPages();
+                    }
+                    $ocrCandidates[] = new ExpertPdfOcrCandidate(
+                        (string) $project->public_id,
+                        (string) $material->public_id,
+                        $this->presentationName($material),
+                        (string) $material->mime_type,
+                        $raw,
+                        hash('sha256', $raw),
+                        $pageCount,
+                        LLMFileProcessingIntent::PDF_TEXT_PARSE,
+                        $extractedChars,
+                    );
+
+                    continue;
+                }
                 if ($ocrReason === null || (! str_starts_with($ocrReason, 'pdf_no_usable_text:') && ! str_starts_with($ocrReason, 'pdf_local_extraction_failed:'))) {
                     if ($activityId !== null) {
                         $activity->fail($activityId, $exception->errorCode);
@@ -258,5 +315,12 @@ final class ExpertMaterialContextBuilder
     {
         return strtolower(ltrim(trim((string) $material->extension), '.')) === 'pdf'
             || strtolower(trim((string) $material->mime_type)) === 'application/pdf';
+    }
+
+    private function pdfPageCount(string $contents): int
+    {
+        $count = preg_match_all('/\/Type\s*\/Page\b/', $contents);
+
+        return max(1, is_int($count) ? $count : 0);
     }
 }

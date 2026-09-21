@@ -15,7 +15,12 @@ use App\Services\Expert\ExpertPdfOcrCache;
 use App\Services\Expert\ExpertPdfOcrCandidate;
 use App\Services\LLM\CircuitBreaker;
 use App\Services\LLM\Contracts\LLMProviderInterface;
+use App\Services\LLM\DTO\LLMChatMessage;
+use App\Services\LLM\DTO\LLMChatRequest;
+use App\Services\LLM\DTO\LLMFileContent;
 use App\Services\LLM\DTO\LLMParsedFile;
+use App\Services\LLM\DTO\LLMTextContent;
+use App\Services\LLM\Enums\LLMFileProcessingIntent;
 use App\Services\LLM\LLMErrorClassifier;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
@@ -67,8 +72,10 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
 
             if (count($requests) === 1) {
                 $current = $payload['messages'][array_key_last($payload['messages'])];
-                $this->assertSame(['text', 'file'], array_column($current['content'], 'type'));
-                $fileData = $current['content'][1]['file']['file_data'];
+                $this->assertSame(['text', 'text', 'file'], array_column($current['content'], 'type'));
+                $fileBlock = collect($current['content'])->first(fn (array $block): bool => ($block['type'] ?? null) === 'file');
+                $this->assertIsArray($fileBlock);
+                $fileData = $fileBlock['file']['file_data'];
                 $prefix = 'data:application/pdf;base64,';
                 $this->assertStringStartsWith($prefix, $fileData);
                 $decoded = base64_decode(substr($fileData, strlen($prefix)), true);
@@ -295,11 +302,127 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_large_text_pdf_uses_provider_text_parser_without_prompt_overflow_and_reuses_parsed_cache(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $fixture = $this->largeTextPdfFixture();
+        $material = $this->material($conversation->project, 'large-text.pdf', 'application/pdf', $fixture);
+        config(['expert.material_context.max_extracted_chars_per_material' => 30000]);
+        $this->installRouterAi();
+        Log::spy();
+        $sha = hash('sha256', $fixture);
+        $requests = [];
+
+        Http::fake(function (ClientRequest $request) use (&$requests, $sha) {
+            $requests[] = $request;
+            $payload = $request->data();
+            if (count($requests) === 1) {
+                $this->assertSame([
+                    ['id' => 'file-parser', 'pdf' => ['engine' => 'cloudflare-ai']],
+                ], $payload['plugins'] ?? null);
+            } else {
+                $this->assertArrayNotHasKey('plugins', $payload);
+            }
+            $current = $payload['messages'][array_key_last($payload['messages'])];
+            if (count($requests) === 1) {
+                $fileBlock = collect($current['content'])->first(fn (array $block): bool => ($block['type'] ?? null) === 'file');
+                $this->assertIsArray($fileBlock);
+                $fileData = $fileBlock['file']['file_data'];
+                $prefix = 'data:application/pdf;base64,';
+                $this->assertSame($sha, hash('sha256', base64_decode(substr($fileData, strlen($prefix)), true)));
+                $this->assertStringNotContainsString('LARGE-PDF-MARKER', json_encode($payload['messages'], JSON_THROW_ON_ERROR));
+            }
+
+            return Http::response($this->routerResponse($sha, 'LARGE-PDF-PARSED'), 200);
+        });
+
+        $context = app(ExpertChatMaterialContextBuilder::class)->build($conversation->project, [$material->public_id]);
+        $this->assertCount(1, $context->files);
+        $this->assertSame(LLMFileProcessingIntent::PDF_TEXT_PARSE, $context->files[0]->processingIntent);
+        $this->assertSame([], $context->textMaterials);
+
+        $this->send($user, $conversation, [
+            'content' => 'Что это за документ?',
+            'material_public_ids' => [$material->public_id],
+        ])->assertCreated();
+
+        $cachedContext = app(ExpertChatMaterialContextBuilder::class)->build($conversation->project, [$material->public_id]);
+        $this->assertSame([], $cachedContext->files);
+        $this->assertStringContainsString('LARGE-PDF-PARSED', $cachedContext->textMaterials[0]['text']);
+
+        $this->send($user, $conversation, [
+            'content' => 'Повтори вывод по этому документу.',
+            'material_public_ids' => [$material->public_id],
+        ])->assertCreated();
+        $this->assertCount(2, $requests);
+        $secondPayload = $requests[1]->data();
+        $this->assertArrayNotHasKey('plugins', $secondPayload);
+        $this->assertStringContainsString('LARGE-PDF-PARSED', json_encode($secondPayload, JSON_THROW_ON_ERROR));
+        Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context): bool => $message === 'Expert chat PDF processed.'
+            && $context['processing_strategy'] === 'provider_pdf_text'
+            && $context['source'] === 'current'
+            && $context['source_bytes'] === strlen($fixture)
+            && $context['extracted_chars'] === strlen('LARGE-PDF-PARSED')
+            && $context['page_count'] > 0
+            && $context['cache_hit'] === false)->once();
+        Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context): bool => $message === 'Expert chat PDF processed.'
+            && $context['processing_strategy'] === 'provider_pdf_text'
+            && $context['cache_hit'] === true)->once();
+    }
+
+    public function test_mixed_pdf_intents_explicitly_prioritize_ocr_engine(): void
+    {
+        $fixture = $this->textPdfFixture();
+        $sha = hash('sha256', $fixture);
+        $request = new LLMChatRequest('system', [new LLMChatMessage('user', [
+            new LLMTextContent('Проверь документы.'),
+            new LLMFileContent('text.pdf', 'application/pdf', $fixture, $sha, LLMFileProcessingIntent::PDF_TEXT_PARSE),
+            new LLMFileContent('scan.pdf', 'application/pdf', $fixture, $sha, LLMFileProcessingIntent::PDF_OCR),
+        ])]);
+        $provider = new RouterAiProvider(
+            apiKey: 'test-key',
+            baseUrl: 'https://routerai.test/api/v1',
+            model: 'openai/gpt-4o',
+            temperature: 0.2,
+            maxTokens: 512,
+            timeout: 2,
+            connectTimeout: 1,
+        );
+        Http::fake(function (ClientRequest $httpRequest) {
+            $this->assertSame([
+                ['id' => 'file-parser', 'pdf' => ['engine' => 'mistral-ocr']],
+            ], $httpRequest->data()['plugins'] ?? null);
+
+            return Http::response($this->routerResponse(str_repeat('0', 64)), 200);
+        });
+
+        $provider->chat($request);
+        Http::assertSentCount(1);
+    }
+
+    public function test_large_text_pdf_still_obeys_provider_processing_source_limit(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $fixture = $this->largeTextPdfFixture();
+        $material = $this->material($conversation->project, 'large-text.pdf', 'application/pdf', $fixture);
+        config([
+            'expert.material_context.max_extracted_chars_per_material' => 30000,
+            'expert.pdf_ocr.max_source_bytes' => strlen($fixture) - 1,
+        ]);
+        Http::fake();
+
+        $this->send($user, $conversation, [
+            'content' => 'Обработай документ.',
+            'material_public_ids' => [$material->public_id],
+        ])->assertStatus(413)->assertJsonPath('code', 'pdf_processing_too_large');
+        Http::assertNothingSent();
+    }
+
     private function installRouterAi(): void
     {
         config([
             'services.routerai.model_capabilities' => [
-                'openai/gpt-4o*' => ['image_input', 'pdf_ocr'],
+                'openai/gpt-4o*' => ['image_input', 'file_input', 'pdf_ocr'],
             ],
         ]);
         $provider = new RouterAiProvider(
@@ -439,6 +562,16 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
     {
         $dompdf = new Dompdf;
         $dompdf->loadHtml('<!doctype html><html><body>TEXT-PDF-48217-EXTRACTABLE</body></html>');
+        $dompdf->render();
+
+        return $dompdf->output();
+    }
+
+    private function largeTextPdfFixture(): string
+    {
+        $dompdf = new Dompdf;
+        $paragraphs = str_repeat('<p>LARGE-PDF-MARKER экспертное заключение содержит важные выводы в конце документа.</p>', 900);
+        $dompdf->loadHtml('<!doctype html><html><body>'.$paragraphs.'</body></html>');
         $dompdf->render();
 
         return $dompdf->output();

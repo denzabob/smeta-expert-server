@@ -32,6 +32,25 @@ final class LLMChatRequest
         return false;
     }
 
+    public function hasPdfTextParseFiles(): bool
+    {
+        foreach ($this->contentBlocks() as $content) if ($content instanceof LLMFileContent && $content->processingIntent === \App\Services\LLM\Enums\LLMFileProcessingIntent::PDF_TEXT_PARSE) return true;
+        return false;
+    }
+
+    /** @return list<string> */
+    public function pdfProcessingIntents(): array
+    {
+        $intents = [];
+        foreach ($this->contentBlocks() as $content) {
+            if ($content instanceof LLMFileContent) {
+                $intents[] = $content->processingIntent->value;
+            }
+        }
+
+        return array_values(array_unique($intents));
+    }
+
     /** @return list<mixed> */
     private function contentBlocks(): array
     {

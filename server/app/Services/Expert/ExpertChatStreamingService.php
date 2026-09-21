@@ -178,7 +178,13 @@ final class ExpertChatStreamingService
                 : $this->chat->buildStreamingRequest($run->conversation, $run->userMessage, $materialBundle);
 
             foreach ($materialContext->ocrCandidates as $candidate) {
-                $ocrActivityIds[strtolower($candidate->sha256)] = $activity->start('pdf.ocr.started', 'material', $candidate->name);
+                $ocrActivityIds[strtolower($candidate->sha256)] = $activity->start(
+                    $candidate->processingIntent === \App\Services\LLM\Enums\LLMFileProcessingIntent::PDF_TEXT_PARSE
+                        ? 'pdf.text.started'
+                        : 'pdf.ocr.started',
+                    'material',
+                    $candidate->name,
+                );
             }
             $modelActivityId = $activity->start('model.request.started', 'model');
 
@@ -213,7 +219,7 @@ final class ExpertChatStreamingService
                     $lastHeartbeatAt = microtime(true);
                 } elseif ($event->type === 'done') {
                     $metadata = $event->metadata;
-                    $this->persistOcrResults($materialContext, $event->parsedFiles, $ocrActivityIds, $activity);
+                    $this->persistOcrResults($materialBundle, $event->parsedFiles, $ocrActivityIds, $activity, $runId);
                 }
                 if (microtime(true) - $startedAt > (int) config('expert.streaming.absolute_timeout_seconds', 600)) {
                     throw LLMProviderException::timeout('stream', (int) config('expert.streaming.absolute_timeout_seconds', 600));
@@ -320,12 +326,13 @@ final class ExpertChatStreamingService
      * @param  array<string, string>  $ocrActivityIds
      */
     private function persistOcrResults(
-        ExpertChatMaterialContext $materialContext,
+        ExpertChatMaterialContextBundle $materialBundle,
         array $parsedFiles,
         array $ocrActivityIds,
         ExpertRunActivitySink $activity,
+        string $runId,
     ): void {
-        foreach ($materialContext->ocrCandidates as $candidate) {
+        foreach ($materialBundle->combined()->ocrCandidates as $candidate) {
             $candidateHash = strtolower($candidate->sha256);
             $activityId = $ocrActivityIds[$candidateHash] ?? null;
             $parsed = null;
@@ -345,8 +352,19 @@ final class ExpertChatStreamingService
             try {
                 $this->ocrCache->put($candidate, $parsed);
                 if ($activityId !== null) {
-                    $activity->complete($activityId, 'pdf.ocr.completed');
+                    $activity->complete(
+                        $activityId,
+                        $candidate->processingIntent === \App\Services\LLM\Enums\LLMFileProcessingIntent::PDF_TEXT_PARSE
+                            ? 'pdf.text.completed'
+                            : 'pdf.ocr.completed',
+                    );
                 }
+                $this->materialDiagnostics->logProviderPdf(
+                    $runId,
+                    $materialBundle,
+                    $candidate,
+                    mb_strlen($parsed->text, 'UTF-8'),
+                );
             } catch (\Throwable $exception) {
                 if ($activityId !== null) {
                     $activity->fail($activityId, $this->errorCode($exception));
@@ -416,6 +434,7 @@ final class ExpertChatStreamingService
             'streaming_not_supported',
             'vision_not_supported',
             'pdf_ocr_failed',
+            'pdf_processing_too_large',
             'material_not_supported',
         ], true);
     }

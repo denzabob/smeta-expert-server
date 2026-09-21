@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{ runs: ExpertTimelineRun[]; showSlowWait
 const run = computed(() => [...props.runs].reverse().find((item) => !item.terminal))
 const current = computed<ExpertRunActivity | undefined>(() => {
   const open = run.value?.activities.filter((item) => item.status === 'started') ?? []
-  return [...open].reverse().find((item) => item.code.startsWith('pdf.ocr.'))
+  return [...open].reverse().find((item) => item.code.startsWith('pdf.ocr.') || item.code.startsWith('pdf.text.') || item.code.startsWith('pdf.text_cache.'))
     ?? [...open].reverse().find((item) => !item.code.startsWith('model.'))
     ?? open[open.length - 1]
     ?? run.value?.activities[run.value.activities.length - 1]
@@ -22,7 +22,9 @@ const current = computed<ExpertRunActivity | undefined>(() => {
 const label = computed(() => {
   const activity = current.value
   if (!activity) return 'Подготавливаю запрос…'
-  if (activity.code.startsWith('pdf.ocr.')) return activity.detail ? `Распознаю ${activity.detail}…` : 'Распознаю документ…'
+  if (activity.code.startsWith('pdf.ocr.')) return activity.detail ? `Обрабатываю ${activity.detail}…` : 'Обрабатываю документ…'
+  if (activity.code.startsWith('pdf.text.')) return activity.detail ? `Обрабатываю ${activity.detail}…` : 'Обрабатываю большой документ…'
+  if (activity.code.startsWith('pdf.text_cache.')) return 'Использую подготовленный документ…'
   if (activity.code.startsWith('pdf.local_extract.')) return 'Проверяю PDF…'
   if (activity.code.startsWith('materials.') || activity.code.startsWith('material.')) return 'Подготавливаю материалы…'
   if (activity.code.startsWith('context.')) return 'Анализирую материалы…'

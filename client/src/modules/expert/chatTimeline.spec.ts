@@ -67,7 +67,9 @@ describe('Expert activity timeline state', () => {
   })
 
   it('maps OCR/cache states and unknown codes to neutral presentation', () => {
-    expect(presentExpertTimelineActivity({ ...started, code: 'pdf.ocr_cache.hit', status: 'completed' })).toMatchObject({ label: 'Использован OCR-кеш' })
+  expect(presentExpertTimelineActivity({ ...started, code: 'pdf.ocr_cache.hit', status: 'completed' })).toMatchObject({ label: 'Использован кеш документа' })
+    expect(presentExpertTimelineActivity({ ...started, code: 'pdf.text.started', status: 'started' })).toMatchObject({ label: 'Обрабатываю большой документ' })
+    expect(presentExpertTimelineActivity({ ...started, code: 'pdf.text_cache.hit', status: 'completed' })).toMatchObject({ label: 'Использован кеш разбора документа' })
     expect(presentExpertTimelineActivity({ ...started, code: 'future.provider.operation', status: 'started' })).toMatchObject({ label: 'Выполняется операция' })
     expect(presentExpertTimelineActivity({ ...started, code: 'generation.cancelled', status: 'completed' }).icon).not.toBe('mdi-check-circle-outline')
   })

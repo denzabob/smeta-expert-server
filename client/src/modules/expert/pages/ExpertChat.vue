@@ -356,7 +356,7 @@ function clearAllSlowWaiting() {
 }
 
 function applyTimelineActivity(assistantId: string, activity: ExpertRunActivity) {
-  if (activity.code.startsWith('pdf.ocr.') || activity.code.startsWith('tool.') || activity.code.startsWith('web.')) {
+  if (activity.code.startsWith('pdf.ocr.') || activity.code.startsWith('pdf.text.') || activity.code.startsWith('pdf.text_cache.') || activity.code.startsWith('tool.') || activity.code.startsWith('web.')) {
     markTimelineSignificant(assistantId, activity.runId)
   }
   timelineByAssistant.value = {

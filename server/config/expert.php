@@ -57,6 +57,10 @@ return [
         'max_annotation_images_bytes' => (int) env('EXPERT_PDF_OCR_MAX_ANNOTATION_IMAGES_BYTES', 20 * 1024 * 1024),
         'max_cache_bytes' => (int) env('EXPERT_PDF_OCR_MAX_CACHE_BYTES', 32 * 1024 * 1024),
     ],
+    'pdf_processing' => [
+        'text_engine' => (string) env('EXPERT_PDF_TEXT_ENGINE', 'cloudflare-ai'),
+        'ocr_engine' => (string) env('EXPERT_PDF_OCR_ENGINE', 'mistral-ocr'),
+    ],
     'material_max_kib' => (int) env('EXPERT_MATERIAL_MAX_KIB', 51200),
     'material_extensions' => ['txt', 'md', 'pdf', 'docx', 'xlsx', 'jpg', 'jpeg', 'png', 'webp'],
     'material_mime_types' => [

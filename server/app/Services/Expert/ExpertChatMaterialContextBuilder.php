@@ -81,7 +81,11 @@ final class ExpertChatMaterialContextBuilder
 
         $this->throwIfCancellationRequested($activity);
         $built = $this->textContextBuilder->buildForChat($project, $textIds, $activity);
-        if ($built->ocrCandidates !== [] && ! (bool) config('expert.pdf_ocr.enabled', true)) throw ExpertPdfOcrException::disabled();
+        $ocrCandidates = array_values(array_filter(
+            $built->ocrCandidates,
+            static fn (ExpertPdfOcrCandidate $candidate): bool => $candidate->processingIntent === LLMFileProcessingIntent::PDF_OCR,
+        ));
+        if ($ocrCandidates !== [] && ! (bool) config('expert.pdf_ocr.enabled', true)) throw ExpertPdfOcrException::disabled();
         $files = [];
         $pending = [];
         $totalFileBase64Bytes = 0;
@@ -89,15 +93,32 @@ final class ExpertChatMaterialContextBuilder
         foreach ($built->ocrCandidates as $candidate) {
             $this->throwIfCancellationRequested($activity);
             $cached = $this->ocrCache->get($candidate);
+            $cachePrefix = $candidate->processingIntent === LLMFileProcessingIntent::PDF_TEXT_PARSE
+                ? 'pdf.text_cache'
+                : 'pdf.ocr_cache';
             if ($cached !== null) {
-                $activity->record('pdf.ocr_cache.hit', 'material', $candidate->name);
-                $textMaterials[] = ['public_id' => $candidate->materialPublicId, 'name' => $candidate->name, 'mime_type' => 'application/pdf', 'text' => $cached->text];
+                $activity->record($cachePrefix.'.hit', 'material', $candidate->name);
+                $textMaterials[] = [
+                    'public_id' => $candidate->materialPublicId,
+                    'name' => $candidate->name,
+                    'mime_type' => 'application/pdf',
+                    'text' => $cached->text,
+                    'processing_strategy' => $candidate->processingStrategy(),
+                    'source_bytes' => strlen($candidate->bytes),
+                    'extracted_chars' => mb_strlen($cached->text, 'UTF-8'),
+                    'page_count' => $candidate->pageCount,
+                    'cache_hit' => true,
+                ];
                 foreach ($cached->images as $image) $images[] = new \App\Services\LLM\DTO\LLMImageContent($candidate->materialPublicId, $candidate->name, $image->mimeType, $image->bytes, 0, 0);
             } else {
-                $activity->record('pdf.ocr_cache.miss', 'material', $candidate->name);
+                $activity->record($cachePrefix.'.miss', 'material', $candidate->name);
                 $totalFileBase64Bytes += strlen(base64_encode($candidate->bytes));
-                if ($totalFileBase64Bytes > (int) config('expert.pdf_ocr.max_base64_request_bytes', 58720256)) throw ExpertPdfOcrException::tooLarge();
-                $files[] = new LLMFileContent($candidate->name, 'application/pdf', $candidate->bytes, $candidate->sha256, LLMFileProcessingIntent::PDF_OCR);
+                if ($totalFileBase64Bytes > (int) config('expert.pdf_ocr.max_base64_request_bytes', 56 * 1024 * 1024)) {
+                    throw $candidate->processingIntent === LLMFileProcessingIntent::PDF_TEXT_PARSE
+                        ? ExpertPdfOcrException::processingTooLarge()
+                        : ExpertPdfOcrException::tooLarge();
+                }
+                $files[] = new LLMFileContent($candidate->name, 'application/pdf', $candidate->bytes, $candidate->sha256, $candidate->processingIntent);
                 $pending[] = $candidate;
             }
         }

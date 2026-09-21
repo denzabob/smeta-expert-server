@@ -43,6 +43,52 @@ final class ExpertChatMaterialContextDiagnostics
             'file_material_ids' => $fileIds,
             'material_context_order' => $this->order($bundle),
         ]);
+
+        foreach (['current' => $bundle->current, 'historical' => $bundle->historical] as $source => $context) {
+            foreach ($context->textMaterials as $material) {
+                if (($material['mime_type'] ?? null) !== 'application/pdf' || ! isset($material['processing_strategy'])) {
+                    continue;
+                }
+
+                $this->logPdfProcessed(
+                    $runId,
+                    (string) $material['public_id'],
+                    $source,
+                    (string) $material['processing_strategy'],
+                    (int) ($material['source_bytes'] ?? 0),
+                    (int) ($material['extracted_chars'] ?? 0),
+                    (int) ($material['page_count'] ?? 0),
+                    (bool) ($material['cache_hit'] ?? false),
+                );
+            }
+        }
+    }
+
+    public function logProviderPdf(
+        string $runId,
+        ExpertChatMaterialContextBundle $bundle,
+        ExpertPdfOcrCandidate $candidate,
+        int $extractedChars,
+        bool $cacheHit = false,
+    ): void {
+        $source = 'current';
+        foreach ($bundle->historical->ocrCandidates as $historicalCandidate) {
+            if ($historicalCandidate->materialPublicId === $candidate->materialPublicId) {
+                $source = 'historical';
+                break;
+            }
+        }
+
+        $this->logPdfProcessed(
+            $runId,
+            $candidate->materialPublicId,
+            $source,
+            $candidate->processingStrategy(),
+            strlen($candidate->bytes),
+            $extractedChars,
+            $candidate->pageCount,
+            $cacheHit,
+        );
     }
 
     /** @return array<string, string> */
@@ -105,5 +151,27 @@ final class ExpertChatMaterialContextDiagnostics
         $name = trim((string) preg_replace('/[\x00-\x1F\x7F]/u', '', $name));
 
         return mb_substr($name === '' ? 'Материал без названия' : $name, 0, 180);
+    }
+
+    private function logPdfProcessed(
+        string $runId,
+        string $materialId,
+        string $source,
+        string $processingStrategy,
+        int $sourceBytes,
+        int $extractedChars,
+        int $pageCount,
+        bool $cacheHit,
+    ): void {
+        Log::info('Expert chat PDF processed.', [
+            'run_id' => $runId,
+            'material_id' => $materialId,
+            'source' => $source,
+            'processing_strategy' => $processingStrategy,
+            'source_bytes' => max(0, $sourceBytes),
+            'extracted_chars' => max(0, $extractedChars),
+            'page_count' => max(0, $pageCount),
+            'cache_hit' => $cacheHit,
+        ]);
     }
 }

@@ -140,6 +140,7 @@ const streamErrorMessages: Record<string, string> = {
   streaming_not_supported: 'Не удалось получить ответ AI. Повторите запрос.',
   pdf_ocr_failed: 'Не удалось обработать документ. Повторите запрос.',
   pdf_ocr_not_supported: 'Не удалось обработать документ. Повторите запрос.',
+  pdf_processing_too_large: 'Документ превышает допустимый объём обработки.',
   vision_not_supported: 'Не удалось обработать изображение. Повторите запрос.',
   material_not_supported: 'Не удалось обработать приложенный материал.',
 }
@@ -385,6 +386,7 @@ export function isExpertMaterialContextError(code?: string): boolean {
     || code === 'pdf_ocr_not_supported'
     || code === 'pdf_ocr_disabled'
     || code === 'pdf_ocr_too_large'
+    || code === 'pdf_processing_too_large'
     || code === 'pdf_ocr_too_many_pages'
     || code === 'pdf_ocr_failed'
     || code === 'pdf_ocr_cache_invalid'

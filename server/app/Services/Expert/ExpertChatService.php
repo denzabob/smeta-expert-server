@@ -172,6 +172,12 @@ final class ExpertChatService
                         throw ExpertPdfOcrException::failed();
                     }
                     $this->ocrCache->put($candidate, $parsed);
+                    $this->materialDiagnostics->logProviderPdf(
+                        $runId,
+                        $bundle,
+                        $candidate,
+                        mb_strlen($parsed->text, 'UTF-8'),
+                    );
                 }
 
                 $assistantMessage = $conversation->messages()->create([
