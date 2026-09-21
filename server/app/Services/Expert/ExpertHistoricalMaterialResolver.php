@@ -14,7 +14,12 @@ final class ExpertHistoricalMaterialResolver
     private const MAX_RESTORED = 4;
 
     /** @return list<string> */
-    public function resolve(ExpertConversation $conversation, string $query, ?ExpertMessage $current = null): array
+    public function resolve(
+        ExpertConversation $conversation,
+        string $query,
+        ?ExpertMessage $current = null,
+        bool $hasCurrentMaterials = false,
+    ): array
     {
         $messages = $conversation->messages()->where('role', 'user')->whereHas('attachments')
             ->when($current !== null, fn ($builder) => $builder->where('id', '<', $current->id))
@@ -26,7 +31,10 @@ final class ExpertHistoricalMaterialResolver
         $normal = $this->normalize($query);
         $requestedType = preg_match('/\bpdf\b|пдф/u', $normal) === 1 ? 'pdf' : null;
         $selected = [];
-        if (preg_match('/\b(?:предыдущ(?:ий|его|ем)|тот|этот)\s+(pdf|пдф|документ)\b/u', $normal, $relative) === 1) {
+        $relativePattern = $hasCurrentMaterials
+            ? '/\b(?:предыдущ(?:ий|его|ем)|выше|ранее)\s+(pdf|пдф|документ)\b/u'
+            : '/\b(?:предыдущ(?:ий|его|ем)|тот|этот)\s+(pdf|пдф|документ)\b/u';
+        if (preg_match($relativePattern, $normal, $relative) === 1) {
             $previous = $attachments->first(fn (ExpertMessageMaterial $item) => $relative[1] === 'документ'
                 ? ! str_starts_with((string) $item->mime_type_snapshot, 'image/')
                     && ! in_array($this->extension($item), ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'], true)

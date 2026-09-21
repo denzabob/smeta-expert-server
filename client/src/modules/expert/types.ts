@@ -64,6 +64,7 @@ export interface ExpertConversation {
   title: string
   messages: ExpertMessage[]
   messagesCount?: number
+  lastMessageAt?: string
   createdAt?: string
   updatedAt?: string
 }

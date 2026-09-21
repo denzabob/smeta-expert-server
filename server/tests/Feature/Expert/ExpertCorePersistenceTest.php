@@ -43,6 +43,25 @@ class ExpertCorePersistenceTest extends TestCase
         $this->assertSame('/api/expert/projects', route('expert.projects.index', [], false));
     }
 
+    public function test_conversations_are_sorted_by_latest_message_activity(): void
+    {
+        [$user, $project] = $this->project();
+        $older = $project->conversations()->create(['title' => 'Старый чат']);
+        $recent = $project->conversations()->create(['title' => 'Активный чат']);
+        $older->forceFill(['created_at' => now()->subDays(3), 'updated_at' => now()->subDays(3)])->saveQuietly();
+        $recent->forceFill(['created_at' => now()->subDays(2), 'updated_at' => now()->subDays(2)])->saveQuietly();
+        $recent->messages()->create(['role' => 'user', 'content' => 'Последнее сообщение'])
+            ->forceFill(['created_at' => now()->subMinute(), 'updated_at' => now()->subMinute()])->saveQuietly();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson("/api/expert/projects/{$project->public_id}/conversations")
+            ->assertOk()
+            ->assertJsonPath('data.0.public_id', $recent->public_id)
+            ->assertJsonPath('data.1.public_id', $older->public_id);
+
+        $this->assertNotNull($response->json('data.0.last_message_at'));
+    }
+
     public function test_conversation_messages_persist_and_client_cannot_forge_role(): void
     {
         [$user,$project]=$this->project();

@@ -41,6 +41,7 @@ export type ExpertConversationDto = {
   public_id: string
   title: string
   messages_count?: number
+  last_message_at?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -209,6 +210,7 @@ export function mapConversation(dto: ExpertConversationDto): ExpertConversation 
     title: dto.title,
     messages: [],
     messagesCount: dto.messages_count ?? 0,
+    lastMessageAt: dto.last_message_at ?? undefined,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   }

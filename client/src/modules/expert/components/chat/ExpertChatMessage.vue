@@ -59,8 +59,8 @@
         </v-menu>
       </div>
       <div v-if="canRate" class="expert-message__feedback" aria-label="Оценить ответ">
-        <v-btn :icon="message.feedback?.rating === 'positive' ? 'mdi-thumb-up' : 'mdi-thumb-up-outline'" size="x-small" :variant="message.feedback?.rating === 'positive' ? 'tonal' : 'text'" :color="message.feedback?.rating === 'positive' ? 'success' : undefined" aria-label="Хороший ответ" :aria-pressed="message.feedback?.rating === 'positive'" :disabled="feedbackSaving" @click="rate('positive')" />
-        <v-btn :icon="message.feedback?.rating === 'negative' ? 'mdi-thumb-down' : 'mdi-thumb-down-outline'" size="x-small" :variant="message.feedback?.rating === 'negative' ? 'tonal' : 'text'" :color="message.feedback?.rating === 'negative' ? 'error' : undefined" aria-label="Плохой ответ" :aria-pressed="message.feedback?.rating === 'negative'" :disabled="feedbackSaving" @click="rate('negative')" />
+        <v-btn :icon="message.feedback?.rating === 'positive' ? 'mdi-thumb-up' : 'mdi-thumb-up-outline'" size="x-small" :variant="message.feedback?.rating === 'positive' ? 'tonal' : 'text'" :color="message.feedback?.rating === 'positive' ? 'success' : undefined" aria-label="Хороший ответ" :aria-pressed="message.feedback?.rating === 'positive'" :disabled="feedbackSaving" :loading="feedbackPendingRating === 'positive'" @click="rate('positive')" />
+        <v-btn :icon="message.feedback?.rating === 'negative' ? 'mdi-thumb-down' : 'mdi-thumb-down-outline'" size="x-small" :variant="message.feedback?.rating === 'negative' ? 'tonal' : 'text'" :color="message.feedback?.rating === 'negative' ? 'error' : undefined" aria-label="Плохой ответ" :aria-pressed="message.feedback?.rating === 'negative'" :disabled="feedbackSaving" :loading="feedbackPendingRating === 'negative'" @click="rate('negative')" />
         <span v-if="feedbackError" class="expert-message__feedback-error" role="alert">{{ feedbackError }}</span>
       </div>
     </div>
@@ -106,6 +106,7 @@ const displayError = computed(() => {
 const canContinue = computed(() => props.allowContinue && (props.message.deliveryState === 'error' || props.message.generationStatus === 'stopped' || props.message.generationStatus === 'interrupted'))
 const canRate = computed(() => props.feedbackEnabled && props.message.role === 'assistant' && props.message.text.trim() !== '' && props.message.deliveryState !== 'sending' && props.message.deliveryState !== 'error' && !['stopped', 'interrupted'].includes(props.message.generationStatus ?? 'completed'))
 const feedbackSaving = ref(false)
+const feedbackPendingRating = ref<ExpertMessageFeedback['rating'] | null>(null)
 const feedbackError = ref('')
 const feedbackDialogError = ref('')
 const feedbackDialog = ref(false)
@@ -132,6 +133,7 @@ async function rate(rating: ExpertMessageFeedback['rating']) {
     return
   }
   feedbackSaving.value = true
+  feedbackPendingRating.value = rating
   try {
     if (props.message.feedback?.rating === rating) {
       await expertApi.deleteMessageFeedback(props.message.id)
@@ -148,12 +150,14 @@ async function rate(rating: ExpertMessageFeedback['rating']) {
     feedbackError.value = mapExpertApiError(error).message
   } finally {
     feedbackSaving.value = false
+    feedbackPendingRating.value = null
   }
 }
 async function submitFeedback() {
   if (feedbackSaving.value) return
   feedbackDialogError.value = ''
   feedbackSaving.value = true
+  feedbackPendingRating.value = 'negative'
   try {
     const saved = await expertApi.saveMessageFeedback(props.message.id, { rating: 'negative', reasonCode: selectedReason.value, comment: feedbackComment.value.trim() || null })
     emit('feedback-updated', props.message.id, saved)
@@ -163,6 +167,7 @@ async function submitFeedback() {
     feedbackDialogError.value = mapExpertApiError(error).message
   } finally {
     feedbackSaving.value = false
+    feedbackPendingRating.value = null
   }
 }
 function closeFeedbackDialog() {

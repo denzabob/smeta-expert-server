@@ -67,10 +67,16 @@ class MessageController extends Controller
 
             $this->expertChat->assertExistingMaterialsAvailable($conversation, $clientMessageId);
             $materialPublicIds = $this->expertChat->materialPublicIdsForExecution($conversation, $clientMessageId, $materialPublicIds);
-            $historicalIds = $this->expertChat->historicalMaterialPublicIds($conversation, $content, clientMessageId: $clientMessageId);
-            $materialContext = $this->materialContextBuilder->build(
+            $historicalIds = $this->expertChat->historicalMaterialPublicIds(
+                $conversation,
+                $content,
+                clientMessageId: $clientMessageId,
+                hasCurrentMaterials: $materialPublicIds !== [],
+            );
+            $materialContext = $this->materialContextBuilder->buildPartitioned(
                 $conversation->project,
-                array_values(array_unique([...$materialPublicIds, ...$historicalIds])),
+                $materialPublicIds,
+                $historicalIds,
             );
 
             $result = $this->expertChat->reply(
@@ -80,6 +86,7 @@ class MessageController extends Controller
                 $requestFingerprint,
                 $materialContext,
                 $materialPublicIds,
+                $historicalIds,
             );
         } catch (ExpertChatRequestConflictException $exception) {
             return response()->json([

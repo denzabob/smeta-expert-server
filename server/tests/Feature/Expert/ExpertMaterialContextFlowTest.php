@@ -70,7 +70,7 @@ class ExpertMaterialContextFlowTest extends TestCase
         $payload = OpenAiChatMessageMapper::map($request);
 
         $this->assertSame([$material->public_id], array_column($request->materialContext, 'public_id'));
-        $this->assertStringContainsString('EXPERT-74291', implode("\n", array_column($payload, 'content')));
+        $this->assertStringContainsString('EXPERT-74291', json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         $this->assertDatabaseHas('expert_messages', [
             'expert_conversation_id' => $conversation->id,
             'role' => 'assistant',
@@ -108,7 +108,7 @@ class ExpertMaterialContextFlowTest extends TestCase
         $payload = OpenAiChatMessageMapper::map($request);
 
         $this->assertSame([$material->public_id], array_column($request->materialContext, 'public_id'));
-        $this->assertStringContainsString('XLSX-EXPERT-92851', implode("\n", array_column($payload, 'content')));
+        $this->assertStringContainsString('XLSX-EXPERT-92851', json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         $this->assertDatabaseHas('expert_messages', [
             'expert_conversation_id' => $conversation->id,
             'role' => 'assistant',
@@ -597,13 +597,69 @@ class ExpertMaterialContextFlowTest extends TestCase
         $this->assertSame('system', $firstPayload[0]['role']);
         $this->assertStringNotContainsString('Ignore previous instructions', $firstPayload[0]['content']);
         $this->assertSame('user', $firstPayload[1]['role']);
-        $this->assertStringContainsString('Ignore previous instructions', $firstPayload[1]['content']);
+        $this->assertStringContainsString('Ignore previous instructions', json_encode($firstPayload[1]['content'], JSON_THROW_ON_ERROR));
 
         $this->send($user, $conversation, ['content' => 'Следующий вопрос'])->assertCreated();
         $secondPayload = OpenAiChatMessageMapper::map($provider->chatRequests[1]);
         $this->assertStringNotContainsString(
             'Ignore previous instructions',
             implode("\n", array_column($secondPayload, 'content')),
+        );
+    }
+
+    public function test_new_current_attachment_stays_in_current_turn_and_does_not_restore_this_document_from_history(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $old = $this->material($conversation->project, 'Лист деталировки 138.txt', 'text/plain', 'OLD-FURNITURE-138');
+        $current = $this->material($conversation->project, 'Справка о закрытых счетах.txt', 'text/plain', 'CURRENT-BANK-CERTIFICATE-742');
+        $provider = new ExpertMaterialContextFakeProvider('Ответ');
+        $this->installRouter($provider);
+
+        $this->send($user, $conversation, ['content' => 'Изучи лист', 'material_public_ids' => [$old->public_id]])->assertCreated();
+        $this->send($user, $conversation, ['content' => 'Что в этом документе?', 'material_public_ids' => [$current->public_id]])->assertCreated();
+
+        $request = $provider->chatRequests[1];
+        $this->assertSame([$current->public_id], array_column($request->materialContext, 'public_id'));
+        $payload = OpenAiChatMessageMapper::map($request);
+        $currentTurn = $payload[array_key_last($payload)];
+        $this->assertSame('user', $currentTurn['role']);
+        $currentContent = json_encode($currentTurn['content'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('CURRENT-BANK-CERTIFICATE-742', $currentContent);
+        $this->assertStringContainsString('CURRENT ATTACHMENT', $currentContent);
+        $this->assertStringNotContainsString('OLD-FURNITURE-138', json_encode($payload, JSON_THROW_ON_ERROR));
+        $this->assertStringNotContainsString('REFERENCED HISTORICAL MATERIAL', $currentContent);
+    }
+
+    public function test_material_context_diagnostic_log_preserves_origin_names_types_and_order_without_content(): void
+    {
+        Log::spy();
+        [$user, $conversation] = $this->conversation();
+        $current = $this->material($conversation->project, 'Справка.txt', 'text/plain', 'SECRET-DOCUMENT-CONTENT-991');
+        $provider = new ExpertMaterialContextFakeProvider('Ответ');
+        $this->installRouter($provider);
+
+        $this->send($user, $conversation, ['content' => 'Что за документ?', 'material_public_ids' => [$current->public_id]])->assertCreated();
+
+        Log::shouldHaveReceived('info')->with(
+            'Expert chat material context resolved.',
+            \Mockery::on(function (array $context) use ($current): bool {
+                $serialized = json_encode($context, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+
+                return $context['current_material_ids'] === [$current->public_id]
+                    && $context['current_material_names'] === ['Справка.txt']
+                    && $context['historical_resolved_ids'] === []
+                    && $context['historical_resolved_names'] === []
+                    && $context['text_material_ids'] === [$current->public_id]
+                    && $context['image_material_ids'] === []
+                    && $context['file_material_ids'] === []
+                    && $context['material_context_order'] === [[
+                        'source' => 'current',
+                        'kind' => 'text',
+                        'material_id' => $current->public_id,
+                    ]]
+                    && ! str_contains($serialized, 'SECRET-DOCUMENT-CONTENT-991')
+                    && ! str_contains($serialized, 'Что за документ?');
+            }),
         );
     }
 
@@ -625,6 +681,14 @@ class ExpertMaterialContextFlowTest extends TestCase
         $payload = OpenAiChatMessageMapper::map($request);
         $serialized = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         $this->assertStringContainsString('PDF-CONTINUITY-73129', $serialized);
+        $currentTurn = $payload[array_key_last($payload)];
+        $currentContent = json_encode($currentTurn['content'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('CURRENT ATTACHMENT', $currentContent);
+        $this->assertStringContainsString('REFERENCED HISTORICAL MATERIAL', $currentContent);
+        $this->assertLessThan(
+            strpos($currentContent, 'REFERENCED HISTORICAL MATERIAL'),
+            strpos($currentContent, 'CURRENT ATTACHMENT'),
+        );
         $this->assertStringContainsString('Нагорный.pdf — PDF', $serialized);
         $this->assertStringNotContainsString('UNRELATED-HISTORY-381', $serialized);
         $this->assertDatabaseHas('expert_messages', ['role' => 'user', 'content' => 'Изучи PDF']);

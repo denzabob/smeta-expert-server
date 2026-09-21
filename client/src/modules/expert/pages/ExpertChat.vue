@@ -118,8 +118,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
+import type { Pinia } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
 import ExpertChatComposer from '../components/chat/ExpertChatComposer.vue'
 import ExpertChatMessage from '../components/chat/ExpertChatMessage.vue'
 import ExpertProjectLibraryPicker from '../components/chat/ExpertProjectLibraryPicker.vue'
@@ -146,11 +148,14 @@ import {
   type ExpertTimelineRun,
 } from '../chatTimeline'
 import { useExpertMaterialTransfers } from '../composables/useExpertMaterialTransfers'
+import { expertLastConversationStorageKey, readExpertLastConversation, selectInitialExpertConversation, writeExpertLastConversation } from '../lastConversation'
 import { expertApi, isExpertMaterialContextError, mapExpertApiError } from '../api'
 import type { ExpertConversation, ExpertMessage, ExpertMessageFeedback, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMaterial, ExpertProjectMode, ExpertRunDiagnostic } from '../types'
 
 const props = defineProps<{ project: ExpertProject; projectMode: ExpertProjectMode }>()
 const { mdAndDown } = useDisplay()
+const activePinia = getCurrentInstance()?.appContext.config.globalProperties.$pinia as Pinia | undefined
+const authStore = activePinia ? useAuthStore(activePinia) : null
 const conversationId = ref('')
 const messagesByConversation = ref<Record<string, ExpertMessage[]>>({})
 const pendingMessages = ref<ExpertMessage[]>([])
@@ -203,6 +208,12 @@ function resetTransientGenerationState() {
 }
 
 const conversation = computed(() => props.project.conversations.find((item) => item.id === conversationId.value))
+const lastConversationStorageKey = computed(() => {
+  const userId = authStore?.user?.id
+  return userId === undefined || userId === null || props.projectMode !== 'real'
+    ? null
+    : expertLastConversationStorageKey(userId, props.project.id)
+})
 const messages = computed(() => conversationId.value
   ? messagesByConversation.value[conversationId.value] ?? conversation.value?.messages ?? []
   : pendingMessages.value)
@@ -432,7 +443,9 @@ async function loadConversations() {
     if (sequence !== conversationsSequence) return
     targetProject.conversations = loaded
     targetProject.counts && (targetProject.counts.conversations = loaded.length)
-    conversationId.value = loaded[0]?.id ?? ''
+    const storageKey = lastConversationStorageKey.value
+    const lastOpenedId = storageKey ? readExpertLastConversation(window.localStorage, storageKey) : null
+    conversationId.value = selectInitialExpertConversation(loaded, lastOpenedId)
   } catch (error) {
     if (sequence === conversationsSequence) errorMessage.value = mapExpertApiError(error).message
   } finally {
@@ -931,7 +944,15 @@ function selectWholeProject() {
 }
 
 watch(() => props.project.id, () => { void requestConversations() }, { immediate: true })
-watch(conversationId, (id) => { composerMaterialContexts.value = []; transfers.clearUploads(); followActiveResponse.value = true; showScrollToBottom.value = false; void loadMessages(id) })
+watch(conversationId, (id) => {
+  composerMaterialContexts.value = []
+  transfers.clearUploads()
+  followActiveResponse.value = true
+  showScrollToBottom.value = false
+  const storageKey = lastConversationStorageKey.value
+  if (id && storageKey) writeExpertLastConversation(window.localStorage, storageKey, id)
+  void loadMessages(id)
+})
 watch(messageArea, (element, _, onCleanup) => {
   if (!element) return
   const observer = new MutationObserver(() => { if (streamActive.value) scheduleActiveResponseFollow() })

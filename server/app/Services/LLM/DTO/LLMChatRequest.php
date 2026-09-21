@@ -11,6 +11,7 @@ final class LLMChatRequest
         public readonly string $systemMessage,
         public readonly array $messages,
         public readonly array $materialContext = [],
+        public readonly bool $materialContextEmbedded = false,
     ) {}
 
     public function hasImages(): bool

@@ -25,6 +25,7 @@ final class ExpertChatStreamingService
         private readonly ExpertChatRunRegistry $runs,
         private readonly LLMRouter $router,
         private readonly ExpertChatMaterialContextBuilder $materialContextBuilder,
+        private readonly ExpertChatMaterialContextDiagnostics $materialDiagnostics,
         private readonly ExpertPdfOcrCache $ocrCache,
         private readonly LLMTaskProfileResolver $profiles,
     ) {}
@@ -155,14 +156,26 @@ final class ExpertChatStreamingService
         }
 
         try {
-            $historicalIds = $this->chat->historicalMaterialPublicIds($run->conversation, $run->userMessage->content, $run->userMessage);
-            $materialContext = $run->materialContext
-                ?? $this->materialContextBuilder->build($run->conversation->project,
-                    array_values(array_unique([...$run->materialPublicIds, ...$historicalIds])), $activity);
+            $historicalIds = $this->chat->historicalMaterialPublicIds(
+                $run->conversation,
+                $run->userMessage->content,
+                $run->userMessage,
+                hasCurrentMaterials: $run->materialPublicIds !== [],
+            );
+            $materialBundle = $run->materialContext === null
+                ? $this->materialContextBuilder->buildPartitioned(
+                    $run->conversation->project,
+                    $run->materialPublicIds,
+                    $historicalIds,
+                    $activity,
+                )
+                : ExpertChatMaterialContextBundle::currentOnly($run->materialContext);
+            $this->materialDiagnostics->log($runId, $materialBundle, $run->materialPublicIds, $historicalIds);
+            $materialContext = $materialBundle->combined();
 
             $request = $run->isContinuation
-                ? $this->chat->buildContinuationRequest($run->conversation, $run->userMessage, $run->existingAssistant, $materialContext)
-                : $this->chat->buildStreamingRequest($run->conversation, $run->userMessage, $materialContext);
+                ? $this->chat->buildContinuationRequest($run->conversation, $run->userMessage, $run->existingAssistant, $materialBundle)
+                : $this->chat->buildStreamingRequest($run->conversation, $run->userMessage, $materialBundle);
 
             foreach ($materialContext->ocrCandidates as $candidate) {
                 $ocrActivityIds[strtolower($candidate->sha256)] = $activity->start('pdf.ocr.started', 'material', $candidate->name);

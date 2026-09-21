@@ -107,6 +107,26 @@ final class ExpertChatMaterialContextBuilder
         return new ExpertChatMaterialContext($textMaterials, $images, $files, $pending);
     }
 
+    /**
+     * Builds both origins in one pass so all existing aggregate material,
+     * image and OCR limits continue to apply to the complete request.
+     *
+     * @param  list<string>  $currentIds
+     * @param  list<string>  $historicalIds
+     */
+    public function buildPartitioned(
+        ExpertProject $project,
+        array $currentIds,
+        array $historicalIds,
+        ?ExpertRunActivitySink $activity = null,
+    ): ExpertChatMaterialContextBundle {
+        $currentIds = array_values(array_unique($currentIds));
+        $historicalIds = array_values(array_diff(array_unique($historicalIds), $currentIds));
+        $combined = $this->build($project, [...$currentIds, ...$historicalIds], $activity);
+
+        return ExpertChatMaterialContextBundle::partition($combined, $currentIds, $historicalIds);
+    }
+
     private function throwIfCancellationRequested(ExpertRunActivitySink $activity): void
     {
         if ($activity->isCancellationRequested()) {

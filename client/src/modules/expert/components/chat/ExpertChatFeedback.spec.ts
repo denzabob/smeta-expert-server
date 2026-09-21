@@ -9,13 +9,13 @@ vi.mock('../../api', async (loadActual) => {
   return { ...actual, expertApi: { saveMessageFeedback: calls.save, deleteMessageFeedback: calls.remove } }
 })
 vi.mock('vuetify/components', () => ({
-  VBtn: { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' },
+  VBtn: { props: ['loading'], emits: ['click'], template: '<button :data-loading="loading ? \'true\' : undefined" @click="$emit(\'click\')"><span v-if="loading" data-test="button-spinner" /><slot /></button>' },
   VIcon: { template: '<i />' },
   VList: { template: '<ul><slot /></ul>' },
   VListItem: { template: '<li />' },
   VMenu: { template: '<div><slot name="activator" :props="{}" /><slot /></div>' },
 }))
-vi.mock('vuetify/components/VBtn', () => ({ VBtn: { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' } }))
+vi.mock('vuetify/components/VBtn', () => ({ VBtn: { props: ['loading'], emits: ['click'], template: '<button :data-loading="loading ? \'true\' : undefined" @click="$emit(\'click\')"><span v-if="loading" data-test="button-spinner" /><slot /></button>' } }))
 vi.mock('vuetify/components/VIcon', () => ({ VIcon: { template: '<i />' } }))
 vi.mock('vuetify/components/VList', () => ({ VList: { template: '<ul><slot /></ul>' }, VListItem: { template: '<li />' } }))
 vi.mock('vuetify/components/VListItem', () => ({ VListItem: { template: '<li />' } }))
@@ -43,6 +43,26 @@ function mountMessage() {
 afterEach(() => { calls.save.mockReset(); calls.remove.mockReset(); document.body.innerHTML = '' })
 
 describe('Expert Chat feedback', () => {
+  it('shows loading only on the reaction whose request is pending', async () => {
+    let resolveSave: ((feedback: ExpertMessageFeedback) => void) | undefined
+    calls.save.mockImplementation(() => new Promise<ExpertMessageFeedback>((resolve) => { resolveSave = resolve }))
+    const { root, app } = mountMessage()
+    const positive = root.querySelector('button[aria-label="Хороший ответ"]') as HTMLButtonElement
+    const negative = root.querySelector('button[aria-label="Плохой ответ"]') as HTMLButtonElement
+
+    positive.click()
+    await nextTick()
+    expect(positive.dataset.loading).toBe('true')
+    expect(positive.querySelector('[data-test="button-spinner"]')).not.toBeNull()
+    expect(negative.dataset.loading).toBeUndefined()
+    expect(negative.querySelector('[data-test="button-spinner"]')).toBeNull()
+
+    resolveSave?.({ rating: 'positive' })
+    await vi.waitFor(() => expect(positive.dataset.loading).toBeUndefined())
+    expect(positive.getAttribute('aria-pressed')).toBe('true')
+    app.unmount()
+  })
+
   it('keeps the current rating until negative feedback is submitted and shows active states', async () => {
     calls.save.mockImplementation(async (_id: string, input: ExpertMessageFeedback) => input)
     calls.remove.mockResolvedValue(undefined)
