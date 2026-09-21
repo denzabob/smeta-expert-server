@@ -5,18 +5,42 @@
         <v-menu location="bottom start">
           <template #activator="{ props: menuProps }">
             <v-btn v-bind="menuProps" variant="text" append-icon="mdi-chevron-down" class="expert-chat__conversation">
-              {{ conversation?.title || 'Общий анализ' }}
+              {{ conversation?.title || 'Новый чат' }}
             </v-btn>
           </template>
           <v-list density="compact" min-width="240">
             <v-list-subheader>Чаты проекта</v-list-subheader>
             <v-list-item
-              v-for="item in project.conversations"
+              v-for="item in conversationList"
               :key="item.id"
-              :title="item.title"
+              :class="{ 'expert-chat__conversation-item--active': item.id === conversationId }"
               prepend-icon="mdi-message-text-outline"
-              @click="conversationId = item.id"
-            />
+              @click="selectConversation(item.id)"
+            >
+              <template #title><span class="expert-chat__conversation-title" :title="item.title">{{ item.title }}</span></template>
+              <template #append>
+                <span class="expert-chat__conversation-menu-wrap" @click.stop>
+                  <v-menu location="end top">
+                    <template #activator="{ props: menuProps }">
+                      <v-btn
+                        v-bind="menuProps"
+                        icon="mdi-dots-horizontal"
+                        size="small"
+                        variant="text"
+                        class="expert-chat__conversation-menu"
+                        :aria-label="`Действия чата ${item.title}`"
+                        @click.stop
+                      />
+                    </template>
+                    <v-list density="compact" min-width="180">
+                      <v-list-item title="Переименовать" @click.stop="openRenameConversation(item)" />
+                      <v-divider />
+                      <v-list-item title="Удалить" class="text-error" @click.stop="openDeleteConversation(item)" />
+                    </v-list>
+                  </v-menu>
+                </span>
+              </template>
+            </v-list-item>
             <v-divider />
             <v-list-item title="Новый чат" prepend-icon="mdi-plus" @click="openNewConversation" />
           </v-list>
@@ -40,8 +64,9 @@
         <div ref="messageArea" class="expert-chat__messages" tabindex="0" @scroll.passive="updateScrollPosition" @wheel.passive="markUserScrollIntent" @touchmove.passive="markUserScrollIntent" @pointerdown="markPointerScrollIntent" @keydown="markKeyboardScrollIntent">
           <div v-if="!loading && !messages.length" class="expert-chat__empty">
             <div class="expert-chat__empty-icon"><v-icon :icon="projectMode === 'demo' ? 'mdi-prism' : 'mdi-message-text-outline'" size="30" /></div>
-            <h1>{{ projectMode === 'demo' ? 'Чем помочь в этом исследовании?' : 'Экспертный чат' }}</h1>
-            <p>{{ projectMode === 'demo' ? 'Prism AI работает с демонстрационным контекстом проекта.' : 'Начните рабочий диалог — сообщения сохранятся в истории проекта.' }}</p>
+            <h1>{{ projectMode === 'demo' ? 'Чем помочь в этом исследовании?' : conversationId ? 'Экспертный чат' : 'Начните новый чат' }}</h1>
+            <p>{{ projectMode === 'demo' ? 'Prism AI работает с демонстрационным контекстом проекта.' : conversationId ? 'Начните рабочий диалог — сообщения сохранятся в истории проекта.' : 'Создайте чат, чтобы начать рабочий диалог.' }}</p>
+            <v-btn v-if="projectMode === 'real' && !conversationId" color="primary" @click="openNewConversation">Начните новый чат</v-btn>
             <div v-if="projectMode === 'demo'" class="expert-chat__quick-actions">
               <button v-for="action in project.quickActions" :key="action" type="button" @click="sendMessage(action)">
                 <v-icon icon="mdi-arrow-up-right" size="17" /><span>{{ action }}</span>
@@ -124,6 +149,26 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="renameConversationOpen" max-width="460">
+      <v-card v-if="conversationToRename">
+        <v-card-title>Переименовать чат</v-card-title>
+        <v-card-text>
+          <v-text-field v-model="renameConversationTitle" label="Название" variant="outlined" autofocus @keydown.enter.prevent="renameConversation" />
+          <v-alert v-if="renameError" type="error" variant="tonal" density="compact">{{ renameError }}</v-alert>
+        </v-card-text>
+        <v-card-actions><v-spacer /><v-btn :disabled="renamingConversation" @click="renameConversationOpen = false">Отмена</v-btn><v-btn color="primary" :loading="renamingConversation" :disabled="renamingConversation" @click="renameConversation">Сохранить</v-btn></v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="deleteConversationOpen" max-width="460">
+      <v-card v-if="conversationToDelete">
+        <v-card-title>Удалить чат «{{ conversationToDelete.title }}»?</v-card-title>
+        <v-card-text>История сообщений этого чата будет удалена. Материалы библиотеки проекта удалены не будут.</v-card-text>
+        <v-alert v-if="deleteError" type="error" variant="tonal" density="compact" class="mx-4 mb-2">{{ deleteError }}</v-alert>
+        <v-card-actions><v-spacer /><v-btn :disabled="deletingConversation" @click="deleteConversationOpen = false">Отмена</v-btn><v-btn color="error" :loading="deletingConversation" :disabled="deletingConversation" @click="deleteConversation">Удалить</v-btn></v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="libraryOpen" max-width="760" scrollable>
       <v-card v-if="libraryLoading"><v-card-title>Библиотека проекта</v-card-title><v-card-text><v-progress-linear indeterminate /></v-card-text></v-card>
       <ExpertProjectLibraryPicker v-else-if="libraryOpen" :materials="project.materials" :initially-selected="libraryForContext ? activeMaterials.map((item) => item.id) : composerMaterialContexts.map((context) => context.id)" @cancel="libraryOpen = false" @confirm="confirmLibrarySelection" />
@@ -165,7 +210,7 @@ import {
   type ExpertTimelineRun,
 } from '../chatTimeline'
 import { useExpertMaterialTransfers } from '../composables/useExpertMaterialTransfers'
-import { expertLastConversationStorageKey, readExpertLastConversation, selectInitialExpertConversation, writeExpertLastConversation } from '../lastConversation'
+import { clearExpertLastConversation, expertLastConversationStorageKey, readExpertLastConversation, selectInitialExpertConversation, writeExpertLastConversation } from '../lastConversation'
 import { expertApi, isExpertMaterialContextError, mapExpertApiError } from '../api'
 import type { ExpertConversation, ExpertMessage, ExpertMessageFeedback, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMaterial, ExpertProjectMode, ExpertRunDiagnostic } from '../types'
 
@@ -174,6 +219,7 @@ const { mdAndDown } = useDisplay()
 const activePinia = getCurrentInstance()?.appContext.config.globalProperties.$pinia as Pinia | undefined
 const authStore = activePinia ? useAuthStore(activePinia) : null
 const conversationId = ref('')
+const conversationList = ref<ExpertConversation[]>(props.project.conversations)
 const messagesByConversation = ref<Record<string, ExpertMessage[]>>({})
 const pendingMessages = ref<ExpertMessage[]>([])
 const contextOpen = ref(props.projectMode === 'demo' && !mdAndDown.value)
@@ -184,6 +230,15 @@ const newConversationOpen = ref(false)
 const newConversationTitle = ref('Общий анализ')
 const creatingConversation = ref(false)
 const conversationError = ref('')
+const renameConversationOpen = ref(false)
+const conversationToRename = ref<ExpertConversation | null>(null)
+const renameConversationTitle = ref('')
+const renamingConversation = ref(false)
+const renameError = ref('')
+const deleteConversationOpen = ref(false)
+const conversationToDelete = ref<ExpertConversation | null>(null)
+const deletingConversation = ref(false)
+const deleteError = ref('')
 const snackbarOpen = ref(false)
 const snackbarText = ref('')
 const messageArea = ref<HTMLElement | null>(null)
@@ -231,7 +286,7 @@ function resetTransientGenerationState() {
   clearAllSlowWaiting()
 }
 
-const conversation = computed(() => props.project.conversations.find((item) => item.id === conversationId.value))
+const conversation = computed(() => conversationList.value.find((item) => item.id === conversationId.value))
 const lastConversationStorageKey = computed(() => {
   const userId = authStore?.user?.id
   return userId === undefined || userId === null || props.projectMode !== 'real'
@@ -419,9 +474,10 @@ function findMessage(messageId: string): ExpertMessage | undefined {
 }
 
 function attachConversation(created: ExpertConversation) {
-  if (!props.project.conversations.some((item) => item.id === created.id)) {
-    props.project.conversations.push(created)
-    props.project.counts && (props.project.counts.conversations = props.project.conversations.length)
+  if (!conversationList.value.some((item) => item.id === created.id)) {
+    conversationList.value = [...conversationList.value, created]
+    props.project.conversations = conversationList.value
+    props.project.counts && (props.project.counts.conversations = conversationList.value.length)
   }
   const queued = pendingMessages.value
   messagesByConversation.value = {
@@ -452,12 +508,14 @@ async function ensureConversation(): Promise<string> {
 async function loadConversations() {
   const sequence = ++conversationsSequence
   const targetProject = props.project
+  conversationList.value = targetProject.conversations
   messagesByConversation.value = {}
   pendingMessages.value = []
   timelineByAssistant.value = {}
   errorMessage.value = ''
   if (props.projectMode === 'demo') {
-    conversationId.value = props.project.conversations[0]?.id ?? ''
+    conversationList.value = props.project.conversations
+    conversationId.value = conversationList.value[0]?.id ?? ''
     await scrollToLatest('auto')
     return
   }
@@ -465,6 +523,7 @@ async function loadConversations() {
   try {
     const loaded = await expertApi.listConversations(targetProject.id)
     if (sequence !== conversationsSequence) return
+    conversationList.value = loaded
     targetProject.conversations = loaded
     targetProject.counts && (targetProject.counts.conversations = loaded.length)
     const storageKey = lastConversationStorageKey.value
@@ -548,6 +607,113 @@ async function createConversation() {
     conversationError.value = mapExpertApiError(error).message
   } finally {
     creatingConversation.value = false
+  }
+}
+
+function selectConversation(id: string) {
+  if (id !== conversationId.value) conversationId.value = id
+}
+
+function openRenameConversation(target: ExpertConversation) {
+  conversationToRename.value = target
+  renameConversationTitle.value = target.title
+  renameError.value = ''
+  renameConversationOpen.value = true
+}
+
+async function renameConversation() {
+  const target = conversationToRename.value
+  const title = renameConversationTitle.value.trim()
+  if (!target) return
+  if (!title) {
+    renameError.value = 'Укажите название чата.'
+    return
+  }
+  renamingConversation.value = true
+  renameError.value = ''
+  try {
+    const updated = await expertApi.updateConversation(target.id, title)
+    const index = conversationList.value.findIndex((item) => item.id === target.id)
+    if (index !== -1) {
+      conversationList.value = conversationList.value.map((item, itemIndex) => itemIndex === index ? { ...item, ...updated } : item)
+      props.project.conversations = conversationList.value
+    }
+    renameConversationOpen.value = false
+    conversationToRename.value = null
+  } catch (error) {
+    renameError.value = mapExpertApiError(error).message
+  } finally {
+    renamingConversation.value = false
+  }
+}
+
+function openDeleteConversation(target: ExpertConversation) {
+  conversationToDelete.value = target
+  deleteError.value = ''
+  deleteConversationOpen.value = true
+}
+
+function removeConversationState(id: string) {
+  const removedAssistantIds = new Set(
+    (messagesByConversation.value[id] ?? [])
+      .filter((message) => message.role === 'assistant')
+      .map((message) => message.id),
+  )
+  for (const assistantId of removedAssistantIds) {
+    for (const run of timelineByAssistant.value[assistantId] ?? []) {
+      clearSlowWaiting(run.runId)
+      clearSignificantWait(run.runId)
+    }
+  }
+  const { [id]: removedMessages, ...remainingMessages } = messagesByConversation.value
+  void removedMessages
+  messagesByConversation.value = remainingMessages
+  timelineByAssistant.value = Object.fromEntries(
+    Object.entries(timelineByAssistant.value).filter(([assistantId]) => !removedAssistantIds.has(assistantId)),
+  )
+  continuableAssistantIds.value = Object.fromEntries(
+    Object.entries(continuableAssistantIds.value).filter(([assistantId]) => !removedAssistantIds.has(assistantId)),
+  )
+  if (id === conversationId.value) {
+    activeMaterials.value = []
+    pendingMessages.value = []
+  }
+}
+
+function rememberDeletedConversationReplacement(deletedId: string, nextId: string) {
+  const storageKey = lastConversationStorageKey.value
+  if (!storageKey || readExpertLastConversation(window.localStorage, storageKey) !== deletedId) return
+  if (nextId) writeExpertLastConversation(window.localStorage, storageKey, nextId)
+  else clearExpertLastConversation(window.localStorage, storageKey)
+}
+
+async function deleteConversation() {
+  const target = conversationToDelete.value
+  if (!target || deletingConversation.value) return
+  deletingConversation.value = true
+  deleteError.value = ''
+  try {
+    await expertApi.deleteConversation(target.id)
+    const wasActive = target.id === conversationId.value
+    conversationList.value = conversationList.value.filter((item) => item.id !== target.id)
+    props.project.conversations = conversationList.value
+    props.project.counts && (props.project.counts.conversations = conversationList.value.length)
+    removeConversationState(target.id)
+    if (wasActive) {
+      activeAbort.value?.abort()
+      resetTransientGenerationState()
+      const nextId = conversationList.value[0]?.id ?? ''
+      rememberDeletedConversationReplacement(target.id, nextId)
+      conversationId.value = nextId
+    } else {
+      rememberDeletedConversationReplacement(target.id, conversationId.value)
+    }
+    deleteConversationOpen.value = false
+    conversationToDelete.value = null
+  } catch (error) {
+    deleteError.value = mapExpertApiError(error).message
+  } finally {
+    deletingConversation.value = false
   }
 }
 
@@ -1060,6 +1226,13 @@ onBeforeUnmount(() => { activeAbort.value?.abort(); if (followFrame) cancelAnima
 .expert-chat__context-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .expert-chat__toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 54px; padding: 7px 14px; border-bottom: 1px solid rgba(var(--v-theme-outline-variant), .55); background: rgb(var(--v-theme-surface)); }
 .expert-chat__conversation { font-weight: 800; text-transform: none; }
+.expert-chat__conversation-title { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.expert-chat__conversation-menu { flex: 0 0 auto; opacity: 0; pointer-events: none; transition: opacity .16s ease; }
+.expert-chat__conversation-item--active { background: rgba(var(--v-theme-primary), .09); }
+.expert-chat__conversation-item :deep(.v-list-item__content) { min-width: 0; }
+.expert-chat__conversation-item :deep(.v-list-item__append) { opacity: 0; transition: opacity .16s ease; }
+.expert-chat__conversation-item:hover .expert-chat__conversation-menu, .expert-chat__conversation-item:focus-within .expert-chat__conversation-menu, .expert-chat__conversation-item--active .expert-chat__conversation-menu { opacity: 1; pointer-events: auto; }
+.expert-chat__conversation-item:hover :deep(.v-list-item__append), .expert-chat__conversation-item:focus-within :deep(.v-list-item__append), .expert-chat__conversation-item--active :deep(.v-list-item__append) { opacity: 1; }
 .expert-chat__toolbar-actions { display: flex; gap: 4px; }
 .expert-chat__messages-wrap { position: relative; display: flex; flex: 1; min-height: 0; }
 .expert-chat__messages { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 24px; overflow-y: auto; padding: 28px max(16px, calc((100% - 960px) / 2)); }
@@ -1071,5 +1244,5 @@ onBeforeUnmount(() => { activeAbort.value?.abort(); if (followFrame) cancelAnima
 .expert-chat__quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 260px)); gap: 9px; }
 .expert-chat__quick-actions button { display: flex; align-items: center; gap: 9px; padding: 12px 13px; border: 1px solid rgba(var(--v-theme-outline-variant), .62); border-radius: var(--md-sys-shape-corner-large); color: rgba(var(--v-theme-on-surface), .84); background: rgb(var(--v-theme-surface)); cursor: pointer; text-align: left; font: inherit; font-size: .76rem; }
 .expert-chat__quick-actions button:hover { border-color: rgba(var(--v-theme-primary), .52); background: rgba(var(--v-theme-primary), .045); }
-@media (max-width: 700px) { .expert-chat__messages { gap: 18px; padding: 18px 12px; } .expert-chat__new-messages { right: 12px; bottom: 12px; } .expert-chat__quick-actions { grid-template-columns: 1fr; width: 100%; } }
+@media (max-width: 700px) { .expert-chat__messages { gap: 18px; padding: 18px 12px; } .expert-chat__new-messages { right: 12px; bottom: 12px; } .expert-chat__quick-actions { grid-template-columns: 1fr; width: 100%; } .expert-chat__conversation-menu { opacity: 1; pointer-events: auto; } .expert-chat__conversation-item :deep(.v-list-item__append) { opacity: 1; } }
 </style>

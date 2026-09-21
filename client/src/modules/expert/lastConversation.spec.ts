@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import {
+  clearExpertLastConversation,
   expertLastConversationStorageKey,
   readExpertLastConversation,
   selectInitialExpertConversation,
@@ -30,5 +31,8 @@ describe('Expert last opened conversation', () => {
     expect(readExpertLastConversation(localStorage, first)).toBe('conversation-1')
     expect(readExpertLastConversation(localStorage, second)).toBeNull()
     expect(readExpertLastConversation(localStorage, third)).toBeNull()
+
+    clearExpertLastConversation(localStorage, first)
+    expect(readExpertLastConversation(localStorage, first)).toBeNull()
   })
 })

@@ -146,6 +146,21 @@ describe('Expert persistence mapping', () => {
     expect(put).toHaveBeenCalledWith(path, { active_material_ids: ['material-1'] })
   })
 
+  it('updates and deletes conversations through their public API endpoints', async () => {
+    const patch = vi.fn().mockResolvedValue({ data: { public_id: 'conversation-1', title: 'Новое название' } })
+    const remove = vi.fn().mockResolvedValue({ data: null })
+    const client = createExpertApi({ patch, delete: remove } as unknown as AxiosInstance)
+
+    await expect(client.updateConversation('conversation/1', 'Новое название')).resolves.toEqual(expect.objectContaining({
+      id: 'conversation-1',
+      title: 'Новое название',
+    }))
+    await client.deleteConversation('conversation/1')
+
+    expect(patch).toHaveBeenCalledWith('/api/expert/conversations/conversation%2F1', { title: 'Новое название' })
+    expect(remove).toHaveBeenCalledWith('/api/expert/conversations/conversation%2F1')
+  })
+
   it('preserves machine-readable context errors without parsing their Russian text', () => {
     const error = {
       isAxiosError: true,

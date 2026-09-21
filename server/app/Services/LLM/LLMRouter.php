@@ -337,7 +337,7 @@ class LLMRouter
                 continue;
             }
 
-            $provider = $this->getProvider($providerName, $providerName === ($profile['provider'] ?? null) ? $profile['model'] : null);
+            $provider = $this->getProvider($providerName, $this->profileModel($taskProfile, $providerName));
             if ($provider === null) {
                 $failoverChain[] = "{$providerName}:not_configured";
                 $lastErrorType = LLMErrorType::CONFIG;
@@ -445,7 +445,7 @@ class LLMRouter
         $lastProviderException = null;
 
         foreach ($executionPlan as $providerName) {
-            $provider = $this->getProvider($providerName, $providerName === ($profile['provider'] ?? null) ? $profile['model'] : null);
+            $provider = $this->getProvider($providerName, $this->profileModel($taskProfile, $providerName));
             $supportsStreaming = $provider !== null && $this->supports($provider, LLMCapability::STREAMING, $profile);
             if ($profile !== null && $provider !== null && ! $supportsStreaming) {
                 // The response arrives as a whole; this is a synchronous completion,
@@ -646,6 +646,25 @@ class LLMRouter
     private function activeProfile(?string $task): ?array
     {
         return $task === null ? null : $this->profileResolver()->active($task);
+    }
+
+    private function profileModel(?string $task, string $provider): ?string
+    {
+        if ($task === null) {
+            return null;
+        }
+        $profile = $this->profileResolver()->active($task);
+        if ($profile === null) {
+            return null;
+        }
+        if ($provider === ($profile['provider'] ?? null)) {
+            return is_string($profile['model'] ?? null) ? $profile['model'] : null;
+        }
+        if (($profile['fallback_enabled'] ?? false) === true && $provider === ($profile['fallback_provider'] ?? null)) {
+            return is_string($profile['fallback_model'] ?? null) ? $profile['fallback_model'] : null;
+        }
+
+        return null;
     }
 
     private function supports(LLMProviderInterface $provider, LLMCapability $capability, ?array $profile): bool

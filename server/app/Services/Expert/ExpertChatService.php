@@ -26,6 +26,10 @@ final class ExpertChatService
         private readonly ExpertHistoricalMaterialResolver $historicalMaterials,
         private readonly ExpertChatMaterialContextDiagnostics $materialDiagnostics,
         private readonly ExpertContextPlanner $contextPlanner,
+        private readonly ExpertTaskRequirementsResolver $requirementsResolver,
+        private readonly ExpertToolPolicyResolver $toolPolicy,
+        private readonly ExpertModePolicyResolver $modePolicy,
+        private readonly ExpertModelPolicyResolver $modelPolicy,
     ) {}
 
     /** @param list<string> $currentIds @param list<string> $historicalIds */
@@ -59,7 +63,7 @@ final class ExpertChatService
     /**
      * @param  list<string>  $materialPublicIds
      */
-    public function requestFingerprint(string $content, array $materialPublicIds): string
+    public function requestFingerprint(string $content, array $materialPublicIds, string $mode = ExpertModeResolution::AUTO): string
     {
         $normalisedContent = preg_replace('/\s+/u', ' ', trim($content)) ?? trim($content);
         $normalisedMaterialIds = array_map(
@@ -69,7 +73,7 @@ final class ExpertChatService
         sort($normalisedMaterialIds, SORT_STRING);
 
         return hash('sha256', json_encode(
-            [$normalisedContent, $normalisedMaterialIds],
+            [$normalisedContent, $normalisedMaterialIds, ExpertModeResolution::normalise($mode)],
             JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
         ));
     }
@@ -165,6 +169,8 @@ final class ExpertChatService
         ExpertChatMaterialContext|ExpertChatMaterialContextBundle $materialContext,
         array $materialPublicIds = [],
         array $historicalMaterialPublicIds = [],
+        ?ExpertExecutionPlan $executionPlan = null,
+        string $requestedMode = ExpertModeResolution::AUTO,
     ): ExpertChatResult {
         $lock = Cache::lock(
             "expert-chat:{$conversation->id}:{$clientMessageId}",
@@ -173,7 +179,7 @@ final class ExpertChatService
 
         return $lock->block(
             (int) config('expert.chat.idempotency_wait_seconds', 5),
-            function () use ($conversation, $content, $clientMessageId, $requestFingerprint, $materialContext, $materialPublicIds, $historicalMaterialPublicIds): ExpertChatResult {
+            function () use ($conversation, $content, $clientMessageId, $requestFingerprint, $materialContext, $materialPublicIds, $historicalMaterialPublicIds, $executionPlan, $requestedMode): ExpertChatResult {
                 $userMessage = $this->findUserMessage($conversation, $clientMessageId);
 
                 if ($userMessage !== null) {
@@ -196,7 +202,7 @@ final class ExpertChatService
                 $this->materialDiagnostics->log($runId, $bundle, $materialPublicIds, $historicalMaterialPublicIds);
                 $response = $this->llmRouter
                     ->setUserId($conversation->project->user_id)
-                    ->chat($this->buildRequest($conversation, $userMessage, $bundle), taskProfile: LLMTaskProfileResolver::EXPERT_CHAT);
+                    ->chat($this->buildRequest($conversation, $userMessage, $bundle), taskProfile: ($executionPlan ?? $this->executionPlan($requestedMode, $content, $bundle->plan, $bundle))->routerProfile);
                 foreach ($bundle->combined()->ocrCandidates as $candidate) {
                     $parsed = collect($response->parsedFiles)->first(fn ($file) => strtolower($file->sha256) === strtolower($candidate->sha256));
                     if ($parsed === null) {
@@ -221,6 +227,12 @@ final class ExpertChatService
                         'run_id' => $runId,
                         'service_tier' => is_string($response->metadata['service_tier'] ?? null) ? $response->metadata['service_tier'] : null,
                         'latency_ms' => $response->latencyMs,
+                        ...(($executionPlan ?? $this->executionPlan($requestedMode, $content, $bundle->plan, $bundle))->toMetadata()),
+                        'fallback_used' => (bool) ($response->metadata['fallback_used'] ?? false),
+                        'fallback_reason' => $response->metadata['fallback_reason'] ?? null,
+                        'tools_used' => $response->metadata['tools_used'] ?? (($executionPlan ?? $this->executionPlan($requestedMode, $content, $bundle->plan, $bundle))->tools),
+                        'actual_upstream_provider' => $response->metadata['upstream_provider'] ?? $response->provider,
+                        'actual_upstream_model' => $response->metadata['upstream_model'] ?? $response->model,
                     ],
                 ]);
 
@@ -239,6 +251,7 @@ final class ExpertChatService
         string $clientMessageId,
         string $requestFingerprint,
         array $materialPublicIds = [],
+        string $requestedMode = ExpertModeResolution::AUTO,
     ): ExpertMessage {
         $userMessage = $this->findUserMessage($conversation, $clientMessageId);
         if ($userMessage !== null) {
@@ -248,7 +261,7 @@ final class ExpertChatService
             return $userMessage;
         }
 
-        return $this->createUserMessage($conversation, $content, $clientMessageId, $requestFingerprint, $materialPublicIds);
+        return $this->createUserMessage($conversation, $content, $clientMessageId, $requestFingerprint, $materialPublicIds, $requestedMode);
     }
 
     public function assistantReplyFor(ExpertConversation $conversation, ExpertMessage $userMessage): ?ExpertMessage
@@ -259,6 +272,18 @@ final class ExpertChatService
     public function assertStreamingSnapshot(ExpertMessage $userMessage, string $content, string $requestFingerprint): void
     {
         $this->assertRequestMatches($userMessage, $content, $requestFingerprint);
+    }
+
+    public function executionPlan(string $requestedMode, string $content, ?ExpertContextPack $pack, ExpertChatMaterialContextBundle $bundle): ExpertExecutionPlan
+    {
+        if ($pack === null) {
+            throw ExpertModelPolicyException::profileUnavailable(ExpertModeResolution::normalise($requestedMode));
+        }
+        $requirements = $this->requirementsResolver->resolve($pack, $content, $bundle);
+        $tools = $this->toolPolicy->resolve($requirements, $bundle);
+        $mode = $this->modePolicy->resolve($requestedMode, $content, $requirements);
+
+        return $this->modelPolicy->resolve($mode, $requirements, $tools);
     }
 
     public function buildStreamingRequest(
@@ -356,14 +381,16 @@ final class ExpertChatService
         string $clientMessageId,
         string $requestFingerprint,
         array $materialPublicIds,
+        string $requestedMode = ExpertModeResolution::AUTO,
     ): ExpertMessage {
-        return DB::transaction(function () use ($conversation, $content, $clientMessageId, $requestFingerprint, $materialPublicIds): ExpertMessage {
+        return DB::transaction(function () use ($conversation, $content, $clientMessageId, $requestFingerprint, $materialPublicIds, $requestedMode): ExpertMessage {
             $message = $conversation->messages()->create([
                 'role' => 'user',
                 'content' => $content,
                 'metadata' => [
                     'client_message_id' => $clientMessageId,
                     'expert_request_fingerprint' => $requestFingerprint,
+                    'requested_mode' => ExpertModeResolution::normalise($requestedMode),
                 ],
             ]);
             $this->attachments->persist($conversation, $message, $materialPublicIds);

@@ -8,6 +8,8 @@ namespace App\Services\LLM;
 final class LLMTaskProfileResolver
 {
     public const EXPERT_CHAT = 'expert_chat';
+    public const EXPERT_FAST = 'expert_fast';
+    public const EXPERT_DEEP = 'expert_deep';
 
     public function __construct(
         private readonly LLMSettingsRepository $settings,
@@ -67,6 +69,56 @@ final class LLMTaskProfileResolver
             'capabilities' => $this->capabilities->resolve($provider, $model),
             'catalog_status' => $provider === 'routerai' ? $this->catalog->cachedStatus() : 'unsupported',
             'model_in_catalog' => $provider === 'routerai' ? $this->catalog->cachedModel($model) !== null : null,
+        ];
+    }
+
+    /**
+     * Resolve a public Expert mode profile without exposing provider details to
+     * the client. Fast/Deep profiles are additive; an active legacy profile is
+     * retained as the rollout fallback and the global route remains the final
+     * compatibility fallback.
+     */
+    public function effectiveForExpertMode(string $task): ?array
+    {
+        if (! in_array($task, [self::EXPERT_FAST, self::EXPERT_DEEP], true)) {
+            return null;
+        }
+
+        $profileTask = $task;
+        $profileActive = $this->active($task) !== null;
+        if (! $profileActive && $this->active(self::EXPERT_CHAT) !== null) {
+            $profileTask = self::EXPERT_CHAT;
+            $profileActive = true;
+        }
+        $effective = $this->effective($profileTask);
+        $configured = $this->settings->getTaskProfile($task);
+        if ($profileTask === self::EXPERT_CHAT && $configured === null) {
+            $configured = $this->settings->getTaskProfile(self::EXPERT_CHAT);
+        }
+
+        $fallback = null;
+        if ($profileTask === $task && is_array($configured) && ($configured['fallback_enabled'] ?? false) === true) {
+            $provider = (string) ($configured['fallback_provider'] ?? '');
+            $model = (string) ($configured['fallback_model'] ?? '');
+            if (ProviderRegistry::exists($provider) && $model !== '') {
+                $fallback = [
+                    'enabled' => true,
+                    'provider' => $provider,
+                    'model' => $model,
+                    'capabilities' => $this->capabilities->resolve($provider, $model),
+                ];
+            }
+        }
+
+        return [
+            ...$effective,
+            'profile_task' => $profileTask,
+            'profile_active' => $profileActive,
+            'public_profile' => $task,
+            'fallback' => $fallback,
+            'reasoning_effort' => is_string($configured['reasoning_effort'] ?? null) ? $configured['reasoning_effort'] : null,
+            'max_output_tokens' => isset($configured['max_output_tokens']) ? (int) $configured['max_output_tokens'] : null,
+            'temperature' => isset($configured['temperature']) ? (float) $configured['temperature'] : null,
         ];
     }
 }

@@ -532,6 +532,16 @@ export function createExpertApi(http?: AxiosInstance) {
       )
       return mapConversation(data)
     },
+    async updateConversation(id: string, title: string) {
+      const { data } = await (await resolveHttp()).patch<ExpertConversationDto>(
+        `/api/expert/conversations/${encodeURIComponent(id)}`,
+        { title },
+      )
+      return mapConversation(data)
+    },
+    async deleteConversation(id: string) {
+      await (await resolveHttp()).delete(`/api/expert/conversations/${encodeURIComponent(id)}`)
+    },
     async getConversationContext(projectId: string, conversationId: string) {
       const { data } = await (await resolveHttp()).get<{ active_materials: Array<{ id: string; name: string; mime_type: string }> }>(
         `/api/expert/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/context`,

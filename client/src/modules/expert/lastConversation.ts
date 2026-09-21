@@ -22,6 +22,14 @@ export function writeExpertLastConversation(storage: Storage, key: string, conve
   }
 }
 
+export function clearExpertLastConversation(storage: Storage, key: string): void {
+  try {
+    storage.removeItem(key)
+  } catch {
+    // Storage may be unavailable in private/restricted browser contexts.
+  }
+}
+
 export function selectInitialExpertConversation(
   conversations: ExpertConversation[],
   lastOpenedId: string | null,

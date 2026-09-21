@@ -29,6 +29,8 @@ class LLMSettingsRepository
         'llm.mode',
         'llm.providers',
         'llm.profiles.expert_chat',
+        'llm.profiles.expert_fast',
+        'llm.profiles.expert_deep',
     ];
 
     private const ENCRYPTED_FIELDS = ['api_key'];
