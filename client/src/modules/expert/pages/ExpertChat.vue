@@ -69,6 +69,23 @@
         <v-btn v-if="showScrollToBottom" class="expert-chat__new-messages" color="surface" variant="flat" size="small" append-icon="mdi-arrow-down" aria-label="Показать новые сообщения" @click="scrollToLatest('smooth')">Новые сообщения</v-btn>
       </div>
 
+      <div v-if="projectMode === 'real' && conversationId" class="expert-chat__context">
+        <v-menu :close-on-content-click="false" location="top start">
+          <template #activator="{ props: menuProps }"><v-btn v-bind="menuProps" size="small" variant="text" prepend-icon="mdi-folder-multiple-outline">Контекст: {{ activeMaterials.length }} {{ activeMaterialCountLabel }}</v-btn></template>
+          <v-card min-width="280" max-width="420">
+            <v-card-title class="text-subtitle-2">Контекст исследования</v-card-title>
+            <v-card-text v-if="activeMaterials.length" class="expert-chat__context-list">
+              <div v-for="material in activeMaterials" :key="material.id" class="expert-chat__context-item">
+                <v-icon icon="mdi-check" size="16" />
+                <span :title="material.name">{{ material.name }}</span>
+                <v-btn icon="mdi-close" size="x-small" variant="text" :aria-label="`Убрать ${material.name} из контекста`" :disabled="contextSaving" @click="removeActiveMaterial(material.id)" />
+              </div>
+            </v-card-text>
+            <v-card-text v-else class="text-caption">Добавьте материалы для следующих вопросов в этом чате.</v-card-text>
+            <v-card-actions><v-btn size="small" variant="text" :disabled="contextSaving" @click="openContextLibrary">Добавить из библиотеки</v-btn><v-spacer /><v-btn size="small" variant="text" :disabled="contextSaving || !activeMaterials.length" @click="saveActiveMaterials([])">Очистить</v-btn></v-card-actions>
+          </v-card>
+        </v-menu>
+      </div>
       <ExpertChatComposer
         :context-chips="projectMode === 'demo' ? contextChips : []"
         :persistence-only="projectMode === 'real'"
@@ -109,7 +126,7 @@
 
     <v-dialog v-model="libraryOpen" max-width="760" scrollable>
       <v-card v-if="libraryLoading"><v-card-title>Библиотека проекта</v-card-title><v-card-text><v-progress-linear indeterminate /></v-card-text></v-card>
-      <ExpertProjectLibraryPicker v-else-if="libraryOpen" :materials="project.materials" :initially-selected="composerMaterialContexts.map((context) => context.id)" @cancel="libraryOpen = false" @confirm="confirmLibrarySelection" />
+      <ExpertProjectLibraryPicker v-else-if="libraryOpen" :materials="project.materials" :initially-selected="libraryForContext ? activeMaterials.map((item) => item.id) : composerMaterialContexts.map((context) => context.id)" @cancel="libraryOpen = false" @confirm="confirmLibrarySelection" />
     </v-dialog>
     <ExpertMaterialDrawer v-if="materialDrawerOpen" v-model="materialDrawerOpen" :material="selectedMaterial" :project-mode="projectMode" :image-preview="selectedMaterial ? transfers.imagePreviews.value[selectedMaterial.id] : undefined" :downloading="selectedMaterial ? transfers.isDownloading(selectedMaterial.id) : false" @action="handleMaterialAction" />
 
@@ -177,7 +194,14 @@ let followFrame = 0
 const transfers = useExpertMaterialTransfers()
 const composerMaterialContexts = ref<ExpertMessageMaterialContext[]>([])
 const libraryOpen = ref(false)
+const libraryForContext = ref(false)
 const libraryLoading = ref(false)
+const activeMaterials = ref<Array<{ id: string; name: string; mime_type: string }>>([])
+const activeMaterialCountLabel = computed(() => {
+  const count = activeMaterials.value.length
+  return count % 10 === 1 && count % 100 !== 11 ? 'материал' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'материала' : 'материалов'
+})
+const contextSaving = ref(false)
 const materialDrawerOpen = ref(false)
 const selectedMaterial = ref<ExpertProjectMaterial | null>(null)
 const composerUploadItems = computed(() => transfers.uploads.value)
@@ -560,6 +584,7 @@ async function persistMessage(message: ExpertMessage) {
           replaceOptimisticMessage(message.id, userMessage)
           persistedUserId = userMessage.id
           beginTimelineRun(localAssistantId, runId, materialIds.length)
+          void loadActiveContext(targetConversationId)
         },
         onDelta: (runId, seq, text) => {
           if (runId !== activeRunId.value || seq <= lastSeq) return
@@ -641,6 +666,7 @@ async function persistMessage(message: ExpertMessage) {
       }, activeAbort.value.signal)
       if (fallbackToLegacy) {
         const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId, materialIds)
+        void loadActiveContext(targetConversationId)
         replaceSavedMessage(persistedUserId, reply.userMessage)
         replaceOptimisticMessage(localAssistantId, reply.assistantMessage)
         discardTimelineRun(localAssistantId)
@@ -650,6 +676,7 @@ async function persistMessage(message: ExpertMessage) {
       const mapped = mapExpertApiError(error)
       if (mapped.code === 'streaming_not_supported') {
         const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId, materialIds)
+        void loadActiveContext(targetConversationId)
         replaceOptimisticMessage(message.id, reply.userMessage)
         replaceOptimisticMessage(localAssistantId, reply.assistantMessage)
         discardTimelineRun(localAssistantId)
@@ -817,6 +844,54 @@ function attachComposerFiles(files: File[]) {
 
 async function openLibrary() {
   if (props.projectMode !== 'real') return
+  libraryForContext.value = false
+  libraryOpen.value = true
+  libraryLoading.value = true
+  try {
+    props.project.materials = await expertApi.listMaterials(props.project.id)
+  } catch (error) {
+    snackbarText.value = mapExpertApiError(error).message
+    snackbarOpen.value = true
+    libraryOpen.value = false
+  } finally {
+    libraryLoading.value = false
+  }
+}
+
+async function loadActiveContext(id: string) {
+  if (!id || props.projectMode !== 'real') return
+  try {
+    const items = await expertApi.getConversationContext(props.project.id, id)
+    if (id === conversationId.value) activeMaterials.value = items
+  } catch (error) {
+    if (id === conversationId.value) {
+      snackbarText.value = mapExpertApiError(error).message
+      snackbarOpen.value = true
+    }
+  }
+}
+
+async function saveActiveMaterials(ids: string[]) {
+  if (!conversationId.value || contextSaving.value) return
+  contextSaving.value = true
+  const id = conversationId.value
+  try {
+    const items = await expertApi.updateConversationContext(props.project.id, id, ids)
+    if (id === conversationId.value) activeMaterials.value = items
+  } catch (error) {
+    snackbarText.value = mapExpertApiError(error).message
+    snackbarOpen.value = true
+  } finally {
+    contextSaving.value = false
+  }
+}
+
+function removeActiveMaterial(id: string) {
+  void saveActiveMaterials(activeMaterials.value.filter((item) => item.id !== id).map((item) => item.id))
+}
+
+async function openContextLibrary() {
+  libraryForContext.value = true
   libraryOpen.value = true
   libraryLoading.value = true
   try {
@@ -831,6 +906,11 @@ async function openLibrary() {
 }
 
 function confirmLibrarySelection(ids: string[]) {
+  if (libraryForContext.value) {
+    libraryOpen.value = false
+    void saveActiveMaterials(ids)
+    return
+  }
   const byId = new Map(props.project.materials.map((material) => [material.id, material]))
   composerMaterialContexts.value = ids.flatMap((id) => {
     const material = byId.get(id)
@@ -946,12 +1026,14 @@ function selectWholeProject() {
 watch(() => props.project.id, () => { void requestConversations() }, { immediate: true })
 watch(conversationId, (id) => {
   composerMaterialContexts.value = []
+  activeMaterials.value = []
   transfers.clearUploads()
   followActiveResponse.value = true
   showScrollToBottom.value = false
   const storageKey = lastConversationStorageKey.value
   if (id && storageKey) writeExpertLastConversation(window.localStorage, storageKey, id)
   void loadMessages(id)
+  void loadActiveContext(id)
 })
 watch(messageArea, (element, _, onCleanup) => {
   if (!element) return
@@ -972,6 +1054,10 @@ onBeforeUnmount(() => { activeAbort.value?.abort(); if (followFrame) cancelAnima
 <style scoped>
 .expert-chat { display: flex; height: 100%; min-height: 0; overflow: hidden; background: rgb(var(--v-theme-background)); }
 .expert-chat__main { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; }
+.expert-chat__context { width: min(960px, 100%); margin: 0 auto; padding: 4px 8px 0; }
+.expert-chat__context-list { max-height: 240px; overflow-y: auto; }
+.expert-chat__context-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.expert-chat__context-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .expert-chat__toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 54px; padding: 7px 14px; border-bottom: 1px solid rgba(var(--v-theme-outline-variant), .55); background: rgb(var(--v-theme-surface)); }
 .expert-chat__conversation { font-weight: 800; text-transform: none; }
 .expert-chat__toolbar-actions { display: flex; gap: 4px; }

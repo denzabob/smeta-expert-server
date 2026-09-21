@@ -72,7 +72,7 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
 
             if (count($requests) === 1) {
                 $current = $payload['messages'][array_key_last($payload['messages'])];
-                $this->assertSame(['text', 'text', 'file'], array_column($current['content'], 'type'));
+                $this->assertSame(['text', 'text', 'text', 'file'], array_column($current['content'], 'type'));
                 $fileBlock = collect($current['content'])->first(fn (array $block): bool => ($block['type'] ?? null) === 'file');
                 $this->assertIsArray($fileBlock);
                 $fileData = $fileBlock['file']['file_data'];

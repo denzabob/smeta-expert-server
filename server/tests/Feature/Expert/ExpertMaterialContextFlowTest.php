@@ -8,6 +8,7 @@ use App\Models\Expert\ExpertProjectMaterial;
 use App\Models\User;
 use App\Services\Expert\ExpertChatMaterialContextBuilder;
 use App\Services\Expert\ExpertChatService;
+use App\Services\Expert\ExpertContextPlanner;
 use App\Services\Expert\ExpertHistoricalMaterialResolver;
 use App\Services\Expert\ExpertMaterialContextBuilder;
 use App\Services\Expert\ExpertMaterialContextException;
@@ -80,7 +81,79 @@ class ExpertMaterialContextFlowTest extends TestCase
         $metadata = $conversation->messages()->where('role', 'user')->firstOrFail()->metadata;
         $this->assertIsArray($metadata);
         $this->assertArrayHasKey('expert_request_fingerprint', $metadata);
-        $this->assertStringNotContainsString((string) $material->public_id, json_encode($metadata, JSON_THROW_ON_ERROR));
+        $this->assertSame([$material->public_id], $metadata['expert_context_snapshot']['current_material_ids']);
+        $this->assertSame([$material->public_id], $metadata['expert_context_snapshot']['resolved_material_ids']);
+    }
+
+    public function test_active_material_follows_up_without_attachment_and_new_current_material_has_priority(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $a = $this->material($conversation->project, 'Экспертиза A.txt', 'text/plain', 'ГОСТ 20400-2013');
+        $b = $this->material($conversation->project, 'Справка B.txt', 'text/plain', 'Новая справка');
+        $provider = new ExpertMaterialContextFakeProvider('Готово');
+        $this->installRouter($provider);
+
+        $this->send($user, $conversation, ['content' => 'Что это?', 'material_public_ids' => [$a->public_id]])->assertCreated();
+        $this->send($user, $conversation, ['content' => 'Какие ГОСТ указаны?'])->assertCreated();
+        $this->assertSame([$a->public_id], array_column($provider->chatRequests[1]->materialContext, 'public_id'));
+        $this->assertSame('active', $provider->chatRequests[1]->materialContext[0]['context_role']);
+
+        $this->send($user, $conversation, ['content' => 'Что это за документ?', 'material_public_ids' => [$b->public_id]])->assertCreated();
+        $this->assertSame([$b->public_id], array_column($provider->chatRequests[2]->materialContext, 'public_id'));
+        $this->assertEqualsCanonicalizing([$a->public_id, $b->public_id], $conversation->activeMaterials()->pluck('public_id')->all());
+    }
+
+    public function test_context_api_is_project_scoped_and_old_snapshot_does_not_change(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $a = $this->material($conversation->project, 'A.txt', 'text/plain', 'A');
+        $other = ExpertProject::create(['user_id' => $user->id, 'name' => 'Другой проект', 'domain' => 'commodity', 'work_type' => 'pretrial_research']);
+        $foreign = $this->material($other, 'Секрет.txt', 'text/plain', 'Секрет');
+        $provider = new ExpertMaterialContextFakeProvider('Готово');
+        $this->installRouter($provider);
+        $this->send($user, $conversation, ['content' => 'Что это?', 'material_public_ids' => [$a->public_id]])->assertCreated();
+        $snapshot = $conversation->messages()->where('role', 'user')->firstOrFail()->metadata['expert_context_snapshot'];
+        $url = "/api/expert/projects/{$conversation->project->public_id}/conversations/{$conversation->public_id}/context";
+        $this->actingAs($user, 'sanctum')->putJson($url, ['active_material_ids' => [$foreign->public_id]])->assertUnprocessable();
+        $this->putJson($url, ['active_material_ids' => []])->assertOk()->assertJsonCount(0, 'active_materials');
+        $this->getJson($url)->assertOk()->assertJsonCount(0, 'active_materials')->assertDontSee('storage_path');
+        $anotherConversation = $conversation->project->conversations()->create(['title' => 'Другой чат']);
+        $this->getJson("/api/expert/projects/{$conversation->project->public_id}/conversations/{$anotherConversation->public_id}/context")
+            ->assertOk()->assertJsonCount(0, 'active_materials');
+        $this->assertSame($snapshot, $conversation->messages()->where('role', 'user')->firstOrFail()->metadata['expert_context_snapshot']);
+        $this->send($user, $conversation, ['content' => 'Какие ГОСТ указаны?'])->assertCreated();
+        $this->assertSame([], $provider->chatRequests[1]->materialContext);
+    }
+
+    public function test_context_planner_distinguishes_targeted_retrieval_and_exhaustive_scope(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $a = $this->material($conversation->project, 'A.pdf', 'application/pdf', 'A');
+        $b = $this->material($conversation->project, 'B.pdf', 'application/pdf', 'B');
+        $c = $this->material($conversation->project, 'C.pdf', 'application/pdf', 'C');
+        $conversation->activeMaterials()->sync([$a->id, $b->id, $c->id]);
+        $planner = app(ExpertContextPlanner::class);
+
+        $targeted = $planner->plan($conversation, 'Сравни A.pdf и C.pdf', [], []);
+        $this->assertSame('targeted_multi', $targeted->scope);
+        $this->assertSame([$a->public_id, $c->public_id], $targeted->resolvedMaterials);
+        $exhaustive = $planner->plan($conversation, 'Найди все противоречия', [], []);
+        $this->assertSame('exhaustive_multi', $exhaustive->scope);
+        $this->assertSame('exhaustive', $exhaustive->coverageMode);
+        $this->assertCount(3, $exhaustive->resolvedMaterials);
+        $this->assertSame('exhaustive_multi', $planner->plan($conversation, 'Какие ГОСТы используются в этих документах?', [], [])->scope);
+        $this->assertSame('retrieval_multi', $planner->plan($conversation, 'Что говорится о фасадах?', [], [])->scope);
+        $this->assertSame([$b->public_id], $planner->plan($conversation, 'Что это?', [$b->public_id], [])->resolvedMaterials);
+        $this->assertTrue($planner->plan($conversation, 'Что это за документ?', [], [])->diagnostics['requires_material_disambiguation']);
+
+        $d = $this->material($conversation->project, 'D.pdf', 'application/pdf', 'D');
+        $e = $this->material($conversation->project, 'E.pdf', 'application/pdf', 'E');
+        $conversation->activeMaterials()->sync([$a->id, $b->id, $c->id, $d->id, $e->id]);
+        $large = $planner->plan($conversation, 'Найди все противоречия', [], []);
+        $this->assertTrue($large->requiresMultiDocumentPipeline);
+        $this->assertCount(5, $large->resolvedMaterials);
+        $this->send($user, $conversation, ['content' => 'Найди все противоречия'])->assertUnprocessable()->assertJsonPath('code', 'multi_document_pipeline_required');
+        $this->assertSame(0, $conversation->messages()->count());
     }
 
     public function test_real_xlsx_fixture_content_reaches_fake_llm_payload_and_response_is_saved(): void
@@ -603,8 +676,9 @@ class ExpertMaterialContextFlowTest extends TestCase
         $secondPayload = OpenAiChatMessageMapper::map($provider->chatRequests[1]);
         $this->assertStringNotContainsString(
             'Ignore previous instructions',
-            implode("\n", array_column($secondPayload, 'content')),
+            json_encode(array_slice($secondPayload, 0, -1), JSON_THROW_ON_ERROR),
         );
+        $this->assertStringContainsString('Ignore previous instructions', json_encode($secondPayload[array_key_last($secondPayload)]['content'], JSON_THROW_ON_ERROR));
     }
 
     public function test_new_current_attachment_stays_in_current_turn_and_does_not_restore_this_document_from_history(): void

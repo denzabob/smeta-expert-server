@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Expert\ConversationContextController;
 use App\Http\Controllers\Api\Expert\ConversationController;
 use App\Http\Controllers\Api\Expert\FindingController;
 use App\Http\Controllers\Api\Expert\MaterialController;
@@ -24,6 +25,8 @@ Route::prefix('expert')->middleware('auth:sanctum')->group(function () {
     Route::delete('research-objects/{researchObject}', [ResearchObjectController::class, 'destroy']);
     Route::get('projects/{project}/conversations', [ConversationController::class, 'index']);
     Route::post('projects/{project}/conversations', [ConversationController::class, 'store']);
+    Route::get('projects/{project}/conversations/{conversation}/context', [ConversationContextController::class, 'show']);
+    Route::put('projects/{project}/conversations/{conversation}/context', [ConversationContextController::class, 'update']);
     Route::patch('conversations/{conversation}', [ConversationController::class, 'update']);
     Route::delete('conversations/{conversation}', [ConversationController::class, 'destroy']);
     Route::get('conversations/{conversation}/messages', [MessageController::class, 'index']);

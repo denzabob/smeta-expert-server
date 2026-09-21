@@ -21,6 +21,7 @@ final class ExpertChatStreamingRun
         public readonly Lock $lock,
         public readonly ?ExpertMessage $existingAssistant = null,
         public readonly bool $isContinuation = false,
+        public readonly ?ExpertContextPack $contextPack = null,
     ) {}
 
     public function runId(): string

@@ -140,12 +140,15 @@ final class ExpertChatMaterialContextBuilder
         array $currentIds,
         array $historicalIds,
         ?ExpertRunActivitySink $activity = null,
+        array $activeIds = [],
+        ?ExpertContextPack $plan = null,
     ): ExpertChatMaterialContextBundle {
         $currentIds = array_values(array_unique($currentIds));
         $historicalIds = array_values(array_diff(array_unique($historicalIds), $currentIds));
-        $combined = $this->build($project, [...$currentIds, ...$historicalIds], $activity);
+        $activeIds = array_values(array_diff(array_unique($activeIds), $currentIds, $historicalIds));
+        $combined = $this->build($project, [...$currentIds, ...$activeIds, ...$historicalIds], $activity);
 
-        return ExpertChatMaterialContextBundle::partition($combined, $currentIds, $historicalIds);
+        return ExpertChatMaterialContextBundle::partition($combined, $currentIds, $historicalIds, $activeIds, $plan);
     }
 
     private function throwIfCancellationRequested(ExpertRunActivitySink $activity): void

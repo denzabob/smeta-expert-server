@@ -12,6 +12,8 @@ final class ExpertChatMaterialContextBundle
     public function __construct(
         public readonly ExpertChatMaterialContext $current,
         public readonly ExpertChatMaterialContext $historical,
+        public readonly ?ExpertChatMaterialContext $active = null,
+        public readonly ?ExpertContextPack $plan = null,
     ) {}
 
     public static function currentOnly(ExpertChatMaterialContext $context): self
@@ -27,9 +29,12 @@ final class ExpertChatMaterialContextBundle
         ExpertChatMaterialContext $combined,
         array $currentIds,
         array $historicalIds,
+        array $activeIds = [],
+        ?ExpertContextPack $plan = null,
     ): self {
         $current = array_fill_keys($currentIds, true);
         $historical = array_fill_keys(array_values(array_diff($historicalIds, $currentIds)), true);
+        $active = array_fill_keys(array_values(array_diff($activeIds, $currentIds, $historicalIds)), true);
         $fileMaterialIds = [];
         foreach ($combined->ocrCandidates as $candidate) {
             $fileMaterialIds[strtolower($candidate->sha256)] = $candidate->materialPublicId;
@@ -56,16 +61,16 @@ final class ExpertChatMaterialContextBundle
             return new ExpertChatMaterialContext($textMaterials, $images, $files, $ocrCandidates);
         };
 
-        return new self($select($current), $select($historical));
+        return new self($select($current), $select($historical), $select($active), $plan);
     }
 
     public function combined(): ExpertChatMaterialContext
     {
         return new ExpertChatMaterialContext(
-            [...$this->current->textMaterials, ...$this->historical->textMaterials],
-            [...$this->current->images, ...$this->historical->images],
-            [...$this->current->files, ...$this->historical->files],
-            [...$this->current->ocrCandidates, ...$this->historical->ocrCandidates],
+            [...$this->current->textMaterials, ...($this->active?->textMaterials ?? []), ...$this->historical->textMaterials],
+            [...$this->current->images, ...($this->active?->images ?? []), ...$this->historical->images],
+            [...$this->current->files, ...($this->active?->files ?? []), ...$this->historical->files],
+            [...$this->current->ocrCandidates, ...($this->active?->ocrCandidates ?? []), ...$this->historical->ocrCandidates],
         );
     }
 
@@ -73,8 +78,9 @@ final class ExpertChatMaterialContextBundle
     public function llmTextMaterials(): array
     {
         return [
-            ...array_map(static fn (array $material): array => [...$material, 'context_role' => 'current'], $this->current->textMaterials),
-            ...array_map(static fn (array $material): array => [...$material, 'context_role' => 'historical'], $this->historical->textMaterials),
+            ...array_map(static fn (array $material): array => [...$material, 'context_role' => 'current', 'source_type' => 'CURRENT_MATERIAL', 'material_id' => $material['public_id'], 'filename' => $material['name']], $this->current->textMaterials),
+            ...array_map(static fn (array $material): array => [...$material, 'context_role' => 'active', 'source_type' => 'ACTIVE_MATERIAL', 'material_id' => $material['public_id'], 'filename' => $material['name']], $this->active?->textMaterials ?? []),
+            ...array_map(static fn (array $material): array => [...$material, 'context_role' => 'historical', 'source_type' => 'HISTORICAL_MATERIAL', 'material_id' => $material['public_id'], 'filename' => $material['name']], $this->historical->textMaterials),
         ];
     }
 }

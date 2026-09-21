@@ -170,7 +170,7 @@ describe('Expert Chat recovery', () => {
     await vi.waitFor(() => expect(expertApi.listMessages).toHaveBeenCalled())
 
     const input = root.querySelector('input[aria-label="Текст сообщения"]') as HTMLInputElement
-    const send = root.querySelector('button:not(.expert-chat__conversation)') as HTMLButtonElement
+    const send = Array.from(root.querySelectorAll('button')).find(button => button.textContent === 'Отправить') as HTMLButtonElement
     input.value = 'Проверь PDF'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     send.click()

@@ -19,21 +19,34 @@ final class ExpertChatMaterialContextDiagnostics
         array $historicalIds,
     ): void {
         $names = $this->materialNames($bundle);
+        $plan = $bundle->plan;
         $textIds = $this->uniqueIds([
             ...array_column($bundle->current->textMaterials, 'public_id'),
             ...array_column($bundle->historical->textMaterials, 'public_id'),
+            ...array_column($bundle->active?->textMaterials ?? [], 'public_id'),
         ]);
         $imageIds = $this->uniqueIds([
             ...array_map(static fn ($image): string => $image->materialPublicId, $bundle->current->images),
             ...array_map(static fn ($image): string => $image->materialPublicId, $bundle->historical->images),
+            ...array_map(static fn ($image): string => $image->materialPublicId, $bundle->active?->images ?? []),
         ]);
         $fileIds = $this->uniqueIds([
             ...array_map(static fn ($candidate): string => $candidate->materialPublicId, $bundle->current->ocrCandidates),
             ...array_map(static fn ($candidate): string => $candidate->materialPublicId, $bundle->historical->ocrCandidates),
+            ...array_map(static fn ($candidate): string => $candidate->materialPublicId, $bundle->active?->ocrCandidates ?? []),
         ]);
 
         Log::info('Expert chat material context resolved.', [
             'run_id' => $runId,
+            'context_scope' => $plan?->scope,
+            'coverage_mode' => $plan?->coverageMode,
+            'active_material_count' => count($plan?->activeMaterials ?? []),
+            'current_material_count' => count($currentIds),
+            'historical_material_count' => count($historicalIds),
+            'resolved_material_count' => count($plan?->resolvedMaterials ?? []),
+            'requires_multi_document_pipeline' => $plan?->requiresMultiDocumentPipeline ?? false,
+            'active_material_ids' => $plan?->activeMaterials ?? [],
+            'resolved_material_ids' => $plan?->resolvedMaterials ?? [],
             'current_material_ids' => array_values($currentIds),
             'current_material_names' => $this->namesFor($currentIds, $names),
             'historical_resolved_ids' => array_values($historicalIds),
@@ -44,7 +57,10 @@ final class ExpertChatMaterialContextDiagnostics
             'material_context_order' => $this->order($bundle),
         ]);
 
-        foreach (['current' => $bundle->current, 'historical' => $bundle->historical] as $source => $context) {
+        foreach (['current' => $bundle->current, 'active' => $bundle->active, 'historical' => $bundle->historical] as $source => $context) {
+            if ($context === null) {
+                continue;
+            }
             foreach ($context->textMaterials as $material) {
                 if (($material['mime_type'] ?? null) !== 'application/pdf' || ! isset($material['processing_strategy'])) {
                     continue;
@@ -78,6 +94,12 @@ final class ExpertChatMaterialContextDiagnostics
                 break;
             }
         }
+        foreach ($bundle->active?->ocrCandidates ?? [] as $activeCandidate) {
+            if ($activeCandidate->materialPublicId === $candidate->materialPublicId) {
+                $source = 'active';
+                break;
+            }
+        }
 
         $this->logPdfProcessed(
             $runId,
@@ -95,7 +117,10 @@ final class ExpertChatMaterialContextDiagnostics
     private function materialNames(ExpertChatMaterialContextBundle $bundle): array
     {
         $names = [];
-        foreach ([$bundle->current, $bundle->historical] as $context) {
+        foreach ([$bundle->current, $bundle->active, $bundle->historical] as $context) {
+            if ($context === null) {
+                continue;
+            }
             foreach ($context->textMaterials as $material) {
                 $names[(string) $material['public_id']] = $this->safeName((string) $material['name']);
             }
@@ -129,7 +154,10 @@ final class ExpertChatMaterialContextDiagnostics
     private function order(ExpertChatMaterialContextBundle $bundle): array
     {
         $entries = [];
-        foreach (['current' => $bundle->current, 'historical' => $bundle->historical] as $source => $context) {
+        foreach (['current' => $bundle->current, 'active' => $bundle->active, 'historical' => $bundle->historical] as $source => $context) {
+            if ($context === null) {
+                continue;
+            }
             foreach ($context->textMaterials as $material) {
                 $entries[] = ['source' => $source, 'kind' => 'text', 'material_id' => (string) $material['public_id']];
             }

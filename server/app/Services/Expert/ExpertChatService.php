@@ -25,7 +25,36 @@ final class ExpertChatService
         private readonly ExpertMessageAttachments $attachments,
         private readonly ExpertHistoricalMaterialResolver $historicalMaterials,
         private readonly ExpertChatMaterialContextDiagnostics $materialDiagnostics,
+        private readonly ExpertContextPlanner $contextPlanner,
     ) {}
+
+    /** @param list<string> $currentIds @param list<string> $historicalIds */
+    public function contextPlan(ExpertConversation $conversation, string $content, array $currentIds, array $historicalIds, ?ExpertMessage $message = null): ExpertContextPack
+    {
+        $snapshot = is_array($message?->metadata) ? ($message->metadata['expert_context_snapshot'] ?? null) : null;
+        if (is_array($snapshot)) {
+            $fresh = $this->contextPlanner->plan($conversation, $content, [], []);
+
+            return ExpertContextPack::fromSnapshot($fresh->projectCore, $snapshot);
+        }
+
+        return $this->contextPlanner->plan($conversation, $content, $currentIds, $historicalIds);
+    }
+
+    public function recordContext(ExpertConversation $conversation, ExpertMessage $message, ExpertContextPack $pack): void
+    {
+        DB::transaction(function () use ($conversation, $message, $pack): void {
+            $metadata = is_array($message->metadata) ? $message->metadata : [];
+            if (isset($metadata['expert_context_snapshot'])) {
+                return;
+            }
+            $message->forceFill(['metadata' => [...$metadata, 'expert_context_snapshot' => $pack->snapshot()]])->save();
+            if ($pack->currentMaterials !== []) {
+                $ids = $conversation->project->materials()->whereIn('public_id', $pack->currentMaterials)->pluck('id')->all();
+                $conversation->activeMaterials()->syncWithoutDetaching($ids);
+            }
+        });
+    }
 
     /**
      * @param  list<string>  $materialPublicIds
@@ -102,8 +131,7 @@ final class ExpertChatService
         ?ExpertMessage $current = null,
         ?string $clientMessageId = null,
         bool $hasCurrentMaterials = false,
-    ): array
-    {
+    ): array {
         $current ??= $clientMessageId === null ? null : $this->findUserMessage($conversation, $clientMessageId);
 
         return $this->historicalMaterials->resolve($conversation, $content, $current, $hasCurrentMaterials);
@@ -161,6 +189,9 @@ final class ExpertChatService
                 }
 
                 $bundle = $this->materialBundle($materialContext);
+                if ($bundle->plan !== null) {
+                    $this->recordContext($conversation, $userMessage, $bundle->plan);
+                }
                 $runId = (string) Str::uuid();
                 $this->materialDiagnostics->log($runId, $bundle, $materialPublicIds, $historicalMaterialPublicIds);
                 $response = $this->llmRouter
@@ -262,7 +293,7 @@ final class ExpertChatService
         // This instruction is internal transient context, never a persisted user message.
         $history[] = LLMChatMessage::text('user', 'Продолжи предыдущий ответ с места остановки. Не повторяй уже сформированный текст.');
 
-        return new LLMChatRequest($this->prompt->systemMessage(), $history, $bundle->llmTextMaterials(), true);
+        return new LLMChatRequest($this->systemMessage($bundle), $history, $bundle->llmTextMaterials(), true);
     }
 
     /** @param array<string, mixed> $metadata */
@@ -397,7 +428,7 @@ final class ExpertChatService
         $bundle = $this->materialBundle($materialContext);
         $history[] = new LLMChatMessage('user', $this->currentUserContent($currentMessage->content, $bundle));
 
-        return new LLMChatRequest($this->prompt->systemMessage(), $history, $bundle->llmTextMaterials(), true);
+        return new LLMChatRequest($this->systemMessage($bundle), $history, $bundle->llmTextMaterials(), true);
     }
 
     private function materialBundle(ExpertChatMaterialContext|ExpertChatMaterialContextBundle $context): ExpertChatMaterialContextBundle
@@ -407,16 +438,38 @@ final class ExpertChatService
             : ExpertChatMaterialContextBundle::currentOnly($context);
     }
 
+    private function systemMessage(ExpertChatMaterialContextBundle $bundle): string
+    {
+        return $this->prompt->systemMessage().($bundle->plan === null ? '' : "\nCONTEXT SCOPE: ".$bundle->plan->scope.'; COVERAGE: '.$bundle->plan->coverageMode.'.');
+    }
+
     /** @return list<mixed> */
     private function currentUserContent(string $content, ExpertChatMaterialContextBundle $bundle): array
     {
         $blocks = [new LLMTextContent($content)];
+        if ($bundle->plan !== null) {
+            $hasMaterials = $bundle->current->textMaterials !== [] || $bundle->current->images !== [] || $bundle->current->files !== []
+                || ($bundle->active !== null && ($bundle->active->textMaterials !== [] || $bundle->active->images !== [] || $bundle->active->files !== []))
+                || $bundle->historical->textMaterials !== [] || $bundle->historical->images !== [] || $bundle->historical->files !== [];
+            if ($hasMaterials) {
+                $blocks[] = new LLMTextContent($bundle->plan->projectCore);
+            } else {
+                $blocks[0] = new LLMTextContent($content."\n\n".$bundle->plan->projectCore);
+            }
+        }
         if ($bundle->current->textMaterials !== [] || $bundle->current->images !== [] || $bundle->current->files !== []) {
             $blocks[] = new LLMTextContent($this->currentMaterialInstruction());
             foreach ($bundle->current->textMaterials as $material) {
                 $blocks[] = new LLMTextContent($this->materialText($material));
             }
             $blocks = [...$blocks, ...$bundle->current->images, ...$bundle->current->files];
+        }
+        if ($bundle->active !== null && ($bundle->active->textMaterials !== [] || $bundle->active->images !== [] || $bundle->active->files !== [])) {
+            $blocks[] = new LLMTextContent('ACTIVE MATERIAL — материал рабочего набора, выбранный для этого вопроса. Источник фактов о документе; проверяй по нему, а не по прежнему ответу ассистента.');
+            foreach ($bundle->active->textMaterials as $material) {
+                $blocks[] = new LLMTextContent($this->materialText($material));
+            }
+            $blocks = [...$blocks, ...$bundle->active->images, ...$bundle->active->files];
         }
         if ($bundle->historical->textMaterials !== [] || $bundle->historical->images !== [] || $bundle->historical->files !== []) {
             $blocks[] = new LLMTextContent($this->historicalMaterialInstruction());

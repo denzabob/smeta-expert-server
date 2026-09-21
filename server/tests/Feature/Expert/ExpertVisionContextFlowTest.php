@@ -63,12 +63,13 @@ class ExpertVisionContextFlowTest extends TestCase
             $this->assertSame(['Bearer test-key'], $request->header('Authorization'));
             $payload = $request->data();
             $this->assertSame('openai/gpt-4o', $payload['model']);
-            $this->assertStringContainsString('VISION-MIX-9274', $payload['messages'][1]['content']);
-            $this->assertSame(1, substr_count($payload['messages'][1]['content'], 'VISION-MIX-9274'));
             $current = $payload['messages'][array_key_last($payload['messages'])];
-            $this->assertSame(['text', 'image_url'], array_column($current['content'], 'type'));
+            $currentText = json_encode($current['content'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            $this->assertStringContainsString('VISION-MIX-9274', $currentText);
+            $this->assertSame(1, substr_count($currentText, 'VISION-MIX-9274'));
+            $this->assertSame(['text', 'text', 'text', 'text', 'image_url'], array_column($current['content'], 'type'));
             $this->assertSame('Опиши видимый дефект', $current['content'][0]['text']);
-            $url = $current['content'][1]['image_url']['url'];
+            $url = $current['content'][array_key_last($current['content'])]['image_url']['url'];
             $this->assertStringStartsWith('data:image/jpeg;base64,', $url);
             $bytes = base64_decode(substr($url, strlen('data:image/jpeg;base64,')), true);
             $this->assertIsString($bytes);

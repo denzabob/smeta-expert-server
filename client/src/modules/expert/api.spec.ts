@@ -133,6 +133,19 @@ describe('Expert persistence mapping', () => {
     )
   })
 
+  it('reads and replaces only the selected conversation material IDs', async () => {
+    const active = [{ id: 'material-1', name: 'Акт.pdf', mime_type: 'application/pdf' }]
+    const get = vi.fn().mockResolvedValue({ data: { active_materials: active } })
+    const put = vi.fn().mockResolvedValue({ data: { active_materials: active } })
+    const client = createExpertApi({ get, put } as unknown as AxiosInstance)
+
+    await expect(client.getConversationContext('project/1', 'chat/1')).resolves.toEqual(active)
+    await expect(client.updateConversationContext('project/1', 'chat/1', ['material-1'])).resolves.toEqual(active)
+    const path = '/api/expert/projects/project%2F1/conversations/chat%2F1/context'
+    expect(get).toHaveBeenCalledWith(path)
+    expect(put).toHaveBeenCalledWith(path, { active_material_ids: ['material-1'] })
+  })
+
   it('preserves machine-readable context errors without parsing their Russian text', () => {
     const error = {
       isAxiosError: true,

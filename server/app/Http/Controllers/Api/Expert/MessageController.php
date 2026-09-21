@@ -73,10 +73,20 @@ class MessageController extends Controller
                 clientMessageId: $clientMessageId,
                 hasCurrentMaterials: $materialPublicIds !== [],
             );
+            $storedUser = $conversation->messages()->where('role', 'user')->where('metadata->client_message_id', $clientMessageId)->first();
+            $plan = $this->expertChat->contextPlan($conversation, $content, $materialPublicIds, $historicalIds, $storedUser);
+            if ($plan->diagnostics['requires_material_disambiguation'] ?? false) {
+                throw ExpertMaterialContextException::ambiguousActiveMaterials();
+            }
+            if ($plan->requiresMultiDocumentPipeline) {
+                throw ExpertMaterialContextException::multiDocumentPipelineRequired();
+            }
             $materialContext = $this->materialContextBuilder->buildPartitioned(
                 $conversation->project,
-                $materialPublicIds,
-                $historicalIds,
+                $plan->currentMaterials,
+                $plan->historicalMaterials,
+                activeIds: array_values(array_diff($plan->resolvedMaterials, $plan->currentMaterials, $plan->historicalMaterials)),
+                plan: $plan,
             );
 
             $result = $this->expertChat->reply(

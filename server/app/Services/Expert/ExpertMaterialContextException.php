@@ -92,4 +92,14 @@ class ExpertMaterialContextException extends RuntimeException
     {
         return new self('original_material_unavailable', 'Исходный материал сообщения удалён и больше недоступен.', 422);
     }
+
+    public static function multiDocumentPipelineRequired(): self
+    {
+        return new self('multi_document_pipeline_required', 'Для полного анализа этого набора материалов требуется отдельный многодокументный режим.', 422);
+    }
+
+    public static function ambiguousActiveMaterials(): self
+    {
+        return new self('active_material_ambiguous', 'Уточните название материала или приложите его к сообщению.', 422);
+    }
 }

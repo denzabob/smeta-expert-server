@@ -47,7 +47,18 @@ final class ExpertChatStreamingService
         $lock = $this->runs->acquireConversation($conversation);
         try {
             $materialPublicIds = $this->materialPublicIds($materialContextOrPublicIds);
+            $existingUser = $conversation->messages()->where('role', 'user')->where('metadata->client_message_id', $clientMessageId)->first();
+            $persistedIds = $existingUser === null ? $materialPublicIds : $this->chat->persistedMaterialPublicIds($existingUser);
+            $historicalIds = $this->chat->historicalMaterialPublicIds($conversation, $content, $existingUser, hasCurrentMaterials: $persistedIds !== []);
+            $plan = $this->chat->contextPlan($conversation, $content, $persistedIds, $historicalIds, $existingUser);
+            if ($plan->diagnostics['requires_material_disambiguation'] ?? false) {
+                throw ExpertMaterialContextException::ambiguousActiveMaterials();
+            }
+            if ($plan->requiresMultiDocumentPipeline) {
+                throw ExpertMaterialContextException::multiDocumentPipelineRequired();
+            }
             $userMessage = $this->chat->prepareStreamingUserMessage($conversation, $content, $clientMessageId, $fingerprint, $materialPublicIds);
+            $this->chat->recordContext($conversation, $userMessage, $plan);
             $existingAssistant = $this->chat->assistantReplyFor($conversation, $userMessage);
             $registryRun = $this->runs->create($conversation, $existingAssistant?->public_id);
 
@@ -55,10 +66,12 @@ final class ExpertChatStreamingService
                 $conversation,
                 $userMessage,
                 $materialContextOrPublicIds instanceof ExpertChatMaterialContext ? $materialContextOrPublicIds : null,
-                $materialContextOrPublicIds instanceof ExpertChatMaterialContext ? [] : $this->chat->persistedMaterialPublicIds($userMessage),
+                $persistedIds,
                 $registryRun,
                 $lock,
                 $existingAssistant,
+                false,
+                $plan,
             );
         } catch (\Throwable $exception) {
             $lock->release();
@@ -81,6 +94,8 @@ final class ExpertChatStreamingService
             throw new ExpertChatStreamException('Исходное сообщение для продолжения не найдено.');
         }
         $persistedPublicIds = $this->chat->persistedMaterialPublicIds($userMessage);
+        $historicalIds = $this->chat->historicalMaterialPublicIds($conversation, $userMessage->content, $userMessage, hasCurrentMaterials: $persistedPublicIds !== []);
+        $plan = $this->chat->contextPlan($conversation, $userMessage->content, $persistedPublicIds, $historicalIds, $userMessage);
 
         $lock = $this->runs->acquireConversation($conversation);
         try {
@@ -95,6 +110,7 @@ final class ExpertChatStreamingService
                 $lock,
                 $assistantMessage,
                 true,
+                $plan,
             );
         } catch (\Throwable $exception) {
             $lock->release();
@@ -156,18 +172,15 @@ final class ExpertChatStreamingService
         }
 
         try {
-            $historicalIds = $this->chat->historicalMaterialPublicIds(
-                $run->conversation,
-                $run->userMessage->content,
-                $run->userMessage,
-                hasCurrentMaterials: $run->materialPublicIds !== [],
-            );
+            $historicalIds = $run->contextPack?->historicalMaterials ?? [];
             $materialBundle = $run->materialContext === null
                 ? $this->materialContextBuilder->buildPartitioned(
                     $run->conversation->project,
                     $run->materialPublicIds,
                     $historicalIds,
                     $activity,
+                    $run->contextPack === null ? [] : array_values(array_diff($run->contextPack->resolvedMaterials, $run->contextPack->currentMaterials, $run->contextPack->historicalMaterials)),
+                    $run->contextPack,
                 )
                 : ExpertChatMaterialContextBundle::currentOnly($run->materialContext);
             $this->materialDiagnostics->log($runId, $materialBundle, $run->materialPublicIds, $historicalIds);
