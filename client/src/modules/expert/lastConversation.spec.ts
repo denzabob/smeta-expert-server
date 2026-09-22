@@ -4,8 +4,10 @@ import {
   clearExpertLastConversation,
   expertLastConversationStorageKey,
   readExpertLastConversation,
+  readExpertMode,
   selectInitialExpertConversation,
   writeExpertLastConversation,
+  writeExpertMode,
 } from './lastConversation'
 import type { ExpertConversation } from './types'
 
@@ -34,5 +36,16 @@ describe('Expert last opened conversation', () => {
 
     clearExpertLastConversation(localStorage, first)
     expect(readExpertLastConversation(localStorage, first)).toBeNull()
+  })
+
+  it('restores Auto from the persisted mode state and normalizes unknown values', () => {
+    localStorage.clear()
+    const key = 'expert-chat-mode:user-10:project-a'
+    writeExpertMode(localStorage, key, 'auto')
+
+    expect(readExpertMode(localStorage, key)).toBe('auto')
+
+    localStorage.setItem(key, 'provider-model-id')
+    expect(readExpertMode(localStorage, key)).toBe('auto')
   })
 })

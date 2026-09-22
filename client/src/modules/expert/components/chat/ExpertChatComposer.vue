@@ -38,7 +38,7 @@
         </v-list>
       </v-menu>
       <textarea ref="textarea" v-model="text" rows="1" :placeholder="persistenceOnly ? 'Введите сообщение…' : 'Спросить Prism AI...'" :aria-label="persistenceOnly ? 'Сообщение' : 'Сообщение Prism AI'" :disabled="busy" aria-keyshortcuts="Enter" @input="resizeTextarea" @keydown="handleKeydown" />
-      <v-menu v-model="modeMenuOpen" location="top end" origin="bottom end" :close-on-content-click="false" offset="8" max-width="300">
+      <v-menu v-model="modeMenuOpen" location="top end" origin="bottom end" :close-on-content-click="false" offset="8" max-width="320">
         <template #activator="{ props: menuProps }">
           <v-btn v-bind="menuProps" class="expert-composer__mode expert-composer__mode-trigger" variant="text" size="small" :aria-expanded="modeMenuOpen" aria-haspopup="listbox">
             {{ activeMode.title }}
@@ -53,11 +53,10 @@
             :aria-selected="option.value === mode"
             :title="option.title"
             :subtitle="option.subtitle"
+            :append-icon="option.value === mode ? 'mdi-check' : undefined"
             role="option"
             @click="selectMode(option.value)"
-          >
-            <template #append><v-icon v-if="option.value === mode" icon="mdi-check" color="primary" size="18" /></template>
-          </v-list-item>
+          />
         </v-list>
       </v-menu>
       <v-btn :icon="busy ? 'mdi-stop' : 'mdi-arrow-up'" color="primary" variant="flat" size="small" :disabled="busy ? false : sendDisabled" :aria-label="busy ? 'Остановить ответ' : 'Отправить'" @click="busy ? $emit('stop') : send()" />
@@ -116,7 +115,7 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const dragDepth = ref(0)
 const dropError = ref('')
 const modes: Array<{ title: string; value: ExpertChatMode; subtitle: string }> = [
-  { title: 'Быстро', value: 'fast', subtitle: 'Для быстрых вопросов и поиска информации' },
+  { title: 'Быстро', value: 'fast', subtitle: 'Для быстрых вопросов и поиска фактов' },
   { title: 'Auto', value: 'auto', subtitle: 'Prism сама выберет подходящий режим' },
   { title: 'Глубокий', value: 'deep', subtitle: 'Для сложного анализа и сопоставления материалов' },
 ]
@@ -228,10 +227,13 @@ const sendDisabled = computed(() => props.busy || Boolean(props.sendBlockedReaso
 .expert-composer__drop-overlay { position: absolute; inset: 3px; z-index: 2; display: grid; place-items: center; border-radius: inherit; color: rgb(var(--v-theme-on-primary-container)); background: rgb(var(--v-theme-primary-container)); font-weight: 700; pointer-events: none; }
 .expert-composer textarea { align-self: center; width: 100%; min-height: 34px; max-height: 144px; padding: 7px 2px; resize: none; outline: none; border: 0; color: rgb(var(--v-theme-on-surface)); background: transparent; font: inherit; line-height: 1.4; }
 .expert-composer__mode-trigger { align-self: center; justify-self: end; min-width: 72px; padding-inline: 8px; color: rgb(var(--v-theme-on-surface)); font-size: .75rem; font-weight: 700; text-transform: none; }
-.expert-composer__mode-menu { width: min(296px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
-.expert-composer__mode-menu :deep(.v-list-item) { min-height: 54px; border-radius: var(--md-sys-shape-corner-medium); }
-.expert-composer__mode-menu :deep(.v-list-item--active) { color: rgb(var(--v-theme-on-primary-container)); background: rgb(var(--v-theme-primary-container)); }
-.expert-composer__mode-menu :deep(.v-list-item-subtitle) { white-space: normal; }
+.expert-composer__mode-menu { width: min(312px, calc(100vw - 24px)); max-width: calc(100vw - 24px); }
+.expert-composer__mode-menu :deep(.v-list-item) { min-height: 68px; border-radius: var(--md-sys-shape-corner-medium); }
+.expert-composer__mode-menu :deep(.v-list-item__content) { gap: 3px; }
+.expert-composer__mode-menu :deep(.v-list-item-title) { white-space: normal; }
+.expert-composer__mode-menu :deep(.v-list-item-subtitle) { display: -webkit-box; overflow: hidden; color: rgba(var(--v-theme-on-surface-variant), .84) !important; white-space: normal; text-overflow: clip; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.3; }
+.expert-composer__mode-menu :deep(.v-list-item--active) { color: rgb(var(--v-theme-on-surface)); background: rgba(var(--v-theme-primary), .1); }
+.expert-composer__mode-menu :deep(.v-list-item--active .v-list-item__append) { color: rgb(var(--v-theme-primary)); }
 .expert-composer__blocked { width: min(960px, 100%); margin: 6px auto 0; color: rgb(var(--v-theme-error)); font-size: .7rem; }
 .expert-composer__hint { margin-top: 6px; color: rgba(var(--v-theme-on-surface-variant), .62); text-align: center; font-size: .64rem; }
 @media (max-width: 600px) { .expert-composer { padding: 8px; } .expert-composer__contexts { max-height: 128px; margin-bottom: 6px; } .expert-composer__material-contexts { width: 100%; } .expert-composer__material-name { max-width: 145px; } .expert-composer__box { grid-template-columns: auto minmax(80px, 1fr) auto auto; border-radius: var(--md-sys-shape-corner-large); } .expert-composer__box--persistence { grid-template-columns: auto minmax(80px, 1fr) auto auto; } .expert-composer__box--persistence.expert-composer__box--with-file-upload { grid-template-columns: auto minmax(80px, 1fr) auto auto; } .expert-composer__mode-trigger { min-width: 66px; padding-inline: 5px; } .expert-composer__hint { display: none; } }
