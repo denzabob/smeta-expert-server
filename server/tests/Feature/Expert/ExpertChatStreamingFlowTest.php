@@ -196,7 +196,7 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertFalse($logged[0]['retryable'] ?? true);
         $this->assertTrue($logged[0]['before_first_delta'] ?? false);
         $this->assertSame('4xx', $logged[0]['http_status_class'] ?? null);
-        $this->assertSame('expert_chat', $logged[0]['task_profile'] ?? null);
+        $this->assertSame('expert_fast', $logged[0]['task_profile'] ?? null);
         $this->assertSame('routerai', $logged[0]['effective_provider'] ?? null);
         $this->assertSame('profile/selected-model', $logged[0]['effective_model'] ?? null);
         $this->assertSame('PROFILE', $logged[0]['profile_source'] ?? null);

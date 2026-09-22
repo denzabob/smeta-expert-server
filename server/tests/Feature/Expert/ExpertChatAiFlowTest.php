@@ -25,10 +25,18 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Tests\Feature\Expert\Support\ConfiguresExpertModeProfiles;
 
 class ExpertChatAiFlowTest extends TestCase
 {
     use RefreshDatabase;
+    use ConfiguresExpertModeProfiles;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->configureExpertModeProfiles();
+    }
 
     public function test_message_reaches_provider_and_provider_response_is_saved_and_returned(): void
     {
@@ -57,6 +65,96 @@ class ExpertChatAiFlowTest extends TestCase
         $this->assertStringContainsString('Проанализируй ситуацию', json_encode($payload[1]['content'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         $this->assertStringContainsString('Название: Проект', json_encode($payload[1]['content'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         $this->assertDatabaseHas('expert_messages', ['expert_conversation_id' => $conversation->id, 'role' => 'assistant', 'content' => 'Тестовый ответ модели']);
+    }
+
+    public function test_auto_comparison_with_available_deep_profile_reaches_provider(): void
+    {
+        Storage::fake('local');
+        [$user, $conversation] = $this->conversation();
+        $first = $this->textMaterial($conversation, 'Первый.txt', 'Первый документ');
+        $second = $this->textMaterial($conversation, 'Второй.txt', 'Второй документ');
+        $provider = new ExpertChatFakeProvider('Сравнение выполнено');
+        $this->installRouter($provider);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson(
+            $this->messageUrl($conversation),
+            [
+                'content' => 'Сравни файлы',
+                'material_public_ids' => [$second->public_id, $first->public_id],
+            ],
+            ['X-Expert-Message-Id' => (string) Str::uuid()],
+        );
+
+        $response->assertCreated()
+            ->assertJsonPath('assistant_message.metadata.resolved_mode', 'deep')
+            ->assertJsonPath('assistant_message.metadata.profile', 'expert_deep')
+            ->assertJsonPath('assistant_message.metadata.execution_strategy', 'direct');
+        $this->assertCount(1, $provider->chatRequests);
+    }
+
+    public function test_auto_comparison_without_deep_profile_returns_controlled_error_before_provider(): void
+    {
+        $this->disableExpertDeepProfile();
+        Storage::fake('local');
+        [$user, $conversation] = $this->conversation();
+        $first = $this->textMaterial($conversation, 'Первый.txt', 'Первый документ');
+        $second = $this->textMaterial($conversation, 'Второй.txt', 'Второй документ');
+        $provider = new ExpertChatFakeProvider('Не должен вызываться');
+        $this->installRouter($provider);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson(
+            $this->messageUrl($conversation),
+            ['content' => 'Сравни файлы', 'material_public_ids' => [$second->public_id, $first->public_id]],
+            ['X-Expert-Message-Id' => (string) Str::uuid()],
+        );
+
+        $response->assertStatus(422)->assertJsonPath('code', 'expert_mode_unavailable');
+        $this->assertCount(0, $provider->chatRequests);
+    }
+
+    public function test_explicit_deep_without_deep_profile_returns_controlled_error_before_provider(): void
+    {
+        $this->disableExpertDeepProfile();
+        Storage::fake('local');
+        [$user, $conversation] = $this->conversation();
+        $material = $this->textMaterial($conversation, 'Документ.txt', 'Небольшой документ');
+        $provider = new ExpertChatFakeProvider('Не должен вызываться');
+        $this->installRouter($provider);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson(
+            $this->messageUrl($conversation),
+            ['content' => 'Проанализируй документ', 'mode' => 'deep', 'material_public_ids' => [$material->public_id]],
+            ['X-Expert-Message-Id' => (string) Str::uuid()],
+        );
+
+        $response->assertStatus(422)->assertJsonPath('code', 'expert_mode_unavailable');
+        $this->assertCount(0, $provider->chatRequests);
+    }
+
+    public function test_explicit_fast_with_enabled_fast_profile_is_not_silently_promoted(): void
+    {
+        Storage::fake('local');
+        [$user, $conversation] = $this->conversation();
+        $first = $this->textMaterial($conversation, 'Первый.txt', 'Первый документ');
+        $second = $this->textMaterial($conversation, 'Второй.txt', 'Второй документ');
+        $provider = new ExpertChatFakeProvider('Быстрое сравнение');
+        $this->installRouter($provider);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson(
+            $this->messageUrl($conversation),
+            [
+                'content' => 'Сравни файлы',
+                'mode' => 'fast',
+                'material_public_ids' => [$second->public_id, $first->public_id],
+            ],
+            ['X-Expert-Message-Id' => (string) Str::uuid()],
+        );
+
+        $response->assertCreated()
+            ->assertJsonPath('assistant_message.metadata.resolved_mode', 'fast')
+            ->assertJsonPath('assistant_message.metadata.profile', 'expert_fast')
+            ->assertJsonPath('assistant_message.metadata.execution_strategy', 'direct');
+        $this->assertCount(1, $provider->chatRequests);
     }
 
     public function test_history_is_ordered_and_limited_before_current_user_message(): void

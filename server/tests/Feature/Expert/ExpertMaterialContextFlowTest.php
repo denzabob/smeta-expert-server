@@ -33,16 +33,19 @@ use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use Tests\TestCase;
+use Tests\Feature\Expert\Support\ConfiguresExpertModeProfiles;
 use ZipArchive;
 
 class ExpertMaterialContextFlowTest extends TestCase
 {
     use RefreshDatabase;
+    use ConfiguresExpertModeProfiles;
 
     protected function setUp(): void
     {
         parent::setUp();
 
+        $this->configureExpertModeProfiles();
         Storage::fake('local');
     }
 

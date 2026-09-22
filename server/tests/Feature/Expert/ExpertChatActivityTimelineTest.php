@@ -25,9 +25,12 @@ use App\Services\LLM\DTO\LLMStreamEvent;
 use App\Services\LLM\Enums\LLMCapability;
 use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\LLMErrorClassifier;
+use App\Services\LLM\LLMEffectiveCapabilityResolver;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
+use App\Services\LLM\LLMTaskProfileResolver;
 use App\Services\LLM\Parsing\OpenAiSseStreamParser;
+use App\Services\LLM\RouterAiModelCatalogService;
 use Dompdf\Dompdf;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Log\Events\MessageLogged;
@@ -36,14 +39,17 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery;
 use Tests\TestCase;
+use Tests\Feature\Expert\Support\ConfiguresExpertModeProfiles;
 
 final class ExpertChatActivityTimelineTest extends TestCase
 {
     use RefreshDatabase;
+    use ConfiguresExpertModeProfiles;
 
     protected function setUp(): void
     {
         parent::setUp();
+        $this->configureExpertModeProfiles();
         Storage::fake('local');
         config(['expert.pdf_ocr.enabled' => true]);
     }
@@ -287,6 +293,7 @@ final class ExpertChatActivityTimelineTest extends TestCase
         $settings = Mockery::mock(LLMSettingsRepository::class);
         $settings->shouldReceive('getMode')->andReturn('manual');
         $settings->shouldReceive('getPrimaryProvider')->andReturn('timeline-fake');
+        $settings->shouldReceive('getTaskProfile')->andReturn(null);
         $settings->shouldReceive('getProviderSettings')->with('timeline-fake')->andReturn([]);
         app(CircuitBreaker::class)->reset('timeline-fake');
         $this->app->instance(LLMRouter::class, new LLMRouter(
@@ -294,6 +301,11 @@ final class ExpertChatActivityTimelineTest extends TestCase
             $settings,
             app(LLMErrorClassifier::class),
             static fn (): LLMProviderInterface => $provider,
+            new LLMTaskProfileResolver(
+                $settings,
+                app(LLMEffectiveCapabilityResolver::class),
+                app(RouterAiModelCatalogService::class),
+            ),
         ));
     }
 

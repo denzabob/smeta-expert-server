@@ -68,7 +68,7 @@ final class ExpertChatMaterialContextBuilder
             $analysisActivity = $activity->start(
                 ExpertAnalysisActivityCode::MATERIAL_STARTED,
                 'analysis',
-                $this->presentationName($material),
+                ExpertMaterialPresentationName::resolve($material),
             );
             $imageActivity = $activity->start('material.image_prepare.started', 'material', (string) $material->original_name);
             try {

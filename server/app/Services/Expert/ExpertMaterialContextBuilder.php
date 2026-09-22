@@ -136,7 +136,7 @@ final class ExpertMaterialContextBuilder
 
             $contextEntry = [
                 'public_id' => (string) $material->public_id,
-                'name' => $this->presentationName($material),
+                'name' => ExpertMaterialPresentationName::resolve($material),
                 'mime_type' => (string) $material->mime_type,
                 'text' => $text,
                 'source_bytes' => $resolved['bytes'],
@@ -177,20 +177,6 @@ final class ExpertMaterialContextBuilder
         ], static fn (mixed $value): bool => $value !== null));
     }
 
-    private function presentationName(ExpertProjectMaterial $material): string
-    {
-        $name = preg_replace('/[\x00-\x1F\x7F]/u', '', (string) $material->original_name);
-        $name = is_string($name) ? trim($name) : '';
-
-        if ($name !== '') {
-            return $name;
-        }
-
-        $extension = strtolower(ltrim(trim((string) $material->extension), '.'));
-
-        return 'Материал без названия'.($extension === '' ? '' : '.'.$extension);
-    }
-
     public function buildForChat(ExpertProject $project, array $publicIds, ?ExpertRunActivitySink $activity = null): ExpertMaterialContextBuildResult
     {
         $activity ??= new NoOpExpertRunActivitySink;
@@ -216,12 +202,12 @@ final class ExpertMaterialContextBuilder
                 $analysisActivityId = $activity->start(
                     ExpertAnalysisActivityCode::MATERIAL_STARTED,
                     'analysis',
-                    ($index + 1).' из '.count($uniqueIds).': '.($material === null ? 'материал' : $this->presentationName($material)),
+                    ($index + 1).' из '.count($uniqueIds).': '.($material === null ? 'материал' : ExpertMaterialPresentationName::resolve($material)),
                 );
                 $activityId = $activity->start(
                     $isPdf ? 'pdf.local_extract.started' : 'material.text_extract.started',
                     'material',
-                    $material === null ? null : $this->presentationName($material),
+                    $material === null ? null : ExpertMaterialPresentationName::resolve($material),
                 );
                 $textMaterials = [...$textMaterials, ...$this->build($project, [(string) $publicId])];
                 $activity->complete($activityId, $isPdf ? 'pdf.local_extract.completed' : 'material.text_extract.completed');
@@ -263,7 +249,7 @@ final class ExpertMaterialContextBuilder
                     $ocrCandidates[] = new ExpertPdfOcrCandidate(
                         (string) $project->public_id,
                         (string) $material->public_id,
-                        $this->presentationName($material),
+                        ExpertMaterialPresentationName::resolve($material),
                         (string) $material->mime_type,
                         $raw,
                         hash('sha256', $raw),
@@ -313,7 +299,7 @@ final class ExpertMaterialContextBuilder
                 $ocrCandidates[] = new ExpertPdfOcrCandidate(
                     (string) $project->public_id,
                     (string) $material->public_id,
-                    $this->presentationName($material),
+                    ExpertMaterialPresentationName::resolve($material),
                     (string) $material->mime_type,
                     $raw,
                     hash('sha256', $raw),
