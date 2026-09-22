@@ -47,3 +47,19 @@ export function appendUniqueExpertMessage(messages: ExpertMessage[], message: Ex
     ? messages
     : [...messages, message]
 }
+
+export function ensurePendingExpertAssistantMessage(
+  messages: ExpertMessage[],
+  assistantId: string,
+  createdAt = new Date().toISOString(),
+): ExpertMessage[] {
+  return messages.some((message) => message.id === assistantId)
+    ? messages
+    : [...messages, {
+      id: assistantId,
+      role: 'assistant',
+      text: '',
+      createdAt,
+      deliveryState: 'sending',
+    }]
+}

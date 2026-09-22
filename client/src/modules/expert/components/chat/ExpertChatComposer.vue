@@ -42,7 +42,7 @@
         <template #activator="{ props: menuProps }">
           <v-btn v-bind="menuProps" class="expert-composer__mode expert-composer__mode-trigger" variant="text" size="small" :aria-expanded="modeMenuOpen" aria-haspopup="listbox">
             {{ activeMode.title }}
-            <v-icon icon="mdi-chevron-down" size="16" />
+            <v-icon :icon="modeMenuOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
           </v-btn>
         </template>
         <v-list class="expert-composer__mode-menu" density="compact" role="listbox" aria-label="Режим Prism AI">
@@ -52,7 +52,6 @@
             :active="option.value === mode"
             :aria-selected="option.value === mode"
             :title="option.title"
-            :subtitle="option.subtitle"
             :append-icon="option.value === mode ? 'mdi-check' : undefined"
             role="option"
             @click="selectMode(option.value)"
@@ -114,10 +113,10 @@ const textarea = ref<HTMLTextAreaElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const dragDepth = ref(0)
 const dropError = ref('')
-const modes: Array<{ title: string; value: ExpertChatMode; subtitle: string }> = [
-  { title: 'Быстро', value: 'fast', subtitle: 'Для быстрых вопросов и поиска фактов' },
-  { title: 'Auto', value: 'auto', subtitle: 'Prism сама выберет подходящий режим' },
-  { title: 'Глубокий', value: 'deep', subtitle: 'Для сложного анализа и сопоставления материалов' },
+const modes: Array<{ title: string; value: ExpertChatMode }> = [
+  { title: 'Авто', value: 'auto' },
+  { title: 'Быстро', value: 'fast' },
+  { title: 'Глубокий', value: 'deep' },
 ]
 const modeMenuOpen = ref(false)
 const activeMode = computed(() => modes.find((option) => option.value === props.mode) ?? modes[1]!)
@@ -227,11 +226,9 @@ const sendDisabled = computed(() => props.busy || Boolean(props.sendBlockedReaso
 .expert-composer__drop-overlay { position: absolute; inset: 3px; z-index: 2; display: grid; place-items: center; border-radius: inherit; color: rgb(var(--v-theme-on-primary-container)); background: rgb(var(--v-theme-primary-container)); font-weight: 700; pointer-events: none; }
 .expert-composer textarea { align-self: center; width: 100%; min-height: 34px; max-height: 144px; padding: 7px 2px; resize: none; outline: none; border: 0; color: rgb(var(--v-theme-on-surface)); background: transparent; font: inherit; line-height: 1.4; }
 .expert-composer__mode-trigger { align-self: center; justify-self: end; min-width: 72px; padding-inline: 8px; color: rgb(var(--v-theme-on-surface)); font-size: .75rem; font-weight: 700; text-transform: none; }
-.expert-composer__mode-menu { width: min(312px, calc(100vw - 24px)); max-width: calc(100vw - 24px); }
-.expert-composer__mode-menu :deep(.v-list-item) { min-height: 68px; border-radius: var(--md-sys-shape-corner-medium); }
-.expert-composer__mode-menu :deep(.v-list-item__content) { gap: 3px; }
-.expert-composer__mode-menu :deep(.v-list-item-title) { white-space: normal; }
-.expert-composer__mode-menu :deep(.v-list-item-subtitle) { display: -webkit-box; overflow: hidden; color: rgba(var(--v-theme-on-surface-variant), .84) !important; white-space: normal; text-overflow: clip; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.3; }
+.expert-composer__mode-menu { width: min(312px, calc(100vw - 24px)); max-width: calc(100vw - 24px); padding-block: 6px; }
+.expert-composer__mode-menu :deep(.v-list-item) { min-height: 40px; margin-inline: 6px; padding: 8px 12px; border-radius: var(--md-sys-shape-corner-medium); }
+.expert-composer__mode-menu :deep(.v-list-item__content) { gap: 0; }
 .expert-composer__mode-menu :deep(.v-list-item--active) { color: rgb(var(--v-theme-on-surface)); background: rgba(var(--v-theme-primary), .1); }
 .expert-composer__mode-menu :deep(.v-list-item--active .v-list-item__append) { color: rgb(var(--v-theme-primary)); }
 .expert-composer__blocked { width: min(960px, 100%); margin: 6px auto 0; color: rgb(var(--v-theme-error)); font-size: .7rem; }

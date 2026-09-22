@@ -16,7 +16,7 @@
       <ExpertChatActivityTimeline v-if="message.role === 'assistant' && message.deliveryState === 'sending' && !message.text" :runs="timelineRuns" />
       <div v-if="message.role === 'user' && message.deliveryState === 'error'" class="expert-message__delivery expert-message__delivery--error" role="alert">
         <span>{{ displayError }}</span>
-        <v-btn size="x-small" variant="text" @click="$emit('retry', message.id)">Повторить</v-btn>
+        <v-btn size="x-small" variant="text" :disabled="retryDisabled" @click="$emit('retry', message.id)">Повторить</v-btn>
         <details v-if="message.diagnostic" class="expert-message__diagnostic">
           <summary>Подробнее</summary>
           <span>Код: {{ message.diagnostic.errorCode }}</span>
@@ -92,7 +92,7 @@ import { expertApi, mapExpertApiError } from '../../api'
 import ExpertChatActivityTimeline from './ExpertChatActivityTimeline.vue'
 import type { ExpertTimelineRun } from '../../chatTimeline'
 
-const props = withDefaults(defineProps<{ message: ExpertMessage; allowContinue?: boolean; feedbackEnabled?: boolean; timelineRuns?: ExpertTimelineRun[]; showSlowWaiting?: boolean; imagePreviews?: Record<string, ExpertMaterialImagePreview> }>(), { allowContinue: false, feedbackEnabled: false, timelineRuns: () => [], showSlowWaiting: false, imagePreviews: () => ({}) })
+const props = withDefaults(defineProps<{ message: ExpertMessage; allowContinue?: boolean; retryDisabled?: boolean; feedbackEnabled?: boolean; timelineRuns?: ExpertTimelineRun[]; showSlowWaiting?: boolean; imagePreviews?: Record<string, ExpertMaterialImagePreview> }>(), { allowContinue: false, retryDisabled: false, feedbackEnabled: false, timelineRuns: () => [], showSlowWaiting: false, imagePreviews: () => ({}) })
 const emit = defineEmits<{ (event: 'action', action: string): void; (event: 'open-source', sourceId: string): void; (event: 'open-material', materialId: string): void; (event: 'retry', messageId: string): void; (event: 'continue', messageId: string): void; (event: 'feedback-updated', messageId: string, feedback: ExpertMessageFeedback | null): void }>()
 const displayAttachments = computed(() => props.message.attachments ?? (props.message.runtimeMaterialContext ?? []).map((item) => ({ ...item, available: true, mimeType: '', sizeBytes: 0 })))
 const formattedTimestamp = computed(() => formatExpertMessageTimestamp(props.message.createdAt))

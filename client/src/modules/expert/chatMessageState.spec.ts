@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendUniqueExpertMessage, createOptimisticUserMessage, replaceOptimisticExpertMessage, setExpertMessageDeliveryState } from './chatMessageState'
+import { appendUniqueExpertMessage, createOptimisticUserMessage, ensurePendingExpertAssistantMessage, replaceOptimisticExpertMessage, setExpertMessageDeliveryState } from './chatMessageState'
 import type { ExpertMessage } from './types'
 
 describe('chat message delivery state', () => {
@@ -62,5 +62,15 @@ describe('chat message delivery state', () => {
 
     expect(afterAssistant.map((message) => message.id)).toEqual(['message-1', 'message-2'])
     expect(repeatedReply.filter((message) => message.id === assistant.id)).toHaveLength(1)
+  })
+
+  it('creates one pending assistant placeholder and reuses it on repeated lifecycle calls', () => {
+    const messages: ExpertMessage[] = [{ id: 'user-1', role: 'user', text: 'Вопрос', createdAt: '2026-09-12T10:20:00.000Z' }]
+    const withPending = ensurePendingExpertAssistantMessage(messages, 'local-pending-user-1', '2026-09-12T10:20:00.001Z')
+    const repeated = ensurePendingExpertAssistantMessage(withPending, 'local-pending-user-1', '2026-09-12T10:20:00.002Z')
+
+    expect(withPending).toHaveLength(2)
+    expect(withPending[1]).toMatchObject({ id: 'local-pending-user-1', role: 'assistant', text: '', deliveryState: 'sending' })
+    expect(repeated).toEqual(withPending)
   })
 })

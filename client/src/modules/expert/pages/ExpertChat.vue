@@ -82,6 +82,7 @@
             :image-previews="transfers.thumbnailPreviews.value"
             :timeline-runs="timelineRunsFor(message.id)"
             :show-slow-waiting="showSlowWaitingFor(message.id)"
+            :retry-disabled="streamActive"
             :feedback-enabled="projectMode === 'real'"
             @action="notify"
             @open-source="contextOpen = true"
@@ -195,7 +196,7 @@ import { createWholeProjectContext, removeChatContext, selectWholeProjectChatCon
 import { addExpertMessageMaterialContext, getExpertChatAttachmentSendBlockReason, mergeExpertMessageMaterialContexts, snapshotExpertMessageMaterialContext } from '../chatAttachments'
 import { normalizeExpertChatDraft } from '../chatComposer'
 import { shouldUseLegacyExpertChatFallback } from '../chatStreamingFallback'
-import { appendUniqueExpertMessage, createOptimisticUserMessage, replaceOptimisticExpertMessage, setExpertMessageDeliveryState } from '../chatMessageState'
+import { appendUniqueExpertMessage, createOptimisticUserMessage, ensurePendingExpertAssistantMessage, replaceOptimisticExpertMessage, setExpertMessageDeliveryState } from '../chatMessageState'
 import { isNearExpertChatBottom, nextExpertChatFollowState } from '../chatScroll'
 import {
   addExpertTimelineRun,
@@ -318,6 +319,17 @@ function appendMessages(newMessages: ExpertMessage[]) {
   messagesByConversation.value = {
     ...messagesByConversation.value,
     [id]: [...(messagesByConversation.value[id] ?? conversation.value?.messages ?? []), ...newMessages],
+  }
+}
+
+function ensurePendingAssistantMessage(targetConversationId: string | null, assistantId: string) {
+  const createdAt = new Date().toISOString()
+  pendingMessages.value = ensurePendingExpertAssistantMessage(pendingMessages.value, assistantId, createdAt)
+  if (!targetConversationId) return
+  const currentMessages = messagesByConversation.value[targetConversationId] ?? conversation.value?.messages ?? []
+  messagesByConversation.value = {
+    ...messagesByConversation.value,
+    [targetConversationId]: ensurePendingExpertAssistantMessage(currentMessages, assistantId, createdAt),
   }
 }
 
@@ -744,11 +756,13 @@ async function persistMessage(message: ExpertMessage) {
   }
 
   let persistedUserId = message.id
-  let localAssistantId = `local-pending-${message.id}`
+  const localAssistantId = `local-pending-${message.id}`
+  ensurePendingAssistantMessage(conversationId.value || null, localAssistantId)
   generationState.value = 'starting'
   activeAbort.value = new AbortController()
   try {
     const targetConversationId = await ensureConversation()
+    ensurePendingAssistantMessage(targetConversationId, localAssistantId)
     const materialIds = message.attachments?.map((attachment) => attachment.id)
       ?? message.runtimeMaterialContext?.map((context) => context.id)
       ?? []
@@ -772,11 +786,6 @@ async function persistMessage(message: ExpertMessage) {
           lastSeq = seq
           clearSlowWaiting(runId)
           clearSignificantWait(runId)
-          if (!localAssistantId) {
-            localAssistantId = `local-stream-${runId}`
-            appendServerAssistantMessage(targetConversationId, { id: localAssistantId, role: 'assistant', text: '', createdAt: new Date().toISOString(), deliveryState: 'sending' })
-            beginTimelineRun(localAssistantId, runId, materialIds.length)
-          }
           updateMessageText(localAssistantId, text)
           if (targetConversationId === conversationId.value) scheduleActiveResponseFollow()
         },
@@ -792,7 +801,6 @@ async function persistMessage(message: ExpertMessage) {
             replaceOptimisticMessage(localAssistantId, assistantMessage)
             moveTimelineRun(localAssistantId, assistantMessage.id)
             finishTimelineRun(assistantMessage.id, activeRunId.value ?? '', 'completed')
-            localAssistantId = assistantMessage.id
           } else if (assistantMessage) {
             appendServerAssistantMessage(targetConversationId, assistantMessage)
           } else if (localAssistantId) {
@@ -808,7 +816,6 @@ async function persistMessage(message: ExpertMessage) {
             replaceOptimisticMessage(localAssistantId, assistantMessage)
             moveTimelineRun(localAssistantId, assistantMessage.id)
             finishTimelineRun(assistantMessage.id, activeRunId.value ?? '', 'cancelled')
-            localAssistantId = assistantMessage.id
           } else if (assistantMessage) {
             appendServerAssistantMessage(targetConversationId, assistantMessage)
           } else if (localAssistantId) {
@@ -825,7 +832,6 @@ async function persistMessage(message: ExpertMessage) {
             replaceOptimisticMessage(localAssistantId, assistantMessage)
             moveTimelineRun(localAssistantId, assistantMessage.id)
             finishTimelineRun(assistantMessage.id, activeRunId.value ?? '', 'interrupted')
-            localAssistantId = assistantMessage.id
           } else if (assistantMessage) {
             appendServerAssistantMessage(targetConversationId, assistantMessage)
           } else if (localAssistantId && !useLegacyFallback) {
@@ -966,7 +972,7 @@ async function continueMessage(assistantId: string) {
 
 function retryMessage(messageId: string) {
   const message = findMessage(messageId)
-  if (!message || message.role !== 'user' || message.deliveryState === 'sending') return
+  if (!message || message.role !== 'user' || message.deliveryState === 'sending' || streamActive.value) return
   updateMessageDelivery(message.id, 'sending')
   void persistMessage(message)
 }
@@ -998,13 +1004,8 @@ function sendMessage(text: string, accepted: () => void = () => undefined) {
     // Keep the pending selection visible until the server returns persisted attachments.
     runtimeMaterialContext: snapshotExpertMessageMaterialContext(composerMaterialContexts.value),
   }
-  appendMessages([optimisticMessage, {
-    id: `local-pending-${optimisticMessage.id}`,
-    role: 'assistant',
-    text: '',
-    createdAt: new Date().toISOString(),
-    deliveryState: 'sending',
-  }])
+  appendMessages([optimisticMessage])
+  ensurePendingAssistantMessage(conversationId.value || null, `local-pending-${optimisticMessage.id}`)
   accepted()
   composerMaterialContexts.value = []
   void scrollToLatest('smooth')

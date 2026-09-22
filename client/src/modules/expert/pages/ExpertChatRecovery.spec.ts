@@ -2,6 +2,7 @@
 import { createApp, nextTick } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { expertApi } from '../api'
+import type { ExpertStreamHandlers } from '../api'
 import type { ExpertProject, ExpertProjectMaterial } from '../types'
 
 vi.mock('vuetify', () => ({ useDisplay: () => ({ mdAndDown: { value: false } }) }))
@@ -15,7 +16,7 @@ vi.mock('../components/chat/ExpertChatComposer.vue', () => ({
   },
 }))
 vi.mock('../components/chat/ExpertChatMessage.vue', () => ({
-  default: { props: ['message', 'allowContinue'], emits: ['retry', 'continue'], template: '<article>{{ message.text }}<span v-if="message.deliveryState === \'error\'">{{ message.deliveryError }}</span><button v-if="message.role === \'user\' && message.deliveryState === \'error\'" @click="$emit(\'retry\', message.id)">Повторить сообщение</button><button v-if="allowContinue" @click="$emit(\'continue\', message.id)">Продолжить ответ</button></article>' },
+  default: { props: ['message', 'allowContinue', 'retryDisabled'], emits: ['retry', 'continue'], template: '<article :data-role="message.role" :data-message-id="message.id">{{ message.text }}<span v-if="message.role === \'assistant\' && message.deliveryState === \'sending\'" data-test="assistant-pending">{{ message.text || \'Подготавливаю запрос…\' }}</span><span v-if="message.deliveryState === \'error\'">{{ message.deliveryError }}</span><button v-if="message.role === \'user\' && message.deliveryState === \'error\'" :disabled="retryDisabled" @click="$emit(\'retry\', message.id)">Повторить сообщение</button><button v-if="allowContinue" @click="$emit(\'continue\', message.id)">Продолжить ответ</button></article>' },
 }))
 vi.mock('../components/chat/ExpertContextPanel.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('../components/chat/ExpertProjectLibraryPicker.vue', () => ({ default: { template: '<div />' } }))
@@ -197,7 +198,7 @@ describe('Expert Chat recovery', () => {
     vi.spyOn(expertApi, 'listConversations').mockResolvedValue([{ id: 'conversation-1', title: 'Чат', messages: [] }])
     vi.spyOn(expertApi, 'listMessages').mockResolvedValue([{
       id: 'saved-user', role: 'user', text: 'Прочитай файл', createdAt: '2026-09-19T10:00:00Z',
-      clientMessageId: 'original-client-id', metadata: { client_message_id: 'original-client-id' },
+      clientMessageId: 'original-client-id', metadata: { client_message_id: 'original-client-id', requested_mode: 'deep' },
       attachments: [{ id: 'original-material', name: 'Акт.pdf', mimeType: 'application/pdf', sizeBytes: 10, kind: 'document', available: true, icon: 'mdi-file-outline' }],
     }])
     const stream = vi.spyOn(expertApi, 'streamMessage').mockImplementation(async (_conversationId, _content, _messageId, _ids, handlers) => {
@@ -209,9 +210,81 @@ describe('Expert Chat recovery', () => {
     const app = createApp(ExpertChat, { project, projectMode: 'real' })
     app.mount(root)
     await vi.waitFor(() => expect(root.textContent).toContain('Повторить сообщение'))
-    ;(Array.from(root.querySelectorAll('button')).find((button) => button.textContent === 'Повторить сообщение') as HTMLButtonElement).click()
+    const retryButton = Array.from(root.querySelectorAll('button')).find((button) => button.textContent === 'Повторить сообщение') as HTMLButtonElement
+    retryButton.click()
     await vi.waitFor(() => expect(stream).toHaveBeenCalled())
     expect(stream.mock.calls[0]?.slice(0, 4)).toEqual(['conversation-1', 'Прочитай файл', 'original-client-id', ['original-material']])
+    expect(stream.mock.calls[0]?.[7]).toBe('deep')
+    app.unmount()
+    root.remove()
+  })
+
+  it('creates one visible retry placeholder immediately and replaces it after delta and done', async () => {
+    Element.prototype.scrollTo = vi.fn()
+    const project = { id: 'project-1', title: 'Проект', conversations: [], materials: [], quickActions: [] } as unknown as ExpertProject
+    vi.spyOn(expertApi, 'listConversations').mockResolvedValue([{ id: 'conversation-1', title: 'Чат', messages: [] }])
+    vi.spyOn(expertApi, 'listMessages').mockResolvedValue([{
+      id: 'saved-user', role: 'user', text: 'Проверить', createdAt: '2026-09-19T10:00:00Z',
+      clientMessageId: 'retry-client-id', metadata: { client_message_id: 'retry-client-id', requested_mode: 'deep' },
+      attachments: [{ id: 'material-1', name: 'Акт.pdf', mimeType: 'application/pdf', sizeBytes: 10, kind: 'document', available: true, icon: 'mdi-file-outline' }],
+    }])
+    let retryHandlers!: ExpertStreamHandlers
+    let releaseRetry!: () => void
+    const stream = vi.spyOn(expertApi, 'streamMessage')
+      .mockImplementationOnce(async (_conversationId, _content, _messageId, _materials, handlers) => {
+        retryHandlers = handlers
+        await new Promise<void>((resolve) => { releaseRetry = resolve })
+      })
+    const root = document.createElement('div')
+    document.body.append(root)
+    const app = createApp(ExpertChat, { project, projectMode: 'real' })
+    app.mount(root)
+    await vi.waitFor(() => expect(root.textContent).toContain('Повторить сообщение'))
+
+    const retryButton = Array.from(root.querySelectorAll('button')).find((button) => button.textContent === 'Повторить сообщение') as HTMLButtonElement
+    retryButton.click()
+    await vi.waitFor(() => expect(retryHandlers).toBeDefined())
+    expect(stream.mock.calls[0]?.slice(0, 4)).toEqual(['conversation-1', 'Проверить', 'retry-client-id', ['material-1']])
+    expect(stream.mock.calls[0]?.[7]).toBe('deep')
+    expect(root.querySelectorAll('[data-role="assistant"]')).toHaveLength(1)
+    expect(root.querySelector('[data-test="assistant-pending"]')?.textContent).toContain('Подготавливаю запрос…')
+    retryButton.click()
+    expect(stream).toHaveBeenCalledTimes(1)
+
+    retryHandlers.onRun('retry-run', { id: 'saved-user', role: 'user', text: 'Проверить', createdAt: new Date().toISOString() })
+    retryHandlers.onDelta('retry-run', 1, 'Частичный ответ')
+    await vi.waitFor(() => expect(root.querySelector('[data-test="assistant-pending"]')?.textContent).toContain('Частичный ответ'))
+    retryHandlers.onDone({ id: 'assistant-1', role: 'assistant', text: 'Полный ответ', createdAt: new Date().toISOString() })
+    await vi.waitFor(() => expect(root.querySelector('[data-role="assistant"]')?.textContent).toContain('Полный ответ'))
+    expect(root.querySelectorAll('[data-role="assistant"]')).toHaveLength(1)
+
+    releaseRetry()
+    app.unmount()
+    root.remove()
+  })
+
+  it('removes the retry placeholder after a second failure and leaves one retryable user state', async () => {
+    Element.prototype.scrollTo = vi.fn()
+    const project = { id: 'project-1', title: 'Проект', conversations: [], materials: [], quickActions: [] } as unknown as ExpertProject
+    vi.spyOn(expertApi, 'listConversations').mockResolvedValue([{ id: 'conversation-1', title: 'Чат', messages: [] }])
+    vi.spyOn(expertApi, 'listMessages').mockResolvedValue([{
+      id: 'saved-user', role: 'user', text: 'Проверить', createdAt: '2026-09-19T10:00:00Z',
+      clientMessageId: 'retry-client-id', metadata: { client_message_id: 'retry-client-id' }, attachments: [],
+    }])
+    const stream = vi.spyOn(expertApi, 'streamMessage').mockImplementationOnce(async (_conversationId, _content, _messageId, _materials, handlers) => {
+      handlers.onError({ code: 'provider_timeout', message: 'Вторая ошибка.', validationErrors: {} })
+    })
+    const root = document.createElement('div')
+    document.body.append(root)
+    const app = createApp(ExpertChat, { project, projectMode: 'real' })
+    app.mount(root)
+    await vi.waitFor(() => expect(root.textContent).toContain('Повторить сообщение'))
+    ;(Array.from(root.querySelectorAll('button')).find((button) => button.textContent === 'Повторить сообщение') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(stream).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(root.querySelectorAll('[data-role="assistant"]')).toHaveLength(0))
+    expect(root.querySelectorAll('[data-role="user"]')).toHaveLength(1)
+    expect(Array.from(root.querySelectorAll('button')).filter((button) => button.textContent === 'Повторить сообщение')).toHaveLength(1)
+    expect(root.textContent).toContain('Вторая ошибка.')
     app.unmount()
     root.remove()
   })

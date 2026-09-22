@@ -30,14 +30,18 @@ final class ExpertContextPlanner
         $exhaustive = preg_match('/\b(все|всех|всем|кажд(?:ый|ом|ого)|полный перечень|дословно|перечисли|в каждом|найди все|все противоречия|все реквизиты)\b/u', $normalized) === 1;
         $exhaustive = $exhaustive || preg_match('/\b(?:какие|кто|сколько)\b.*\bв этих документах\b/u', $normalized) === 1;
         $plural = preg_match('/\b(документы|документах|материалах|материалы|файлах|файлы|экспертизах)\b/u', $normalized) === 1;
+        $comparative = preg_match('/\b(?:сравн\p{L}*|сопостав\p{L}*|различ\p{L}*|отлич\p{L}*|разниц\p{L}*|между|оба|обе|обоих|обоими|два|двух|двумя|две)\b/u', $normalized) === 1
+            || preg_match('/\b(?:эти|данн)\s+(?:документ\p{L}*|материал\p{L}*|экспертиз\p{L}*)\b/u', $normalized) === 1;
+        $activeSetComparative = $currentIds === [] && $explicitActive === [] && count($activeIds) > 1 && $comparative;
         $targeted = $explicitActive !== [] || $historicalIds !== [];
+        $targeted = $targeted || $activeSetComparative;
         $generic = preg_match('/\b(документ|документе|нем|экспертиза|экспертизе|там|присутствовал|вопросы|гост|исследовал|осмотре)\b/u', $normalized) === 1;
         $ambiguous = $currentIds === [] && ! $targeted && count($activeIds) > 1 && ! $plural && ! $exhaustive
             && preg_match('/\b(этот документ|это за документ|в нем|что это|что там)\b/u', $normalized) === 1;
 
         $selectedActive = [];
         if ($targeted) {
-            $selectedActive = $explicitActive;
+            $selectedActive = $activeSetComparative ? $activeIds : $explicitActive;
         } elseif ($currentIds === []) {
             if (count($activeIds) === 1 && ($generic || $normalized !== '')) {
                 $selectedActive = $activeIds;

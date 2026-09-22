@@ -7,7 +7,7 @@ vi.mock('vuetify/components', () => ({
   VIcon: { props: ['icon'], template: '<i :data-icon="icon">{{ icon }}</i>' },
   VMenu: { props: { modelValue: { type: Boolean, default: undefined } }, emits: ['update:modelValue'], template: '<div><slot name="activator" :props="{ onClick: () => $emit(\'update:modelValue\', true) }" /><div v-if="modelValue !== false"><slot /></div></div>' },
   VList: { template: '<ul><slot /></ul>' },
-  VListItem: { props: ['title', 'subtitle', 'active'], emits: ['click'], template: '<li :class="{ \'v-list-item--active\': active }" @click="$emit(\'click\')"><span class="v-list-item-title">{{ title }}</span><span class="v-list-item-subtitle">{{ subtitle }}</span><slot name="append" /></li>' },
+  VListItem: { props: ['title', 'active'], emits: ['click'], template: '<li :class="{ \'v-list-item--active\': active }" @click="$emit(\'click\')"><span class="v-list-item-title">{{ title }}</span><slot name="append" /></li>' },
   VChip: { template: '<span><slot /></span>' },
   VProgressCircular: { template: '<i />' },
   VSelect: { template: '<div />' },
@@ -16,7 +16,7 @@ vi.mock('vuetify/components/VBtn', () => ({ VBtn: { inheritAttrs: false, templat
 vi.mock('vuetify/components/VIcon', () => ({ VIcon: { props: ['icon'], template: '<i :data-icon="icon">{{ icon }}</i>' } }))
 vi.mock('vuetify/components/VMenu', () => ({ VMenu: { props: { modelValue: { type: Boolean, default: undefined } }, emits: ['update:modelValue'], template: '<div><slot name="activator" :props="{ onClick: () => $emit(\'update:modelValue\', true) }" /><div v-if="modelValue !== false"><slot /></div></div>' } }))
 vi.mock('vuetify/components/VList', () => ({ VList: { template: '<ul><slot /></ul>' }, VListItem: { template: '<li />' } }))
-vi.mock('vuetify/components/VListItem', () => ({ VListItem: { props: ['title', 'subtitle', 'active'], emits: ['click'], template: '<li :class="{ \'v-list-item--active\': active }" @click="$emit(\'click\')"><span class="v-list-item-title">{{ title }}</span><span class="v-list-item-subtitle">{{ subtitle }}</span><slot name="append" /></li>' } }))
+vi.mock('vuetify/components/VListItem', () => ({ VListItem: { props: ['title', 'active'], emits: ['click'], template: '<li :class="{ \'v-list-item--active\': active }" @click="$emit(\'click\')"><span class="v-list-item-title">{{ title }}</span><slot name="append" /></li>' } }))
 vi.mock('vuetify/components/VChip', () => ({ VChip: { template: '<span><slot /></span>' } }))
 vi.mock('vuetify/components/VProgressCircular', () => ({ VProgressCircular: { template: '<i />' } }))
 vi.mock('vuetify/components/VSelect', () => ({ VSelect: { template: '<div />' } }))
@@ -33,9 +33,9 @@ const modeButtonStub = { inheritAttrs: false, template: '<button v-bind="$attrs"
 const modeIconStub = { props: ['icon'], template: '<i :data-icon="icon">{{ icon }}</i>' }
 const modeListStub = { template: '<ul><slot /></ul>' }
 const modeListItemStub = {
-  props: ['title', 'subtitle', 'active'],
+  props: ['title', 'active'],
   emits: ['click'],
-  template: '<li :class="{ \'v-list-item--active\': active }" @click="$emit(\'click\')"><span class="v-list-item-title">{{ title }}</span><span class="v-list-item-subtitle">{{ subtitle }}</span><slot name="append" /></li>',
+  template: '<li :class="{ \'v-list-item--active\': active }" @click="$emit(\'click\')"><span class="v-list-item-title">{{ title }}</span><slot name="append" /></li>',
 }
 
 function mountModeComposer(mode: ExpertChatMode = 'auto', onModeChange?: (mode: ExpertChatMode) => void) {
@@ -67,7 +67,7 @@ describe('Expert Chat composer local file drop', () => {
     await nextTick()
 
     expect(root.querySelector('select')).toBeNull()
-    expect(root.textContent).toContain('Auto')
+    expect(root.textContent).toContain('Авто')
     app.unmount()
   })
 
@@ -79,16 +79,13 @@ describe('Expert Chat composer local file drop', () => {
     await nextTick()
     const menu = root.querySelector('.expert-composer__mode-menu') as HTMLElement
     expect(menu).not.toBeNull()
+    expect(root.querySelector('[data-icon="mdi-chevron-up"]')).not.toBeNull()
     const options = Array.from(menu.querySelectorAll('li[role="option"]'))
-    expect(options.map((item) => item.getAttribute('title'))).toEqual(['Быстро', 'Auto', 'Глубокий'])
-    expect(options.map((item) => item.getAttribute('subtitle'))).toEqual([
-      'Для быстрых вопросов и поиска фактов',
-      'Prism сама выберет подходящий режим',
-      'Для сложного анализа и сопоставления материалов',
-    ])
+    expect(options.map((item) => item.getAttribute('title'))).toEqual(['Авто', 'Быстро', 'Глубокий'])
+    expect(options.every((item) => item.getAttribute('subtitle') === null)).toBe(true)
     expect(options.filter((item) => item.getAttribute('aria-selected') === 'true')).toHaveLength(1)
     expect(options.filter((item) => item.getAttribute('append-icon') === 'mdi-check')).toHaveLength(1)
-    expect(options.find((item) => item.getAttribute('aria-selected') === 'true')?.getAttribute('title')).toBe('Auto')
+    expect(options.find((item) => item.getAttribute('aria-selected') === 'true')?.getAttribute('title')).toBe('Авто')
     expect(menu.textContent).not.toContain('…')
     expect(menu.textContent).not.toContain('...')
     app.unmount()
@@ -101,7 +98,7 @@ describe('Expert Chat composer local file drop', () => {
     ;(root.querySelector('.expert-composer__mode-trigger') as HTMLButtonElement).click()
     await nextTick()
     const options = root.querySelectorAll('li[role="option"]')
-    ;(options[mode === 'fast' ? 0 : 2] as HTMLElement).click()
+    ;(options[mode === 'fast' ? 1 : 2] as HTMLElement).click()
     await nextTick()
 
     expect(modeChange).toHaveBeenCalledWith(mode)

@@ -159,6 +159,70 @@ class ExpertMaterialContextFlowTest extends TestCase
         $this->assertSame(0, $conversation->messages()->count());
     }
 
+    public function test_context_planner_resolves_active_comparative_cues_as_targeted_multi(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $first = $this->material($conversation->project, 'Дополнительная экспертиза.pdf', 'application/pdf', 'A');
+        $second = $this->material($conversation->project, 'Заключение дягилевой.pdf', 'application/pdf', 'B');
+        $conversation->activeMaterials()->sync([$first->id, $second->id]);
+        $planner = app(ExpertContextPlanner::class);
+
+        foreach ([
+            'сравни эти две экспертизы определи более профессиональный стиль повествования',
+            'сравни два документа',
+            'проанализируй эти два документа',
+            'сравнение двух документов',
+            'разница между документами',
+            'Проанализируй заключение и покажи различия между стилями написания двух документов оцени также какая из экспертиз выглядит более профессионально и почему.',
+            'сопоставь обе экспертизы',
+        ] as $message) {
+            $plan = $planner->plan($conversation, $message, [], []);
+
+            $this->assertSame('targeted_multi', $plan->scope, $message);
+            $this->assertSame('focused', $plan->coverageMode, $message);
+            $this->assertSame([$first->public_id, $second->public_id], $plan->resolvedMaterials, $message);
+        }
+    }
+
+    public function test_context_planner_keeps_large_factual_active_set_as_retrieval_multi(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $materials = [];
+        foreach (range(1, 20) as $index) {
+            $materials[] = $this->material(
+                $conversation->project,
+                'Материал '.$index.'.pdf',
+                'application/pdf',
+                (string) $index,
+            );
+        }
+        $conversation->activeMaterials()->sync(collect($materials)->pluck('id')->all());
+
+        $plan = app(ExpertContextPlanner::class)->plan($conversation, 'Где упоминается ГОСТ 16371?', [], []);
+
+        $this->assertSame('retrieval_multi', $plan->scope);
+        $this->assertSame('focused', $plan->coverageMode);
+        $this->assertSame(collect($materials)->pluck('public_id')->all(), $plan->resolvedMaterials);
+    }
+
+    public function test_context_planner_keeps_explicit_current_attachments_targeted_multi(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $first = $this->material($conversation->project, 'A.pdf', 'application/pdf', 'A');
+        $second = $this->material($conversation->project, 'B.pdf', 'application/pdf', 'B');
+
+        $plan = app(ExpertContextPlanner::class)->plan(
+            $conversation,
+            'Проанализируй выбранные документы',
+            [$first->public_id, $second->public_id],
+            [],
+        );
+
+        $this->assertSame('targeted_multi', $plan->scope);
+        $this->assertSame([$first->public_id, $second->public_id], $plan->resolvedMaterials);
+        $this->assertSame('focused', $plan->coverageMode);
+    }
+
     public function test_real_xlsx_fixture_content_reaches_fake_llm_payload_and_response_is_saved(): void
     {
         [$user, $conversation] = $this->conversation();
