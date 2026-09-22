@@ -22,6 +22,7 @@ final class ExpertChatStreamingRun
         public readonly ?ExpertMessage $existingAssistant = null,
         public readonly bool $isContinuation = false,
         public readonly ?ExpertContextPack $contextPack = null,
+        public readonly string $requestedMode = ExpertModeResolution::AUTO,
     ) {}
 
     public function runId(): string

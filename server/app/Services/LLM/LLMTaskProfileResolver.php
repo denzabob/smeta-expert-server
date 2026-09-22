@@ -41,6 +41,13 @@ final class LLMTaskProfileResolver
 
         $primary = $profile['provider'];
 
+        if (($profile['fallback_enabled'] ?? false) === true
+            && ProviderRegistry::exists((string) ($profile['fallback_provider'] ?? ''))
+            && is_string($profile['fallback_model'] ?? null)
+            && $profile['fallback_model'] !== '') {
+            return array_values(array_unique([$primary, (string) $profile['fallback_provider']]));
+        }
+
         return ($profile['fallback_policy'] ?? 'none') === 'global' && $this->settings->getMode() === 'auto'
             ? array_values(array_unique([$primary, ...$this->settings->getFallbackProviders()]))
             : [$primary];
@@ -60,6 +67,12 @@ final class LLMTaskProfileResolver
                 'model' => $configured['model'] ?? null,
                 'enabled' => $configured['enabled'] ?? false,
                 'fallback_policy' => $configured['fallback_policy'] ?? 'none',
+                'fallback_enabled' => $configured['fallback_enabled'] ?? false,
+                'fallback_provider' => $configured['fallback_provider'] ?? null,
+                'fallback_model' => $configured['fallback_model'] ?? null,
+                'reasoning_effort' => $configured['reasoning_effort'] ?? null,
+                'max_output_tokens' => $configured['max_output_tokens'] ?? null,
+                'temperature' => $configured['temperature'] ?? null,
             ],
             'effective' => ['provider' => $provider, 'model' => $model],
             'source' => $profile !== null ? 'PROFILE' : $this->settings->getGlobalModelSource($provider),
@@ -89,6 +102,9 @@ final class LLMTaskProfileResolver
         if (! $profileActive && $this->active(self::EXPERT_CHAT) !== null) {
             $profileTask = self::EXPERT_CHAT;
             $profileActive = true;
+        }
+        if (! $profileActive && $task === self::EXPERT_DEEP) {
+            return null;
         }
         $effective = $this->effective($profileTask);
         $configured = $this->settings->getTaskProfile($task);

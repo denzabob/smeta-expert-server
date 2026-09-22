@@ -30,6 +30,23 @@ export function clearExpertLastConversation(storage: Storage, key: string): void
   }
 }
 
+export function readExpertMode(storage: Storage, key: string): 'fast' | 'auto' | 'deep' {
+  try {
+    const value = storage.getItem(key)
+    return value === 'fast' || value === 'deep' ? value : 'auto'
+  } catch {
+    return 'auto'
+  }
+}
+
+export function writeExpertMode(storage: Storage, key: string, mode: 'fast' | 'auto' | 'deep'): void {
+  try {
+    storage.setItem(key, mode)
+  } catch {
+    // Storage may be unavailable in private/restricted browser contexts.
+  }
+}
+
 export function selectInitialExpertConversation(
   conversations: ExpertConversation[],
   lastOpenedId: string | null,

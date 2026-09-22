@@ -13,6 +13,7 @@ import type {
   ExpertProjectMaterial,
   ExpertProjectStatus,
   ExpertResearchObject,
+  ExpertChatMode,
 } from './types'
 import {
   expertDirectionValues,
@@ -576,10 +577,11 @@ export function createExpertApi(http?: AxiosInstance) {
       content: string,
       clientMessageId: string,
       materialPublicIds: string[] = [],
+      mode: ExpertChatMode = 'auto',
     ) {
       const payload = materialPublicIds.length
-        ? { content, material_public_ids: materialPublicIds }
-        : { content }
+        ? { content, mode, material_public_ids: materialPublicIds }
+        : { content, mode }
       const { data } = await (await resolveHttp()).post<ExpertChatReplyDto>(
         `/api/expert/conversations/${encodeURIComponent(conversationId)}/messages`,
         payload,
@@ -598,6 +600,7 @@ export function createExpertApi(http?: AxiosInstance) {
       handlers: ExpertStreamHandlers,
       signal?: AbortSignal,
       assistantId?: string,
+      mode: ExpertChatMode = 'auto',
     ) {
       const instance = await resolveHttp()
       const path = assistantId
@@ -614,7 +617,7 @@ export function createExpertApi(http?: AxiosInstance) {
           'X-Expert-Message-Id': clientMessageId,
           ...(csrf ? { 'X-XSRF-TOKEN': decodeURIComponent(csrf) } : {}),
         },
-        body: JSON.stringify(assistantId ? {} : materialPublicIds.length ? { content, material_public_ids: materialPublicIds } : { content }),
+        body: JSON.stringify(assistantId ? {} : materialPublicIds.length ? { content, mode, material_public_ids: materialPublicIds } : { content, mode }),
       })
       if (!response.ok || !response.body) {
         let data: { message?: string; code?: string; errors?: ExpertValidationErrors } = {}

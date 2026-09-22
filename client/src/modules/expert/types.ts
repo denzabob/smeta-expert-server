@@ -98,6 +98,7 @@ export interface ExpertResearchObject {
 }
 
 export type ExpertProjectMode = 'demo' | 'real'
+export type ExpertChatMode = 'fast' | 'auto' | 'deep'
 export interface ExpertProjectCounts { researchObjects: number; conversations: number; materials: number; findings: number }
 
 export type ExpertFindingType =

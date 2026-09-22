@@ -10,6 +10,7 @@ use App\Services\Expert\ExpertChatMaterialContextBuilder;
 use App\Services\Expert\ExpertChatRequestConflictException;
 use App\Services\Expert\ExpertChatService;
 use App\Services\Expert\ExpertMaterialContextException;
+use App\Services\Expert\ExpertModelPolicyException;
 use App\Services\Expert\ExpertPdfOcrException;
 use App\Services\Expert\ExpertVisionException;
 use App\Services\LLM\Exceptions\LLMChatUnavailableException;
@@ -42,13 +43,14 @@ class MessageController extends Controller
         $this->authorize('update', $conversation->project);
 
         $content = $request->validated('content');
+        $requestedMode = $request->mode();
         $clientMessageId = $request->clientMessageId() ?? (string) Str::uuid();
         $materialPublicIds = $this->expertChat->requestMaterialPublicIds(
             $conversation,
             $clientMessageId,
             $request->exists('material_public_ids') ? $request->validated('material_public_ids', []) : null,
         );
-        $requestFingerprint = $this->expertChat->requestFingerprint($content, $materialPublicIds);
+        $requestFingerprint = $this->expertChat->requestFingerprint($content, $materialPublicIds, $requestedMode);
 
         try {
             $existing = $this->expertChat->completedReplyOrFail(
@@ -56,6 +58,7 @@ class MessageController extends Controller
                 $content,
                 $clientMessageId,
                 $requestFingerprint,
+                $requestedMode,
             );
 
             if ($existing !== null) {
@@ -78,9 +81,6 @@ class MessageController extends Controller
             if ($plan->diagnostics['requires_material_disambiguation'] ?? false) {
                 throw ExpertMaterialContextException::ambiguousActiveMaterials();
             }
-            if ($plan->requiresMultiDocumentPipeline) {
-                throw ExpertMaterialContextException::multiDocumentPipelineRequired();
-            }
             $materialContext = $this->materialContextBuilder->buildPartitioned(
                 $conversation->project,
                 $plan->currentMaterials,
@@ -88,6 +88,10 @@ class MessageController extends Controller
                 activeIds: array_values(array_diff($plan->resolvedMaterials, $plan->currentMaterials, $plan->historicalMaterials)),
                 plan: $plan,
             );
+            $executionPlan = $this->expertChat->executionPlan($requestedMode, $content, $plan, $materialContext);
+            if ($plan->requiresMultiDocumentPipeline) {
+                throw ExpertMaterialContextException::multiDocumentPipelineRequired();
+            }
 
             $result = $this->expertChat->reply(
                 $conversation,
@@ -97,6 +101,8 @@ class MessageController extends Controller
                 $materialContext,
                 $materialPublicIds,
                 $historicalIds,
+                $executionPlan,
+                $requestedMode,
             );
         } catch (ExpertChatRequestConflictException $exception) {
             return response()->json([
@@ -114,6 +120,11 @@ class MessageController extends Controller
                 'code' => $exception->errorCode,
             ], $exception->status);
         } catch (ExpertVisionException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->errorCode,
+            ], $exception->status);
+        } catch (ExpertModelPolicyException $exception) {
             return response()->json([
                 'message' => $exception->getMessage(),
                 'code' => $exception->errorCode,

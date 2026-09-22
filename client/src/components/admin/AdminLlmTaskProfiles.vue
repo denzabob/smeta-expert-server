@@ -5,7 +5,8 @@
       <v-alert v-if="loadError" type="error" variant="tonal" class="mb-3">{{ loadError }}</v-alert>
       <v-card variant="tonal" :loading="loading">
         <v-card-title class="d-flex align-center flex-wrap ga-2">
-          Эксперт — Чат
+          Эксперт — {{ profileTitle }}
+          <v-select v-model="profileTask" :items="profileOptions" item-title="title" item-value="value" density="compact" variant="outlined" hide-details style="max-width: 190px" aria-label="Профиль Expert" />
           <v-chip v-if="profile" size="small" color="info">{{ profile.source }}</v-chip>
           <v-spacer />
           <v-btn variant="tonal" color="primary" size="small" @click="editing = !editing">{{ editing ? 'Закрыть' : 'Настроить' }}</v-btn>
@@ -18,6 +19,18 @@
               {{ capability.label }} {{ profile.capabilities[capability.key] ? '✓' : '—' }}
             </v-chip>
           </div>
+        </v-card-text>
+      </v-card>
+
+      <v-card variant="outlined" class="mt-4">
+        <v-card-title>Auto policy</v-card-title>
+        <v-card-text>
+          <div class="d-flex flex-wrap ga-2 mb-2">
+            <v-chip color="success" variant="tonal">Auto включён</v-chip>
+            <v-chip variant="tonal">По умолчанию: Fast</v-chip>
+          </div>
+          <div class="text-body-2">Auto выбирает Fast для простых вопросов, извлечения фактов и одного документа.</div>
+          <div class="text-caption mt-2">Deep включается детерминированно для сравнений, сложного reasoning и exhaustive-анализа. Правила задаются кодом и не зависят от выбранной модели.</div>
         </v-card-text>
       </v-card>
 
@@ -36,6 +49,12 @@
           <v-col cols="12" md="8">
             <v-select v-model="draft.fallback_policy" :items="fallbackOptions" label="Fallback" variant="outlined" density="compact" />
           </v-col>
+          <v-col cols="12" md="4"><v-switch v-model="draft.fallback_enabled" color="primary" label="Профильный fallback" hide-details /></v-col>
+          <v-col cols="12" md="4"><v-select v-model="draft.fallback_provider" :items="providers" item-title="title" item-value="value" label="Fallback provider" variant="outlined" :disabled="!draft.fallback_enabled" /></v-col>
+          <v-col cols="12" md="4"><v-text-field v-model="draft.fallback_model" label="Fallback model" variant="outlined" :disabled="!draft.fallback_enabled" /></v-col>
+          <v-col cols="12" md="4"><v-select v-model="draft.reasoning_effort" :items="reasoningOptions" label="Reasoning effort" variant="outlined" clearable /></v-col>
+          <v-col cols="12" md="4"><v-text-field v-model.number="draft.max_output_tokens" label="Max output tokens" type="number" variant="outlined" /></v-col>
+          <v-col cols="12" md="4"><v-text-field v-model.number="draft.temperature" label="Temperature" type="number" min="0" max="2" step="0.1" variant="outlined" /></v-col>
         </v-row>
 
         <v-alert v-if="preview && !preview.provider_configured" type="warning" variant="tonal" class="mb-3">Провайдер недоступен: API key не настроен.</v-alert>
@@ -113,7 +132,7 @@ import api from '@/api/axios'
 
 type Capabilities = Record<string, boolean>
 interface ProfileResponse {
-  configured: { provider: string; model: string; enabled: boolean; fallback_policy: 'none' | 'global' } | null
+  configured: { provider: string; model: string; enabled: boolean; fallback_policy: 'none' | 'global'; fallback_enabled?: boolean; fallback_provider?: string | null; fallback_model?: string | null; reasoning_effort?: 'low' | 'medium' | 'high' | null; max_output_tokens?: number | null; temperature?: number | null } | null
   effective: { provider: string; model: string }
   source: string
   provider_key_source: string
@@ -138,6 +157,12 @@ const capabilityLabels = [
   { key: 'tools', label: 'Tools' }, { key: 'structured_output', label: 'Structured output' },
 ]
 const fallbackOptions = [{ title: 'Без fallback', value: 'none' }, { title: 'Глобальная цепочка', value: 'global' }]
+const reasoningOptions = [{ title: 'Low', value: 'low' }, { title: 'Medium', value: 'medium' }, { title: 'High', value: 'high' }]
+const profileOptions = [
+  { title: 'Legacy Expert Chat', value: 'expert_chat' },
+  { title: 'Fast', value: 'expert_fast' },
+  { title: 'Deep', value: 'expert_deep' },
+]
 const filterOptions = [
   { title: 'Совместимые с Expert', value: 'compatible' }, { title: 'Vision', value: 'vision' },
   { title: 'Streaming', value: 'streaming' }, { title: 'Reasoning', value: 'reasoning' },
@@ -156,8 +181,10 @@ const sortOptions = [
 const loading = ref(false)
 const loadError = ref('')
 const editing = ref(false)
+const profileTask = ref<'expert_chat' | 'expert_fast' | 'expert_deep'>('expert_chat')
 const profile = ref<ProfileResponse | null>(null)
-const draft = reactive({ provider: '', model: '', enabled: true, fallback_policy: 'none' as 'none' | 'global' })
+const draft = reactive({ provider: '', model: '', enabled: true, fallback_policy: 'none' as 'none' | 'global', fallback_enabled: false, fallback_provider: '', fallback_model: '', reasoning_effort: null as 'low' | 'medium' | 'high' | null, max_output_tokens: null as number | null, temperature: null as number | null })
+const profileTitle = computed(() => profileTask.value === 'expert_chat' ? 'Чат' : profileTask.value === 'expert_fast' ? 'Fast' : 'Deep')
 const savedDraft = ref('')
 const dirty = computed(() => JSON.stringify(draft) !== savedDraft.value)
 const preview = ref<{ capabilities: Capabilities; model_in_catalog: boolean | null; provider_configured: boolean } | null>(null)
@@ -222,9 +249,10 @@ async function loadProfile(): Promise<void> {
   loading.value = true
   loadError.value = ''
   try {
-    const { data } = await api.get<ProfileResponse>('/api/admin/llm-profiles/expert-chat')
+    const url = profileTask.value === 'expert_chat' ? '/api/admin/llm-profiles/expert-chat' : `/api/admin/llm-profiles/expert-chat?task=${encodeURIComponent(profileTask.value)}`
+    const { data } = await api.get<ProfileResponse>(url)
     profile.value = data
-    Object.assign(draft, data.configured || { provider: data.effective.provider, model: data.effective.model, enabled: true, fallback_policy: 'none' })
+    Object.assign(draft, data.configured || { provider: data.effective.provider, model: data.effective.model, enabled: profileTask.value !== 'expert_deep', fallback_policy: 'none', fallback_enabled: false, fallback_provider: '', fallback_model: '', reasoning_effort: null, max_output_tokens: null, temperature: null })
     savedDraft.value = JSON.stringify(draft)
   } catch {
     loadError.value = 'Не удалось загрузить профиль Expert.'
@@ -277,7 +305,11 @@ async function saveProfile(): Promise<void> {
   saving.value = true
   saveError.value = ''
   try {
-    const { data } = await api.put<ProfileResponse>('/api/admin/llm-profiles/expert-chat', { ...draft })
+    const url = profileTask.value === 'expert_chat' ? '/api/admin/llm-profiles/expert-chat' : `/api/admin/llm-profiles/expert-chat?task=${encodeURIComponent(profileTask.value)}`
+    const payload = profileTask.value === 'expert_chat'
+      ? { provider: draft.provider, model: draft.model, enabled: draft.enabled, fallback_policy: draft.fallback_policy }
+      : { ...draft }
+    const { data } = await api.put<ProfileResponse>(url, payload)
     profile.value = data
     savedDraft.value = JSON.stringify(draft)
   } catch {
@@ -306,6 +338,7 @@ watch(() => [search.value, sort.value, ...filters.value, draft.provider], () => 
   if (searchTimer) clearTimeout(searchTimer)
   if (draft.provider === 'routerai') searchTimer = setTimeout(() => { void loadCatalog() }, 250)
 })
+watch(profileTask, () => { editing.value = false; void loadProfile() })
 onMounted(async () => { await loadProfile(); if (draft.provider === 'routerai') await loadCatalog() })
 onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer) })
 </script>

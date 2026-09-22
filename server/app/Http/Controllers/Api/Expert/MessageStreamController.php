@@ -34,6 +34,7 @@ final class MessageStreamController extends Controller
     {
         $this->authorize('update', $conversation->project);
         $content = $request->validated('content');
+        $requestedMode = $request->mode();
         $clientMessageId = $request->clientMessageId() ?? (string) Str::uuid();
         $materialPublicIds = $this->chat->requestMaterialPublicIds(
             $conversation,
@@ -46,8 +47,9 @@ final class MessageStreamController extends Controller
                 $conversation,
                 $content,
                 $clientMessageId,
-                $this->chat->requestFingerprint($content, $materialPublicIds),
+                $this->chat->requestFingerprint($content, $materialPublicIds, $requestedMode),
                 $materialPublicIds,
+                $requestedMode,
             );
         } catch (\Throwable $exception) {
             return $this->startError($exception);
@@ -116,6 +118,9 @@ final class MessageStreamController extends Controller
             return response()->json(['message' => $exception->getMessage(), 'code' => 'expert_continue_not_allowed'], 422);
         }
         if ($exception instanceof ExpertMaterialContextException || $exception instanceof ExpertPdfOcrException || $exception instanceof ExpertVisionException) {
+            return response()->json(['message' => $exception->getMessage(), 'code' => $exception->errorCode], $exception->status);
+        }
+        if ($exception instanceof \App\Services\Expert\ExpertModelPolicyException) {
             return response()->json(['message' => $exception->getMessage(), 'code' => $exception->errorCode], $exception->status);
         }
         if ($exception instanceof LLMUnsupportedCapabilityException) {

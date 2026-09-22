@@ -43,6 +43,7 @@ final class ExpertChatStreamingService
         string $clientMessageId,
         string $fingerprint,
         ExpertChatMaterialContext|array $materialContextOrPublicIds,
+        string $requestedMode = ExpertModeResolution::AUTO,
     ): ExpertChatStreamingRun {
         $lock = $this->runs->acquireConversation($conversation);
         try {
@@ -54,10 +55,7 @@ final class ExpertChatStreamingService
             if ($plan->diagnostics['requires_material_disambiguation'] ?? false) {
                 throw ExpertMaterialContextException::ambiguousActiveMaterials();
             }
-            if ($plan->requiresMultiDocumentPipeline) {
-                throw ExpertMaterialContextException::multiDocumentPipelineRequired();
-            }
-            $userMessage = $this->chat->prepareStreamingUserMessage($conversation, $content, $clientMessageId, $fingerprint, $materialPublicIds);
+            $userMessage = $this->chat->prepareStreamingUserMessage($conversation, $content, $clientMessageId, $fingerprint, $materialPublicIds, $requestedMode);
             $this->chat->recordContext($conversation, $userMessage, $plan);
             $existingAssistant = $this->chat->assistantReplyFor($conversation, $userMessage);
             $registryRun = $this->runs->create($conversation, $existingAssistant?->public_id);
@@ -72,6 +70,7 @@ final class ExpertChatStreamingService
                 $existingAssistant,
                 false,
                 $plan,
+                ExpertModeResolution::normalise($requestedMode),
             );
         } catch (\Throwable $exception) {
             $lock->release();
@@ -96,6 +95,7 @@ final class ExpertChatStreamingService
         $persistedPublicIds = $this->chat->persistedMaterialPublicIds($userMessage);
         $historicalIds = $this->chat->historicalMaterialPublicIds($conversation, $userMessage->content, $userMessage, hasCurrentMaterials: $persistedPublicIds !== []);
         $plan = $this->chat->contextPlan($conversation, $userMessage->content, $persistedPublicIds, $historicalIds, $userMessage);
+        $requestedMode = ExpertModeResolution::normalise(is_array($userMessage->metadata) && is_string($userMessage->metadata['requested_mode'] ?? null) ? $userMessage->metadata['requested_mode'] : ExpertModeResolution::AUTO);
 
         $lock = $this->runs->acquireConversation($conversation);
         try {
@@ -111,6 +111,7 @@ final class ExpertChatStreamingService
                 $assistantMessage,
                 true,
                 $plan,
+                $requestedMode,
             );
         } catch (\Throwable $exception) {
             $lock->release();
@@ -124,6 +125,7 @@ final class ExpertChatStreamingService
         $runId = $run->runId();
         $content = $run->existingAssistant?->content ?? '';
         $metadata = [];
+        $executionPlan = null;
         $status = 'completed';
         $finishReason = 'stop';
         $errorCode = 'expert_stream_interrupted';
@@ -185,6 +187,11 @@ final class ExpertChatStreamingService
                 : ExpertChatMaterialContextBundle::currentOnly($run->materialContext);
             $this->materialDiagnostics->log($runId, $materialBundle, $run->materialPublicIds, $historicalIds);
             $materialContext = $materialBundle->combined();
+            $executionPlan = $this->chat->executionPlan($run->requestedMode, $run->userMessage->content, $run->contextPack ?? $materialBundle->plan, $materialBundle);
+            $metadata = $executionPlan->toMetadata();
+            if ($run->contextPack?->requiresMultiDocumentPipeline === true) {
+                throw ExpertMaterialContextException::multiDocumentPipelineRequired();
+            }
 
             $request = $run->isContinuation
                 ? $this->chat->buildContinuationRequest($run->conversation, $run->userMessage, $run->existingAssistant, $materialBundle)
@@ -201,7 +208,7 @@ final class ExpertChatStreamingService
             }
             $modelActivityId = $activity->start('model.request.started', 'model');
 
-            foreach ($this->router->setUserId($run->conversation->project->user_id)->streamChat($request, $token, $runId, LLMTaskProfileResolver::EXPERT_CHAT) as $event) {
+            foreach ($this->router->setUserId($run->conversation->project->user_id)->streamChat($request, $token, $runId, $executionPlan->routerProfile) as $event) {
                 if ($token->isCancellationRequested()) {
                     $status = 'stopped';
                     $finishReason = 'cancelled';
@@ -231,7 +238,7 @@ final class ExpertChatStreamingService
                     $emit('heartbeat', ['version' => 1]);
                     $lastHeartbeatAt = microtime(true);
                 } elseif ($event->type === 'done') {
-                    $metadata = $event->metadata;
+                    $metadata = [...$metadata, ...$event->metadata, 'tools_used' => $executionPlan->tools];
                     $this->persistOcrResults($materialBundle, $event->parsedFiles, $ocrActivityIds, $activity, $runId);
                 }
                 if (microtime(true) - $startedAt > (int) config('expert.streaming.absolute_timeout_seconds', 600)) {
@@ -257,13 +264,13 @@ final class ExpertChatStreamingService
             $finishReason = $status === 'stopped' ? 'cancelled' : 'error';
             $errorCode = $this->errorCode($exception) ?? $errorCode;
             $retryable = $this->isRetryableError($errorCode, $hasVisibleOutput);
-            $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt);
+            $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt, $executionPlan);
         } catch (\Throwable $exception) {
             $status = $token->isCancellationRequested() ? 'stopped' : ($hasVisibleOutput || $content !== '' ? 'interrupted' : 'failed');
             $finishReason = $status === 'stopped' ? 'cancelled' : 'error';
             $errorCode = $this->errorCode($exception) ?? $errorCode;
             $retryable = $this->isRetryableError($errorCode, $hasVisibleOutput);
-            $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt);
+            $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt, $executionPlan);
         } finally {
             if ($status === 'completed' && $activity->openActivityCodes() !== []) {
                 Log::warning('Expert chat completed with open activities.', [
@@ -389,6 +396,9 @@ final class ExpertChatStreamingService
 
     private function errorCode(\Throwable $exception): ?string
     {
+        if ($exception instanceof ExpertModelPolicyException) {
+            return $exception->errorCode;
+        }
         if ($exception instanceof ExpertMaterialContextException || $exception instanceof ExpertPdfOcrException || $exception instanceof ExpertVisionException) {
             return $exception->errorCode;
         }
@@ -449,14 +459,17 @@ final class ExpertChatStreamingService
             'pdf_ocr_failed',
             'pdf_processing_too_large',
             'material_not_supported',
+            'multi_document_pipeline_required',
+            'expert_mode_unavailable',
+            'expert_capability_unavailable',
         ], true);
     }
 
-    private function logFailure(string $runId, string $code, bool $retryable, \Throwable $exception, ?string $activityCode, float $startedAt, ?float $firstDeltaAt): void
+    private function logFailure(string $runId, string $code, bool $retryable, \Throwable $exception, ?string $activityCode, float $startedAt, ?float $firstDeltaAt, ?ExpertExecutionPlan $executionPlan = null): void
     {
         $rootException = $exception instanceof LLMChatUnavailableException && $exception->getPrevious() instanceof LLMProviderException
             ? $exception->getPrevious() : $exception;
-        $profile = $this->profiles->effective(LLMTaskProfileResolver::EXPERT_CHAT);
+        $profile = $this->profiles->effective($executionPlan?->routerProfile ?? LLMTaskProfileResolver::EXPERT_CHAT);
         $effectiveProvider = $profile['effective']['provider'] ?? null;
         $effectiveModel = $profile['effective']['model'] ?? null;
         $actualProvider = $rootException instanceof LLMProviderException ? $rootException->getProvider() : null;
@@ -466,7 +479,7 @@ final class ExpertChatStreamingService
 
         Log::warning('Expert chat stream failed.', [
             'run_id' => $runId,
-            'task_profile' => LLMTaskProfileResolver::EXPERT_CHAT,
+            'task_profile' => $executionPlan?->profile ?? LLMTaskProfileResolver::EXPERT_CHAT,
             'effective_provider' => $safeProvider($effectiveProvider),
             'effective_model' => $safeModel($effectiveModel),
             'profile_source' => $profile['source'] ?? null,
@@ -479,6 +492,8 @@ final class ExpertChatStreamingService
             'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
             'ttft_ms' => $firstDeltaAt === null ? null : (int) round(($firstDeltaAt - $startedAt) * 1000),
             'http_status_class' => $httpStatus === null ? null : intdiv($httpStatus, 100).'xx',
+            ...($executionPlan?->toMetadata() ?? []),
+            'fallback_used' => false,
         ]);
     }
 

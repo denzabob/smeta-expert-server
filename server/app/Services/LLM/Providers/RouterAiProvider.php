@@ -233,8 +233,9 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
                 ->post($this->baseUrl.'/chat/completions', array_filter([
                     'model' => $this->model,
                     'messages' => OpenAiChatMessageMapper::map($request),
-                    'temperature' => $this->temperature,
-                    'max_tokens' => $this->maxTokens,
+                    'temperature' => $request->parameters['temperature'] ?? $this->temperature,
+                    'max_tokens' => $request->parameters['max_tokens'] ?? $this->maxTokens,
+                    'reasoning_effort' => $request->parameters['reasoning_effort'] ?? null,
                     'plugins' => $this->pdfParserPlugin($request),
                 ], static fn (mixed $value): bool => $value !== null));
 
@@ -318,8 +319,9 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
                 'json' => array_filter([
                     'model' => $this->model,
                     'messages' => OpenAiChatMessageMapper::map($request),
-                    'temperature' => $this->temperature,
-                    'max_tokens' => $this->maxTokens,
+                    'temperature' => $request->parameters['temperature'] ?? $this->temperature,
+                    'max_tokens' => $request->parameters['max_tokens'] ?? $this->maxTokens,
+                    'reasoning_effort' => $request->parameters['reasoning_effort'] ?? null,
                     'stream' => true,
                     'stream_options' => ['include_usage' => true],
                     'plugins' => $this->pdfParserPlugin($request),

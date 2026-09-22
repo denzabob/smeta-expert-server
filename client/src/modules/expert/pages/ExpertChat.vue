@@ -120,6 +120,7 @@
         :material-contexts="composerMaterialContexts"
         :image-previews="composerImagePreviews"
         :send-blocked-reason="composerSendBlockedReason"
+        :mode="expertMode"
         :busy="streamActive"
         @send="sendMessage"
         @stop="stopStream"
@@ -130,6 +131,7 @@
         @remove-material-context="removeComposerMaterialContext"
         @remove-context="removeContext"
         @select-whole-project="selectWholeProject"
+        @mode-change="setExpertMode"
       />
     </section>
 
@@ -210,9 +212,9 @@ import {
   type ExpertTimelineRun,
 } from '../chatTimeline'
 import { useExpertMaterialTransfers } from '../composables/useExpertMaterialTransfers'
-import { clearExpertLastConversation, expertLastConversationStorageKey, readExpertLastConversation, selectInitialExpertConversation, writeExpertLastConversation } from '../lastConversation'
+import { clearExpertLastConversation, expertLastConversationStorageKey, readExpertLastConversation, readExpertMode, selectInitialExpertConversation, writeExpertLastConversation, writeExpertMode } from '../lastConversation'
 import { expertApi, isExpertMaterialContextError, mapExpertApiError } from '../api'
-import type { ExpertConversation, ExpertMessage, ExpertMessageFeedback, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMaterial, ExpertProjectMode, ExpertRunDiagnostic } from '../types'
+import type { ExpertChatMode, ExpertConversation, ExpertMessage, ExpertMessageFeedback, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMaterial, ExpertProjectMode, ExpertRunDiagnostic } from '../types'
 
 const props = defineProps<{ project: ExpertProject; projectMode: ExpertProjectMode }>()
 const { mdAndDown } = useDisplay()
@@ -293,6 +295,16 @@ const lastConversationStorageKey = computed(() => {
     ? null
     : expertLastConversationStorageKey(userId, props.project.id)
 })
+const expertModeStorageKey = computed(() => {
+  const userId = authStore?.user?.id
+  return userId === undefined || userId === null ? 'expert-chat-mode' : `expert-chat-mode:${userId}`
+})
+const expertMode = ref<ExpertChatMode>(readExpertMode(window.localStorage, expertModeStorageKey.value))
+
+function setExpertMode(mode: ExpertChatMode): void {
+  expertMode.value = mode === 'fast' || mode === 'deep' ? mode : 'auto'
+  writeExpertMode(window.localStorage, expertModeStorageKey.value, expertMode.value)
+}
 const messages = computed(() => conversationId.value
   ? messagesByConversation.value[conversationId.value] ?? conversation.value?.messages ?? []
   : pendingMessages.value)
@@ -740,6 +752,9 @@ async function persistMessage(message: ExpertMessage) {
     const materialIds = message.attachments?.map((attachment) => attachment.id)
       ?? message.runtimeMaterialContext?.map((context) => context.id)
       ?? []
+    const requestedMode: ExpertChatMode = message.metadata?.requested_mode === 'fast' || message.metadata?.requested_mode === 'deep'
+      ? message.metadata.requested_mode
+      : 'auto'
     let lastSeq = 0
     let fallbackToLegacy = false
     try {
@@ -829,9 +844,9 @@ async function persistMessage(message: ExpertMessage) {
           }
           fallbackToLegacy = useLegacyFallback
         },
-      }, activeAbort.value.signal)
+      }, activeAbort.value.signal, undefined, requestedMode)
       if (fallbackToLegacy) {
-        const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId, materialIds)
+        const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId, materialIds, requestedMode)
         void loadActiveContext(targetConversationId)
         replaceSavedMessage(persistedUserId, reply.userMessage)
         replaceOptimisticMessage(localAssistantId, reply.assistantMessage)
@@ -841,7 +856,7 @@ async function persistMessage(message: ExpertMessage) {
     } catch (error) {
       const mapped = mapExpertApiError(error)
       if (mapped.code === 'streaming_not_supported') {
-        const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId, materialIds)
+        const reply = await expertApi.sendMessage(targetConversationId, message.text, message.clientMessageId, materialIds, requestedMode)
         void loadActiveContext(targetConversationId)
         replaceOptimisticMessage(message.id, reply.userMessage)
         replaceOptimisticMessage(localAssistantId, reply.assistantMessage)
@@ -979,6 +994,7 @@ function sendMessage(text: string, accepted: () => void = () => undefined) {
 
   const optimisticMessage: ExpertMessage = {
     ...createOptimisticUserMessage(normalizedText),
+    metadata: { requested_mode: expertMode.value },
     // Keep the pending selection visible until the server returns persisted attachments.
     runtimeMaterialContext: snapshotExpertMessageMaterialContext(composerMaterialContexts.value),
   }

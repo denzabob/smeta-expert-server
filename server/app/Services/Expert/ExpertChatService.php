@@ -107,7 +107,7 @@ final class ExpertChatService
 
         $ids = $this->attachments->publicIds($message);
         $metadata = is_array($message->metadata) ? $message->metadata : [];
-        if ($ids === [] && ($metadata['expert_request_fingerprint'] ?? null) !== $this->requestFingerprint($message->content, [])) {
+        if ($ids === [] && ! $this->fingerprintMatchesEmptyRequest($message, $metadata)) {
             throw ExpertMaterialContextException::originalUnavailable();
         }
 
@@ -121,7 +121,7 @@ final class ExpertChatService
 
         $ids = $this->attachments->publicIds($message);
         $metadata = is_array($message->metadata) ? $message->metadata : [];
-        if ($ids === [] && ($metadata['expert_request_fingerprint'] ?? null) !== $this->requestFingerprint($message->content, [])) {
+        if ($ids === [] && ! $this->fingerprintMatchesEmptyRequest($message, $metadata)) {
             throw ExpertMaterialContextException::originalUnavailable();
         }
 
@@ -146,6 +146,7 @@ final class ExpertChatService
         string $content,
         string $clientMessageId,
         string $requestFingerprint,
+        string $requestedMode = ExpertModeResolution::AUTO,
     ): ?ExpertChatResult {
         $userMessage = $this->findUserMessage($conversation, $clientMessageId);
 
@@ -153,7 +154,7 @@ final class ExpertChatService
             return null;
         }
 
-        $this->assertRequestMatches($userMessage, $content, $requestFingerprint);
+        $this->assertRequestMatches($userMessage, $content, $requestFingerprint, $requestedMode);
         $assistantMessage = $this->findAssistantMessage($conversation, $userMessage);
 
         return $assistantMessage === null
@@ -183,10 +184,10 @@ final class ExpertChatService
                 $userMessage = $this->findUserMessage($conversation, $clientMessageId);
 
                 if ($userMessage !== null) {
-                    $this->assertRequestMatches($userMessage, $content, $requestFingerprint);
+                    $this->assertRequestMatches($userMessage, $content, $requestFingerprint, $requestedMode);
                     $this->attachments->assertAvailable($userMessage);
                 } else {
-                    $userMessage = $this->createUserMessage($conversation, $content, $clientMessageId, $requestFingerprint, $materialPublicIds);
+                    $userMessage = $this->createUserMessage($conversation, $content, $clientMessageId, $requestFingerprint, $materialPublicIds, $requestedMode);
                 }
 
                 $assistantMessage = $this->findAssistantMessage($conversation, $userMessage);
@@ -198,11 +199,12 @@ final class ExpertChatService
                 if ($bundle->plan !== null) {
                     $this->recordContext($conversation, $userMessage, $bundle->plan);
                 }
+                $resolvedExecutionPlan = $executionPlan ?? $this->executionPlan($requestedMode, $content, $bundle->plan, $bundle);
                 $runId = (string) Str::uuid();
                 $this->materialDiagnostics->log($runId, $bundle, $materialPublicIds, $historicalMaterialPublicIds);
                 $response = $this->llmRouter
                     ->setUserId($conversation->project->user_id)
-                    ->chat($this->buildRequest($conversation, $userMessage, $bundle), taskProfile: ($executionPlan ?? $this->executionPlan($requestedMode, $content, $bundle->plan, $bundle))->routerProfile);
+                    ->chat($this->buildRequest($conversation, $userMessage, $bundle), taskProfile: $resolvedExecutionPlan->routerProfile);
                 foreach ($bundle->combined()->ocrCandidates as $candidate) {
                     $parsed = collect($response->parsedFiles)->first(fn ($file) => strtolower($file->sha256) === strtolower($candidate->sha256));
                     if ($parsed === null) {
@@ -227,10 +229,10 @@ final class ExpertChatService
                         'run_id' => $runId,
                         'service_tier' => is_string($response->metadata['service_tier'] ?? null) ? $response->metadata['service_tier'] : null,
                         'latency_ms' => $response->latencyMs,
-                        ...(($executionPlan ?? $this->executionPlan($requestedMode, $content, $bundle->plan, $bundle))->toMetadata()),
+                        ...$resolvedExecutionPlan->toMetadata(),
                         'fallback_used' => (bool) ($response->metadata['fallback_used'] ?? false),
                         'fallback_reason' => $response->metadata['fallback_reason'] ?? null,
-                        'tools_used' => $response->metadata['tools_used'] ?? (($executionPlan ?? $this->executionPlan($requestedMode, $content, $bundle->plan, $bundle))->tools),
+                        'tools_used' => $response->metadata['tools_used'] ?? $resolvedExecutionPlan->tools,
                         'actual_upstream_provider' => $response->metadata['upstream_provider'] ?? $response->provider,
                         'actual_upstream_model' => $response->metadata['upstream_model'] ?? $response->model,
                     ],
@@ -255,7 +257,7 @@ final class ExpertChatService
     ): ExpertMessage {
         $userMessage = $this->findUserMessage($conversation, $clientMessageId);
         if ($userMessage !== null) {
-            $this->assertRequestMatches($userMessage, $content, $requestFingerprint);
+            $this->assertRequestMatches($userMessage, $content, $requestFingerprint, $requestedMode);
             $this->attachments->assertAvailable($userMessage);
 
             return $userMessage;
@@ -269,9 +271,9 @@ final class ExpertChatService
         return $this->findAssistantMessage($conversation, $userMessage);
     }
 
-    public function assertStreamingSnapshot(ExpertMessage $userMessage, string $content, string $requestFingerprint): void
+    public function assertStreamingSnapshot(ExpertMessage $userMessage, string $content, string $requestFingerprint, string $requestedMode = ExpertModeResolution::AUTO): void
     {
-        $this->assertRequestMatches($userMessage, $content, $requestFingerprint);
+        $this->assertRequestMatches($userMessage, $content, $requestFingerprint, $requestedMode);
     }
 
     public function executionPlan(string $requestedMode, string $content, ?ExpertContextPack $pack, ExpertChatMaterialContextBundle $bundle): ExpertExecutionPlan
@@ -348,7 +350,13 @@ final class ExpertChatService
             'service_tier' => is_string($metadata['service_tier'] ?? null) ? $metadata['service_tier'] : null,
             'latency_ms' => is_int($metadata['latency_ms'] ?? null) ? $metadata['latency_ms'] : null,
         ], static fn (mixed $value): bool => $value !== null);
+        foreach (['requested_mode', 'resolved_mode', 'route_reason', 'profile', 'effective_provider', 'effective_model', 'required_capabilities', 'tools', 'fallback', 'material_count', 'current_material_count', 'active_material_count', 'scope', 'coverage_mode', 'requires_vision', 'requires_pdf_processing', 'requires_multi_document_pipeline', 'requires_reasoning', 'requires_exhaustive_coverage', 'fallback_used', 'fallback_reason', 'tools_used', 'actual_upstream_provider', 'actual_upstream_model'] as $key) {
+            if (array_key_exists($key, $metadata)) {
+                $technicalMetadata[$key] = $metadata[$key];
+            }
+        }
         $technicalMetadata['service_tier'] = is_string($metadata['service_tier'] ?? null) ? $metadata['service_tier'] : null;
+        $technicalMetadata['fallback_used'] = (bool) ($metadata['fallback_used'] ?? false);
 
         if ($existingAssistant !== null) {
             $existingAssistant->forceFill([
@@ -411,6 +419,7 @@ final class ExpertChatService
         ExpertMessage $userMessage,
         string $content,
         string $requestFingerprint,
+        string $requestedMode = ExpertModeResolution::AUTO,
     ): void {
         if (! hash_equals($userMessage->content, $content)) {
             throw new ExpertChatRequestConflictException(
@@ -419,10 +428,24 @@ final class ExpertChatService
         }
 
         $metadata = is_array($userMessage->metadata) ? $userMessage->metadata : [];
+        $storedMode = ExpertModeResolution::normalise(is_string($metadata['requested_mode'] ?? null) ? $metadata['requested_mode'] : ExpertModeResolution::AUTO);
+        if ($storedMode !== ExpertModeResolution::normalise($requestedMode)) {
+            throw new ExpertChatRequestConflictException(
+                'Идентификатор сообщения уже использован с другим режимом AI.',
+            );
+        }
         $storedFingerprint = $metadata['expert_request_fingerprint'] ?? null;
 
         if (is_string($storedFingerprint) && $storedFingerprint !== '') {
             if (! hash_equals($storedFingerprint, $requestFingerprint)) {
+                $legacyFingerprint = $this->legacyRequestFingerprint($userMessage->content, $this->attachments->publicIds($userMessage));
+                if ($storedMode === ExpertModeResolution::AUTO && hash_equals($storedFingerprint, $legacyFingerprint)) {
+                    $userMessage->forceFill([
+                        'metadata' => [...$metadata, 'expert_request_fingerprint' => $requestFingerprint, 'requested_mode' => $storedMode],
+                    ])->save();
+
+                    return;
+                }
                 throw new ExpertChatRequestConflictException(
                     'Идентификатор сообщения уже использован с другим набором материалов.',
                 );
@@ -432,15 +455,41 @@ final class ExpertChatService
         }
 
         $legacyTextOnlyFingerprint = $this->requestFingerprint($userMessage->content, []);
-        if (! hash_equals($legacyTextOnlyFingerprint, $requestFingerprint)) {
+        if (! hash_equals($legacyTextOnlyFingerprint, $requestFingerprint) && ! hash_equals($this->legacyRequestFingerprint($userMessage->content, []), $requestFingerprint)) {
             throw new ExpertChatRequestConflictException(
                 'Невозможно подтвердить совпадение повторного запроса с исходным сообщением.',
             );
         }
 
         $userMessage->forceFill([
-            'metadata' => [...$metadata, 'expert_request_fingerprint' => $requestFingerprint],
+            'metadata' => [...$metadata, 'expert_request_fingerprint' => $requestFingerprint, 'requested_mode' => $storedMode],
         ])->save();
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function fingerprintMatchesEmptyRequest(ExpertMessage $message, array $metadata): bool
+    {
+        $stored = $metadata['expert_request_fingerprint'] ?? null;
+        if (! is_string($stored) || $stored === '') {
+            return false;
+        }
+        $mode = ExpertModeResolution::normalise(is_string($metadata['requested_mode'] ?? null) ? $metadata['requested_mode'] : ExpertModeResolution::AUTO);
+
+        return hash_equals($stored, $this->requestFingerprint($message->content, [], $mode))
+            || hash_equals($stored, $this->legacyRequestFingerprint($message->content, []));
+    }
+
+    /** @param list<string> $materialPublicIds */
+    private function legacyRequestFingerprint(string $content, array $materialPublicIds): string
+    {
+        $normalisedContent = preg_replace('/\s+/u', ' ', trim($content)) ?? trim($content);
+        $normalisedMaterialIds = array_map(static fn (string $publicId): string => strtolower($publicId), $materialPublicIds);
+        sort($normalisedMaterialIds, SORT_STRING);
+
+        return hash('sha256', json_encode(
+            [$normalisedContent, $normalisedMaterialIds],
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+        ));
     }
 
     private function buildRequest(

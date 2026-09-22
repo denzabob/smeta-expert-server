@@ -107,7 +107,7 @@ describe('Expert persistence mapping', () => {
 
     expect(post).toHaveBeenCalledWith(
       '/api/expert/conversations/conversation-1/messages',
-      {content:'Проверить'},
+      {content:'Проверить',mode:'auto'},
       {headers:{'X-Expert-Message-Id':'550e8400-e29b-41d4-a716-446655440000'}},
     )
   })
@@ -128,7 +128,7 @@ describe('Expert persistence mapping', () => {
 
     expect(post).toHaveBeenCalledWith(
       '/api/expert/conversations/conversation-1/messages',
-      {content:'Проверить',material_public_ids:['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440002']},
+      {content:'Проверить',mode:'auto',material_public_ids:['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440002']},
       {headers:{'X-Expert-Message-Id':'550e8400-e29b-41d4-a716-446655440000'}},
     )
   })
@@ -228,7 +228,7 @@ describe('Expert persistence mapping', () => {
     expect(fetchMock).toHaveBeenCalledWith('https://expert.test/api/expert/conversations/conversation-1/messages/stream', expect.objectContaining({
       method: 'POST',
       headers: expect.objectContaining({ 'X-Expert-Message-Id': 'request-1' }),
-      body: JSON.stringify({ content: 'Проверь PDF', material_public_ids: ['550e8400-e29b-41d4-a716-446655440001'] }),
+      body: JSON.stringify({ content: 'Проверь PDF', mode: 'auto', material_public_ids: ['550e8400-e29b-41d4-a716-446655440001'] }),
     }))
     vi.unstubAllGlobals()
   })

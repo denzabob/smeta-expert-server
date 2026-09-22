@@ -18,6 +18,7 @@ class MessageRequest extends FormRequest
     {
         return [
             'content' => [$this->route('assistant') === null ? 'required' : 'sometimes', 'string', 'max:50000'],
+            'mode' => ['sometimes', 'string', \Illuminate\Validation\Rule::in(['fast', 'auto', 'deep'])],
             'material_public_ids' => [
                 'sometimes',
                 'array',
@@ -68,5 +69,10 @@ class MessageRequest extends FormRequest
         return is_string($clientMessageId) && Str::isUuid($clientMessageId)
             ? $clientMessageId
             : null;
+    }
+
+    public function mode(): string
+    {
+        return \App\Services\Expert\ExpertModeResolution::normalise($this->validated('mode', 'auto'));
     }
 }

@@ -31,24 +31,38 @@ final class AdminLLMProfileController extends Controller
     public function effective(Request $request): JsonResponse
     {
         $this->authorizeAdmin($request);
+        $task = $this->task($request);
 
-        return response()->json($this->profiles->effective(LLMTaskProfileResolver::EXPERT_CHAT));
+        return response()->json($this->profiles->effective($task));
     }
 
     public function save(Request $request): JsonResponse
     {
         $this->authorizeAdmin($request);
+        $task = $this->task($request);
         $data = $request->validate([
             'provider' => ['required', 'string', Rule::in(ProviderRegistry::names())],
             'model' => ['required', 'string', 'min:1', 'max:255', 'regex:/^[^\s\x00-\x1F\x7F]+$/u'],
             'enabled' => ['required', 'boolean'],
             'fallback_policy' => ['required', Rule::in(['none', 'global'])],
+            'fallback_enabled' => ['sometimes', 'boolean'],
+            'fallback_provider' => ['nullable', 'string', Rule::in(ProviderRegistry::names())],
+            'fallback_model' => ['nullable', 'string', 'min:1', 'max:255', 'regex:/^[^\s\x00-\x1F\x7F]+$/u'],
+            'reasoning_effort' => ['nullable', Rule::in(['low', 'medium', 'high'])],
+            'max_output_tokens' => ['nullable', 'integer', 'min:1', 'max:100000'],
+            'temperature' => ['nullable', 'numeric', 'min:0', 'max:2'],
         ]);
+        $data['fallback_enabled'] = (bool) ($data['fallback_enabled'] ?? false);
+        if ($data['fallback_enabled'] && (empty($data['fallback_provider']) || empty($data['fallback_model']))) {
+            throw ValidationException::withMessages(['fallback_provider' => 'Для включённого fallback укажите провайдера и модель.']);
+        }
         if (empty($this->settings->getProviderSettings($data['provider'])['api_key'])) {
             throw ValidationException::withMessages(['provider' => 'Провайдер не настроен: отсутствует API key.']);
         }
+        if ($data['fallback_enabled'] && empty($this->settings->getProviderSettings($data['fallback_provider'])['api_key'])) {
+            throw ValidationException::withMessages(['fallback_provider' => 'Fallback-провайдер не настроен: отсутствует API key.']);
+        }
 
-        $task = LLMTaskProfileResolver::EXPERT_CHAT;
         DB::transaction(function () use ($request, $data, $task): void {
             $old = $this->settings->getTaskProfile($task);
             $this->settings->saveTaskProfile($task, $data);
@@ -59,7 +73,7 @@ final class AdminLLMProfileController extends Controller
                 'result' => 'success',
                 'details' => [
                     'task' => $task,
-                    'old' => $old === null ? null : array_intersect_key($old, array_flip(['provider', 'model', 'enabled', 'fallback_policy'])),
+                    'old' => $old === null ? null : array_intersect_key($old, array_flip(['provider', 'model', 'enabled', 'fallback_policy', 'fallback_enabled', 'fallback_provider', 'fallback_model', 'reasoning_effort', 'max_output_tokens', 'temperature'])),
                     'new' => $data,
                 ],
                 'ip_address' => $request->ip(),
@@ -67,6 +81,16 @@ final class AdminLLMProfileController extends Controller
         });
 
         return response()->json($this->profiles->effective($task));
+    }
+
+    private function task(Request $request): string
+    {
+        $task = (string) $request->query('task', LLMTaskProfileResolver::EXPERT_CHAT);
+        if (! in_array($task, [LLMTaskProfileResolver::EXPERT_CHAT, LLMTaskProfileResolver::EXPERT_FAST, LLMTaskProfileResolver::EXPERT_DEEP], true)) {
+            throw ValidationException::withMessages(['task' => 'Неизвестный профиль Expert.']);
+        }
+
+        return $task;
     }
 
     public function catalog(Request $request): JsonResponse

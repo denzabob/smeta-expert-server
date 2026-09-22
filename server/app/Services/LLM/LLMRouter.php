@@ -296,23 +296,25 @@ class LLMRouter
         $lastErrorType = null;
 
         if ($request->hasFiles()) {
-            $executionPlan = array_slice($executionPlan, 0, 1);
+            if (! $this->profileAllowsFallback($profile)) {
+                $executionPlan = array_slice($executionPlan, 0, 1);
+            }
             $providerName = $executionPlan[0] ?? $this->settings->getPrimaryProvider();
-            $provider = $this->getProvider($providerName, $profile['model'] ?? null);
+            $provider = $this->getProvider($providerName, $this->profileModel($taskProfile, $providerName));
             $requiredCapability = $request->hasPdfOcrFiles() ? LLMCapability::PDF_OCR : LLMCapability::FILE_INPUT;
-            if ($provider === null || ! $this->supportsMediaRequest($provider, $requiredCapability, $profile, $taskProfile, $request)) {
+            if (! $this->profileAllowsFallback($profile) && ($provider === null || ! $this->supportsMediaRequest($provider, $requiredCapability, $profile, $taskProfile, $request))) {
                 throw new LLMUnsupportedCapabilityException($provider?->name() ?? $providerName, $provider?->model() ?? 'unknown', $requiredCapability);
             }
         }
 
         if ($request->hasImages()) {
-            // A multimodal fallback would silently switch the configured model/profile.
-            // Keep the current primary only until an explicit vision routing policy exists.
-            $executionPlan = array_slice($executionPlan, 0, 1);
+            if (! $this->profileAllowsFallback($profile)) {
+                $executionPlan = array_slice($executionPlan, 0, 1);
+            }
             $providerName = $executionPlan[0] ?? $this->settings->getPrimaryProvider();
-            $provider = $this->getProvider($providerName, $profile['model'] ?? null);
+            $provider = $this->getProvider($providerName, $this->profileModel($taskProfile, $providerName));
 
-            if ($provider !== null && ! $this->supportsMediaRequest($provider, LLMCapability::IMAGE_INPUT, $profile, $taskProfile, $request)) {
+            if (! $this->profileAllowsFallback($profile) && $provider !== null && ! $this->supportsMediaRequest($provider, LLMCapability::IMAGE_INPUT, $profile, $taskProfile, $request)) {
                 Log::warning('LLMRouter: configured profile rejected image input.', [
                     'correlation_id' => $this->lastCorrelationId,
                     'provider' => $provider->name(),
@@ -331,7 +333,7 @@ class LLMRouter
             'execution_plan' => $executionPlan,
         ]);
 
-        foreach ($executionPlan as $providerName) {
+        foreach ($executionPlan as $providerIndex => $providerName) {
             if (!$this->circuitBreaker->isAvailable($providerName)) {
                 $failoverChain[] = "{$providerName}:circuit_open";
                 continue;
@@ -344,11 +346,29 @@ class LLMRouter
                 continue;
             }
 
+            if ($request->hasImages() && ! $this->supportsMediaRequest($provider, LLMCapability::IMAGE_INPUT, $profile, $taskProfile, $request)) {
+                $failoverChain[] = "{$providerName}:capability_mismatch";
+                if ($this->profileAllowsFallback($profile) && $providerIndex + 1 < count($executionPlan)) {
+                    continue;
+                }
+                throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), LLMCapability::IMAGE_INPUT);
+            }
+            if ($request->hasFiles()) {
+                $requiredCapability = $request->hasPdfOcrFiles() ? LLMCapability::PDF_OCR : LLMCapability::FILE_INPUT;
+                if (! $this->supportsMediaRequest($provider, $requiredCapability, $profile, $taskProfile, $request)) {
+                    $failoverChain[] = "{$providerName}:capability_mismatch";
+                    if ($this->profileAllowsFallback($profile) && $providerIndex + 1 < count($executionPlan)) {
+                        continue;
+                    }
+                    throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), $requiredCapability);
+                }
+            }
+
             $retryCount = 0;
 
             for ($attempt = 0; $attempt < self::MAX_ATTEMPTS_PER_PROVIDER; $attempt++) {
                 try {
-                    $response = $provider->chat($request);
+                    $response = $provider->chat($this->requestForProvider($request, $profile, $provider));
                     $this->circuitBreaker->recordSuccess($providerName);
                     $this->logMediaCompletion($request, $taskProfile, $provider, $response->metadata['upstream_provider'] ?? $response->provider, $response->model);
 
@@ -360,7 +380,7 @@ class LLMRouter
                         'retry_count' => $retryCount,
                     ]);
 
-                    return $response;
+                    return $this->withFallbackMetadata($response, $providerIndex > 0, $this->fallbackReason($failoverChain));
                 } catch (LLMProviderException $e) {
                     $errorType = $this->errorClassifier->classify($e, $e->getHttpStatus());
                     $lastErrorType = $errorType;
@@ -436,26 +456,34 @@ class LLMRouter
         $this->capabilityRefreshAttempts = [];
         $executionPlan = $this->buildExecutionPlan($taskProfile);
         $profile = $this->activeProfile($taskProfile);
-        // Multimodal runs must remain on the selected model exactly like chat().
-        if ($request->hasFiles() || $request->hasImages()) {
+        // Multimodal fallback is enabled only by an explicit task-profile policy.
+        if (($request->hasFiles() || $request->hasImages()) && ! $this->profileAllowsFallback($profile)) {
             $executionPlan = array_slice($executionPlan, 0, 1);
         }
         $failoverChain = [];
         $lastErrorType = null;
         $lastProviderException = null;
 
-        foreach ($executionPlan as $providerName) {
+        foreach ($executionPlan as $providerIndex => $providerName) {
             $provider = $this->getProvider($providerName, $this->profileModel($taskProfile, $providerName));
             $supportsStreaming = $provider !== null && $this->supports($provider, LLMCapability::STREAMING, $profile);
             if ($profile !== null && $provider !== null && ! $supportsStreaming) {
                 // The response arrives as a whole; this is a synchronous completion,
                 // never a claim that the selected model streamed tokens.
                 if ($request->hasImages() && ! $this->supportsMediaRequest($provider, LLMCapability::IMAGE_INPUT, $profile, $taskProfile, $request)) {
+                    if ($this->profileAllowsFallback($profile) && $providerIndex + 1 < count($executionPlan)) {
+                        $failoverChain[] = "{$providerName}:capability_mismatch";
+                        continue;
+                    }
                     throw new LLMUnsupportedCapabilityException($providerName, $provider->model(), LLMCapability::IMAGE_INPUT);
                 }
                 if ($request->hasFiles()) {
                     $requiredCapability = $request->hasPdfOcrFiles() ? LLMCapability::PDF_OCR : LLMCapability::FILE_INPUT;
                     if (! $this->supportsMediaRequest($provider, $requiredCapability, $profile, $taskProfile, $request)) {
+                        if ($this->profileAllowsFallback($profile) && $providerIndex + 1 < count($executionPlan)) {
+                            $failoverChain[] = "{$providerName}:capability_mismatch";
+                            continue;
+                        }
                         throw new LLMUnsupportedCapabilityException($providerName, $provider->model(), $requiredCapability);
                     }
                 }
@@ -463,7 +491,7 @@ class LLMRouter
                     return;
                 }
                 try {
-                    $response = $provider->chat($request);
+                    $response = $provider->chat($this->requestForProvider($request, $profile, $provider));
                     $this->circuitBreaker->recordSuccess($providerName);
                 } catch (LLMProviderException $exception) {
                     $lastProviderException = $exception;
@@ -480,7 +508,16 @@ class LLMRouter
                 }
                 $this->logMediaCompletion($request, $taskProfile, $provider, $response->metadata['upstream_provider'] ?? $response->provider, $response->model);
                 yield LLMStreamEvent::delta($response->content);
-                yield LLMStreamEvent::done([...$response->metadata, 'provider' => $response->provider, 'model' => $response->model, 'sync_fallback' => true], $response->parsedFiles);
+                yield LLMStreamEvent::done([
+                    ...$response->metadata,
+                    'provider' => $response->provider,
+                    'model' => $response->model,
+                    'sync_fallback' => true,
+                    'fallback_used' => $providerIndex > 0,
+                    'fallback_reason' => $providerIndex > 0 ? $this->fallbackReason($failoverChain) : null,
+                    'actual_upstream_provider' => $response->metadata['upstream_provider'] ?? $response->provider,
+                    'actual_upstream_model' => $response->model,
+                ], $response->parsedFiles);
                 return;
             }
             if (! $provider instanceof LLMStreamingProviderInterface || ! $supportsStreaming) {
@@ -488,11 +525,19 @@ class LLMRouter
                 continue;
             }
             if ($request->hasImages() && ! $this->supportsMediaRequest($provider, LLMCapability::IMAGE_INPUT, $profile, $taskProfile, $request)) {
+                if ($this->profileAllowsFallback($profile) && $providerIndex + 1 < count($executionPlan)) {
+                    $failoverChain[] = "{$providerName}:capability_mismatch";
+                    continue;
+                }
                 throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), LLMCapability::IMAGE_INPUT);
             }
             if ($request->hasFiles()) {
                 $requiredCapability = $request->hasPdfOcrFiles() ? LLMCapability::PDF_OCR : LLMCapability::FILE_INPUT;
                 if (! $this->supportsMediaRequest($provider, $requiredCapability, $profile, $taskProfile, $request)) {
+                    if ($this->profileAllowsFallback($profile) && $providerIndex + 1 < count($executionPlan)) {
+                        $failoverChain[] = "{$providerName}:capability_mismatch";
+                        continue;
+                    }
                     throw new LLMUnsupportedCapabilityException($provider->name(), $provider->model(), $requiredCapability);
                 }
             }
@@ -500,7 +545,7 @@ class LLMRouter
             for ($attempt = 0; $attempt < self::MAX_ATTEMPTS_PER_PROVIDER; $attempt++) {
                 $emitted = false;
                 try {
-                    foreach ($provider->streamChat($request, $cancellationToken) as $event) {
+                    foreach ($provider->streamChat($this->requestForProvider($request, $profile, $provider), $cancellationToken) as $event) {
                         if (in_array($event->type, ['delta', 'reasoning_summary'], true) && $event->text !== '') {
                             $emitted = true;
                         }
@@ -519,6 +564,10 @@ class LLMRouter
                                 'upstream_provider' => $event->metadata['provider'] ?? null,
                                 'provider' => $provider->name(),
                                 'model' => is_string($event->metadata['model'] ?? null) ? $event->metadata['model'] : $provider->model(),
+                                'fallback_used' => $providerIndex > 0,
+                                'fallback_reason' => $providerIndex > 0 ? $this->fallbackReason($failoverChain) : null,
+                                'actual_upstream_provider' => $event->metadata['provider'] ?? $provider->name(),
+                                'actual_upstream_model' => is_string($event->metadata['model'] ?? null) ? $event->metadata['model'] : $provider->model(),
                             ], $event->parsedFiles)
                             : $event;
                     }
@@ -667,13 +716,87 @@ class LLMRouter
         return null;
     }
 
+    private function requestForProvider(LLMChatRequest $request, ?array $profile, LLMProviderInterface $provider): LLMChatRequest
+    {
+        if ($profile === null) {
+            return $request;
+        }
+
+        $parameters = [];
+        if (isset($profile['max_output_tokens']) && (int) $profile['max_output_tokens'] > 0) {
+            $parameters['max_tokens'] = (int) $profile['max_output_tokens'];
+        }
+        if (isset($profile['temperature']) && is_numeric($profile['temperature'])) {
+            $parameters['temperature'] = (float) $profile['temperature'];
+        }
+        if (is_string($profile['reasoning_effort'] ?? null)
+            && $profile['reasoning_effort'] !== ''
+            && $this->supports($provider, LLMCapability::REASONING, $profile)) {
+            $parameters['reasoning_effort'] = $profile['reasoning_effort'];
+        }
+
+        return $parameters === [] ? $request : $request->withParameters($parameters);
+    }
+
     private function supports(LLMProviderInterface $provider, LLMCapability $capability, ?array $profile): bool
     {
-        if ($profile !== null && $provider->name() === $profile['provider']) {
+        if ($profile !== null && ($provider->name() === ($profile['provider'] ?? null) || $provider->name() === ($profile['fallback_provider'] ?? null))) {
             return app(LLMEffectiveCapabilityResolver::class)->resolve($provider->name(), $provider->model())[$capability->value] ?? false;
         }
 
         return in_array($capability, $provider->capabilities(), true);
+    }
+
+    private function profileAllowsFallback(?array $profile): bool
+    {
+        return $profile !== null
+            && ($profile['fallback_enabled'] ?? false) === true
+            && ProviderRegistry::exists((string) ($profile['fallback_provider'] ?? ''))
+            && is_string($profile['fallback_model'] ?? null)
+            && $profile['fallback_model'] !== '';
+    }
+
+    /** @param list<string> $failoverChain */
+    private function fallbackReason(array $failoverChain): ?string
+    {
+        if ($failoverChain === []) {
+            return null;
+        }
+        $last = (string) end($failoverChain);
+        $reason = str_contains($last, ':') ? (string) substr($last, strrpos($last, ':') + 1) : $last;
+
+        return match ($reason) {
+            'timeout' => 'primary_timeout',
+            'rate_limit' => 'primary_rate_limit',
+            'network', 'server_error', 'unknown' => 'primary_unavailable',
+            'capability_mismatch' => 'capability_mismatch',
+            default => 'primary_unavailable',
+        };
+    }
+
+    private function withFallbackMetadata(LLMChatResponse $response, bool $used, ?string $reason): LLMChatResponse
+    {
+        return new LLMChatResponse(
+            provider: $response->provider,
+            model: $response->model,
+            content: $response->content,
+            latencyMs: $response->latencyMs,
+            promptTokens: $response->promptTokens,
+            completionTokens: $response->completionTokens,
+            costUsd: $response->costUsd,
+            totalTokens: $response->totalTokens,
+            cachedTokens: $response->cachedTokens,
+            reasoningTokens: $response->reasoningTokens,
+            metadata: [
+                ...$response->metadata,
+                'fallback_used' => $used,
+                'fallback_reason' => $used ? $reason : null,
+                'upstream_model' => $response->model,
+                'actual_upstream_provider' => $response->metadata['upstream_provider'] ?? $response->provider,
+                'actual_upstream_model' => $response->model,
+            ],
+            parsedFiles: $response->parsedFiles,
+        );
     }
 
     private function supportsMediaRequest(

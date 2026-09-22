@@ -38,7 +38,9 @@
         </v-list>
       </v-menu>
       <textarea ref="textarea" v-model="text" rows="1" :placeholder="persistenceOnly ? 'Введите сообщение…' : 'Спросить Prism AI...'" :aria-label="persistenceOnly ? 'Сообщение' : 'Сообщение Prism AI'" :disabled="busy" aria-keyshortcuts="Enter" @input="resizeTextarea" @keydown="handleKeydown" />
-      <v-select v-if="!persistenceOnly" v-model="mode" :items="modes" variant="plain" density="compact" hide-details class="expert-composer__mode" aria-label="Режим Prism AI" />
+      <v-select :model-value="mode" :items="modes" item-title="title" item-value="value" variant="plain" density="compact" hide-details class="expert-composer__mode" aria-label="Режим Prism AI" @update:model-value="$emit('mode-change', $event)">
+        <template #item="{ props: itemProps, item }"><v-list-item v-bind="itemProps" :title="item.raw.title" :subtitle="item.raw.subtitle" /></template>
+      </v-select>
       <v-btn :icon="busy ? 'mdi-stop' : 'mdi-arrow-up'" color="primary" variant="flat" size="small" :disabled="busy ? false : sendDisabled" :aria-label="busy ? 'Остановить ответ' : 'Отправить'" @click="busy ? $emit('stop') : send()" />
       <div v-if="dragDepth > 0" class="expert-composer__drop-overlay">Перетащите файлы сюда</div>
     </div>
@@ -53,7 +55,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { ExpertChatContextChip } from '../../chatContext'
 import { normalizeExpertChatDraft, shouldSubmitExpertChatComposer } from '../../chatComposer'
 import type { ExpertMaterialImagePreview, ExpertMaterialUploadItem } from '../../composables/useExpertMaterialTransfers'
-import type { ExpertMessageMaterialContext } from '../../types'
+import type { ExpertChatMode, ExpertMessageMaterialContext } from '../../types'
 
 const props = withDefaults(defineProps<{
   contextChips: ExpertChatContextChip[]
@@ -65,6 +67,7 @@ const props = withDefaults(defineProps<{
   materialContexts?: ExpertMessageMaterialContext[]
   imagePreviews?: Record<string, ExpertMaterialImagePreview>
   sendBlockedReason?: string
+  mode?: ExpertChatMode
 }>(), {
   busy: false,
   persistenceOnly: false,
@@ -74,6 +77,7 @@ const props = withDefaults(defineProps<{
   materialContexts: () => [],
   imagePreviews: () => ({}),
   sendBlockedReason: undefined,
+  mode: 'auto',
 })
 const emit = defineEmits<{
   (event: 'send', text: string, accepted: () => void): void
@@ -85,14 +89,18 @@ const emit = defineEmits<{
   (event: 'remove-material-context', id: string): void
   (event: 'remove-context', id: string): void
   (event: 'select-whole-project'): void
+  (event: 'mode-change', mode: ExpertChatMode): void
 }>()
 const text = ref('')
 const textarea = ref<HTMLTextAreaElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const dragDepth = ref(0)
 const dropError = ref('')
-const mode = ref('Auto')
-const modes = ['Auto', 'Быстро', 'Глубокий анализ']
+const modes = [
+  { title: 'Быстро', value: 'fast', subtitle: 'Для быстрых вопросов и поиска информации' },
+  { title: 'Auto', value: 'auto', subtitle: 'Prism сама выберет подходящий режим' },
+  { title: 'Глубокий', value: 'deep', subtitle: 'Для сложного анализа и сопоставления материалов' },
+]
 const attachmentActions = [
   { label: 'Камера', subtitle: 'Сделать снимок', icon: 'mdi-camera-outline', action: 'camera' },
   { label: 'Фото', subtitle: 'Выбрать изображения', icon: 'mdi-image-outline', action: 'photo' },
@@ -188,14 +196,14 @@ const sendDisabled = computed(() => props.busy || Boolean(props.sendBlockedReaso
 .expert-composer__material-name { display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; white-space: nowrap; }
 .expert-composer__thumbnail { width: 17px; height: 17px; margin-right: 5px; border-radius: 3px; object-fit: cover; vertical-align: middle; }
 .expert-composer__box { position: relative; display: grid; grid-template-columns: auto minmax(120px, 1fr) 128px auto; align-items: end; gap: 8px; width: min(960px, 100%); margin: 0 auto; padding: 10px; border: 1px solid rgba(var(--v-theme-outline), .34); border-radius: var(--md-sys-shape-corner-extra-large); background: rgb(var(--v-theme-surface)); box-shadow: var(--ds-shadow-soft); transition: border-color .15s ease, box-shadow .15s ease; }
-.expert-composer__box--persistence { grid-template-columns: minmax(120px, 1fr) auto; }
+.expert-composer__box--persistence { grid-template-columns: auto minmax(120px, 1fr) 128px auto; }
 .expert-composer__box--persistence.expert-composer__box--with-file-upload { grid-template-columns: auto minmax(120px, 1fr) auto; }
 .expert-composer__box:focus-within { border-color: rgba(var(--v-theme-primary), .74); box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), .12), var(--ds-shadow-soft); }
 .expert-composer__box--dragging { border-color: rgb(var(--v-theme-primary)); }
 .expert-composer__drop-overlay { position: absolute; inset: 3px; z-index: 2; display: grid; place-items: center; border-radius: inherit; color: rgb(var(--v-theme-on-primary-container)); background: rgb(var(--v-theme-primary-container)); font-weight: 700; pointer-events: none; }
 .expert-composer textarea { align-self: center; width: 100%; min-height: 34px; max-height: 144px; padding: 7px 2px; resize: none; outline: none; border: 0; color: rgb(var(--v-theme-on-surface)); background: transparent; font: inherit; line-height: 1.4; }
-.expert-composer__mode { align-self: center; font-size: .75rem; }
+.expert-composer__mode { align-self: center; width: 128px; min-width: 0; font-size: .75rem; }
 .expert-composer__blocked { width: min(960px, 100%); margin: 6px auto 0; color: rgb(var(--v-theme-error)); font-size: .7rem; }
 .expert-composer__hint { margin-top: 6px; color: rgba(var(--v-theme-on-surface-variant), .62); text-align: center; font-size: .64rem; }
-@media (max-width: 600px) { .expert-composer { padding: 8px; } .expert-composer__contexts { max-height: 128px; margin-bottom: 6px; } .expert-composer__material-contexts { width: 100%; } .expert-composer__material-name { max-width: 145px; } .expert-composer__box { grid-template-columns: auto minmax(80px, 1fr) auto; border-radius: var(--md-sys-shape-corner-large); } .expert-composer__box--persistence { grid-template-columns: minmax(80px, 1fr) auto; } .expert-composer__box--persistence.expert-composer__box--with-file-upload { grid-template-columns: auto minmax(80px, 1fr) auto; } .expert-composer__mode { display: none; } .expert-composer__hint { display: none; } }
+@media (max-width: 600px) { .expert-composer { padding: 8px; } .expert-composer__contexts { max-height: 128px; margin-bottom: 6px; } .expert-composer__material-contexts { width: 100%; } .expert-composer__material-name { max-width: 145px; } .expert-composer__box { grid-template-columns: auto minmax(80px, 1fr) 92px auto; border-radius: var(--md-sys-shape-corner-large); } .expert-composer__box--persistence { grid-template-columns: auto minmax(80px, 1fr) 92px auto; } .expert-composer__box--persistence.expert-composer__box--with-file-upload { grid-template-columns: auto minmax(80px, 1fr) 92px auto; } .expert-composer__mode { width: 92px; } .expert-composer__hint { display: none; } }
 </style>

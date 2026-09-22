@@ -6,13 +6,26 @@ namespace App\Services\LLM\DTO;
 
 final class LLMChatRequest
 {
-    /** @param list<LLMChatMessage|array{role:string,content:mixed}> $messages */
+    /** @param list<LLMChatMessage|array{role:string,content:mixed}> $messages @param array<string, mixed> $parameters */
     public function __construct(
         public readonly string $systemMessage,
         public readonly array $messages,
         public readonly array $materialContext = [],
         public readonly bool $materialContextEmbedded = false,
+        public readonly array $parameters = [],
     ) {}
+
+    /** @param array<string, mixed> $parameters */
+    public function withParameters(array $parameters): self
+    {
+        return new self(
+            $this->systemMessage,
+            $this->messages,
+            $this->materialContext,
+            $this->materialContextEmbedded,
+            [...$this->parameters, ...$parameters],
+        );
+    }
 
     public function hasImages(): bool
     {

@@ -210,12 +210,13 @@ class MistralProvider implements LLMProviderInterface
             ])
                 ->connectTimeout($this->connectTimeout)
                 ->timeout($this->timeout)
-                ->post($this->baseUrl . '/chat/completions', [
+                ->post($this->baseUrl . '/chat/completions', array_filter([
                     'model' => $this->model,
                     'messages' => OpenAiChatMessageMapper::map($request),
-                    'temperature' => $this->temperature,
-                    'max_tokens' => $this->maxTokens,
-                ]);
+                    'temperature' => $request->parameters['temperature'] ?? $this->temperature,
+                    'max_tokens' => $request->parameters['max_tokens'] ?? $this->maxTokens,
+                    'reasoning_effort' => $request->parameters['reasoning_effort'] ?? null,
+                ], static fn (mixed $value): bool => $value !== null));
 
             $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
 
