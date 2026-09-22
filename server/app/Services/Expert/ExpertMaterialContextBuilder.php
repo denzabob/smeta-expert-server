@@ -14,6 +14,7 @@ final class ExpertMaterialContextBuilder
 {
     public function __construct(
         private readonly ExpertMaterialTextExtractorInterface $extractor,
+        private readonly ExpertMaterialProcessingLimits $limits,
     ) {}
 
     /**
@@ -39,9 +40,8 @@ final class ExpertMaterialContextBuilder
         }
 
         $disk = Storage::disk('local');
-        $maxMaterialBytes = max(1, (int) config('expert.material_context.max_material_bytes', 5 * 1024 * 1024));
-        $maxTotalBytes = max($maxMaterialBytes, (int) config('expert.material_context.max_total_material_bytes', 10 * 1024 * 1024));
-        $totalBytes = 0;
+        $maxTotalBytes = max(1, (int) config('expert.material_context.max_total_material_bytes', 10 * 1024 * 1024));
+        $totalNonPdfBytes = 0;
 
         /** @var list<array{material: ExpertProjectMaterial, bytes: int}> $resolvedMaterials */
         $resolvedMaterials = [];
@@ -73,13 +73,18 @@ final class ExpertMaterialContextBuilder
                 throw $failure;
             }
 
-            if ($bytes > $maxMaterialBytes) {
-                throw ExpertMaterialContextException::tooLarge();
+            $limits = $this->limits->resolve($material);
+            if ($bytes > $limits['max_source_bytes']) {
+                throw $limits['kind'] === 'pdf'
+                    ? ExpertMaterialContextException::pdfSourceTooLarge()
+                    : ExpertMaterialContextException::tooLarge();
             }
 
-            $totalBytes += $bytes;
-            if ($totalBytes > $maxTotalBytes) {
-                throw ExpertMaterialContextException::tooLarge();
+            if ($limits['kind'] !== 'pdf') {
+                $totalNonPdfBytes += $bytes;
+                if ($totalNonPdfBytes > $maxTotalBytes) {
+                    throw ExpertMaterialContextException::tooLarge();
+                }
             }
 
             $resolvedMaterials[] = ['material' => $material, 'bytes' => $bytes];
@@ -87,7 +92,7 @@ final class ExpertMaterialContextBuilder
 
         $maxCharsPerMaterial = max(1, (int) config('expert.material_context.max_extracted_chars_per_material', 30000));
         $maxTotalChars = max($maxCharsPerMaterial, (int) config('expert.material_context.max_total_extracted_chars', 80000));
-        $totalChars = 0;
+        $totalNonPdfChars = 0;
         $context = [];
 
         foreach ($resolvedMaterials as $resolved) {
@@ -120,11 +125,13 @@ final class ExpertMaterialContextBuilder
                 throw $failure;
             }
 
-            $totalChars += $chars;
-            if ($totalChars > $maxTotalChars) {
-                $failure = ExpertMaterialContextException::tooLarge();
-                $this->logMaterialContextFailure($material, $resolved['bytes'], $failure);
-                throw $failure;
+            if (! $this->isPdf($material)) {
+                $totalNonPdfChars += $chars;
+                if ($totalNonPdfChars > $maxTotalChars) {
+                    $failure = ExpertMaterialContextException::tooLarge();
+                    $this->logMaterialContextFailure($material, $resolved['bytes'], $failure);
+                    throw $failure;
+                }
             }
 
             $contextEntry = [
@@ -132,12 +139,12 @@ final class ExpertMaterialContextBuilder
                 'name' => $this->presentationName($material),
                 'mime_type' => (string) $material->mime_type,
                 'text' => $text,
+                'source_bytes' => $resolved['bytes'],
+                'extracted_chars' => $chars,
             ];
             if ($this->isPdf($material)) {
                 $contextEntry += [
                     'processing_strategy' => 'local_text',
-                    'source_bytes' => $resolved['bytes'],
-                    'extracted_chars' => $chars,
                     'page_count' => $this->pdfPageCount($contents),
                     'cache_hit' => false,
                 ];
@@ -192,11 +199,13 @@ final class ExpertMaterialContextBuilder
         }
         $textMaterials = [];
         $ocrCandidates = [];
-        $ocrLimit = max(1, (int) config('expert.pdf_ocr.max_source_bytes', 20 * 1024 * 1024));
+        $ocrLimit = $this->pdfLimits()['max_source_bytes'];
         $ocrPages = 0;
         $ocrCount = 0;
-        foreach (array_values(array_unique($publicIds)) as $publicId) {
+        $uniqueIds = array_values(array_unique($publicIds));
+        foreach ($uniqueIds as $index => $publicId) {
             $activityId = null;
+            $analysisActivityId = null;
             try {
                 if ($activity->isCancellationRequested()) {
                     throw new ExpertChatStreamingCancelledException;
@@ -204,6 +213,11 @@ final class ExpertMaterialContextBuilder
                 /** @var ?ExpertProjectMaterial $material */
                 $material = $project->materials()->where('public_id', $publicId)->first();
                 $isPdf = $material !== null && $this->isPdf($material);
+                $analysisActivityId = $activity->start(
+                    ExpertAnalysisActivityCode::MATERIAL_STARTED,
+                    'analysis',
+                    ($index + 1).' из '.count($uniqueIds).': '.($material === null ? 'материал' : $this->presentationName($material)),
+                );
                 $activityId = $activity->start(
                     $isPdf ? 'pdf.local_extract.started' : 'material.text_extract.started',
                     'material',
@@ -211,6 +225,7 @@ final class ExpertMaterialContextBuilder
                 );
                 $textMaterials = [...$textMaterials, ...$this->build($project, [(string) $publicId])];
                 $activity->complete($activityId, $isPdf ? 'pdf.local_extract.completed' : 'material.text_extract.completed');
+                $activity->complete($analysisActivityId, ExpertAnalysisActivityCode::MATERIAL_COMPLETED);
 
                 continue;
             } catch (ExpertChatStreamingCancelledException $exception) {
@@ -235,14 +250,14 @@ final class ExpertMaterialContextBuilder
                         throw ExpertPdfOcrException::processingTooLarge();
                     }
                     $ocrCount++;
-                    if ($ocrCount > max(1, (int) config('expert.pdf_ocr.max_pdfs', 2))) {
+                    if ($ocrCount > $this->pdfLimits()['max_documents']) {
                         throw ExpertPdfOcrException::tooManyPages();
                     }
-                    if ($pageCount <= 0 || $pageCount > max(1, (int) config('expert.pdf_ocr.max_pages_per_pdf', 100))) {
+                    if ($pageCount <= 0 || $pageCount > $this->pdfLimits()['max_pages_per_material']) {
                         throw ExpertPdfOcrException::tooManyPages();
                     }
                     $ocrPages += $pageCount;
-                    if ($ocrPages > max(1, (int) config('expert.pdf_ocr.max_total_pages', 150))) {
+                    if ($ocrPages > $this->pdfLimits()['max_total_pages']) {
                         throw ExpertPdfOcrException::tooManyPages();
                     }
                     $ocrCandidates[] = new ExpertPdfOcrCandidate(
@@ -256,12 +271,16 @@ final class ExpertMaterialContextBuilder
                         LLMFileProcessingIntent::PDF_TEXT_PARSE,
                         $extractedChars,
                     );
+                    $activity->complete($analysisActivityId, ExpertAnalysisActivityCode::MATERIAL_COMPLETED);
 
                     continue;
                 }
                 if ($ocrReason === null || (! str_starts_with($ocrReason, 'pdf_no_usable_text:') && ! str_starts_with($ocrReason, 'pdf_local_extraction_failed:'))) {
                     if ($activityId !== null) {
                         $activity->fail($activityId, $exception->errorCode);
+                    }
+                    if ($analysisActivityId !== null) {
+                        $activity->fail($analysisActivityId, $exception->errorCode, ExpertAnalysisActivityCode::MATERIAL_FAILED);
                     }
                     throw $exception;
                 }
@@ -280,14 +299,14 @@ final class ExpertMaterialContextBuilder
                     throw ExpertPdfOcrException::tooLarge();
                 }
                 $ocrCount++;
-                if ($ocrCount > max(1, (int) config('expert.pdf_ocr.max_pdfs', 2))) {
+                if ($ocrCount > $this->pdfLimits()['max_documents']) {
                     throw ExpertPdfOcrException::tooManyPages();
                 }
-                if ($pageCount <= 0 || $pageCount > max(1, (int) config('expert.pdf_ocr.max_pages_per_pdf', 100))) {
+                if ($pageCount <= 0 || $pageCount > $this->pdfLimits()['max_pages_per_material']) {
                     throw ExpertPdfOcrException::tooManyPages();
                 }
                 $ocrPages += $pageCount;
-                if ($ocrPages > max(1, (int) config('expert.pdf_ocr.max_total_pages', 150))) {
+                if ($ocrPages > $this->pdfLimits()['max_total_pages']) {
                     throw ExpertPdfOcrException::tooManyPages();
                 }
                 $raw = $disk->get($material->storage_path);
@@ -300,9 +319,13 @@ final class ExpertMaterialContextBuilder
                     hash('sha256', $raw),
                     $pageCount,
                 );
+                $activity->complete($analysisActivityId, ExpertAnalysisActivityCode::MATERIAL_COMPLETED);
             } catch (\Throwable $exception) {
                 if ($activityId !== null) {
                     $activity->fail($activityId);
+                }
+                if ($analysisActivityId !== null) {
+                    $activity->fail($analysisActivityId, $this->errorCode($exception), ExpertAnalysisActivityCode::MATERIAL_FAILED);
                 }
                 throw $exception;
             }
@@ -322,5 +345,11 @@ final class ExpertMaterialContextBuilder
         $count = preg_match_all('/\/Type\s*\/Page\b/', $contents);
 
         return max(1, is_int($count) ? $count : 0);
+    }
+
+    /** @return array{max_source_bytes: int, max_total_source_bytes: int, max_total_prepared_payload_bytes: int, max_extracted_chars: int, max_total_extracted_chars: int, max_documents: int, max_pages_per_material: int, max_total_pages: int, max_prepared_payload_bytes: int, kind: string} */
+    private function pdfLimits(): array
+    {
+        return $this->limits->resolvePdf();
     }
 }

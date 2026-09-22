@@ -48,7 +48,9 @@ final class ExpertContextPlanner
         $selectedActive = array_values(array_diff(array_unique($selectedActive), $currentIds, $historicalIds));
         $resolved = array_values(array_unique([...$currentIds, ...$selectedActive, ...$historicalIds]));
         $scope = count($resolved) <= 1 ? 'single' : ($targeted || $currentIds !== [] ? 'targeted_multi' : ($exhaustive ? 'exhaustive_multi' : 'retrieval_multi'));
-        $requiresPipeline = count($resolved) > 4;
+        // Material count is an input to workload assessment, not a standalone
+        // product or execution decision.
+        $requiresPipeline = false;
 
         return new ExpertContextPack(
             $this->core->build($conversation->project->loadMissing('researchObjects')),

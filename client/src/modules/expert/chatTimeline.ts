@@ -41,6 +41,7 @@ export const EXPERT_SLOW_FIRST_TOKEN_MS = 800
 export const EXPERT_SIGNIFICANT_WAIT_MS = 1600
 
 const significantActivityPrefixes = [
+  'analysis.',
   'materials.resolve.',
   'material.text_extract.',
   'material.image_prepare.',
@@ -50,6 +51,13 @@ const significantActivityPrefixes = [
 ]
 
 const activityLabels: Record<string, string> = {
+  'analysis.materials.prepare': 'Подготавливаю материалы к анализу',
+  'analysis.material.started': 'Анализирую материал',
+  'analysis.material.completed': 'Материал проанализирован',
+  'analysis.material.failed': 'Материал не удалось проанализировать',
+  'analysis.compare.started': 'Сопоставляю сведения',
+  'analysis.compare.completed': 'Сведения сопоставлены',
+  'analysis.final.started': 'Формирую общий вывод',
   'request.accepted': 'Запрос принят',
   'materials.resolve.started': 'Подготавливаю материалы',
   'materials.resolve.completed': 'Материалы подготовлены',

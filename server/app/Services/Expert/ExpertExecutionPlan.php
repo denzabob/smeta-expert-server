@@ -37,4 +37,33 @@ final readonly class ExpertExecutionPlan
             ...$this->requirements,
         ];
     }
+
+    public function executionStrategy(): string
+    {
+        return is_string($this->requirements['execution_strategy'] ?? null)
+            ? $this->requirements['execution_strategy']
+            : ExpertAnalysisExecutionStrategy::DIRECT;
+    }
+
+    public function requiresExecutionPipeline(): bool
+    {
+        return ExpertAnalysisExecutionStrategy::requiresPipeline($this->executionStrategy());
+    }
+
+    public function withCoverage(ExpertAnalysisCoverage $coverage): self
+    {
+        return new self(
+            requestedMode: $this->requestedMode,
+            resolvedMode: $this->resolvedMode,
+            routeReason: $this->routeReason,
+            profile: $this->profile,
+            provider: $this->provider,
+            model: $this->model,
+            requiredCapabilities: $this->requiredCapabilities,
+            tools: $this->tools,
+            fallback: $this->fallback,
+            requirements: [...$this->requirements, ...$coverage->toMetadata()],
+            routerProfile: $this->routerProfile,
+        );
+    }
 }

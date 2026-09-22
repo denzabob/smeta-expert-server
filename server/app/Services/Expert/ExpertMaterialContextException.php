@@ -69,6 +69,15 @@ class ExpertMaterialContextException extends RuntimeException
         );
     }
 
+    public static function pdfSourceTooLarge(): self
+    {
+        return new self(
+            'pdf_source_too_large',
+            'Исходный PDF превышает допустимый размер для обработки.',
+            413,
+        );
+    }
+
     public static function pdfTextTooLarge(int $pageCount, int $extractedChars): self
     {
         return new self(
@@ -93,9 +102,27 @@ class ExpertMaterialContextException extends RuntimeException
         return new self('original_material_unavailable', 'Исходный материал сообщения удалён и больше недоступен.', 422);
     }
 
-    public static function multiDocumentPipelineRequired(): self
+    public static function multiDocumentPipelineRequired(?string $requestedMode = null): self
     {
-        return new self('multi_document_pipeline_required', 'Для полного анализа этого набора материалов требуется отдельный многодокументный режим.', 422);
+        $message = $requestedMode === ExpertModeResolution::FAST
+            ? 'Для полного анализа выбранного набора требуется многодокументная обработка, которая пока недоступна в выбранном режиме.'
+            : 'Для полного анализа этого набора материалов требуется отдельный многодокументный режим.';
+
+        return new self('multi_document_pipeline_required', $message, 422);
+    }
+
+    public static function multiDocumentRequired(?string $requestedMode = null): self
+    {
+        $message = $requestedMode === ExpertModeResolution::FAST
+            ? 'Для полного анализа выбранного набора требуется многодокументная обработка, которая пока недоступна в выбранном режиме.'
+            : 'Для обработки этого набора материалов требуется многодокументный режим.';
+
+        return new self('multi_document_required', $message, 422);
+    }
+
+    public static function retrievalPipelineRequired(): self
+    {
+        return new self('retrieval_pipeline_required', 'Для поиска по всему набору материалов требуется отдельный поисковый режим.', 422);
     }
 
     public static function ambiguousActiveMaterials(): self

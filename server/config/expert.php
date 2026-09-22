@@ -13,9 +13,19 @@ return [
         'absolute_timeout_seconds' => (int) env('EXPERT_STREAM_ABSOLUTE_TIMEOUT_SECONDS', 600),
         'heartbeat_seconds' => (int) env('EXPERT_STREAM_HEARTBEAT_SECONDS', 15),
     ],
+    'analysis' => [
+        'direct' => [
+            'max_materials' => (int) env('EXPERT_ANALYSIS_DIRECT_MAX_MATERIALS', 20),
+            'max_pages' => (int) env('EXPERT_ANALYSIS_DIRECT_MAX_PAGES', 150),
+            'max_source_bytes' => (int) env('EXPERT_ANALYSIS_DIRECT_MAX_SOURCE_BYTES', 50 * 1024 * 1024),
+            'max_estimated_tokens' => (int) env('EXPERT_ANALYSIS_DIRECT_MAX_ESTIMATED_TOKENS', 100000),
+        ],
+    ],
     'material_context' => [
         'xlsx_enabled' => true,
-        'max_materials_per_message' => (int) env('EXPERT_CHAT_MAX_MATERIALS_PER_MESSAGE', 5),
+        // Legacy direct-path guard. Zero means no product-level count limit;
+        // workload assessment decides how the selected set is executed.
+        'max_materials_per_message' => (int) env('EXPERT_CHAT_MAX_MATERIALS_PER_MESSAGE', 0),
         'max_total_material_bytes' => (int) env('EXPERT_CHAT_MAX_TOTAL_MATERIAL_BYTES', 10 * 1024 * 1024),
         'max_material_bytes' => (int) env('EXPERT_CHAT_MAX_MATERIAL_BYTES', 5 * 1024 * 1024),
         'max_extracted_chars_per_material' => (int) env('EXPERT_CHAT_MAX_EXTRACTED_CHARS_PER_MATERIAL', 30000),

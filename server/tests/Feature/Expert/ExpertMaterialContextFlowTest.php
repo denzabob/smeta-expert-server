@@ -150,7 +150,7 @@ class ExpertMaterialContextFlowTest extends TestCase
         $e = $this->material($conversation->project, 'E.pdf', 'application/pdf', 'E');
         $conversation->activeMaterials()->sync([$a->id, $b->id, $c->id, $d->id, $e->id]);
         $large = $planner->plan($conversation, 'Найди все противоречия', [], []);
-        $this->assertTrue($large->requiresMultiDocumentPipeline);
+        $this->assertFalse($large->requiresMultiDocumentPipeline);
         $this->assertCount(5, $large->resolvedMaterials);
         $this->send($user, $conversation, ['content' => 'Найди все противоречия'])->assertUnprocessable()->assertJsonPath('code', 'multi_document_pipeline_required');
         $this->assertSame(0, $conversation->messages()->count());

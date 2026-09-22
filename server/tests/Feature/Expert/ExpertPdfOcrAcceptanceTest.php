@@ -183,7 +183,7 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
 
         config(['expert.pdf_ocr.max_source_bytes' => strlen($fixture) - 1]);
         $this->send($user, $conversation, ['content' => 'Первый запрос', 'material_public_ids' => [$material->public_id]])
-            ->assertStatus(413)->assertJsonPath('code', 'pdf_ocr_too_large');
+            ->assertStatus(413)->assertJsonPath('code', 'pdf_source_too_large');
 
         config(['expert.pdf_ocr.max_source_bytes' => strlen($fixture) + 1, 'expert.pdf_ocr.enabled' => false]);
         $this->send($user, $conversation, ['content' => 'Второй запрос', 'material_public_ids' => [$material->public_id]])
@@ -298,7 +298,7 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
             ->assertJsonPath('code', 'pdf_encrypted');
         $this->send($user, $conversation, ['content' => 'oversized', 'material_public_ids' => [$oversized->public_id]])
             ->assertStatus(413)
-            ->assertJsonPath('code', 'pdf_ocr_too_large');
+            ->assertJsonPath('code', 'pdf_source_too_large');
         Http::assertNothingSent();
     }
 
@@ -414,7 +414,7 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
         $this->send($user, $conversation, [
             'content' => 'Обработай документ.',
             'material_public_ids' => [$material->public_id],
-        ])->assertStatus(413)->assertJsonPath('code', 'pdf_processing_too_large');
+        ])->assertStatus(413)->assertJsonPath('code', 'pdf_source_too_large');
         Http::assertNothingSent();
     }
 

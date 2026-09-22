@@ -19,7 +19,7 @@ interface ExpertRunActivitySink
 
     public function skip(string $code, string $category, ?string $detail = null): string;
 
-    public function fail(string $activityId, ?string $errorCode = null): void;
+    public function fail(string $activityId, ?string $errorCode = null, ?string $code = null): void;
 
     public function record(string $code, string $category, ?string $detail = null): string;
 

@@ -17,10 +17,14 @@ final class ExpertVisionImagePreparer
         'image/webp' => ['webp'],
     ];
 
+    public function __construct(
+        private readonly ExpertMaterialProcessingLimits $limitsResolver,
+    ) {}
+
     public function prepare(ExpertProjectMaterial $material): LLMImageContent
     {
         $disk = Storage::disk('local');
-        $limits = config('expert.vision', []);
+        $limits = $this->limitsResolver->resolve($material);
 
         try {
             if (! $disk->exists($material->storage_path)) {
@@ -71,8 +75,8 @@ final class ExpertVisionImagePreparer
             $width = imagesx($source);
             $height = imagesy($source);
 
-            $maxOutputWidth = max(1, (int) ($limits['max_output_width'] ?? 2048));
-            $maxOutputHeight = max(1, (int) ($limits['max_output_height'] ?? 2048));
+            $maxOutputWidth = max(1, $limits['max_output_width']);
+            $maxOutputHeight = max(1, $limits['max_output_height']);
             $scale = min($maxOutputWidth / $width, $maxOutputHeight / $height, 1);
             $outputWidth = max(1, (int) floor($width * $scale));
             $outputHeight = max(1, (int) floor($height * $scale));
@@ -93,13 +97,13 @@ final class ExpertVisionImagePreparer
             }
 
             ob_start();
-            $encoded = imagejpeg($canvas, null, max(40, min(95, (int) ($limits['jpeg_quality'] ?? 88))));
+            $encoded = imagejpeg($canvas, null, max(40, min(95, $limits['jpeg_quality'])));
             $bytes = ob_get_clean();
             if (! $encoded || ! is_string($bytes) || $bytes === '') {
                 throw ExpertVisionException::preparationFailed();
             }
 
-            if (strlen($bytes) > (int) ($limits['max_prepared_image_bytes'] ?? 5 * 1024 * 1024)) {
+            if (strlen($bytes) > $limits['max_prepared_payload_bytes']) {
                 throw ExpertVisionException::tooLarge();
             }
 
@@ -110,6 +114,7 @@ final class ExpertVisionImagePreparer
                 bytes: $bytes,
                 width: $outputWidth,
                 height: $outputHeight,
+                sourceBytes: $sourceBytes,
             );
         } catch (ExpertVisionException $exception) {
             throw $exception;
@@ -136,9 +141,9 @@ final class ExpertVisionImagePreparer
 
     private function assertDimensions(int $width, int $height, array $limits): void
     {
-        $maxWidth = max(1, (int) ($limits['max_width'] ?? 10000));
-        $maxHeight = max(1, (int) ($limits['max_height'] ?? 10000));
-        $maxPixels = max(1, (int) ($limits['max_pixels'] ?? 25_000_000));
+        $maxWidth = max(1, $limits['max_width']);
+        $maxHeight = max(1, $limits['max_height']);
+        $maxPixels = max(1, $limits['max_pixels']);
 
         if ($width <= 0 || $height <= 0
             || $width > $maxWidth

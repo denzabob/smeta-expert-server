@@ -55,6 +55,7 @@ final class ExpertChatStreamingService
             if ($plan->diagnostics['requires_material_disambiguation'] ?? false) {
                 throw ExpertMaterialContextException::ambiguousActiveMaterials();
             }
+            $this->chat->assertWorkloadExecutable($conversation->project, $plan, $requestedMode);
             $userMessage = $this->chat->prepareStreamingUserMessage($conversation, $content, $clientMessageId, $fingerprint, $materialPublicIds, $requestedMode);
             $this->chat->recordContext($conversation, $userMessage, $plan);
             $existingAssistant = $this->chat->assistantReplyFor($conversation, $userMessage);
@@ -96,6 +97,7 @@ final class ExpertChatStreamingService
         $historicalIds = $this->chat->historicalMaterialPublicIds($conversation, $userMessage->content, $userMessage, hasCurrentMaterials: $persistedPublicIds !== []);
         $plan = $this->chat->contextPlan($conversation, $userMessage->content, $persistedPublicIds, $historicalIds, $userMessage);
         $requestedMode = ExpertModeResolution::normalise(is_array($userMessage->metadata) && is_string($userMessage->metadata['requested_mode'] ?? null) ? $userMessage->metadata['requested_mode'] : ExpertModeResolution::AUTO);
+        $this->chat->assertWorkloadExecutable($conversation->project, $plan, $requestedMode);
 
         $lock = $this->runs->acquireConversation($conversation);
         try {
@@ -189,8 +191,13 @@ final class ExpertChatStreamingService
             $materialContext = $materialBundle->combined();
             $executionPlan = $this->chat->executionPlan($run->requestedMode, $run->userMessage->content, $run->contextPack ?? $materialBundle->plan, $materialBundle);
             $metadata = $executionPlan->toMetadata();
-            if ($run->contextPack?->requiresMultiDocumentPipeline === true) {
-                throw ExpertMaterialContextException::multiDocumentPipelineRequired();
+            $this->materialDiagnostics->logWorkload($runId, $executionPlan);
+            if ($executionPlan->requiresExecutionPipeline()) {
+                throw match ($executionPlan->executionStrategy()) {
+                    ExpertAnalysisExecutionStrategy::RETRIEVAL => ExpertMaterialContextException::retrievalPipelineRequired(),
+                    ExpertAnalysisExecutionStrategy::MULTI_DOCUMENT_EXHAUSTIVE => ExpertMaterialContextException::multiDocumentPipelineRequired($run->requestedMode),
+                    default => ExpertMaterialContextException::multiDocumentRequired($run->requestedMode),
+                };
             }
 
             $request = $run->isContinuation
@@ -272,6 +279,15 @@ final class ExpertChatStreamingService
             $retryable = $this->isRetryableError($errorCode, $hasVisibleOutput);
             $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt, $executionPlan);
         } finally {
+            if ($status === 'completed' && $executionPlan !== null && isset($materialBundle)) {
+                $coveragePack = $run->contextPack ?? $materialBundle->plan;
+                if ($coveragePack !== null) {
+                    $executionPlan = $executionPlan->withCoverage(
+                        ExpertAnalysisCoverage::fromBundle($coveragePack, $materialBundle)->markAllProcessed(),
+                    );
+                    $metadata = [...$metadata, ...$executionPlan->toMetadata()];
+                }
+            }
             if ($status === 'completed' && $activity->openActivityCodes() !== []) {
                 Log::warning('Expert chat completed with open activities.', [
                     'run_id' => $runId,
@@ -460,6 +476,8 @@ final class ExpertChatStreamingService
             'pdf_processing_too_large',
             'material_not_supported',
             'multi_document_pipeline_required',
+            'multi_document_required',
+            'retrieval_pipeline_required',
             'expert_mode_unavailable',
             'expert_capability_unavailable',
         ], true);

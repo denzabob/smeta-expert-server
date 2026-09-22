@@ -19,7 +19,7 @@ final class NoOpExpertRunActivitySink implements ExpertRunActivitySink
         return '';
     }
 
-    public function fail(string $activityId, ?string $errorCode = null): void {}
+    public function fail(string $activityId, ?string $errorCode = null, ?string $code = null): void {}
 
     public function record(string $code, string $category, ?string $detail = null): string
     {

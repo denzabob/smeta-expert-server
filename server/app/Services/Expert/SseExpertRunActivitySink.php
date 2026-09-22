@@ -61,7 +61,7 @@ final class SseExpertRunActivitySink implements ExpertRunActivitySink
         return $this->recordWithStatus($code, $category, $detail, 'skipped');
     }
 
-    public function fail(string $activityId, ?string $errorCode = null): void
+    public function fail(string $activityId, ?string $errorCode = null, ?string $code = null): void
     {
         $activity = $this->open[$activityId] ?? null;
         if ($activity === null) {
@@ -69,6 +69,7 @@ final class SseExpertRunActivitySink implements ExpertRunActivitySink
         }
 
         unset($this->open[$activityId]);
+        $activity['code'] = $code ?? $activity['code'];
         $this->emitActivity($activityId, $activity, 'failed', $errorCode);
     }
 
@@ -131,6 +132,9 @@ final class SseExpertRunActivitySink implements ExpertRunActivitySink
         ];
         if ($activity['detail'] !== null) {
             $payload['detail'] = $activity['detail'];
+        }
+        if ($errorCode !== null) {
+            $payload['error_code'] = $errorCode;
         }
         ($this->emit)('activity', $payload);
 

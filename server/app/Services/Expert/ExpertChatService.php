@@ -6,6 +6,7 @@ namespace App\Services\Expert;
 
 use App\Models\Expert\ExpertConversation;
 use App\Models\Expert\ExpertMessage;
+use App\Models\Expert\ExpertProject;
 use App\Services\LLM\DTO\LLMChatMessage;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMTextContent;
@@ -27,6 +28,7 @@ final class ExpertChatService
         private readonly ExpertChatMaterialContextDiagnostics $materialDiagnostics,
         private readonly ExpertContextPlanner $contextPlanner,
         private readonly ExpertTaskRequirementsResolver $requirementsResolver,
+        private readonly ExpertWorkloadAssessor $workloadAssessor,
         private readonly ExpertToolPolicyResolver $toolPolicy,
         private readonly ExpertModePolicyResolver $modePolicy,
         private readonly ExpertModelPolicyResolver $modelPolicy,
@@ -202,6 +204,7 @@ final class ExpertChatService
                 $resolvedExecutionPlan = $executionPlan ?? $this->executionPlan($requestedMode, $content, $bundle->plan, $bundle);
                 $runId = (string) Str::uuid();
                 $this->materialDiagnostics->log($runId, $bundle, $materialPublicIds, $historicalMaterialPublicIds);
+                $this->materialDiagnostics->logWorkload($runId, $resolvedExecutionPlan);
                 $response = $this->llmRouter
                     ->setUserId($conversation->project->user_id)
                     ->chat($this->buildRequest($conversation, $userMessage, $bundle), taskProfile: $resolvedExecutionPlan->routerProfile);
@@ -216,6 +219,11 @@ final class ExpertChatService
                         $bundle,
                         $candidate,
                         mb_strlen($parsed->text, 'UTF-8'),
+                    );
+                }
+                if ($bundle->plan !== null) {
+                    $resolvedExecutionPlan = $resolvedExecutionPlan->withCoverage(
+                        ExpertAnalysisCoverage::fromBundle($bundle->plan, $bundle)->markAllProcessed(),
                     );
                 }
 
@@ -282,10 +290,27 @@ final class ExpertChatService
             throw ExpertModelPolicyException::profileUnavailable(ExpertModeResolution::normalise($requestedMode));
         }
         $requirements = $this->requirementsResolver->resolve($pack, $content, $bundle);
+        $requirements = $requirements
+            ->withWorkload($this->workloadAssessor->assess($pack, $requirements, $bundle))
+            ->withCoverage(ExpertAnalysisCoverage::fromBundle($pack, $bundle));
         $tools = $this->toolPolicy->resolve($requirements, $bundle);
         $mode = $this->modePolicy->resolve($requestedMode, $content, $requirements);
 
         return $this->modelPolicy->resolve($mode, $requirements, $tools);
+    }
+
+    public function assertWorkloadExecutable(ExpertProject $project, ExpertContextPack $pack, string $requestedMode): void
+    {
+        $assessment = $this->workloadAssessor->assessProject($project, $pack);
+        if (! ExpertAnalysisExecutionStrategy::requiresPipeline($assessment->executionStrategy)) {
+            return;
+        }
+
+        throw match ($assessment->executionStrategy) {
+            ExpertAnalysisExecutionStrategy::RETRIEVAL => ExpertMaterialContextException::retrievalPipelineRequired(),
+            ExpertAnalysisExecutionStrategy::MULTI_DOCUMENT_EXHAUSTIVE => ExpertMaterialContextException::multiDocumentPipelineRequired($requestedMode),
+            default => ExpertMaterialContextException::multiDocumentRequired($requestedMode),
+        };
     }
 
     public function buildStreamingRequest(
@@ -350,7 +375,7 @@ final class ExpertChatService
             'service_tier' => is_string($metadata['service_tier'] ?? null) ? $metadata['service_tier'] : null,
             'latency_ms' => is_int($metadata['latency_ms'] ?? null) ? $metadata['latency_ms'] : null,
         ], static fn (mixed $value): bool => $value !== null);
-        foreach (['requested_mode', 'resolved_mode', 'route_reason', 'profile', 'effective_provider', 'effective_model', 'required_capabilities', 'tools', 'fallback', 'material_count', 'current_material_count', 'active_material_count', 'scope', 'coverage_mode', 'requires_vision', 'requires_pdf_processing', 'requires_multi_document_pipeline', 'requires_reasoning', 'requires_exhaustive_coverage', 'fallback_used', 'fallback_reason', 'tools_used', 'actual_upstream_provider', 'actual_upstream_model'] as $key) {
+        foreach (['requested_mode', 'resolved_mode', 'route_reason', 'profile', 'effective_provider', 'effective_model', 'required_capabilities', 'tools', 'fallback', 'material_count', 'current_material_count', 'active_material_count', 'scope', 'coverage_mode', 'requires_vision', 'requires_pdf_processing', 'requires_multi_document_pipeline', 'requires_retrieval_pipeline', 'requires_reasoning', 'requires_exhaustive_coverage', 'execution_strategy', 'direct_context_allowed', 'strategy_reason', 'pipeline_stages', 'pdf_count', 'image_count', 'source_bytes', 'page_count', 'estimated_text_chars', 'prepared_payload_bytes', 'estimated_context_tokens', 'coverage_requested', 'coverage_processed', 'coverage_failed', 'coverage_skipped', 'coverage_complete', 'coverage_manifest', 'fallback_used', 'fallback_reason', 'tools_used', 'actual_upstream_provider', 'actual_upstream_model'] as $key) {
             if (array_key_exists($key, $metadata)) {
                 $technicalMetadata[$key] = $metadata[$key];
             }

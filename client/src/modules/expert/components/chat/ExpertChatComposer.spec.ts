@@ -7,7 +7,7 @@ vi.mock('vuetify/components', () => ({
   VIcon: { template: '<i />' },
   VMenu: { template: '<div><slot name="activator" :props="{}" /><slot /></div>' },
   VList: { template: '<ul><slot /></ul>' },
-  VListItem: { template: '<li />' },
+  VListItem: { props: ['title', 'subtitle'], emits: ['click'], template: '<li @click="$emit(\'click\')"><span>{{ title }}</span><span>{{ subtitle }}</span><slot name="append" /></li>' },
   VChip: { template: '<span><slot /></span>' },
   VProgressCircular: { template: '<i />' },
   VSelect: { template: '<div />' },
@@ -16,7 +16,7 @@ vi.mock('vuetify/components/VBtn', () => ({ VBtn: { template: '<button @click="$
 vi.mock('vuetify/components/VIcon', () => ({ VIcon: { template: '<i />' } }))
 vi.mock('vuetify/components/VMenu', () => ({ VMenu: { template: '<div><slot name="activator" :props="{}" /><slot /></div>' } }))
 vi.mock('vuetify/components/VList', () => ({ VList: { template: '<ul><slot /></ul>' }, VListItem: { template: '<li />' } }))
-vi.mock('vuetify/components/VListItem', () => ({ VListItem: { template: '<li />' } }))
+vi.mock('vuetify/components/VListItem', () => ({ VListItem: { props: ['title', 'subtitle'], emits: ['click'], template: '<li @click="$emit(\'click\')"><span>{{ title }}</span><span>{{ subtitle }}</span><slot name="append" /></li>' } }))
 vi.mock('vuetify/components/VChip', () => ({ VChip: { template: '<span><slot /></span>' } }))
 vi.mock('vuetify/components/VProgressCircular', () => ({ VProgressCircular: { template: '<i />' } }))
 vi.mock('vuetify/components/VSelect', () => ({ VSelect: { template: '<div />' } }))
@@ -26,6 +26,18 @@ import ExpertChatComposer from './ExpertChatComposer.vue'
 afterEach(() => { document.body.innerHTML = '' })
 
 describe('Expert Chat composer local file drop', () => {
+  it('uses a compact mode pill instead of a select', async () => {
+    const root = document.createElement('div')
+    document.body.append(root)
+    const app = createApp(ExpertChatComposer, { contextChips: [], mode: 'auto' })
+    app.mount(root)
+    await nextTick()
+
+    expect(root.querySelector('select')).toBeNull()
+    expect(root.textContent).toContain('Auto')
+    app.unmount()
+  })
+
   it('sends a batch through the same attach-files event and clears the nested drag overlay', async () => {
     const attachFiles = vi.fn()
     const root = document.createElement('div')

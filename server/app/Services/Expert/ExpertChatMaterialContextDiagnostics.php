@@ -8,6 +8,35 @@ use Illuminate\Support\Facades\Log;
 
 final class ExpertChatMaterialContextDiagnostics
 {
+    public function logWorkload(string $runId, ExpertExecutionPlan $plan): void
+    {
+        $metadata = $plan->toMetadata();
+        Log::info('Expert analysis workload assessed.', [
+            'run_id' => $runId,
+            'material_count' => $metadata['material_count'] ?? 0,
+            'pdf_count' => $metadata['pdf_count'] ?? 0,
+            'image_count' => $metadata['image_count'] ?? 0,
+            'source_bytes' => $metadata['source_bytes'] ?? 0,
+            'page_count' => $metadata['page_count'] ?? 0,
+            'total_pages' => $metadata['page_count'] ?? 0,
+            'estimated_text_chars' => $metadata['estimated_text_chars'] ?? 0,
+            'prepared_payload_bytes' => $metadata['prepared_payload_bytes'] ?? 0,
+            'estimated_context_tokens' => $metadata['estimated_context_tokens'] ?? 0,
+            'scope' => $metadata['scope'] ?? null,
+            'coverage_mode' => $metadata['coverage_mode'] ?? null,
+            'execution_strategy' => $metadata['execution_strategy'] ?? null,
+            'direct_context_allowed' => $metadata['direct_context_allowed'] ?? false,
+            'strategy_reason' => $metadata['strategy_reason'] ?? null,
+            'coverage_requested' => $metadata['coverage_requested'] ?? 0,
+            'coverage_processed' => $metadata['coverage_processed'] ?? 0,
+            'coverage_failed' => $metadata['coverage_failed'] ?? 0,
+            'coverage_skipped' => $metadata['coverage_skipped'] ?? 0,
+            'coverage_complete' => $metadata['coverage_complete'] ?? false,
+            'requested_mode' => $metadata['requested_mode'] ?? null,
+            'resolved_mode' => $metadata['resolved_mode'] ?? null,
+        ]);
+    }
+
     /**
      * @param  list<string>  $currentIds
      * @param  list<string>  $historicalIds

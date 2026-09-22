@@ -81,6 +81,7 @@ class MessageController extends Controller
             if ($plan->diagnostics['requires_material_disambiguation'] ?? false) {
                 throw ExpertMaterialContextException::ambiguousActiveMaterials();
             }
+            $this->expertChat->assertWorkloadExecutable($conversation->project, $plan, $requestedMode);
             $materialContext = $this->materialContextBuilder->buildPartitioned(
                 $conversation->project,
                 $plan->currentMaterials,
@@ -89,8 +90,12 @@ class MessageController extends Controller
                 plan: $plan,
             );
             $executionPlan = $this->expertChat->executionPlan($requestedMode, $content, $plan, $materialContext);
-            if ($plan->requiresMultiDocumentPipeline) {
-                throw ExpertMaterialContextException::multiDocumentPipelineRequired();
+            if ($executionPlan->requiresExecutionPipeline()) {
+                throw match ($executionPlan->executionStrategy()) {
+                    \App\Services\Expert\ExpertAnalysisExecutionStrategy::RETRIEVAL => ExpertMaterialContextException::retrievalPipelineRequired(),
+                    \App\Services\Expert\ExpertAnalysisExecutionStrategy::MULTI_DOCUMENT_EXHAUSTIVE => ExpertMaterialContextException::multiDocumentPipelineRequired($requestedMode),
+                    default => ExpertMaterialContextException::multiDocumentRequired($requestedMode),
+                };
             }
 
             $result = $this->expertChat->reply(

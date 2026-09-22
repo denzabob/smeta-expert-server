@@ -19,6 +19,7 @@ final class ExpertChatMaterialContextBuilder
         private readonly ExpertMaterialContextBuilder $textContextBuilder,
         private readonly ExpertVisionImagePreparer $imagePreparer,
         private readonly ExpertPdfOcrCache $ocrCache,
+        private readonly ExpertMaterialProcessingLimits $limits,
     ) {}
 
     /** @param list<string> $publicIds */
@@ -30,6 +31,8 @@ final class ExpertChatMaterialContextBuilder
 
             return new ExpertChatMaterialContext([], []);
         }
+
+        $prepareActivity = $activity->start(ExpertAnalysisActivityCode::MATERIALS_PREPARE, 'analysis');
 
         $requestedIds = array_values(array_unique($publicIds));
         $resolveActivity = $activity->start('materials.resolve.started', 'material');
@@ -58,9 +61,15 @@ final class ExpertChatMaterialContextBuilder
 
         $images = [];
         $totalPreparedBytes = 0;
-        $maxTotalPreparedBytes = max(1, (int) config('expert.vision.max_total_vision_bytes', 12 * 1024 * 1024));
+        $imageLimits = $this->limits->resolve($imageMaterials[0] ?? new ExpertProjectMaterial);
+        $maxTotalPreparedBytes = max(1, $imageLimits['max_total_prepared_payload_bytes']);
         foreach ($imageMaterials as $material) {
             $this->throwIfCancellationRequested($activity);
+            $analysisActivity = $activity->start(
+                ExpertAnalysisActivityCode::MATERIAL_STARTED,
+                'analysis',
+                $this->presentationName($material),
+            );
             $imageActivity = $activity->start('material.image_prepare.started', 'material', (string) $material->original_name);
             try {
                 $image = $this->imagePreparer->prepare($material);
@@ -68,13 +77,16 @@ final class ExpertChatMaterialContextBuilder
                 if ($totalPreparedBytes > $maxTotalPreparedBytes) throw ExpertVisionException::tooLarge();
                 $images[] = $image;
                 $activity->complete($imageActivity, 'material.image_prepare.completed');
+                $activity->complete($analysisActivity, ExpertAnalysisActivityCode::MATERIAL_COMPLETED);
                 Log::info('Expert vision image prepared.', ['material_public_id' => $image->materialPublicId, 'width' => $image->width, 'height' => $image->height, 'prepared_bytes' => strlen($image->bytes)]);
             } catch (ExpertVisionException $exception) {
                 $activity->fail($imageActivity, $exception->errorCode);
+                $activity->fail($analysisActivity, $exception->errorCode, ExpertAnalysisActivityCode::MATERIAL_FAILED);
                 Log::warning('Expert vision image rejected.', ['material_public_id' => (string) $material->public_id, 'error_code' => $exception->errorCode]);
                 throw $exception;
             } catch (\Throwable $exception) {
                 $activity->fail($imageActivity, $this->errorCode($exception));
+                $activity->fail($analysisActivity, $this->errorCode($exception), ExpertAnalysisActivityCode::MATERIAL_FAILED);
                 throw $exception;
             }
         }
@@ -86,6 +98,7 @@ final class ExpertChatMaterialContextBuilder
             static fn (ExpertPdfOcrCandidate $candidate): bool => $candidate->processingIntent === LLMFileProcessingIntent::PDF_OCR,
         ));
         if ($ocrCandidates !== [] && ! (bool) config('expert.pdf_ocr.enabled', true)) throw ExpertPdfOcrException::disabled();
+        $pdfLimits = $this->limits->resolvePdf();
         $files = [];
         $pending = [];
         $totalFileBase64Bytes = 0;
@@ -113,7 +126,7 @@ final class ExpertChatMaterialContextBuilder
             } else {
                 $activity->record($cachePrefix.'.miss', 'material', $candidate->name);
                 $totalFileBase64Bytes += strlen(base64_encode($candidate->bytes));
-                if ($totalFileBase64Bytes > (int) config('expert.pdf_ocr.max_base64_request_bytes', 56 * 1024 * 1024)) {
+                if ($totalFileBase64Bytes > $pdfLimits['max_prepared_payload_bytes']) {
                     throw $candidate->processingIntent === LLMFileProcessingIntent::PDF_TEXT_PARSE
                         ? ExpertPdfOcrException::processingTooLarge()
                         : ExpertPdfOcrException::tooLarge();
@@ -123,6 +136,7 @@ final class ExpertChatMaterialContextBuilder
             }
         }
 
+        $activity->complete($prepareActivity, ExpertAnalysisActivityCode::MATERIALS_PREPARE);
         $activity->record('context.build.completed', 'context');
 
         return new ExpertChatMaterialContext($textMaterials, $images, $files, $pending);

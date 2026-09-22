@@ -78,6 +78,7 @@ describe('Expert activity timeline state', () => {
     expect(isSignificantExpertTimelineActivity({ ...started, code: 'request.accepted', status: 'completed' })).toBe(false)
     expect(isSignificantExpertTimelineActivity({ ...started, code: 'model.first_token', status: 'completed' })).toBe(false)
     expect(isSignificantExpertTimelineActivity({ ...started, code: 'material.image_prepare.started' })).toBe(true)
+    expect(isSignificantExpertTimelineActivity({ ...started, code: 'analysis.material.started' })).toBe(true)
     expect(hasSignificantExpertTimelineActivity({
       ...createExpertTimelineRun('run-1'),
       activities: [{ ...started, code: 'pdf.ocr.started' }],

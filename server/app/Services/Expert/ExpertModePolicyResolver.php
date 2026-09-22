@@ -29,6 +29,9 @@ final class ExpertModePolicyResolver
         if ($requirements->hasExplicitComparison && $requirements->materialCount > 1) {
             return true;
         }
+        if ($requirements->requiresRetrievalPipeline || $requirements->requiresMultiDocumentPipeline) {
+            return true;
+        }
         if ($requirements->requiresReasoning && $requirements->materialCount > 1) {
             return true;
         }
@@ -44,6 +47,12 @@ final class ExpertModePolicyResolver
             }
             if ($requirements->hasExplicitComparison && $requirements->materialCount > 1) {
                 return 'auto_multi_document_reasoning';
+            }
+            if ($requirements->requiresRetrievalPipeline) {
+                return 'auto_retrieval_analysis';
+            }
+            if ($requirements->requiresMultiDocumentPipeline) {
+                return 'auto_multi_document_workload';
             }
             if ($requirements->requiresReasoning && $requirements->materialCount > 1) {
                 return 'auto_targeted_comparison';

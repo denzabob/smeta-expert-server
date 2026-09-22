@@ -16,7 +16,7 @@ vi.mock('vuetify/components', () => ({
   VProgressLinear: { template: '<div />' }, VList: { template: '<div><slot /></div>' },
   VListItem: { template: '<div @click="$emit(\'click\')"><slot /></div>' },
   VListItemTitle: { template: '<div><slot /></div>' }, VListItemSubtitle: { template: '<div><slot /></div>' },
-  VSpacer: { template: '<div />' },
+  VSpacer: { template: '<div />' }, VSnackbar: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' },
 }))
 vi.mock('vuetify/components/VCard', () => ({ VCard: { template: '<div><slot /></div>' }, VCardTitle: { template: '<div><slot /></div>' }, VCardText: { template: '<div><slot /></div>' } }))
 vi.mock('vuetify/components/VAlert', () => ({ VAlert: { template: '<div><slot /></div>' } }))
@@ -29,6 +29,7 @@ vi.mock('vuetify/components/VBtn', () => ({ VBtn: { emits: ['click'], template: 
 vi.mock('vuetify/components/VDivider', () => ({ VDivider: { template: '<hr />' } }))
 vi.mock('vuetify/components/VCheckbox', () => ({ VCheckboxBtn: { template: '<div />' } }))
 vi.mock('vuetify/components/VProgressLinear', () => ({ VProgressLinear: { template: '<div />' } }))
+vi.mock('vuetify/components/VSnackbar', () => ({ VSnackbar: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' } }))
 vi.mock('vuetify/components/VList', () => ({ VList: { template: '<div><slot /></div>' }, VListItem: { template: '<div @click="$emit(\'click\')"><slot /></div>' }, VListItemTitle: { template: '<div><slot /></div>' }, VListItemSubtitle: { template: '<div><slot /></div>' } }))
 
 const capabilities = {
@@ -71,10 +72,10 @@ describe('Expert task profile admin', () => {
     vi.mocked(api.post).mockResolvedValue({ data: { status: 'PASS', checked_at: '2026-09-20T00:00:00Z', latency_ms: 10, ttft_ms: null, error_code: null } } as never)
 
     const { root, app } = await mountProfile()
-    expect(root.textContent).toContain('Эксперт — Чат')
+    expect(root.textContent).toContain('Эксперт — Fast')
     expect(root.textContent).toContain('legacy/pinned')
     expect(root.textContent).toContain('PROFILE')
-    Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('Настроить'))?.click()
+    Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('Редактировать'))?.click()
     await settle()
     expect(root.textContent).toContain('Модель не найдена в текущем каталоге')
     expect(root.textContent).toContain('Эта модель не сможет анализировать изображения')
@@ -104,7 +105,7 @@ describe('Expert task profile admin', () => {
     })
     vi.mocked(api.put).mockResolvedValue({ data: { ...profile, effective: { provider: 'routerai', model: 'new/model' } } } as never)
     const { root, app } = await mountProfile()
-    Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('Настроить'))?.click()
+    Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('Редактировать'))?.click()
     await settle()
     expect(vi.mocked(api.get)).toHaveBeenCalledWith('/api/admin/llm-model-catalog/routerai', {
       params: { q: undefined, filter: ['compatible'], sort: 'catalog', page: 1 },
@@ -131,7 +132,7 @@ describe('Expert task profile admin', () => {
     expect(vi.mocked(api.get)).toHaveBeenCalledWith('/api/admin/llm-model-catalog/routerai', {
       params: { q: 'new', filter: ['compatible'], sort: 'typical_cost', page: 1 },
     })
-    const modelInput = Array.from(root.querySelectorAll('label')).find(label => label.textContent?.includes('Model ID'))?.querySelector('input')
+    const modelInput = Array.from(root.querySelectorAll('label')).find(label => label.textContent?.includes('Основная модель'))?.querySelector('input')
     expect(modelInput).toBeTruthy()
     if (modelInput) {
       modelInput.value = 'new/model'
@@ -140,10 +141,11 @@ describe('Expert task profile admin', () => {
     await settle()
     expect(root.textContent).toContain('Есть несохранённые изменения')
     expect(vi.mocked(api.put)).not.toHaveBeenCalled()
-    Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('Сохранить профиль'))?.click()
+    Array.from(root.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Сохранить')?.click()
     await settle()
-    expect(vi.mocked(api.put)).toHaveBeenCalledWith('/api/admin/llm-profiles/expert-chat', {
-      provider: 'routerai', model: 'new/model', enabled: true, fallback_policy: 'none',
+    expect(vi.mocked(api.put)).toHaveBeenCalledWith('/api/admin/llm-profiles/expert-chat?task=expert_fast', {
+      provider: 'routerai', model: 'new/model', enabled: true, fallback_policy: 'none', fallback_enabled: false,
+      fallback_provider: null, fallback_model: null, reasoning_effort: null, max_output_tokens: null, temperature: null,
     })
     app.unmount()
   })

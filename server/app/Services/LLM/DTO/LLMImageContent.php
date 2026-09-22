@@ -13,5 +13,6 @@ final class LLMImageContent
         public readonly string $bytes,
         public readonly int $width,
         public readonly int $height,
+        public readonly int $sourceBytes = 0,
     ) {}
 }
