@@ -34,6 +34,14 @@ final class ExpertChatMaterialContextDiagnostics
             'coverage_complete' => $metadata['coverage_complete'] ?? false,
             'requested_mode' => $metadata['requested_mode'] ?? null,
             'resolved_mode' => $metadata['resolved_mode'] ?? null,
+            'task_type' => $metadata['task_type'] ?? null,
+            'task_target' => $metadata['task_target'] ?? null,
+            'material_scope' => $metadata['material_scope'] ?? null,
+            'cross_document' => $metadata['cross_document'] ?? false,
+            'domain' => $metadata['domain'] ?? null,
+            'intent_confidence' => $metadata['intent_confidence'] ?? null,
+            'intent_resolver_source' => $metadata['intent_resolver_source'] ?? null,
+            'intent_signals' => $metadata['intent_signals'] ?? [],
         ]);
     }
 

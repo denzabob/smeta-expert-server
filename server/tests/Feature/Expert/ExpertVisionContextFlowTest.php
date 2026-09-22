@@ -30,15 +30,18 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery;
+use Tests\Feature\Expert\Support\ConfiguresExpertModeProfiles;
 use Tests\TestCase;
 
 class ExpertVisionContextFlowTest extends TestCase
 {
+    use ConfiguresExpertModeProfiles;
     use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
+        $this->configureExpertModeProfiles();
         Storage::fake('local');
         Cache::forget('llm:routerai:model_catalog:v1');
     }
@@ -179,7 +182,10 @@ class ExpertVisionContextFlowTest extends TestCase
         $payload = ['content' => 'Проверь', 'material_public_ids' => [$first->public_id]];
         $firstResponse = $this->send($user, $conversation, $payload, $messageId);
         $this->assertSame(201, $firstResponse->status(), json_encode($firstResponse->json(), JSON_UNESCAPED_UNICODE));
-        $firstResponse->assertJsonPath('assistant_message.content', 'Изображение обработано.');
+        $firstResponse->assertJsonPath('assistant_message.content', 'Изображение обработано.')
+            ->assertJsonPath('assistant_message.metadata.requested_mode', 'auto')
+            ->assertJsonPath('assistant_message.metadata.resolved_mode', 'deep')
+            ->assertJsonPath('assistant_message.metadata.profile', 'expert_deep');
         $this->send($user, $conversation, $payload, $messageId)
             ->assertOk()->assertJsonPath('assistant_message.content', 'Изображение обработано.');
         $this->send($user, $conversation, [
@@ -188,6 +194,8 @@ class ExpertVisionContextFlowTest extends TestCase
         ], $messageId)->assertConflict()->assertJsonPath('code', 'expert_request_conflict');
 
         Http::assertSentCount(2);
+        Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), '/models'));
+        Http::assertSent(fn (ClientRequest $request): bool => $request->url() === 'https://routerai.test/api/v1/chat/completions');
         $this->assertSame(1, $conversation->messages()->where('role', 'user')->count());
         $this->assertSame(1, $conversation->messages()->where('role', 'assistant')->count());
         $this->assertTrue(Storage::disk('local')->exists($first->storage_path));

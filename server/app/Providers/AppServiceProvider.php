@@ -8,8 +8,6 @@ use App\Domain\PriceIndices\Infrastructure\Parsing\ClassifierArchiveCommandRunne
 use App\Domain\PriceIndices\Infrastructure\Parsing\ProcessClassifierArchiveCommandRunner;
 use App\Models\Chat\ChatConversation;
 use App\Models\Expert\ExpertProject;
-use App\Services\Expert\ExpertMaterialTextExtractor;
-use App\Services\Expert\ExpertMaterialTextExtractorInterface;
 use App\Models\Idea;
 use App\Models\MaterialDimensionParseFailure;
 use App\Models\MaterialDimensionRule;
@@ -24,6 +22,10 @@ use App\Policies\IdeaPolicy;
 use App\Policies\MaterialDimensionParseFailurePolicy;
 use App\Policies\MaterialDimensionRulePolicy;
 use App\Policies\MaterialTypePatternPolicy;
+use App\Services\Expert\ExpertMaterialTextExtractor;
+use App\Services\Expert\ExpertMaterialTextExtractorInterface;
+use App\Services\Expert\ExpertSemanticTaskClassifier;
+use App\Services\Expert\NullExpertSemanticTaskClassifier;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -38,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ClassifierHttpTransport::class, LaravelClassifierHttpTransport::class);
         $this->app->bind(ClassifierArchiveCommandRunner::class, ProcessClassifierArchiveCommandRunner::class);
         $this->app->bind(ExpertMaterialTextExtractorInterface::class, ExpertMaterialTextExtractor::class);
+        $this->app->singleton(ExpertSemanticTaskClassifier::class, NullExpertSemanticTaskClassifier::class);
     }
 
     /**

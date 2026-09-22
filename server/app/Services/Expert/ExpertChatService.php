@@ -11,7 +11,6 @@ use App\Services\LLM\DTO\LLMChatMessage;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMTextContent;
 use App\Services\LLM\LLMRouter;
-use App\Services\LLM\LLMTaskProfileResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +26,7 @@ final class ExpertChatService
         private readonly ExpertHistoricalMaterialResolver $historicalMaterials,
         private readonly ExpertChatMaterialContextDiagnostics $materialDiagnostics,
         private readonly ExpertContextPlanner $contextPlanner,
+        private readonly ExpertTaskIntentResolver $taskIntentResolver,
         private readonly ExpertTaskRequirementsResolver $requirementsResolver,
         private readonly ExpertWorkloadAssessor $workloadAssessor,
         private readonly ExpertToolPolicyResolver $toolPolicy,
@@ -44,7 +44,9 @@ final class ExpertChatService
             return ExpertContextPack::fromSnapshot($fresh->projectCore, $snapshot);
         }
 
-        return $this->contextPlanner->plan($conversation, $content, $currentIds, $historicalIds);
+        $intent = $this->taskIntentResolver->resolveForConversation($conversation, $content, $currentIds, $historicalIds);
+
+        return $this->contextPlanner->plan($conversation, $content, $currentIds, $historicalIds, $intent);
     }
 
     public function recordContext(ExpertConversation $conversation, ExpertMessage $message, ExpertContextPack $pack): void
@@ -289,7 +291,7 @@ final class ExpertChatService
         if ($pack === null) {
             throw ExpertModelPolicyException::profileUnavailable(ExpertModeResolution::normalise($requestedMode));
         }
-        $requirements = $this->requirementsResolver->resolve($pack, $content, $bundle);
+        $requirements = $this->requirementsResolver->resolve($pack, $content, $bundle, $pack->intent);
         $requirements = $requirements
             ->withWorkload($this->workloadAssessor->assess($pack, $requirements, $bundle))
             ->withCoverage(ExpertAnalysisCoverage::fromBundle($pack, $bundle));
@@ -375,7 +377,7 @@ final class ExpertChatService
             'service_tier' => is_string($metadata['service_tier'] ?? null) ? $metadata['service_tier'] : null,
             'latency_ms' => is_int($metadata['latency_ms'] ?? null) ? $metadata['latency_ms'] : null,
         ], static fn (mixed $value): bool => $value !== null);
-        foreach (['requested_mode', 'resolved_mode', 'route_reason', 'profile', 'effective_provider', 'effective_model', 'required_capabilities', 'tools', 'fallback', 'material_count', 'current_material_count', 'active_material_count', 'scope', 'coverage_mode', 'requires_vision', 'requires_pdf_processing', 'requires_multi_document_pipeline', 'requires_retrieval_pipeline', 'requires_reasoning', 'requires_exhaustive_coverage', 'execution_strategy', 'direct_context_allowed', 'strategy_reason', 'pipeline_stages', 'pdf_count', 'image_count', 'source_bytes', 'page_count', 'estimated_text_chars', 'prepared_payload_bytes', 'estimated_context_tokens', 'coverage_requested', 'coverage_processed', 'coverage_failed', 'coverage_skipped', 'coverage_complete', 'coverage_manifest', 'fallback_used', 'fallback_reason', 'tools_used', 'actual_upstream_provider', 'actual_upstream_model'] as $key) {
+        foreach (['requested_mode', 'resolved_mode', 'route_reason', 'profile', 'effective_provider', 'effective_model', 'required_capabilities', 'tools', 'fallback', 'material_count', 'current_material_count', 'active_material_count', 'scope', 'coverage_mode', 'requires_vision', 'requires_pdf_processing', 'requires_multi_document_pipeline', 'requires_retrieval_pipeline', 'requires_reasoning', 'requires_exhaustive_coverage', 'task_type', 'task_target', 'material_scope', 'cross_document', 'domain', 'intent_confidence', 'intent_resolver_source', 'intent_signals', 'execution_strategy', 'direct_context_allowed', 'strategy_reason', 'pipeline_stages', 'pdf_count', 'image_count', 'source_bytes', 'page_count', 'estimated_text_chars', 'prepared_payload_bytes', 'estimated_context_tokens', 'coverage_requested', 'coverage_processed', 'coverage_failed', 'coverage_skipped', 'coverage_complete', 'coverage_manifest', 'fallback_used', 'fallback_reason', 'tools_used', 'actual_upstream_provider', 'actual_upstream_model'] as $key) {
             if (array_key_exists($key, $metadata)) {
                 $technicalMetadata[$key] = $metadata[$key];
             }

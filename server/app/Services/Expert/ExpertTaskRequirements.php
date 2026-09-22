@@ -25,6 +25,7 @@ final readonly class ExpertTaskRequirements
         public bool $requiresRetrievalPipeline = false,
         public ?ExpertWorkloadAssessment $workload = null,
         public ?ExpertAnalysisCoverage $coverage = null,
+        public ?ExpertTaskIntent $intent = null,
     ) {}
 
     /** @return array<string, mixed> */
@@ -46,6 +47,7 @@ final readonly class ExpertTaskRequirements
             'requires_retrieval_pipeline' => $this->requiresRetrievalPipeline,
             'requires_reasoning' => $this->requiresReasoning,
             'requires_exhaustive_coverage' => $this->requiresExhaustiveCoverage,
+            ...($this->intent?->toMetadata() ?? []),
             ...($this->coverage?->toMetadata() ?? []),
             ...($this->workload?->toMetadata() ?? []),
         ];
@@ -72,6 +74,7 @@ final readonly class ExpertTaskRequirements
             requiresRetrievalPipeline: $workload->requiresRetrievalPipeline,
             workload: $workload,
             coverage: $this->coverage,
+            intent: $this->intent,
         );
     }
 
@@ -96,6 +99,7 @@ final readonly class ExpertTaskRequirements
             requiresRetrievalPipeline: $this->requiresRetrievalPipeline,
             workload: $this->workload,
             coverage: $coverage,
+            intent: $this->intent,
         );
     }
 }

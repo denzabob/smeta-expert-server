@@ -18,12 +18,13 @@ final class ExpertContextPack
         public readonly bool $requiresMultiDocumentPipeline,
         public readonly array $diagnostics = [],
         public readonly array $chatHistory = [],
+        public readonly ?ExpertTaskIntent $intent = null,
     ) {}
 
     public function snapshot(): array
     {
         return [
-            'version' => 1,
+            'version' => 2,
             'project_core_version' => hash('sha256', $this->projectCore),
             'project_core' => $this->projectCore,
             'current_material_ids' => $this->currentMaterials,
@@ -33,6 +34,7 @@ final class ExpertContextPack
             'scope' => $this->scope,
             'coverage_mode' => $this->coverageMode,
             'requires_multi_document_pipeline' => $this->requiresMultiDocumentPipeline,
+            'task_intent' => $this->intent?->toArray(),
         ];
     }
 
@@ -47,6 +49,9 @@ final class ExpertContextPack
             $snapshot['scope'] ?? 'single',
             $snapshot['coverage_mode'] ?? 'focused',
             (bool) ($snapshot['requires_multi_document_pipeline'] ?? false),
+            intent: is_array($snapshot['task_intent'] ?? null)
+                ? ExpertTaskIntent::fromArray($snapshot['task_intent'])
+                : null,
         );
     }
 }
