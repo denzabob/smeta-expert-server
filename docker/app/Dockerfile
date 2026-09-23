@@ -31,17 +31,18 @@ RUN apt-get update && apt-get install -y \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
     libcups2 \
+    default-mysql-client \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install pdo_mysql mbstring zip gd bcmath \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Required by Laravel's MySQL schema-dump loader in the test environment.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    default-mysql-client \
     && printf '[client]\nskip-ssl\n' > /etc/mysql/conf.d/99-prism-local.cnf \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Python package is part of the runtime image, but browser binaries are kept
+# in the persistent playwright_browsers volume and reconciled by deploy-app.
+RUN pip3 install --no-cache-dir --break-system-packages playwright
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 
 # -------------------------
 # Composer
@@ -87,15 +88,6 @@ COPY server/ .
 RUN php artisan package:discover --ansi || true
 
 # -------------------------
-# Playwright
-# -------------------------
-
-ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
-
-RUN pip3 install --no-cache-dir --break-system-packages playwright \
-    && python3 -m playwright install chromium
-
-# -------------------------
 # Laravel setup
 # -------------------------
 
@@ -105,7 +97,7 @@ RUN php artisan key:generate --ansi || true
 # Permissions
 # -------------------------
 
-RUN chown -R www-data:www-data /var/www/html \
+RUN chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
