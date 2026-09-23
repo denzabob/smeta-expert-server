@@ -98,12 +98,7 @@ export function filterSortAndPaginateMaterials(
   page: number,
   pageSize: number,
 ) {
-  const normalizedSearch = search.trim().toLocaleLowerCase('ru')
-  const filtered = materials.filter((material) =>
-    (filter === 'all' || material.kind === filter)
-    && material.name.toLocaleLowerCase('ru').includes(normalizedSearch),
-  )
-  const sorted = sortExpertMaterials(filtered, sortBy, sortDirection)
+  const sorted = filterAndSortExpertMaterials(materials, search, filter, sortBy, sortDirection)
   const safePageSize = Math.max(1, pageSize)
   const pageCount = Math.max(1, Math.ceil(sorted.length / safePageSize))
   const safePage = Math.min(Math.max(1, page), pageCount)
@@ -113,6 +108,21 @@ export function filterSortAndPaginateMaterials(
     items: sorted.slice((safePage - 1) * safePageSize, safePage * safePageSize),
     pageCount,
   }
+}
+
+export function filterAndSortExpertMaterials(
+  materials: ExpertProjectMaterial[],
+  search: string,
+  filter: 'all' | ExpertMaterialKind,
+  sortBy: ExpertFileSortBy,
+  sortDirection: ExpertFileSortDirection,
+): ExpertProjectMaterial[] {
+  const normalizedSearch = search.trim().toLocaleLowerCase('ru')
+  const filtered = materials.filter((material) =>
+    (filter === 'all' || material.kind === filter)
+    && material.name.toLocaleLowerCase('ru').includes(normalizedSearch),
+  )
+  return sortExpertMaterials(filtered, sortBy, sortDirection)
 }
 
 export function canAddMaterialToSelection(

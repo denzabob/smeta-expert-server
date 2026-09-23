@@ -15,7 +15,7 @@
         <template #empty><p class="expert-library-picker__empty">Материалы не найдены.</p></template>
       </ExpertFileBrowser>
     </v-card-text>
-    <v-card-actions>
+    <v-card-actions class="expert-library-picker__footer">
       <v-spacer />
       <v-btn @click="$emit('cancel')">Отмена</v-btn>
       <v-btn color="primary" variant="flat" :disabled="!canConfirm" @click="$emit('confirm', [...selectedIds])">Добавить {{ selectedIds.length }}</v-btn>
@@ -50,6 +50,7 @@ const canConfirm = computed(() => selectedIds.value.length > 0 && selectionWithi
 
 <style scoped>
 .expert-library-picker { display: flex; max-height: min(88vh, 860px); flex-direction: column; }
-.expert-library-picker__body { min-height: 0; overflow-y: auto; }
+.expert-library-picker__body { min-height: 0; overflow-y: auto; padding-bottom: 16px; }
+.expert-library-picker__footer { position: sticky; z-index: 2; bottom: 0; flex: 0 0 auto; padding: 12px 16px; border-top: 1px solid rgba(var(--v-theme-outline-variant), .6); background: rgb(var(--v-theme-surface)); }
 .expert-library-picker__empty { padding: 24px 12px; color: rgb(var(--v-theme-on-surface-variant)); text-align: center; }
 </style>

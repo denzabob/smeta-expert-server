@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createApp, h, nextTick, ref } from 'vue'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import ExpertFileBrowser from './ExpertFileBrowser.vue'
 import type { ExpertProjectMaterial } from '../../types'
 
@@ -11,7 +11,7 @@ function material(id: string, name: string): ExpertProjectMaterial {
   }
 }
 
-afterEach(() => { document.body.innerHTML = ''; window.localStorage.clear() })
+afterEach(() => { document.body.innerHTML = ''; window.localStorage.clear(); Reflect.deleteProperty(document.documentElement, 'scrollHeight'); vi.unstubAllGlobals() })
 
 describe('Expert file browser', () => {
   it('switches among the three views and supports modifier and keyboard selection', async () => {
@@ -93,6 +93,40 @@ describe('Expert file browser', () => {
     await nextTick()
     expect(root.querySelector('[role="menu"]')?.textContent).toContain('Просмотреть')
     expect(root.querySelector('[role="menu"]')?.textContent).toContain('Удалить')
+    app.unmount()
+  })
+
+  it('fills the viewport in batches and cancels a pending append when a filter changes', async () => {
+    let loadNext: (() => void) | undefined
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        if (options?.rootMargin === '160px 0px') loadNext = () => callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    const root = document.createElement('div')
+    document.body.append(root)
+    Object.defineProperty(document.documentElement, 'scrollHeight', {
+      configurable: true,
+      get: () => root.querySelectorAll('[data-file-item]').length < 100 ? 0 : 1200,
+    })
+    const items = Array.from({ length: 110 }, (_, index) => material(`m-${index}`, `Документ ${index}.pdf`))
+    items.push({ ...material('image-1', 'Фото 1.jpg'), kind: 'image' }, { ...material('image-2', 'Фото 2.jpg'), kind: 'image' })
+    const app = createApp(ExpertFileBrowser, { items, mode: 'library', storageKey: 'test.batch', selectedIds: [] })
+    app.mount(root)
+    expect(root.querySelectorAll('[data-file-item]')).toHaveLength(50)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    await nextTick()
+    expect(root.querySelectorAll('[data-file-item]')).toHaveLength(100)
+
+    loadNext?.()
+    ;(Array.from(root.querySelectorAll('button')).find((button) => button.textContent?.trim() === 'Изображения') as HTMLButtonElement).click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    await nextTick()
+    expect(root.querySelectorAll('[data-file-item]')).toHaveLength(2)
+    expect(root.querySelector('.expert-file-browser__loading')).toBeNull()
     app.unmount()
   })
 })

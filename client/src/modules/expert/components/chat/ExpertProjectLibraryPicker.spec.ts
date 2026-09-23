@@ -24,11 +24,21 @@ const material = (id: string, name: string, kind: 'document' | 'image' = 'docume
   size: '1 КБ', category: kind, status: 'Загружен', useInAi: false, icon: 'mdi-file-outline',
 })
 
-afterEach(() => { document.body.innerHTML = ''; window.localStorage.clear() })
+afterEach(() => { document.body.innerHTML = ''; window.localStorage.clear(); Reflect.deleteProperty(document.documentElement, 'scrollHeight'); vi.unstubAllGlobals() })
 
 describe('Project library picker', () => {
-  it('keeps selection across pages and filters and commits only on Add N', async () => {
-    const materials = Array.from({ length: 27 }, (_, index) => material(`m-${index}`, `Документ ${index}.pdf`))
+  it('appends files on scroll, keeps selection across search and commits only on Add N', async () => {
+    let loadNext: (() => void) | undefined
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        if (options?.rootMargin === '160px 0px') loadNext = () => callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: 1200 })
+    const materials = Array.from({ length: 52 }, (_, index) => material(`m-${index}`, `Документ ${index}.pdf`))
     materials.push(material('image-1', 'Особое фото.jpg', 'image'))
     const confirm = vi.fn()
     const cancel = vi.fn()
@@ -39,17 +49,21 @@ describe('Project library picker', () => {
     })
     app.mount(root)
 
-    expect(root.querySelectorAll('[data-file-item]')).toHaveLength(25)
+    expect(root.querySelectorAll('[data-file-item]')).toHaveLength(50)
+    expect(root.querySelector('.expert-file-browser__pagination')).toBeNull()
+    expect(root.querySelector('.expert-file-browser__page-size')).toBeNull()
     expect(root.querySelector('[aria-label="Выбрано: Документ 0.pdf"]')).not.toBeNull()
-    ;(root.querySelector('[aria-label="Следующая страница"]') as HTMLButtonElement).click()
+    loadNext?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
     await nextTick()
-    expect(root.querySelectorAll('[data-file-item]')).toHaveLength(3)
-    ;(root.querySelector('[aria-label="Выбрать: Документ 25.pdf"]') as HTMLButtonElement).click()
+    expect(root.querySelectorAll('[data-file-item]')).toHaveLength(53)
+    ;(root.querySelector('[aria-label="Выбрать: Документ 51.pdf"]') as HTMLButtonElement).click()
     await nextTick()
 
     const search = root.querySelector('input[aria-label="Поиск по материалам"]') as HTMLInputElement
     search.value = 'Особое фото'
     search.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 300))
     await nextTick()
     expect(root.querySelectorAll('[data-file-item]')).toHaveLength(1)
     ;(root.querySelector('[aria-label="Выбрать: Особое фото.jpg"]') as HTMLButtonElement).click()
@@ -61,7 +75,7 @@ describe('Project library picker', () => {
     expect(confirm).not.toHaveBeenCalled()
 
     ;(Array.from(root.querySelectorAll('button')).find((button) => button.textContent?.includes('Добавить 3')) as HTMLButtonElement).click()
-    expect(confirm).toHaveBeenCalledWith(['m-0', 'm-25', 'image-1'])
+    expect(confirm).toHaveBeenCalledWith(['m-0', 'm-51', 'image-1'])
     expect(cancel).not.toHaveBeenCalled()
     app.unmount()
   })
@@ -80,9 +94,35 @@ describe('Project library picker', () => {
     expect(root.querySelectorAll('[data-file-item]')).toHaveLength(1)
     ;(root.querySelector('[aria-label="Выбрать: Фото.jpg"]') as HTMLButtonElement).click()
     await nextTick()
-    expect(root.querySelector('[role="status"]')?.textContent).toContain('не более 1 материалов')
+    expect(root.querySelector('[role="status"]')?.textContent).toContain('Нельзя добавить материал: максимум 1.')
     expect(root.textContent).toContain('Добавить 1')
     expect(confirm).not.toHaveBeenCalled()
+    app.unmount()
+  })
+
+  it('warns only on the fifth image and clears the warning after a valid change', async () => {
+    const root = document.createElement('div')
+    document.body.append(root)
+    const materials = Array.from({ length: 5 }, (_, index) => material(`image-${index}`, `Фото ${index}.jpg`, 'image'))
+    const app = createApp(ExpertProjectLibraryPicker, {
+      materials, initiallySelected: ['image-0', 'image-1'], selectionLimits: { maxMaterials: 10, maxImages: 4 },
+    })
+    app.mount(root)
+    expect(root.textContent).toContain('Изображения: 2 из 4')
+    expect(root.querySelector('.expert-file-browser__notice')).toBeNull()
+    for (const index of [2, 3]) {
+      ;(root.querySelector(`[aria-label="Выбрать: Фото ${index}.jpg"]`) as HTMLButtonElement).click()
+      await nextTick()
+    }
+    expect(root.textContent).toContain('Изображения: 4 из 4')
+    expect(root.querySelector('.expert-file-browser__notice')).toBeNull()
+    ;(root.querySelector('[aria-label="Выбрать: Фото 4.jpg"]') as HTMLButtonElement).click()
+    await nextTick()
+    expect(root.querySelector('.expert-file-browser__notice')?.textContent).toBe('Нельзя добавить изображение: максимум 4.')
+    ;(root.querySelector('[aria-label="Выбрано: Фото 3.jpg"]') as HTMLButtonElement).click()
+    await nextTick()
+    expect(root.querySelector('.expert-file-browser__notice')).toBeNull()
+    expect(root.textContent).toContain('Изображения: 3 из 4')
     app.unmount()
   })
 })
