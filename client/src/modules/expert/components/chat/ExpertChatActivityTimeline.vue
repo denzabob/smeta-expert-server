@@ -22,7 +22,7 @@ const current = computed<ExpertRunActivity | undefined>(() => {
 const label = computed(() => {
   const activity = current.value
   if (!activity) return 'Подготавливаю запрос…'
-  if (activity.code.startsWith('pdf.ocr.')) return activity.detail ? `Обрабатываю ${activity.detail}…` : 'Обрабатываю документ…'
+  if (activity.code.startsWith('pdf.ocr.')) return activity.detail ? `Распознаю ${activity.detail}…` : 'Распознаю документ…'
   if (activity.code.startsWith('pdf.text.')) return activity.detail ? `Обрабатываю ${activity.detail}…` : 'Обрабатываю большой документ…'
   if (activity.code.startsWith('pdf.text_cache.')) return 'Использую подготовленный документ…'
   if (activity.code.startsWith('pdf.local_extract.')) return 'Проверяю PDF…'

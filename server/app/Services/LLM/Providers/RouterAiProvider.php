@@ -8,10 +8,13 @@ use App\Services\LLM\Contracts\LLMProviderInterface;
 use App\Services\LLM\Contracts\LLMStreamingProviderInterface;
 use App\Services\LLM\DTO\DecompositionPrompt;
 use App\Services\LLM\DTO\LLMCancellationToken;
+use App\Services\LLM\DTO\LLMChatMessage;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMChatResponse;
 use App\Services\LLM\DTO\LLMResponse;
 use App\Services\LLM\DTO\LLMStreamEvent;
+use App\Services\LLM\DTO\LLMFileContent;
+use App\Services\LLM\DTO\LLMImageContent;
 use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\LLMCapabilityCatalog;
 use App\Services\LLM\OpenAiChatMessageMapper;
@@ -21,8 +24,13 @@ use App\Services\LLM\RouterAiFileAnnotationParser;
 use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Handler\CurlMultiHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Promise\Utils;
+use GuzzleHttp\Psr7\BufferStream;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * Провайдер RouterAI
@@ -295,13 +303,15 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
             throw LLMProviderException::configError(self::NAME, 'API key is not configured');
         }
 
+        $startedAt = microtime(true);
+        $handler = $this->streamingClient === null ? new CurlMultiHandler(['select_timeout' => 0.25]) : null;
         $client = $this->streamingClient ?? new Client([
+            'handler' => HandlerStack::create($handler),
             'connect_timeout' => $this->connectTimeout,
-            // A stream is bounded by ExpertChatStreamingService. Guzzle must not
-            // apply the legacy whole-response timeout here.
+            // Only the handshake is bounded below; the SSE body stays streamed.
             'timeout' => 0,
-            // This bounds both first-byte and between-chunk waits. Before the
-            // first delta LLMRouter may retry; afterwards it persists partial.
+            // Retained for injected stream clients; the cURL event loop below
+            // enforces the same first-byte and idle limits itself.
             'read_timeout' => max(1, (float) min(
                 (int) config('expert.streaming.time_to_first_token_seconds', 45),
                 (int) config('expert.streaming.idle_timeout_seconds', 45),
@@ -309,46 +319,131 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
             'http_errors' => false,
         ]);
 
+        $plugin = $this->pdfParserPlugin($request);
+        $payload = array_filter([
+            'model' => $this->model,
+            'messages' => OpenAiChatMessageMapper::map($request),
+            'temperature' => $request->parameters['temperature'] ?? $this->temperature,
+            'max_tokens' => $request->parameters['max_tokens'] ?? $this->maxTokens,
+            'reasoning_effort' => $request->parameters['reasoning_effort'] ?? null,
+            'stream' => true,
+            'stream_options' => ['include_usage' => true],
+            'plugins' => $plugin,
+        ], static fn (mixed $value): bool => $value !== null);
+        [$fileCount, $rawFileBytes, $estimatedBase64Bytes] = $this->streamPayloadSizes($request);
+        $context = [
+            'correlation_id' => $cancellationToken->correlationId,
+            'model' => $this->model,
+            'has_images' => $request->hasImages(),
+            'has_files' => $request->hasFiles(),
+            'pdf_processing_intents' => $request->pdfProcessingIntents(),
+            'pdf_engine' => $plugin[0]['pdf']['engine'] ?? null,
+            'file_count' => $fileCount,
+            'raw_file_bytes' => $rawFileBytes,
+            'estimated_base64_payload_bytes' => $estimatedBase64Bytes,
+        ];
+        $handshakeSeconds = max(1, (int) config('expert.streaming.provider_handshake_timeout_seconds', 180));
+        $sink = $handler === null ? null : new BufferStream(PHP_INT_MAX);
+        $response = null;
+        $requestFailure = null;
+        $transferFinished = false;
+        $promise = null;
         try {
-            $response = $client->request('POST', $this->baseUrl.'/chat/completions', [
+            $cancellationToken->tick();
+            if ($cancellationToken->isCancellationRequested()) {
+                return;
+            }
+            Log::info('RouterAI stream request starting', [...$context, 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
+            $requestStartedAt = microtime(true);
+            $promise = $client->requestAsync('POST', $this->baseUrl.'/chat/completions', [
                 'headers' => [
                     'Authorization' => 'Bearer '.$this->apiKey,
                     'Content-Type' => 'application/json',
                     'Accept' => 'text/event-stream',
                 ],
-                'json' => array_filter([
-                    'model' => $this->model,
-                    'messages' => OpenAiChatMessageMapper::map($request),
-                    'temperature' => $request->parameters['temperature'] ?? $this->temperature,
-                    'max_tokens' => $request->parameters['max_tokens'] ?? $this->maxTokens,
-                    'reasoning_effort' => $request->parameters['reasoning_effort'] ?? null,
-                    'stream' => true,
-                    'stream_options' => ['include_usage' => true],
-                    'plugins' => $this->pdfParserPlugin($request),
-                ], static fn (mixed $value): bool => $value !== null),
+                'json' => $payload,
                 'stream' => true,
+                ...($sink === null ? [] : [
+                    'sink' => $sink,
+                    'on_headers' => static function (ResponseInterface $headers) use (&$response): void {
+                        if ($headers->getStatusCode() >= 200) {
+                            $response = $headers;
+                        }
+                    },
+                ]),
             ]);
+            $promise->then(
+                static function (ResponseInterface $received) use (&$response, &$transferFinished): void { $response = $received; $transferFinished = true; },
+                static function (mixed $reason) use (&$requestFailure, &$transferFinished): void { $requestFailure = $reason; $transferFinished = true; },
+            );
+            while ($response === null && $requestFailure === null) {
+                $cancellationToken->tick();
+                if ($cancellationToken->isCancellationRequested()) {
+                    $promise->cancel();
+                    Log::info('RouterAI stream completed', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'status' => 'cancelled', 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
+
+                    return;
+                }
+                if (microtime(true) - $requestStartedAt >= $handshakeSeconds) {
+                    $promise->cancel();
+                    throw LLMProviderException::timeout(self::NAME, $handshakeSeconds);
+                }
+                if ($handler !== null) {
+                    $handler->tick();
+                } else {
+                    usleep(100_000);
+                }
+                Utils::queue()->run();
+            }
+            if ($requestFailure !== null) {
+                throw $requestFailure instanceof \Throwable ? $requestFailure : new \RuntimeException('Streaming provider request failed');
+            }
+            Log::info('RouterAI stream response headers received', [
+                'correlation_id' => $cancellationToken->correlationId,
+                'model' => $this->model,
+                'http_status' => $response->getStatusCode(),
+                'content_type' => mb_substr($response->getHeaderLine('Content-Type'), 0, 100),
+                'elapsed_ms' => $this->streamElapsedMs($startedAt),
+            ]);
+        } catch (LLMProviderException $exception) {
+            $promise?->cancel();
+            Log::warning('RouterAI stream request failed', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'exception_class' => $exception::class, 'error_code' => $exception->getErrorType() === 'timeout' ? 'provider_timeout' : 'provider_connection_failed', 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
+            Log::info('RouterAI stream completed', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'status' => 'failed', 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
+            throw $exception;
         } catch (ConnectException $exception) {
+            $promise?->cancel();
+            $timedOut = str_contains(strtolower($exception->getMessage()), 'timed out');
+            Log::warning('RouterAI stream request failed', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'exception_class' => $exception::class, 'error_code' => $timedOut ? 'provider_timeout' : 'provider_connection_failed', 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
+            Log::info('RouterAI stream completed', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'status' => 'failed', 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
+            if ($timedOut) {
+                throw LLMProviderException::timeout(self::NAME, $handshakeSeconds);
+            }
             throw LLMProviderException::networkError(self::NAME, $exception->getMessage());
         } catch (\Throwable $exception) {
-            Log::warning('RouterAiProvider: stream connection failed.', ['exception' => $exception::class]);
+            $promise?->cancel();
+            Log::warning('RouterAI stream request failed', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'exception_class' => $exception::class, 'error_code' => 'provider_connection_failed', 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
+            Log::info('RouterAI stream completed', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'status' => 'failed', 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
             throw new LLMProviderException('Streaming provider connection failed', self::NAME, 'network');
         }
 
         if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
-            $body = $response->getBody();
+            $promise?->cancel();
+            $body = $sink ?? $response->getBody();
             try {
                 $body->close();
             } finally {
+                Log::info('RouterAI stream completed', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'status' => 'failed', 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
                 throw LLMProviderException::httpError(self::NAME, $response->getStatusCode(), 'Streaming provider returned an HTTP error');
             }
         }
 
         if (! $this->isSseContentType($response->getHeaderLine('Content-Type'))) {
-            $body = $response->getBody();
+            $promise?->cancel();
+            $body = $sink ?? $response->getBody();
             try {
                 $body->close();
             } finally {
+                Log::info('RouterAI stream completed', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'status' => 'failed', 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
                 throw new LLMProviderException(
                     'Streaming provider returned an unexpected content type',
                     self::NAME,
@@ -357,22 +452,63 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
             }
         }
 
-        $body = $response->getBody();
+        $body = $sink ?? $response->getBody();
 
+        $completed = false;
+        $firstEvent = true;
+        $firstFrameLogged = false;
+        $frameTail = '';
+        $lastBodyByteAt = microtime(true);
         try {
-            $chunks = (function () use ($body, $cancellationToken): iterable {
-                while (! $body->eof()) {
+            $chunks = (function () use ($body, $cancellationToken, $handler, $promise, $startedAt, &$transferFinished, &$requestFailure, &$firstEvent, &$firstFrameLogged, &$frameTail, &$lastBodyByteAt): iterable {
+                while (! $body->eof() || ($handler !== null && ! $transferFinished)) {
+                    $cancellationToken->tick();
                     if ($cancellationToken->isCancellationRequested()) {
+                        $promise?->cancel();
                         $body->close(); // Closes the active upstream socket, not only UI rendering.
 
                         return;
                     }
-                    yield $body->read(8192);
+                    if ($handler !== null && $body->eof()) {
+                        $waitSeconds = max(1, (int) config($firstEvent ? 'expert.streaming.time_to_first_token_seconds' : 'expert.streaming.idle_timeout_seconds', 45));
+                        if (microtime(true) - $lastBodyByteAt >= $waitSeconds) {
+                            throw LLMProviderException::timeout(self::NAME, $waitSeconds);
+                        }
+                        $handler->tick();
+                        Utils::queue()->run();
+                        continue;
+                    }
+                    $chunk = $body->read(8192);
+                    if ($chunk !== '') {
+                        $lastBodyByteAt = microtime(true);
+                        if (! $firstFrameLogged) {
+                            $probe = $frameTail.$chunk;
+                            if (preg_match('/\r?\n\r?\n/', $probe) === 1) {
+                                $firstFrameLogged = true;
+                                Log::info('RouterAI stream first event', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
+                            } else {
+                                $frameTail = substr($probe, -3);
+                            }
+                        }
+                    }
+                    $cancellationToken->tick();
+                    yield $chunk;
+                }
+                if ($requestFailure !== null) {
+                    throw $requestFailure instanceof \Throwable ? $requestFailure : new \RuntimeException('Streaming provider body failed');
                 }
             })();
             // Disabled by default: enable only after the selected RouterAI
             // integration has a documented, dedicated safe-summary field.
-            yield from (new OpenAiSseStreamParser((bool) config('services.routerai.safe_reasoning_summary_supported', false)))->parse($chunks, $cancellationToken);
+            foreach ((new OpenAiSseStreamParser((bool) config('services.routerai.safe_reasoning_summary_supported', false)))->parse($chunks, $cancellationToken) as $event) {
+                if ($firstEvent) {
+                    $firstEvent = false;
+                }
+                if ($event->type === 'done') {
+                    $completed = true;
+                }
+                yield $event;
+            }
         } catch (LLMProviderException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
@@ -381,8 +517,39 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
             }
             throw LLMProviderException::networkError(self::NAME, $exception->getMessage());
         } finally {
+            if (! $transferFinished) {
+                $promise?->cancel();
+            }
             $body->close();
+            Log::info('RouterAI stream completed', ['correlation_id' => $cancellationToken->correlationId, 'model' => $this->model, 'status' => $completed ? 'completed' : ($cancellationToken->isCancellationRequested() ? 'cancelled' : 'failed'), 'elapsed_ms' => $this->streamElapsedMs($startedAt)]);
         }
+    }
+
+    /** @return array{int, int, int} */
+    private function streamPayloadSizes(LLMChatRequest $request): array
+    {
+        $fileCount = 0;
+        $rawFileBytes = 0;
+        $base64Bytes = 0;
+        foreach ($request->messages as $message) {
+            $blocks = $message instanceof LLMChatMessage ? $message->content : (is_array($message) ? ($message['content'] ?? []) : []);
+            foreach (is_array($blocks) ? $blocks : [] as $block) {
+                if ($block instanceof LLMFileContent) {
+                    $fileCount++;
+                    $rawFileBytes += strlen($block->bytes);
+                }
+                if ($block instanceof LLMFileContent || $block instanceof LLMImageContent) {
+                    $base64Bytes += 4 * (int) ceil(strlen($block->bytes) / 3);
+                }
+            }
+        }
+
+        return [$fileCount, $rawFileBytes, $base64Bytes];
+    }
+
+    private function streamElapsedMs(float $startedAt): int
+    {
+        return (int) round((microtime(true) - $startedAt) * 1000);
     }
 
     private function nullableInt(mixed $value): ?int

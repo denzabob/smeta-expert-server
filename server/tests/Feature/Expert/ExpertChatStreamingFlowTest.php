@@ -9,6 +9,7 @@ use App\Models\Expert\ExpertProject;
 use App\Models\User;
 use App\Services\Expert\ExpertChatMaterialContext;
 use App\Services\Expert\ExpertChatRunRegistry;
+use App\Services\Expert\ExpertChatRunInProgressException;
 use App\Services\Expert\ExpertChatStreamingService;
 use App\Services\Expert\ExpertMaterialService;
 use App\Services\LLM\CircuitBreaker;
@@ -25,16 +26,104 @@ use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\LLMErrorClassifier;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
+use App\Services\LLM\Providers\RouterAiProvider;
+use GuzzleHttp\Client;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Promise\Promise;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Psr\Http\Message\RequestInterface;
 
 final class ExpertChatStreamingFlowTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_pending_provider_headers_timeout_terminalizes_and_releases_conversation(): void
+    {
+        [$conversation] = $this->conversation();
+        config(['expert.streaming.provider_handshake_timeout_seconds' => 2, 'expert.streaming.heartbeat_seconds' => 1]);
+        $cancelled = false;
+        $this->installRouter($this->pendingRouterAi($cancelled));
+        $events = $this->runStream($conversation, 'Жду ответ', function () {});
+
+        $this->assertSame('error', end($events)['event']);
+        $this->assertSame('provider_timeout', end($events)['data']['error_code']);
+        $this->assertContains('heartbeat', array_column($events, 'event'));
+        $this->assertTrue($cancelled);
+        $this->assertSame('failed', app(ExpertChatRunRegistry::class)->find(end($events)['data']['run_id'])['status']);
+
+        app(CircuitBreaker::class)->reset('routerai');
+        $this->installRouter(new ExpertStreamingFakeProvider(['Следующий ответ']));
+        $next = $this->runStream($conversation, 'Следующий запрос', function () {});
+        $this->assertSame('done', end($next)['event']);
+    }
+
+    public function test_disconnect_during_pending_headers_cancels_and_releases_conversation(): void
+    {
+        [$conversation] = $this->conversation();
+        $cancelled = false;
+        $this->installRouter($this->pendingRouterAi($cancelled));
+        $service = app(ExpertChatStreamingService::class);
+        $content = 'Долгое распознавание';
+        $run = $service->start($conversation, $content, (string) Str::uuid(), app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint($content, []), new ExpertChatMaterialContext([], []));
+        $events = [];
+        $checks = 0;
+        $service->emit($run, static function (string $event, array $data) use (&$events): void {
+            $events[] = compact('event', 'data');
+        }, static function () use (&$checks): bool { return ++$checks >= 8; });
+
+        $this->assertSame('cancelled', end($events)['event']);
+        $this->assertTrue($cancelled);
+        $this->assertSame('cancelled', app(ExpertChatRunRegistry::class)->find($run->runId())['status']);
+        $this->installRouter(new ExpertStreamingFakeProvider(['OK']));
+        $next = $this->runStream($conversation, 'После отмены', function () {});
+        $this->assertSame('done', end($next)['event']);
+    }
+
+    public function test_active_run_retains_lock_beyond_configured_short_ttl(): void
+    {
+        [$conversation] = $this->conversation();
+        config(['expert.streaming.lock_seconds' => 1, 'expert.streaming.absolute_timeout_seconds' => 5]);
+        $provider = new ExpertStreamingFakeProvider(['OK']);
+        $this->installRouter($provider);
+        $service = app(ExpertChatStreamingService::class);
+        $run = $service->start($conversation, 'Первый', (string) Str::uuid(), app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint('Первый', []), new ExpertChatMaterialContext([], []));
+        $rejected = false;
+        $provider->onStream = function () use ($service, $conversation, &$rejected): void {
+            sleep(2);
+            try {
+                $service->start($conversation, 'Параллельный', (string) Str::uuid(), app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint('Параллельный', []), new ExpertChatMaterialContext([], []));
+            } catch (ExpertChatRunInProgressException) {
+                $rejected = true;
+            }
+        };
+        $service->emit($run, static function (): void {});
+        $this->assertTrue($rejected);
+        $this->assertSame('completed', app(ExpertChatRunRegistry::class)->find($run->runId())['status']);
+    }
+
+    public function test_absolute_deadline_covers_time_before_provider_events(): void
+    {
+        [$conversation] = $this->conversation();
+        config(['expert.streaming.absolute_timeout_seconds' => 1]);
+        $provider = new ExpertStreamingFakeProvider(['Too late']);
+        $this->installRouter($provider);
+        $service = app(ExpertChatStreamingService::class);
+        $run = $service->start($conversation, 'Первый', (string) Str::uuid(), app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint('Первый', []), new ExpertChatMaterialContext([], []));
+        sleep(2);
+        $events = [];
+        $service->emit($run, static function (string $event, array $data) use (&$events): void { $events[] = compact('event', 'data'); });
+
+        $this->assertSame('provider_timeout', end($events)['data']['error_code']);
+        $this->assertSame(0, $provider->streamCalls);
+        $this->assertSame('failed', app(ExpertChatRunRegistry::class)->find($run->runId())['status']);
+        $next = $this->runStream($conversation, 'После дедлайна', function () {});
+        $this->assertSame('done', end($next)['event']);
+    }
 
     public function test_basic_stream_persists_one_user_and_one_assistant(): void
     {
@@ -357,9 +446,23 @@ final class ExpertChatStreamingFlowTest extends TestCase
         return $events;
     }
 
-    private function installRouter(ExpertStreamingFakeProvider $provider): void
+    private function installRouter(LLMProviderInterface $provider): void
     {
         $this->app->instance(LLMRouter::class, new LLMRouter(app(CircuitBreaker::class), app(LLMSettingsRepository::class), app(LLMErrorClassifier::class), static fn (): LLMProviderInterface => $provider));
+    }
+
+    private function pendingRouterAi(bool &$cancelled): RouterAiProvider
+    {
+        $handler = static function (RequestInterface $request, array $options) use (&$cancelled): Promise {
+            return new Promise(null, static function () use (&$cancelled): void { $cancelled = true; });
+        };
+
+        return new RouterAiProvider(
+            apiKey: 'test-key',
+            baseUrl: 'https://routerai.test/api/v1',
+            model: 'openai/gpt-4o',
+            streamingClient: new Client(['handler' => HandlerStack::create($handler)]),
+        );
     }
 
     /** @return array{ExpertConversation} */
@@ -386,6 +489,8 @@ final class ExpertStreamingFakeProvider implements LLMProviderInterface, LLMStre
     public bool $failBeforeFirstOnce = false;
 
     public ?LLMProviderException $failure = null;
+
+    public ?\Closure $onStream = null;
 
     /** @param list<string> $chunks */
     public function __construct(public array $chunks) {}
@@ -429,6 +534,7 @@ final class ExpertStreamingFakeProvider implements LLMProviderInterface, LLMStre
     {
         $this->streamCalls++;
         $this->chatRequests[] = $request;
+        ($this->onStream)?->__invoke();
         if ($this->failure !== null) {
             throw $this->failure;
         }

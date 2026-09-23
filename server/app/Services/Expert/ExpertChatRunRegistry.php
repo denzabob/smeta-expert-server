@@ -13,7 +13,14 @@ final class ExpertChatRunRegistry
 {
     public function acquireConversation(ExpertConversation $conversation): Lock
     {
-        $lock = Cache::lock($this->conversationLockKey($conversation), (int) config('expert.streaming.lock_seconds', 900));
+        // The lock must outlive every bounded generation, even when a lower
+        // legacy lock TTL is configured. A live provider handshake cannot
+        // silently lose exclusivity while the run still owns the connection.
+        $lockSeconds = max(
+            (int) config('expert.streaming.lock_seconds', 900),
+            (int) config('expert.streaming.absolute_timeout_seconds', 600) + 60,
+        );
+        $lock = Cache::lock($this->conversationLockKey($conversation), $lockSeconds);
 
         if (! $lock->get()) {
             throw new ExpertChatRunInProgressException;
@@ -23,7 +30,7 @@ final class ExpertChatRunRegistry
     }
 
     /** @return array{run_id:string,conversation_public_id:string,project_id:int,user_id:int,status:string,cancel_requested:bool,created_at:string,assistant_message_public_id:?string} */
-    public function create(ExpertConversation $conversation, ?string $assistantMessagePublicId = null): array
+    public function create(ExpertConversation $conversation, ?string $assistantMessagePublicId = null, ?float $startedAt = null): array
     {
         $run = [
             'run_id' => (string) Str::uuid(),
@@ -33,10 +40,11 @@ final class ExpertChatRunRegistry
             'status' => 'starting',
             'cancel_requested' => false,
             'created_at' => now()->toIso8601String(),
+            'started_at' => $startedAt ?? microtime(true),
             'assistant_message_public_id' => $assistantMessagePublicId,
         ];
 
-        Cache::put($this->runKey($run['run_id']), $run, now()->addSeconds((int) config('expert.streaming.run_ttl_seconds', 1800)));
+        Cache::put($this->runKey($run['run_id']), $run, now()->addSeconds($this->runTtlSeconds()));
 
         return $run;
     }
@@ -65,7 +73,7 @@ final class ExpertChatRunRegistry
             $run['status'] = in_array($run['status'] ?? null, ['completed', 'cancelled', 'interrupted', 'failed'], true)
                 ? $run['status']
                 : 'stopping';
-            Cache::put($this->runKey($runId), $run, now()->addSeconds((int) config('expert.streaming.run_ttl_seconds', 1800)));
+            Cache::put($this->runKey($runId), $run, now()->addSeconds($this->runTtlSeconds()));
 
             return $run;
         } finally {
@@ -85,7 +93,12 @@ final class ExpertChatRunRegistry
             return;
         }
         $run['status'] = $status;
-        Cache::put($this->runKey($runId), $run, now()->addSeconds((int) config('expert.streaming.run_ttl_seconds', 1800)));
+        Cache::put($this->runKey($runId), $run, now()->addSeconds($this->runTtlSeconds()));
+    }
+
+    private function runTtlSeconds(): int
+    {
+        return max((int) config('expert.streaming.run_ttl_seconds', 1800), (int) config('expert.streaming.absolute_timeout_seconds', 600) + 60);
     }
 
     private function runKey(string $runId): string

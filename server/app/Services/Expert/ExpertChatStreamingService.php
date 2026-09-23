@@ -46,6 +46,7 @@ final class ExpertChatStreamingService
         string $requestedMode = ExpertModeResolution::AUTO,
     ): ExpertChatStreamingRun {
         $lock = $this->runs->acquireConversation($conversation);
+        $startedAt = microtime(true);
         try {
             $materialPublicIds = $this->materialPublicIds($materialContextOrPublicIds);
             $existingUser = $conversation->messages()->where('role', 'user')->where('metadata->client_message_id', $clientMessageId)->first();
@@ -59,7 +60,7 @@ final class ExpertChatStreamingService
             $userMessage = $this->chat->prepareStreamingUserMessage($conversation, $content, $clientMessageId, $fingerprint, $materialPublicIds, $requestedMode);
             $this->chat->recordContext($conversation, $userMessage, $plan);
             $existingAssistant = $this->chat->assistantReplyFor($conversation, $userMessage);
-            $registryRun = $this->runs->create($conversation, $existingAssistant?->public_id);
+            $registryRun = $this->runs->create($conversation, $existingAssistant?->public_id, $startedAt);
 
             return new ExpertChatStreamingRun(
                 $conversation,
@@ -74,6 +75,9 @@ final class ExpertChatStreamingService
                 ExpertModeResolution::normalise($requestedMode),
             );
         } catch (\Throwable $exception) {
+            if (isset($registryRun)) {
+                $this->runs->mark($registryRun['run_id'], 'failed');
+            }
             $lock->release();
             throw $exception;
         }
@@ -100,8 +104,9 @@ final class ExpertChatStreamingService
         $this->chat->assertWorkloadExecutable($conversation->project, $plan, $requestedMode);
 
         $lock = $this->runs->acquireConversation($conversation);
+        $startedAt = microtime(true);
         try {
-            $registryRun = $this->runs->create($conversation, $assistantMessage->public_id);
+            $registryRun = $this->runs->create($conversation, $assistantMessage->public_id, $startedAt);
 
             return new ExpertChatStreamingRun(
                 $conversation,
@@ -116,6 +121,9 @@ final class ExpertChatStreamingService
                 $requestedMode,
             );
         } catch (\Throwable $exception) {
+            if (isset($registryRun)) {
+                $this->runs->mark($registryRun['run_id'], 'failed');
+            }
             $lock->release();
             throw $exception;
         }
@@ -135,7 +143,7 @@ final class ExpertChatStreamingService
         $hasVisibleOutput = false;
         $deltaSequence = 0;
         $reasoningSequence = 0;
-        $startedAt = microtime(true);
+        $startedAt = (float) ($run->registryRun['started_at'] ?? microtime(true));
         $firstDeltaAt = null;
         $lastHeartbeatAt = $startedAt;
         $assistant = null;
@@ -150,32 +158,63 @@ final class ExpertChatStreamingService
 
             return $this->runs->isCancellationRequested($runId);
         };
-        $token = new LLMCancellationToken($isCancellationRequested);
+        $absoluteSeconds = max(1, (int) config('expert.streaming.absolute_timeout_seconds', 600));
+        $tick = function () use ($startedAt, $absoluteSeconds, $emit, &$lastHeartbeatAt): void {
+            if (microtime(true) - $startedAt >= $absoluteSeconds) {
+                throw LLMProviderException::timeout('stream', $absoluteSeconds);
+            }
+            if (microtime(true) - $lastHeartbeatAt >= max(1, (int) config('expert.streaming.heartbeat_seconds', 15))) {
+                $emit('heartbeat', ['version' => 1]);
+                $lastHeartbeatAt = microtime(true);
+            }
+        };
+        $token = new LLMCancellationToken($isCancellationRequested, $tick, $runId);
         $activity = new SseExpertRunActivitySink($runId, $emit, $isCancellationRequested);
 
-        $this->runs->mark($runId, 'streaming');
-        $emit('run', [
-            'version' => 1,
-            'run_id' => $runId,
-            'user_message' => $this->messagePayload($run->userMessage),
-        ]);
-        $activity->record('request.accepted', 'request');
+        try {
+            $this->runs->mark($runId, 'streaming');
+            $emit('run', [
+                'version' => 1,
+                'run_id' => $runId,
+                'user_message' => $this->messagePayload($run->userMessage),
+            ]);
+            $activity->record('request.accepted', 'request');
+        } catch (\Throwable $exception) {
+            try {
+                $this->runs->mark($runId, 'failed');
+            } finally {
+                $run->lock->release();
+            }
+            throw $exception;
+        }
 
         if ($run->existingAssistant !== null && ! $run->isContinuation) {
-            $storedStatus = is_array($run->existingAssistant->metadata) ? ($run->existingAssistant->metadata['generation_status'] ?? 'completed') : 'completed';
-            $event = in_array($storedStatus, ['stopped', 'interrupted'], true) ? 'cancelled' : 'done';
-            $emit($event, [
-                'version' => 1,
-                'assistant_message' => $this->messagePayload($run->existingAssistant),
-                'finish_reason' => $storedStatus === 'completed' ? 'stop' : 'cancelled',
-            ]);
-            $this->runs->mark($runId, $storedStatus === 'completed' ? 'completed' : 'cancelled');
-            $run->lock->release();
+            $terminalized = false;
+            try {
+                $storedStatus = is_array($run->existingAssistant->metadata) ? ($run->existingAssistant->metadata['generation_status'] ?? 'completed') : 'completed';
+                $event = in_array($storedStatus, ['stopped', 'interrupted'], true) ? 'cancelled' : 'done';
+                $emit($event, [
+                    'version' => 1,
+                    'assistant_message' => $this->messagePayload($run->existingAssistant),
+                    'finish_reason' => $storedStatus === 'completed' ? 'stop' : 'cancelled',
+                ]);
+                $this->runs->mark($runId, $storedStatus === 'completed' ? 'completed' : 'cancelled');
+                $terminalized = true;
+            } finally {
+                try {
+                    if (! $terminalized) {
+                        $this->runs->mark($runId, 'failed');
+                    }
+                } finally {
+                    $run->lock->release();
+                }
+            }
 
             return;
         }
 
         try {
+            $token->tick();
             $historicalIds = $run->contextPack?->historicalMaterials ?? [];
             $materialBundle = $run->materialContext === null
                 ? $this->materialContextBuilder->buildPartitioned(
@@ -187,6 +226,7 @@ final class ExpertChatStreamingService
                     $run->contextPack,
                 )
                 : ExpertChatMaterialContextBundle::currentOnly($run->materialContext);
+            $token->tick();
             $this->materialDiagnostics->log($runId, $materialBundle, $run->materialPublicIds, $historicalIds);
             $materialContext = $materialBundle->combined();
             $executionPlan = $this->chat->executionPlan($run->requestedMode, $run->userMessage->content, $run->contextPack ?? $materialBundle->plan, $materialBundle);
@@ -203,6 +243,7 @@ final class ExpertChatStreamingService
             $request = $run->isContinuation
                 ? $this->chat->buildContinuationRequest($run->conversation, $run->userMessage, $run->existingAssistant, $materialBundle)
                 : $this->chat->buildStreamingRequest($run->conversation, $run->userMessage, $materialBundle);
+            $token->tick();
 
             foreach ($materialContext->ocrCandidates as $candidate) {
                 $ocrActivityIds[strtolower($candidate->sha256)] = $activity->start(
@@ -216,6 +257,7 @@ final class ExpertChatStreamingService
             $modelActivityId = $activity->start('model.request.started', 'model');
 
             foreach ($this->router->setUserId($run->conversation->project->user_id)->streamChat($request, $token, $runId, $executionPlan->routerProfile, $executionPlan->fallbackSelection) as $event) {
+                $token->tick();
                 if ($token->isCancellationRequested()) {
                     $status = 'stopped';
                     $finishReason = 'cancelled';
@@ -241,17 +283,15 @@ final class ExpertChatStreamingService
                         'text' => $event->text,
                         'final' => $event->isFinal,
                     ]);
-                } elseif ($event->type === 'heartbeat' || microtime(true) - $lastHeartbeatAt >= (int) config('expert.streaming.heartbeat_seconds', 15)) {
-                    $emit('heartbeat', ['version' => 1]);
-                    $lastHeartbeatAt = microtime(true);
                 } elseif ($event->type === 'done') {
                     $metadata = [...$metadata, ...$event->metadata, 'tools_used' => $executionPlan->tools];
                     $this->persistOcrResults($materialBundle, $event->parsedFiles, $ocrActivityIds, $activity, $runId);
-                }
-                if (microtime(true) - $startedAt > (int) config('expert.streaming.absolute_timeout_seconds', 600)) {
-                    throw LLMProviderException::timeout('stream', (int) config('expert.streaming.absolute_timeout_seconds', 600));
+                } elseif ($event->type === 'heartbeat' || microtime(true) - $lastHeartbeatAt >= (int) config('expert.streaming.heartbeat_seconds', 15)) {
+                    $emit('heartbeat', ['version' => 1]);
+                    $lastHeartbeatAt = microtime(true);
                 }
             }
+            $token->tick();
             if ($token->isCancellationRequested()) {
                 $status = 'stopped';
                 $finishReason = 'cancelled';
@@ -279,6 +319,8 @@ final class ExpertChatStreamingService
             $retryable = $this->isRetryableError($errorCode, $hasVisibleOutput);
             $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt, $executionPlan);
         } finally {
+            $terminalized = false;
+            try {
             if ($status === 'completed' && $executionPlan !== null && isset($materialBundle)) {
                 $coveragePack = $run->contextPack ?? $materialBundle->plan;
                 if ($coveragePack !== null) {
@@ -323,7 +365,16 @@ final class ExpertChatStreamingService
                 'interrupted' => 'interrupted',
                 default => 'failed',
             });
-            $run->lock->release();
+            $terminalized = true;
+            } finally {
+                try {
+                    if (! $terminalized) {
+                        $this->runs->mark($runId, 'failed');
+                    }
+                } finally {
+                    $run->lock->release();
+                }
+            }
         }
 
         if ($status === 'completed') {

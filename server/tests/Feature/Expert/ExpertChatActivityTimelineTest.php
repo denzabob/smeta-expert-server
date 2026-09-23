@@ -30,8 +30,13 @@ use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
 use App\Services\LLM\LLMTaskProfileResolver;
 use App\Services\LLM\Parsing\OpenAiSseStreamParser;
+use App\Services\LLM\Providers\RouterAiProvider;
 use App\Services\LLM\RouterAiModelCatalogService;
 use Dompdf\Dompdf;
+use GuzzleHttp\Client;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Log;
@@ -149,6 +154,35 @@ final class ExpertChatActivityTimelineTest extends TestCase
         $this->assertNotContains('pdf.ocr.started', $secondCodes);
         $this->assertFalse($provider->requests[1]->hasPdfOcrFiles());
         $this->assertSame('OCR-EXPERT-48217', $provider->requests[1]->materialContext[0]['text']);
+    }
+
+    public function test_routerai_streamed_ocr_annotation_persists_after_headers_and_done(): void
+    {
+        [, $conversation] = $this->conversation();
+        $bytes = $this->scannedPdfFixture();
+        $material = $this->material($conversation->project, 'scan.pdf', 'application/pdf', $bytes);
+        $sha = hash('sha256', $bytes);
+        $frame = json_encode([
+            'choices' => [['delta' => [
+                'content' => 'OCR-ответ.',
+                'annotations' => [['type' => 'file', 'file' => ['hash' => $sha, 'name' => 'scan.pdf', 'content' => [['type' => 'text', 'text' => 'Распознанный текст']]]]],
+            ]]],
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        $provider = new RouterAiProvider(
+            apiKey: 'test-key',
+            baseUrl: 'https://routerai.test/api/v1',
+            model: 'openai/gpt-4o',
+            streamingClient: new Client(['handler' => HandlerStack::create(new MockHandler([
+                new Response(200, ['Content-Type' => 'text/event-stream'], "data: {$frame}\n\ndata: [DONE]\n\n"),
+            ]))]),
+        );
+        $this->installRouter($provider);
+
+        $events = $this->runStream($conversation, 'Прочитай PDF', [$material->public_id]);
+        $candidate = new ExpertPdfOcrCandidate((string) $conversation->project->public_id, (string) $material->public_id, 'scan.pdf', 'application/pdf', $bytes, $sha, 1);
+        $this->assertSame('done', end($events)['event']);
+        $this->assertContains('pdf.ocr.completed', $this->activityCodes($events));
+        $this->assertTrue(Storage::disk('local')->exists(app(ExpertPdfOcrCache::class)->path($candidate)));
     }
 
     public function test_image_activity_and_safe_summary_do_not_expose_private_or_raw_reasoning_data(): void

@@ -11,6 +11,7 @@ return [
         'time_to_first_token_seconds' => (int) env('EXPERT_STREAM_TTFB_SECONDS', 45),
         'idle_timeout_seconds' => (int) env('EXPERT_STREAM_IDLE_TIMEOUT_SECONDS', 45),
         'absolute_timeout_seconds' => (int) env('EXPERT_STREAM_ABSOLUTE_TIMEOUT_SECONDS', 600),
+        'provider_handshake_timeout_seconds' => (int) env('EXPERT_STREAM_PROVIDER_HANDSHAKE_TIMEOUT_SECONDS', 180),
         'heartbeat_seconds' => (int) env('EXPERT_STREAM_HEARTBEAT_SECONDS', 15),
     ],
     'analysis' => [

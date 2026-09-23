@@ -66,7 +66,7 @@ describe('Expert activity timeline presentation', () => {
     expect(first).toContain('Подготавливаю материалы…')
     expect(second).toContain('Подготавливаю материалы…')
     expect(third).not.toContain('Изображение подготовлено')
-    expect(third).toContain('Обрабатываю scan.pdf…')
+    expect(third).toContain('Распознаю scan.pdf…')
   })
 
   it('omits the full timeline after a fast single image preparation', async () => {
