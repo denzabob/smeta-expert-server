@@ -2,6 +2,8 @@
 set -eu
 
 COMPOSE_FILES="-f docker-compose.yml -f docker-compose.prod.yml"
+APP_IMAGE="smeta-expert-runtime:latest"
+SPA_IMAGE="smeta-expert-spa:latest"
 
 SKIP_MIGRATIONS=0
 case "${1:-}" in
@@ -23,9 +25,63 @@ set -a
 . ./.deploy.env
 set +a
 
+OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
 git pull --ff-only
+NEW_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
 
-docker compose $COMPOSE_FILES up -d --build
+CHANGED_FILES=""
+if [ -n "$OLD_HEAD" ] && [ -n "$NEW_HEAD" ] && [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
+  CHANGED_FILES=$(git diff --name-only "$OLD_HEAD" "$NEW_HEAD")
+fi
+
+BUILD_APP=0
+BUILD_SPA=0
+
+# Rebuild a service only when its image is missing or an image input changed.
+# Regular Laravel/PHP source files are bind-mounted from ./server and do not
+# require rebuilding the large runtime image.
+if ! docker image inspect "$APP_IMAGE" >/dev/null 2>&1; then
+  BUILD_APP=1
+fi
+if ! docker image inspect "$SPA_IMAGE" >/dev/null 2>&1; then
+  BUILD_SPA=1
+fi
+
+if [ -n "$CHANGED_FILES" ]; then
+  echo "Changed files since previous deploy:"
+  printf '%s\n' "$CHANGED_FILES"
+
+  while IFS= read -r path; do
+    case "$path" in
+      docker/app/*|docker/certificates/*|server/composer.json|server/composer.lock)
+        BUILD_APP=1
+        ;;
+      client/*|docker/spa/*)
+        BUILD_SPA=1
+        ;;
+    esac
+  done <<EOF
+$CHANGED_FILES
+EOF
+fi
+
+if [ "$BUILD_APP" -eq 1 ]; then
+  echo "Building shared app/worker runtime image..."
+  docker compose $COMPOSE_FILES build app
+else
+  echo "Skipping app/worker image build: runtime image inputs unchanged"
+fi
+
+if [ "$BUILD_SPA" -eq 1 ]; then
+  echo "Building SPA image..."
+  docker compose $COMPOSE_FILES build spa
+else
+  echo "Skipping SPA image build: client image inputs unchanged"
+fi
+
+# Images are built explicitly above. --no-build prevents Compose from
+# rebuilding unrelated services during the startup/reconcile phase.
+docker compose $COMPOSE_FILES up -d --no-build
 
 # The server bind mount covers image-built vendor; reconcile it with the checked-out lockfile.
 docker compose $COMPOSE_FILES exec -T app composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
@@ -39,11 +95,13 @@ if [ -z "$app_vendor" ] || [ "$app_vendor" != "$worker_vendor" ]; then
 fi
 docker compose $COMPOSE_FILES exec -T app php -r 'require "/var/www/html/vendor/autoload.php"; exit(class_exists("Smalot\\PdfParser\\Parser") ? 0 : 1);'
 docker compose $COMPOSE_FILES exec -T worker php -r 'require "/var/www/html/vendor/autoload.php"; exit(class_exists("Smalot\\PdfParser\\Parser") ? 0 : 1);'
+
 # Restart long-lived processes so they load the newly reconciled vendor tree.
 docker compose $COMPOSE_FILES restart app worker
 
-# Ensure Playwright browser binaries are present in runtime container.
-# Install only Chromium, because that is usually enough for capture/automation tasks.
+# Browser libraries are baked into the runtime image. Browser binaries live in
+# the persistent playwright_browsers volume, so this command is cheap when the
+# required Chromium revision is already present and downloads only when needed.
 docker compose $COMPOSE_FILES exec -T worker sh -lc '
 cd /var/www/html
 
@@ -52,7 +110,7 @@ if ! npm ls playwright @playwright/test >/dev/null 2>&1; then
   exit 1
 fi
 
-npx playwright install chromium --with-deps
+npx playwright install chromium
 '
 
 # Backup DB before any schema changes.
@@ -79,6 +137,7 @@ if [ "$SKIP_MIGRATIONS" -eq 1 ]; then
 else
   docker compose $COMPOSE_FILES exec -T app sh -lc "DB_USERNAME=$MIGRATION_DB_USERNAME DB_PASSWORD=$MIGRATION_DB_PASSWORD php artisan migrate --force"
 fi
+
 docker compose $COMPOSE_FILES exec -T app php artisan optimize:clear
 docker compose $COMPOSE_FILES exec -T app php artisan config:cache
 docker compose $COMPOSE_FILES exec -T app php artisan route:cache
@@ -125,7 +184,18 @@ if [ "$SITE_OK" -ne 1 ]; then
   exit 1
 fi
 
-echo "Cleaning Docker build cache..."
-docker builder prune -f || true
+# Keep a bounded cache on the 50 GB VPS instead of deleting it after every
+# deployment. This preserves the expensive PHP/apt/Composer layers while
+# preventing build cache from growing without limit.
+echo "Limiting Docker build cache to about 5 GB..."
+docker builder prune -f --keep-storage 5GB || true
+
+# Remove old untagged image layers after containers have switched to the new
+# images. Active/tagged application images are not removed by this command.
+echo "Removing dangling Docker images..."
+docker image prune -f || true
+
+echo "Disk usage after deploy:"
+df -h / || true
 
 echo "Deploy completed successfully"
