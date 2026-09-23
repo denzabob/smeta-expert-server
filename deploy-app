@@ -184,6 +184,16 @@ if [ "$SITE_OK" -ne 1 ]; then
   exit 1
 fi
 
+# Remove the old per-service image tags left by the previous Compose layout.
+# Docker refuses to remove an image that is still used by a running container,
+# so this is safe to repeat on later deployments.
+echo "Removing legacy Prism image tags..."
+docker image rm \
+  smeta-expert-server-app:latest \
+  smeta-expert-server-worker:latest \
+  smeta-expert-server-spa:latest \
+  >/dev/null 2>&1 || true
+
 # Keep a bounded cache on the 50 GB VPS instead of deleting it after every
 # deployment. This preserves the expensive PHP/apt/Composer layers while
 # preventing build cache from growing without limit.
