@@ -972,7 +972,7 @@ async function continueMessage(assistantId: string) {
 
 function retryMessage(messageId: string) {
   const message = findMessage(messageId)
-  if (!message || message.role !== 'user' || message.deliveryState === 'sending' || streamActive.value) return
+  if (!message || message.role !== 'user' || message.deliveryState === 'sending' || message.diagnostic?.retryable === false || streamActive.value) return
   updateMessageDelivery(message.id, 'sending')
   void persistMessage(message)
 }

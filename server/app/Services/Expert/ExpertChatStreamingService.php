@@ -215,7 +215,7 @@ final class ExpertChatStreamingService
             }
             $modelActivityId = $activity->start('model.request.started', 'model');
 
-            foreach ($this->router->setUserId($run->conversation->project->user_id)->streamChat($request, $token, $runId, $executionPlan->routerProfile) as $event) {
+            foreach ($this->router->setUserId($run->conversation->project->user_id)->streamChat($request, $token, $runId, $executionPlan->routerProfile, $executionPlan->fallbackSelection) as $event) {
                 if ($token->isCancellationRequested()) {
                     $status = 'stopped';
                     $finishReason = 'cancelled';
@@ -511,7 +511,7 @@ final class ExpertChatStreamingService
             'ttft_ms' => $firstDeltaAt === null ? null : (int) round(($firstDeltaAt - $startedAt) * 1000),
             'http_status_class' => $httpStatus === null ? null : intdiv($httpStatus, 100).'xx',
             ...($executionPlan?->toMetadata() ?? []),
-            'fallback_used' => false,
+            'fallback_used' => $executionPlan?->fallbackSelection !== null,
         ]);
     }
 

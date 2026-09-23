@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Expert;
 
+use App\Services\LLM\DTO\LLMProfileFallbackSelection;
 use App\Services\LLM\LLMTaskProfileResolver;
 
 final class ExpertModelPolicyResolver
@@ -21,11 +22,15 @@ final class ExpertModelPolicyResolver
         }
 
         $requiredCapabilities = $tools->requiredCapabilities;
+        $selected = $effective['effective'];
+        $fallbackSelection = null;
         if (($effective['profile_active'] ?? false) && ! $this->supportsAll($effective['capabilities'] ?? [], $requiredCapabilities)) {
             $fallback = $effective['fallback'] ?? null;
             if (! is_array($fallback) || ! ($fallback['enabled'] ?? false) || ! $this->supportsAll($fallback['capabilities'] ?? [], $requiredCapabilities)) {
                 throw ExpertModelPolicyException::capabilityUnavailable();
             }
+            $selected = $fallback;
+            $fallbackSelection = new LLMProfileFallbackSelection((string) $fallback['provider'], (string) $fallback['model']);
         }
 
         $fallback = is_array($effective['fallback'] ?? null) ? $effective['fallback'] : [];
@@ -35,8 +40,8 @@ final class ExpertModelPolicyResolver
             resolvedMode: $mode->resolvedMode,
             routeReason: $mode->routeReason,
             profile: $task,
-            provider: (string) ($effective['effective']['provider'] ?? ''),
-            model: (string) ($effective['effective']['model'] ?? ''),
+            provider: (string) ($selected['provider'] ?? ''),
+            model: (string) ($selected['model'] ?? ''),
             requiredCapabilities: $requiredCapabilities,
             tools: $tools->tools,
             fallback: [
@@ -46,6 +51,9 @@ final class ExpertModelPolicyResolver
             ],
             requirements: $requirements->toMetadata(),
             routerProfile: ($effective['profile_active'] ?? false) ? (string) ($effective['profile_task'] ?? $task) : null,
+            primaryProvider: (string) ($effective['effective']['provider'] ?? ''),
+            primaryModel: (string) ($effective['effective']['model'] ?? ''),
+            fallbackSelection: $fallbackSelection,
         );
     }
 

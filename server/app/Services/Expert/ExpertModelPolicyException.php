@@ -23,6 +23,6 @@ final class ExpertModelPolicyException extends RuntimeException
 
     public static function capabilityUnavailable(): self
     {
-        return new self('expert_capability_unavailable', 'Не удалось обработать вложенный материал. Повторите запрос.');
+        return new self('expert_capability_unavailable', 'Для выбранного режима AI нет модели, способной обработать эти материалы.');
     }
 }

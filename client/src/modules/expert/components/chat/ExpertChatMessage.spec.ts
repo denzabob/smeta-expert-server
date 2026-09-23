@@ -82,6 +82,24 @@ describe('Expert chat failure diagnostics', () => {
     expect(html).toContain('ID: run-vision')
     expect(html).not.toContain('Model luna')
     expect(html).not.toContain('model.request.started')
+    expect(html).not.toContain('Повторить</button>')
+  })
+
+  it('hides retry for a non-retryable terminal user error', async () => {
+    const message: ExpertMessage = {
+      id: 'user-terminal', role: 'user', text: 'какие вопросы заданы эксперту', createdAt: '2026-09-19T10:00:00Z',
+      deliveryState: 'error', deliveryError: 'Для выбранного режима AI нет модели, способной обработать эти материалы.',
+      diagnostic: { runId: 'run-terminal', errorCode: 'expert_capability_unavailable', retryable: false },
+    }
+    const app = createSSRApp({ render: () => h(ExpertChatMessage, { message }) })
+    app.component('v-icon', { template: '<i />' })
+    app.component('v-btn', { template: '<button><slot /></button>' })
+
+    const html = await renderToString(app)
+
+    expect(html).toContain('Для выбранного режима AI нет модели, способной обработать эти материалы.')
+    expect(html).toContain('Код: expert_capability_unavailable')
+    expect(html).not.toContain('Повторить</button>')
   })
 
   it('renders persisted image and document attachments on the user message, including deleted history', async () => {

@@ -144,6 +144,7 @@ const streamErrorMessages: Record<string, string> = {
   pdf_processing_too_large: 'Документ превышает допустимый объём обработки.',
   vision_not_supported: 'Не удалось обработать изображение. Повторите запрос.',
   material_not_supported: 'Не удалось обработать приложенный материал.',
+  expert_capability_unavailable: 'Для выбранного режима AI нет модели, способной обработать эти материалы.',
 }
 export type ExpertUploadOptions = { onProgress?: (progress: number) => void }
 export type ExpertDownloadOptions = { onProgress?: (progress: number | null) => void }

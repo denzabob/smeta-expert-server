@@ -209,7 +209,7 @@ final class ExpertChatService
                 $this->materialDiagnostics->logWorkload($runId, $resolvedExecutionPlan);
                 $response = $this->llmRouter
                     ->setUserId($conversation->project->user_id)
-                    ->chat($this->buildRequest($conversation, $userMessage, $bundle), taskProfile: $resolvedExecutionPlan->routerProfile);
+                    ->chat($this->buildRequest($conversation, $userMessage, $bundle), taskProfile: $resolvedExecutionPlan->routerProfile, profileFallback: $resolvedExecutionPlan->fallbackSelection);
                 foreach ($bundle->combined()->ocrCandidates as $candidate) {
                     $parsed = collect($response->parsedFiles)->first(fn ($file) => strtolower($file->sha256) === strtolower($candidate->sha256));
                     if ($parsed === null) {
@@ -240,8 +240,8 @@ final class ExpertChatService
                         'service_tier' => is_string($response->metadata['service_tier'] ?? null) ? $response->metadata['service_tier'] : null,
                         'latency_ms' => $response->latencyMs,
                         ...$resolvedExecutionPlan->toMetadata(),
-                        'fallback_used' => (bool) ($response->metadata['fallback_used'] ?? false),
-                        'fallback_reason' => $response->metadata['fallback_reason'] ?? null,
+                        'fallback_used' => (bool) ($response->metadata['fallback_used'] ?? false) || $resolvedExecutionPlan->fallbackSelection !== null,
+                        'fallback_reason' => $response->metadata['fallback_reason'] ?? ($resolvedExecutionPlan->fallbackSelection === null ? null : 'capability_mismatch'),
                         'tools_used' => $response->metadata['tools_used'] ?? $resolvedExecutionPlan->tools,
                         'actual_upstream_provider' => $response->metadata['upstream_provider'] ?? $response->provider,
                         'actual_upstream_model' => $response->metadata['upstream_model'] ?? $response->model,
@@ -377,7 +377,7 @@ final class ExpertChatService
             'service_tier' => is_string($metadata['service_tier'] ?? null) ? $metadata['service_tier'] : null,
             'latency_ms' => is_int($metadata['latency_ms'] ?? null) ? $metadata['latency_ms'] : null,
         ], static fn (mixed $value): bool => $value !== null);
-        foreach (['requested_mode', 'resolved_mode', 'route_reason', 'profile', 'effective_provider', 'effective_model', 'required_capabilities', 'tools', 'fallback', 'material_count', 'current_material_count', 'active_material_count', 'scope', 'coverage_mode', 'requires_vision', 'requires_pdf_processing', 'requires_multi_document_pipeline', 'requires_retrieval_pipeline', 'requires_reasoning', 'requires_exhaustive_coverage', 'task_type', 'task_target', 'material_scope', 'cross_document', 'domain', 'intent_confidence', 'intent_resolver_source', 'intent_signals', 'execution_strategy', 'direct_context_allowed', 'strategy_reason', 'pipeline_stages', 'pdf_count', 'image_count', 'source_bytes', 'page_count', 'estimated_text_chars', 'prepared_payload_bytes', 'estimated_context_tokens', 'coverage_requested', 'coverage_processed', 'coverage_failed', 'coverage_skipped', 'coverage_complete', 'coverage_manifest', 'fallback_used', 'fallback_reason', 'tools_used', 'actual_upstream_provider', 'actual_upstream_model'] as $key) {
+        foreach (['requested_mode', 'resolved_mode', 'route_reason', 'profile', 'task_profile', 'primary_provider', 'primary_model', 'selected_provider', 'selected_model', 'effective_provider', 'effective_model', 'required_capabilities', 'tools', 'fallback', 'material_count', 'current_material_count', 'active_material_count', 'scope', 'coverage_mode', 'requires_vision', 'requires_pdf_processing', 'requires_multi_document_pipeline', 'requires_retrieval_pipeline', 'requires_reasoning', 'requires_exhaustive_coverage', 'task_type', 'task_target', 'material_scope', 'cross_document', 'domain', 'intent_confidence', 'intent_resolver_source', 'intent_signals', 'execution_strategy', 'direct_context_allowed', 'strategy_reason', 'pipeline_stages', 'pdf_count', 'image_count', 'source_bytes', 'page_count', 'estimated_text_chars', 'prepared_payload_bytes', 'estimated_context_tokens', 'coverage_requested', 'coverage_processed', 'coverage_failed', 'coverage_skipped', 'coverage_complete', 'coverage_manifest', 'fallback_used', 'fallback_reason', 'tools_used', 'actual_upstream_provider', 'actual_upstream_model'] as $key) {
             if (array_key_exists($key, $metadata)) {
                 $technicalMetadata[$key] = $metadata[$key];
             }

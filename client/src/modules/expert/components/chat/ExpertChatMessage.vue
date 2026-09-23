@@ -16,7 +16,7 @@
       <ExpertChatActivityTimeline v-if="message.role === 'assistant' && message.deliveryState === 'sending' && !message.text" :runs="timelineRuns" />
       <div v-if="message.role === 'user' && message.deliveryState === 'error'" class="expert-message__delivery expert-message__delivery--error" role="alert">
         <span>{{ displayError }}</span>
-        <v-btn size="x-small" variant="text" :disabled="retryDisabled" @click="$emit('retry', message.id)">Повторить</v-btn>
+        <v-btn v-if="message.diagnostic?.retryable !== false" size="x-small" variant="text" :disabled="retryDisabled" @click="$emit('retry', message.id)">Повторить</v-btn>
         <details v-if="message.diagnostic" class="expert-message__diagnostic">
           <summary>Подробнее</summary>
           <span>Код: {{ message.diagnostic.errorCode }}</span>
@@ -103,7 +103,7 @@ const displayError = computed(() => {
   if (code === 'material_not_supported') return 'Не удалось обработать приложенный материал.'
   return props.message.deliveryError || 'Не удалось обработать запрос.'
 })
-const canContinue = computed(() => props.allowContinue && (props.message.deliveryState === 'error' || props.message.generationStatus === 'stopped' || props.message.generationStatus === 'interrupted'))
+const canContinue = computed(() => props.allowContinue && props.message.diagnostic?.retryable !== false && (props.message.deliveryState === 'error' || props.message.generationStatus === 'stopped' || props.message.generationStatus === 'interrupted'))
 const canRate = computed(() => props.feedbackEnabled && props.message.role === 'assistant' && props.message.text.trim() !== '' && props.message.deliveryState !== 'sending' && props.message.deliveryState !== 'error' && !['stopped', 'interrupted'].includes(props.message.generationStatus ?? 'completed'))
 const feedbackSaving = ref(false)
 const feedbackPendingRating = ref<ExpertMessageFeedback['rating'] | null>(null)

@@ -10,6 +10,7 @@ use App\Services\LLM\DTO\LLMCancellationToken;
 use App\Services\LLM\DTO\DecompositionPrompt;
 use App\Services\LLM\DTO\LLMChatRequest;
 use App\Services\LLM\DTO\LLMChatResponse;
+use App\Services\LLM\DTO\LLMProfileFallbackSelection;
 use App\Services\LLM\DTO\LLMStreamEvent;
 use App\Services\LLM\DTO\LLMResponse;
 use App\Services\LLM\Enums\LLMCapability;
@@ -285,12 +286,16 @@ class LLMRouter
      *
      * @throws LLMChatUnavailableException
      */
-    public function chat(LLMChatRequest $request, ?string $correlationId = null, ?string $taskProfile = null): LLMChatResponse
+    public function chat(LLMChatRequest $request, ?string $correlationId = null, ?string $taskProfile = null, ?LLMProfileFallbackSelection $profileFallback = null): LLMChatResponse
     {
         $this->lastCorrelationId = $correlationId ?? (string) Str::uuid();
         $this->capabilityRefreshAttempts = [];
         $executionPlan = $this->buildExecutionPlan($taskProfile);
         $profile = $this->activeProfile($taskProfile);
+        $this->assertProfileFallbackSelection($profile, $profileFallback);
+        if ($profileFallback !== null) {
+            $executionPlan = [$profileFallback->provider];
+        }
         $failoverChain = [];
         $attemptIndex = 0;
         $lastErrorType = null;
@@ -300,7 +305,7 @@ class LLMRouter
                 $executionPlan = array_slice($executionPlan, 0, 1);
             }
             $providerName = $executionPlan[0] ?? $this->settings->getPrimaryProvider();
-            $provider = $this->getProvider($providerName, $this->profileModel($taskProfile, $providerName));
+            $provider = $this->getProvider($providerName, $profileFallback?->model ?? $this->profileModel($taskProfile, $providerName));
             $requiredCapability = $request->hasPdfOcrFiles() ? LLMCapability::PDF_OCR : LLMCapability::FILE_INPUT;
             if (! $this->profileAllowsFallback($profile) && ($provider === null || ! $this->supportsMediaRequest($provider, $requiredCapability, $profile, $taskProfile, $request))) {
                 throw new LLMUnsupportedCapabilityException($provider?->name() ?? $providerName, $provider?->model() ?? 'unknown', $requiredCapability);
@@ -312,7 +317,7 @@ class LLMRouter
                 $executionPlan = array_slice($executionPlan, 0, 1);
             }
             $providerName = $executionPlan[0] ?? $this->settings->getPrimaryProvider();
-            $provider = $this->getProvider($providerName, $this->profileModel($taskProfile, $providerName));
+            $provider = $this->getProvider($providerName, $profileFallback?->model ?? $this->profileModel($taskProfile, $providerName));
 
             if (! $this->profileAllowsFallback($profile) && $provider !== null && ! $this->supportsMediaRequest($provider, LLMCapability::IMAGE_INPUT, $profile, $taskProfile, $request)) {
                 Log::warning('LLMRouter: configured profile rejected image input.', [
@@ -339,7 +344,7 @@ class LLMRouter
                 continue;
             }
 
-            $provider = $this->getProvider($providerName, $this->profileModel($taskProfile, $providerName));
+            $provider = $this->getProvider($providerName, $profileFallback?->model ?? $this->profileModel($taskProfile, $providerName));
             if ($provider === null) {
                 $failoverChain[] = "{$providerName}:not_configured";
                 $lastErrorType = LLMErrorType::CONFIG;
@@ -380,7 +385,7 @@ class LLMRouter
                         'retry_count' => $retryCount,
                     ]);
 
-                    return $this->withFallbackMetadata($response, $providerIndex > 0, $this->fallbackReason($failoverChain));
+                    return $this->withFallbackMetadata($response, $profileFallback !== null || $providerIndex > 0, $profileFallback !== null ? 'capability_mismatch' : $this->fallbackReason($failoverChain));
                 } catch (LLMProviderException $e) {
                     $errorType = $this->errorClassifier->classify($e, $e->getHttpStatus());
                     $lastErrorType = $errorType;
@@ -450,12 +455,16 @@ class LLMRouter
      * @return iterable<LLMStreamEvent>
      * @throws LLMChatUnavailableException
      */
-    public function streamChat(LLMChatRequest $request, LLMCancellationToken $cancellationToken, ?string $correlationId = null, ?string $taskProfile = null): iterable
+    public function streamChat(LLMChatRequest $request, LLMCancellationToken $cancellationToken, ?string $correlationId = null, ?string $taskProfile = null, ?LLMProfileFallbackSelection $profileFallback = null): iterable
     {
         $this->lastCorrelationId = $correlationId ?? (string) Str::uuid();
         $this->capabilityRefreshAttempts = [];
         $executionPlan = $this->buildExecutionPlan($taskProfile);
         $profile = $this->activeProfile($taskProfile);
+        $this->assertProfileFallbackSelection($profile, $profileFallback);
+        if ($profileFallback !== null) {
+            $executionPlan = [$profileFallback->provider];
+        }
         // Multimodal fallback is enabled only by an explicit task-profile policy.
         if (($request->hasFiles() || $request->hasImages()) && ! $this->profileAllowsFallback($profile)) {
             $executionPlan = array_slice($executionPlan, 0, 1);
@@ -465,7 +474,7 @@ class LLMRouter
         $lastProviderException = null;
 
         foreach ($executionPlan as $providerIndex => $providerName) {
-            $provider = $this->getProvider($providerName, $this->profileModel($taskProfile, $providerName));
+            $provider = $this->getProvider($providerName, $profileFallback?->model ?? $this->profileModel($taskProfile, $providerName));
             $supportsStreaming = $provider !== null && $this->supports($provider, LLMCapability::STREAMING, $profile);
             if ($profile !== null && $provider !== null && ! $supportsStreaming) {
                 // The response arrives as a whole; this is a synchronous completion,
@@ -513,8 +522,8 @@ class LLMRouter
                     'provider' => $response->provider,
                     'model' => $response->model,
                     'sync_fallback' => true,
-                    'fallback_used' => $providerIndex > 0,
-                    'fallback_reason' => $providerIndex > 0 ? $this->fallbackReason($failoverChain) : null,
+                    'fallback_used' => $profileFallback !== null || $providerIndex > 0,
+                    'fallback_reason' => $profileFallback !== null ? 'capability_mismatch' : ($providerIndex > 0 ? $this->fallbackReason($failoverChain) : null),
                     'actual_upstream_provider' => $response->metadata['upstream_provider'] ?? $response->provider,
                     'actual_upstream_model' => $response->model,
                 ], $response->parsedFiles);
@@ -564,8 +573,8 @@ class LLMRouter
                                 'upstream_provider' => $event->metadata['provider'] ?? null,
                                 'provider' => $provider->name(),
                                 'model' => is_string($event->metadata['model'] ?? null) ? $event->metadata['model'] : $provider->model(),
-                                'fallback_used' => $providerIndex > 0,
-                                'fallback_reason' => $providerIndex > 0 ? $this->fallbackReason($failoverChain) : null,
+                                'fallback_used' => $profileFallback !== null || $providerIndex > 0,
+                                'fallback_reason' => $profileFallback !== null ? 'capability_mismatch' : ($providerIndex > 0 ? $this->fallbackReason($failoverChain) : null),
                                 'actual_upstream_provider' => $event->metadata['provider'] ?? $provider->name(),
                                 'actual_upstream_model' => is_string($event->metadata['model'] ?? null) ? $event->metadata['model'] : $provider->model(),
                             ], $event->parsedFiles)
@@ -695,6 +704,18 @@ class LLMRouter
     private function activeProfile(?string $task): ?array
     {
         return $task === null ? null : $this->profileResolver()->active($task);
+    }
+
+    private function assertProfileFallbackSelection(?array $profile, ?LLMProfileFallbackSelection $selection): void
+    {
+        if ($selection === null) {
+            return;
+        }
+        if ($profile === null || ($profile['fallback_enabled'] ?? false) !== true
+            || ($profile['fallback_provider'] ?? null) !== $selection->provider
+            || ($profile['fallback_model'] ?? null) !== $selection->model) {
+            throw new \InvalidArgumentException('Selected profile fallback is not configured.');
+        }
     }
 
     private function profileModel(?string $task, string $provider): ?string

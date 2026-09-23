@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Expert;
 
+use App\Services\LLM\DTO\LLMProfileFallbackSelection;
+
 final readonly class ExpertExecutionPlan
 {
     /** @param list<string> $requiredCapabilities @param list<string> $tools @param array<string, mixed> $fallback @param array<string, mixed> $requirements */
@@ -19,6 +21,9 @@ final readonly class ExpertExecutionPlan
         public array $fallback,
         public array $requirements,
         public readonly ?string $routerProfile = null,
+        public string $primaryProvider = '',
+        public string $primaryModel = '',
+        public ?LLMProfileFallbackSelection $fallbackSelection = null,
     ) {}
 
     /** @return array<string, mixed> */
@@ -29,8 +34,15 @@ final readonly class ExpertExecutionPlan
             'resolved_mode' => $this->resolvedMode,
             'route_reason' => $this->routeReason,
             'profile' => $this->profile,
+            'task_profile' => $this->profile,
+            'primary_provider' => $this->primaryProvider,
+            'primary_model' => $this->primaryModel,
+            'selected_provider' => $this->provider,
+            'selected_model' => $this->model,
             'effective_provider' => $this->provider,
             'effective_model' => $this->model,
+            'fallback_used' => $this->fallbackSelection !== null,
+            'fallback_reason' => $this->fallbackSelection === null ? null : 'capability_mismatch',
             'required_capabilities' => $this->requiredCapabilities,
             'tools' => $this->tools,
             'fallback' => $this->fallback,
@@ -64,6 +76,9 @@ final readonly class ExpertExecutionPlan
             fallback: $this->fallback,
             requirements: [...$this->requirements, ...$coverage->toMetadata()],
             routerProfile: $this->routerProfile,
+            primaryProvider: $this->primaryProvider,
+            primaryModel: $this->primaryModel,
+            fallbackSelection: $this->fallbackSelection,
         );
     }
 }
