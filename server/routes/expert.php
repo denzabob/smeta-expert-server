@@ -37,6 +37,7 @@ Route::prefix('expert')->middleware('auth:sanctum')->group(function () {
     Route::delete('messages/{message}/feedback', [MessageFeedbackController::class, 'destroy']);
     Route::post('conversations/{conversation}/runs/{runId}/cancel', [MessageStreamController::class, 'cancel'])->whereUuid('runId');
     Route::get('projects/{project}/materials', [MaterialController::class, 'index']);
+    Route::get('projects/{project}/material-selection-limits', [MaterialController::class, 'selectionLimits']);
     Route::post('projects/{project}/materials', [MaterialController::class, 'store']);
     Route::get('materials/{material}', [MaterialController::class, 'show']);
     Route::get('materials/{material}/content', [MaterialController::class, 'content']);

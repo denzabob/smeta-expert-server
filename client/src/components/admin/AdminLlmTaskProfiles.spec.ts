@@ -39,7 +39,7 @@ const capabilities = {
 const profile = {
   configured: { provider: 'routerai', model: 'legacy/pinned', enabled: true, fallback_policy: 'none' },
   effective: { provider: 'routerai', model: 'legacy/pinned' }, source: 'PROFILE',
-  provider_key_source: 'ENV', capabilities, catalog_status: 'fresh',
+  provider_key_source: 'ENV', capabilities, catalog_status: 'fresh', model_in_catalog: false,
 }
 
 async function settle(): Promise<void> {
@@ -78,7 +78,8 @@ describe('Expert task profile admin', () => {
     Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('Редактировать'))?.click()
     await settle()
     expect(root.textContent).toContain('Модель не найдена в текущем каталоге')
-    expect(root.textContent).toContain('Эта модель не сможет анализировать изображения')
+    expect(root.textContent).toContain('Изображения ?')
+    expect(root.textContent).not.toContain('Эта модель не сможет анализировать изображения')
     expect(root.textContent).toContain('Скан PDF OCR')
 
     Array.from(root.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Текст')?.click()

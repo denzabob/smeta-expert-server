@@ -87,6 +87,7 @@ export interface ExpertProjectMaterial {
   mimeType?: string
   sizeBytes?: number
   createdAt?: string
+  updatedAt?: string
 }
 
 export interface ExpertResearchObject {

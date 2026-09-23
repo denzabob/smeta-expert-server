@@ -176,21 +176,21 @@ describe('Expert frontend prototype contracts', () => {
     expect(materialsSource).toContain('Материал используется в результатах исследования')
   })
 
-  it('keeps grid materials in a dedicated media-card layout', () => {
+  it('uses the shared file browser for compact tile and list views', () => {
     const materialsSource = readFileSync(new URL('./pages/ExpertMaterials.vue', import.meta.url), 'utf8')
+    const browserSource = readFileSync(new URL('./components/files/ExpertFileBrowser.vue', import.meta.url), 'utf8')
+    const itemSource = readFileSync(new URL('./components/files/FileItem.vue', import.meta.url), 'utf8')
 
-    expect(materialsSource).toContain('repeat(auto-fill, minmax(240px, 1fr))')
-    expect(materialsSource).toContain('aspect-ratio: 4 / 3')
-    expect(materialsSource).toContain('-webkit-line-clamp: 2')
-    expect(materialsSource).toContain('aria-label="Компактный список"')
-    expect(materialsSource).toContain('aria-label="Плитка"')
-    expect(materialsSource).toContain('class="expert-materials__view-toggle"')
-    expect(materialsSource).toContain('.expert-materials__view-toggle :deep(.v-btn + .v-btn)')
-    expect(materialsSource).toContain('border-radius: 0 !important')
-    expect(materialsSource).toContain('class="expert-material-card__actions" @click.stop')
+    expect(materialsSource).toContain('<ExpertFileBrowser')
+    expect(browserSource).toContain("{ label: 'Крупная плитка', value: 'large_tile' }")
+    expect(browserSource).toContain("{ label: 'Плитка', value: 'tile' }")
+    expect(browserSource).toContain("{ label: 'Список', value: 'list' }")
+    expect(materialsSource).toContain('storage-key="expert.materials"')
+    expect(browserSource).toContain('readExpertFileBrowserPreferences')
+    expect(itemSource).toContain('expert-file-item__thumbnail')
+    expect(itemSource).toContain('expert-file-item--list')
     expect(materialsSource).not.toContain('{{ material.category }}')
-    expect(materialsSource).not.toContain('min-height: 220px')
-    expect(materialsSource).not.toContain('height: 148px')
+    expect(materialsSource).not.toContain('expert-materials__grid--tiles')
   })
 
   it('shows feedback counters and a manual refresh in the admin screen', () => {

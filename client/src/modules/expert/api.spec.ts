@@ -19,8 +19,8 @@ describe('Expert persistence mapping', () => {
   })
   it('provides stable fallback error mapping', () => { expect(mapExpertApiError(new Error('x'))).toEqual({code:undefined,message:'Не удалось выполнить запрос.',validationErrors:{}}) })
   it('maps private material metadata without exposing a storage path', () => {
-    const material=mapMaterial({public_id:'m1',original_name:'evidence.pdf',mime_type:'application/pdf',extension:'pdf',size:2048,category:'document',status:'uploaded',created_at:'2026-09-12T10:00:00Z'})
-    expect(material).toMatchObject({id:'m1',name:'evidence.pdf',kind:'document',size:'2.0 КБ',status:'Загружен'})
+    const material=mapMaterial({public_id:'m1',original_name:'evidence.pdf',mime_type:'application/pdf',extension:'pdf',size:2048,category:'document',status:'uploaded',created_at:'2026-09-12T10:00:00Z',updated_at:'2026-09-12T11:00:00Z'})
+    expect(material).toMatchObject({id:'m1',name:'evidence.pdf',kind:'document',size:'2.0 КБ',status:'Загружен',createdAt:'2026-09-12T10:00:00Z',updatedAt:'2026-09-12T11:00:00Z'})
     expect(material).not.toHaveProperty('storagePath')
   })
   it('restores persisted user attachments and the retry ID from history', () => {
@@ -92,6 +92,13 @@ describe('Expert persistence mapping', () => {
     await client.getMaterialThumbnail('m/1')
 
     expect(get).toHaveBeenCalledWith('/api/expert/materials/m%2F1/thumbnail', { responseType: 'blob' })
+  })
+  it('loads dynamic material selection limits from the project endpoint', async () => {
+    const get = vi.fn().mockResolvedValue({ data: { max_materials_per_message: 7, max_images_per_message: 3 } })
+    const client = createExpertApi({ get } as unknown as AxiosInstance)
+
+    await expect(client.getMaterialSelectionLimits('project/1')).resolves.toEqual({ maxMaterials: 7, maxImages: 3 })
+    expect(get).toHaveBeenCalledWith('/api/expert/projects/project%2F1/material-selection-limits')
   })
   it('sends the content-only chat body with a stable retry header and maps both messages', async () => {
     const post=vi.fn().mockResolvedValue({data:{

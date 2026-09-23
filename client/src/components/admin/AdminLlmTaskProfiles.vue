@@ -45,12 +45,13 @@
           <div class="admin-llm-profile__capability-title">Возможности основной модели</div>
           <div class="d-flex flex-wrap ga-1">
             <v-chip v-for="capability in capabilityLabels" :key="capability.key" size="small" :color="profile.capabilities[capability.key] ? 'success' : 'default'" variant="tonal">
-              {{ capability.label }} {{ profile.capabilities[capability.key] ? '✓' : '—' }}
+              {{ capability.label }} {{ capabilityMark(profile.capabilities, capability.key, profile.effective.provider, profile.catalog_status, profile.model_in_catalog) }}
             </v-chip>
           </div>
           <div v-if="fallbackSummary.isProfile" class="admin-llm-profile__fallback-status" :class="{ 'admin-llm-profile__fallback-status--warning': fallbackCompatibility && !fallbackCompatibility.compatible }">
-            <template v-if="fallbackCompatibility?.compatible">Резерв: совместим ✓</template>
-            <template v-else-if="fallbackCompatibility">Резервная модель не поддерживает: {{ fallbackCompatibility.missing.join(', ') }}</template>
+            <template v-if="fallbackCompatibility?.missing.length">Резервная модель не поддерживает: {{ fallbackCompatibility.missing.join(', ') }}</template>
+            <template v-else-if="fallbackCompatibility?.unknown">Совместимость резерва неизвестна: проверьте каталог.</template>
+            <template v-else-if="fallbackCompatibility?.compatible">Резерв: совместим ✓</template>
             <template v-else>Совместимость резерва будет проверена после загрузки модели.</template>
           </div>
         </v-card-text>
@@ -108,7 +109,7 @@
           <div class="text-subtitle-2 mb-1">Возможности основной модели</div>
           <div class="d-flex flex-wrap ga-1">
             <v-chip v-for="capability in capabilityLabels" :key="capability.key" size="small" :color="preview.capabilities[capability.key] ? 'success' : 'default'" variant="tonal">
-              {{ capability.label }} {{ preview.capabilities[capability.key] ? '✓' : '—' }}
+              {{ capability.label }} {{ capabilityMark(preview.capabilities, capability.key, draft.provider, catalogStatus, preview.model_in_catalog) }}
             </v-chip>
           </div>
         </div>
@@ -116,13 +117,14 @@
           <div class="text-subtitle-2 mb-1">Возможности резервной модели</div>
           <div class="d-flex flex-wrap ga-1">
             <v-chip v-for="capability in capabilityLabels" :key="`fallback-${capability.key}`" size="small" :color="fallbackPreview.capabilities[capability.key] ? 'success' : 'default'" variant="tonal">
-              {{ capability.label }} {{ fallbackPreview.capabilities[capability.key] ? '✓' : '—' }}
+              {{ capability.label }} {{ capabilityMark(fallbackPreview.capabilities, capability.key, draft.fallback_provider, catalogStatus, fallbackPreview.model_in_catalog) }}
             </v-chip>
           </div>
         </div>
-        <v-alert v-if="preview && !preview.capabilities.image_input" type="warning" variant="tonal" density="compact" class="mb-2">Эта модель не сможет анализировать изображения.</v-alert>
-        <v-alert v-if="preview && !preview.capabilities.pdf_ocr" type="warning" variant="tonal" density="compact" class="mb-2">Для сканированных PDF выбранный профиль не поддерживает OCR. Текстовые PDF обрабатываются после локального извлечения текста.</v-alert>
-        <v-alert v-if="preview && !preview.capabilities.streaming" type="warning" variant="tonal" density="compact" class="mb-2">Потоковая выдача не поддерживается. Expert получит полный ответ через синхронный запрос.</v-alert>
+        <v-alert v-if="preview && capabilityMark(preview.capabilities, 'image_input', draft.provider, catalogStatus, preview.model_in_catalog) === '—'" type="warning" variant="tonal" density="compact" class="mb-2">Эта модель не сможет анализировать изображения.</v-alert>
+        <v-alert v-if="preview && capabilityMark(preview.capabilities, 'pdf_ocr', draft.provider, catalogStatus, preview.model_in_catalog) === '—'" type="warning" variant="tonal" density="compact" class="mb-2">Для сканированных PDF выбранный профиль не поддерживает OCR. Текстовые PDF обрабатываются после локального извлечения текста.</v-alert>
+        <v-alert v-if="preview && capabilityMark(preview.capabilities, 'streaming', draft.provider, catalogStatus, preview.model_in_catalog) === '—'" type="warning" variant="tonal" density="compact" class="mb-2">Потоковая выдача не поддерживается. Expert получит полный ответ через синхронный запрос.</v-alert>
+        <v-alert v-if="preview && draft.provider === 'routerai' && (catalogStatus !== 'fresh' || !preview.model_in_catalog)" type="info" variant="tonal" density="compact" class="mb-2">? — возможность неизвестна: каталог недоступен или модель отсутствует в нём.</v-alert>
 
         <div v-if="catalogVisible" class="mt-4">
           <div class="d-flex align-center flex-wrap ga-2 mb-2">
@@ -200,6 +202,7 @@ interface ProfileResponse {
   provider_key_source: string
   capabilities: Capabilities
   catalog_status: string
+  model_in_catalog?: boolean | null
   fallback_policy: 'none' | 'global'
 }
 interface ModelRecord {
@@ -277,8 +280,10 @@ const preview = ref<{ capabilities: Capabilities; model_in_catalog: boolean | nu
 const fallbackPreview = ref<{ capabilities: Capabilities; model_in_catalog: boolean | null; provider_configured: boolean } | null>(null)
 const fallbackCompatibility = computed(() => {
   if (!preview.value || !fallbackPreview.value || fallbackStrategy.value !== 'profile') return null
-  const missing = capabilityLabels.filter((capability) => preview.value?.capabilities[capability.key] && !fallbackPreview.value?.capabilities[capability.key]).map((capability) => capability.label)
-  return { compatible: missing.length === 0, missing }
+  const required = capabilityLabels.filter((capability) => preview.value?.capabilities[capability.key])
+  const missing = required.filter((capability) => capabilityMark(fallbackPreview.value!.capabilities, capability.key, draft.fallback_provider, catalogStatus.value, fallbackPreview.value!.model_in_catalog) === '—').map((capability) => capability.label)
+  const unknown = required.some((capability) => capabilityMark(fallbackPreview.value!.capabilities, capability.key, draft.fallback_provider, catalogStatus.value, fallbackPreview.value!.model_in_catalog) === '?')
+  return { compatible: missing.length === 0 && !unknown, missing, unknown }
 })
 const saving = ref(false)
 const saveError = ref('')
@@ -302,6 +307,10 @@ let catalogSequence = 0
 
 function catalogLabel(status: string): string {
   return ({ fresh: 'Актуален', stale: 'Кэш, RouterAI недоступен', unavailable: 'Недоступен', unsupported: 'Нет каталога' } as Record<string, string>)[status] || status
+}
+function capabilityMark(capabilities: Capabilities, key: string, provider: string, status: string, inCatalog: boolean | null | undefined): string {
+  if (capabilities[key]) return '✓'
+  return provider === 'routerai' && (status !== 'fresh' || inCatalog === false) ? '?' : '—'
 }
 function selectProfile(task: ProfileTask): void {
   if (profileTask.value !== task) profileTask.value = task

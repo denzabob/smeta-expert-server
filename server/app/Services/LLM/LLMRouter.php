@@ -837,7 +837,7 @@ class LLMRouter
         $key = $provider->name().'|'.$provider->model();
         $catalog = app(RouterAiModelCatalogService::class);
         $snapshot = null;
-        if (! isset($this->capabilityRefreshAttempts[$key])) {
+        if (! isset($this->capabilityRefreshAttempts[$key]) && ! request()->attributes->get('expert_routerai_catalog_refresh_attempted', false)) {
             $this->capabilityRefreshAttempts[$key] = true;
             $snapshot = $catalog->snapshot(true);
         }

@@ -86,6 +86,10 @@ export type ExpertMaterialDto = {
   created_at: string
   updated_at?: string
 }
+export type ExpertMaterialSelectionLimitsDto = {
+  max_materials_per_message: number
+  max_images_per_message: number
+}
 export type ExpertFindingDto = {
   public_id: string
   type: ExpertFindingType
@@ -271,6 +275,7 @@ export function mapMaterial(dto: ExpertMaterialDto): ExpertProjectMaterial {
     mimeType: dto.mime_type,
     sizeBytes: dto.size,
     createdAt: dto.created_at,
+    updatedAt: dto.updated_at,
   }
 }
 
@@ -665,6 +670,15 @@ export function createExpertApi(http?: AxiosInstance) {
         `/api/expert/projects/${encodeURIComponent(projectId)}/materials`,
       )
       return data.data.map(mapMaterial)
+    },
+    async getMaterialSelectionLimits(projectId: string) {
+      const { data } = await (await resolveHttp()).get<ExpertMaterialSelectionLimitsDto>(
+        `/api/expert/projects/${encodeURIComponent(projectId)}/material-selection-limits`,
+      )
+      return {
+        maxMaterials: Math.max(0, Number(data.max_materials_per_message) || 0),
+        maxImages: Math.max(1, Number(data.max_images_per_message) || 1),
+      }
     },
     async uploadMaterial(projectId: string, file: File, options: ExpertUploadOptions = {}) {
       const form = new FormData()

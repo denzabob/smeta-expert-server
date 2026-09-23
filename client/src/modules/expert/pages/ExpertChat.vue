@@ -174,7 +174,17 @@
 
     <v-dialog v-model="libraryOpen" max-width="760" scrollable>
       <v-card v-if="libraryLoading"><v-card-title>Библиотека проекта</v-card-title><v-card-text><v-progress-linear indeterminate /></v-card-text></v-card>
-      <ExpertProjectLibraryPicker v-else-if="libraryOpen" :materials="project.materials" :initially-selected="libraryForContext ? activeMaterials.map((item) => item.id) : composerMaterialContexts.map((context) => context.id)" @cancel="libraryOpen = false" @confirm="confirmLibrarySelection" />
+      <ExpertProjectLibraryPicker
+        v-else-if="libraryOpen"
+        :materials="project.materials"
+        :initially-selected="libraryForContext ? activeMaterials.map((item) => item.id) : composerMaterialContexts.map((context) => context.id)"
+        :selection-limits="materialSelectionLimits"
+        :thumbnails="transfers.thumbnailPreviews.value"
+        @thumbnail-needed="transfers.loadImageThumbnail($event)"
+        @thumbnail-error="transfers.markThumbnailError($event.id)"
+        @cancel="libraryOpen = false"
+        @confirm="confirmLibrarySelection"
+      />
     </v-dialog>
     <ExpertMaterialDrawer v-if="materialDrawerOpen" v-model="materialDrawerOpen" :material="selectedMaterial" :project-mode="projectMode" :image-preview="selectedMaterial ? transfers.imagePreviews.value[selectedMaterial.id] : undefined" :downloading="selectedMaterial ? transfers.isDownloading(selectedMaterial.id) : false" @action="handleMaterialAction" />
 
@@ -215,6 +225,7 @@ import {
 import { useExpertMaterialTransfers } from '../composables/useExpertMaterialTransfers'
 import { clearExpertLastConversation, expertLastConversationStorageKey, readExpertLastConversation, readExpertMode, selectInitialExpertConversation, writeExpertLastConversation, writeExpertMode } from '../lastConversation'
 import { expertApi, isExpertMaterialContextError, mapExpertApiError } from '../api'
+import type { ExpertMaterialSelectionLimits } from '../fileBrowser'
 import type { ExpertChatMode, ExpertConversation, ExpertMessage, ExpertMessageFeedback, ExpertMessageMaterialContext, ExpertProject, ExpertProjectMaterial, ExpertProjectMode, ExpertRunDiagnostic } from '../types'
 
 const props = defineProps<{ project: ExpertProject; projectMode: ExpertProjectMode }>()
@@ -254,6 +265,7 @@ const composerMaterialContexts = ref<ExpertMessageMaterialContext[]>([])
 const libraryOpen = ref(false)
 const libraryForContext = ref(false)
 const libraryLoading = ref(false)
+const materialSelectionLimits = ref<ExpertMaterialSelectionLimits>({ maxMaterials: 0, maxImages: 0 })
 const activeMaterials = ref<Array<{ id: string; name: string; mime_type: string }>>([])
 const activeMaterialCountLabel = computed(() => {
   const count = activeMaterials.value.length
@@ -1031,7 +1043,12 @@ async function openLibrary() {
   libraryOpen.value = true
   libraryLoading.value = true
   try {
-    props.project.materials = await expertApi.listMaterials(props.project.id)
+    const [materials, limits] = await Promise.all([
+      expertApi.listMaterials(props.project.id),
+      expertApi.getMaterialSelectionLimits(props.project.id),
+    ])
+    props.project.materials = materials
+    materialSelectionLimits.value = limits
   } catch (error) {
     snackbarText.value = mapExpertApiError(error).message
     snackbarOpen.value = true
@@ -1078,7 +1095,12 @@ async function openContextLibrary() {
   libraryOpen.value = true
   libraryLoading.value = true
   try {
-    props.project.materials = await expertApi.listMaterials(props.project.id)
+    const [materials, limits] = await Promise.all([
+      expertApi.listMaterials(props.project.id),
+      expertApi.getMaterialSelectionLimits(props.project.id),
+    ])
+    props.project.materials = materials
+    materialSelectionLimits.value = limits
   } catch (error) {
     snackbarText.value = mapExpertApiError(error).message
     snackbarOpen.value = true

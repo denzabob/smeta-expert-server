@@ -28,6 +28,14 @@ final class ExpertCapabilityFallbackTest extends TestCase
         parent::setUp();
         Storage::fake('local');
         Cache::forget('llm:routerai:model_catalog:v1');
+        Cache::forever('llm:routerai:model_catalog:v1', [
+            'fetched_at' => time(),
+            'models' => [
+                ['id' => 'custom/text-only', 'input_modalities' => ['text'], 'output_modalities' => ['text']],
+                ['id' => 'custom/also-text-only', 'input_modalities' => ['text'], 'output_modalities' => ['text']],
+                ['id' => 'custom/image-only', 'input_modalities' => ['image'], 'output_modalities' => ['text']],
+            ],
+        ]);
         app(LLMSettingsRepository::class)->saveFromAdmin([
             'mode' => 'manual',
             'primary_provider' => 'routerai',
@@ -52,6 +60,63 @@ final class ExpertCapabilityFallbackTest extends TestCase
             ->assertJsonPath('assistant_message.metadata.selected_model', 'openai/gpt-4o')
             ->assertJsonPath('assistant_message.metadata.fallback_used', false);
         $this->assertChatModel('openai/gpt-4o');
+    }
+
+    public function test_empty_catalog_refreshes_once_and_uses_primary_luna(): void
+    {
+        Cache::forget('llm:routerai:model_catalog:v1');
+        $this->profile(LLMTaskProfileResolver::EXPERT_FAST, 'openai/gpt-5.6-luna', true, 'google/gemini-3.8-flash');
+        [$user, $conversation, $images] = $this->conversationWithImages(3);
+        $this->fakeCatalogAndAnswer([
+            $this->catalogModel('openai/gpt-5.6-luna', ['text', 'image', 'file']),
+            $this->catalogModel('google/gemini-3.8-flash', ['text', 'image', 'file']),
+        ]);
+
+        $this->send($user, $conversation, $images, 'fast')->assertCreated()
+            ->assertJsonPath('assistant_message.metadata.selected_model', 'openai/gpt-5.6-luna')
+            ->assertJsonPath('assistant_message.metadata.fallback_used', false);
+        $this->assertChatModel('openai/gpt-5.6-luna', 3);
+        Http::assertSentCount(2);
+    }
+
+    public function test_empty_catalog_refresh_chooses_compatible_explicit_fallback(): void
+    {
+        Cache::forget('llm:routerai:model_catalog:v1');
+        $this->profile(LLMTaskProfileResolver::EXPERT_FAST, 'custom/primary', true, 'custom/fallback');
+        [$user, $conversation, $images] = $this->conversationWithImages(1);
+        $this->fakeCatalogAndAnswer([
+            $this->catalogModel('custom/primary', ['text']),
+            $this->catalogModel('custom/fallback', ['text', 'image']),
+        ]);
+
+        $this->send($user, $conversation, $images, 'fast')->assertCreated()
+            ->assertJsonPath('assistant_message.metadata.resolved_mode', 'fast')
+            ->assertJsonPath('assistant_message.metadata.selected_model', 'custom/fallback')
+            ->assertJsonPath('assistant_message.metadata.fallback_reason', 'capability_mismatch');
+        $this->assertChatModel('custom/fallback');
+        Http::assertSentCount(2);
+    }
+
+    public function test_unavailable_catalog_keeps_unknown_primary_as_advisory(): void
+    {
+        Cache::forget('llm:routerai:model_catalog:v1');
+        $this->profile(LLMTaskProfileResolver::EXPERT_FAST, 'custom/unknown');
+        [$user, $conversation, $images] = $this->conversationWithImages(1);
+        Http::fake([
+            '*/models' => Http::response([], 503),
+            '*/chat/completions' => Http::response(['choices' => [['message' => ['content' => 'Тестовый ответ по изображениям.']]]], 200),
+        ]);
+
+        $this->send($user, $conversation, $images, 'fast')->assertCreated()
+            ->assertJsonPath('assistant_message.metadata.selected_model', 'custom/unknown');
+        $this->assertChatModel('custom/unknown');
+        Http::assertSentCount(2);
+    }
+
+    public function test_fresh_catalog_with_explicit_negatives_rejects_without_refresh(): void
+    {
+        $this->profile(LLMTaskProfileResolver::EXPERT_FAST, 'custom/text-only', true, 'custom/also-text-only');
+        $this->assertCapabilityError();
     }
 
     public function test_primary_mismatch_uses_profile_fallback(): void
@@ -243,6 +308,19 @@ final class ExpertCapabilityFallbackTest extends TestCase
             'model' => 'openai/gpt-4o',
             'choices' => [['message' => ['content' => 'Тестовый ответ по изображениям.']]],
         ], 200)]);
+    }
+
+    private function fakeCatalogAndAnswer(array $models): void
+    {
+        Http::fake([
+            '*/models' => Http::response(['data' => $models], 200),
+            '*/chat/completions' => Http::response(['choices' => [['message' => ['content' => 'Тестовый ответ по изображениям.']]]], 200),
+        ]);
+    }
+
+    private function catalogModel(string $id, array $inputs): array
+    {
+        return ['id' => $id, 'architecture' => ['input_modalities' => $inputs, 'output_modalities' => ['text']], 'supported_parameters' => ['reasoning']];
     }
 
     private function send(User $user, ExpertConversation $conversation, array $images, string $mode, string $content = 'какие вопросы заданы эксперту')

@@ -27,6 +27,16 @@ class MaterialController extends Controller
         return MaterialResource::collection($project->materials()->latest()->get());
     }
 
+    public function selectionLimits(ExpertProject $project)
+    {
+        $this->authorize('view', $project);
+
+        return response()->json([
+            'max_materials_per_message' => max(0, (int) config('expert.material_context.max_materials_per_message', 0)),
+            'max_images_per_message' => max(1, (int) config('expert.vision.max_images_per_message', 4)),
+        ]);
+    }
+
     public function store(MaterialUploadRequest $request, ExpertProject $project)
     {
         $this->authorize('update', $project);
