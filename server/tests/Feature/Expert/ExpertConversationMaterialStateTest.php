@@ -40,6 +40,9 @@ final class ExpertConversationMaterialStateTest extends TestCase
         $this->assertNotNull($state->lastCurrentBatch?->createdAt);
         $this->assertSame([$a->public_id, $b->public_id, $c->public_id], $state->lastResolvedSourceSet);
         $this->assertSame([$a->public_id, $b->public_id], $state->lastPrimarySourceSet);
+        $this->assertSame([$a->public_id, $b->public_id, $c->public_id], $state->focusedSourceSet);
+        $this->assertSame([$a->public_id, $b->public_id], $state->focusedPrimaryIds);
+        $this->assertSame($message->public_id, $state->focusedAtMessageId);
         $this->assertSame([$a->public_id, $b->public_id, $c->public_id], $state->lastComparisonSourceSet);
         $this->assertSame([$active->public_id], $state->activeResearchSet);
         $this->assertSame([$a->public_id, $b->public_id, $c->public_id], $state->recentSourceSets[0]->materialIds);
@@ -61,9 +64,35 @@ final class ExpertConversationMaterialStateTest extends TestCase
 
         $this->assertSame([$a->public_id, $b->public_id], $state->lastResolvedSourceSet);
         $this->assertSame([], $state->lastPrimarySourceSet);
+        $this->assertSame([], $state->focusedSourceSet);
+        $this->assertSame([], $state->focusedPrimaryIds);
         $this->assertSame([], $state->lastComparisonSourceSet);
         $this->assertSame(2, $state->recentSourceSets[0]->snapshotVersion);
         $this->assertSame([], $state->activeResearchSet);
+    }
+
+    public function test_five_previous_attachments_do_not_replace_a_single_resolved_focus(): void
+    {
+        $conversation = $this->conversation();
+        $images = array_map(fn (int $number): ExpertProjectMaterial => $this->material($conversation->project, "{$number}.jpg"), [1, 2, 3]);
+        $other = $this->material($conversation->project, 'Дополнительная экспертиза.pdf');
+        $focused = $this->material($conversation->project, 'Заключение Дягилевой.pdf');
+        $message = $this->message($conversation, $this->v3Snapshot([[$focused->public_id, 'primary']]));
+        foreach ([...$images, $other, $focused] as $position => $material) {
+            $this->attach($message, $material, $position);
+        }
+        $this->message($conversation, [
+            'version' => 3,
+            'selected_sources' => [],
+            'ambiguity' => ['ambiguous' => true],
+        ]);
+
+        $state = app(ExpertConversationMaterialStateBuilder::class)->build($conversation);
+
+        $this->assertCount(5, $state->lastCurrentBatch?->orderedMaterialIds ?? []);
+        $this->assertSame([$focused->public_id], $state->focusedSourceSet);
+        $this->assertSame([$focused->public_id], $state->focusedPrimaryIds);
+        $this->assertSame($message->public_id, $state->focusedAtMessageId);
     }
 
     public function test_assistant_text_and_library_upload_order_do_not_change_structural_state(): void
@@ -110,6 +139,7 @@ final class ExpertConversationMaterialStateTest extends TestCase
         $this->assertCount(2, $state->recentSourceSets);
         $this->assertSame([$materials[2]->public_id], $state->recentSourceSets[0]->materialIds);
         $this->assertSame([$materials[1]->public_id], $state->recentSourceSets[1]->materialIds);
+        $this->assertSame([$materials[2]->public_id], $state->focusedPrimaryIds);
     }
 
     private function conversation(): ExpertConversation

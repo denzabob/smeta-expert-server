@@ -12,6 +12,7 @@ use App\Services\Expert\ExpertAttachmentBatch;
 use App\Services\Expert\ExpertContextCandidate;
 use App\Services\Expert\ExpertContextCandidatePool;
 use App\Services\Expert\ExpertContextConstraints;
+use App\Services\Expert\ExpertContextContinuityResolver;
 use App\Services\Expert\ExpertContextDeterministicResolver;
 use App\Services\Expert\ExpertContextResolutionValidator;
 use App\Services\Expert\ExpertContextResolver;
@@ -75,6 +76,134 @@ final class ExpertContextResolverTest extends TestCase
                 $this->intent(), $this->state(), $pool);
             $this->assertSame([$materials[$index]->public_id], array_column($result->selected, 'material_id'));
         }
+        $this->assertSame(0, $semantic->calls);
+    }
+
+    public function test_short_follow_ups_keep_the_last_primary_without_semantic_routing(): void
+    {
+        $conversation = $this->conversation();
+        $focused = $this->material($conversation->project, 'Заключение Дягилевой.pdf');
+        $other = $this->material($conversation->project, 'Дополнительная экспертиза.pdf');
+        $pool = new ExpertContextCandidatePool([
+            $this->candidate($focused, ['last_primary']),
+            $this->candidate($other, ['project']),
+        ], new ExpertAttachmentBatch(null, []), false);
+        $semantic = new FakeExpertSemanticResolver(new RuntimeException('Should not be called'));
+        $state = $this->focusedState($focused->public_id);
+
+        foreach ([
+            'какой номер дела?', 'какая там дата?', 'кто указан экспертом?',
+            'сколько вопросов?', 'почему?', 'а второй вопрос?',
+            'какой номер дела в этой экспертизе?',
+        ] as $query) {
+            $result = $this->resolver($semantic)->resolve($conversation, $query, $this->intent(), $state, $pool);
+            $this->assertSame([$focused->public_id], array_column($result->selected, 'material_id'), $query);
+            $this->assertSame('conversational_focus', $result->selected[0]['reason_code'], $query);
+            $this->assertFalse($result->semanticUsed, $query);
+        }
+        $this->assertSame(0, $semantic->calls);
+    }
+
+    public function test_exact_or_named_new_source_shifts_focus(): void
+    {
+        $conversation = $this->conversation();
+        $focused = $this->material($conversation->project, 'Заключение Дягилевой.pdf');
+        $named = $this->material($conversation->project, 'Заключение Петрова.pdf');
+        $contract = $this->material($conversation->project, 'Договор аренды.pdf');
+        $pool = new ExpertContextCandidatePool([
+            $this->candidate($focused, ['last_primary']),
+            $this->candidate($named, ['project']),
+            $this->candidate($contract, ['project']),
+        ], new ExpertAttachmentBatch(null, []), false);
+        $semantic = new FakeExpertSemanticResolver(new RuntimeException('Should not be called'));
+        $state = $this->focusedState($focused->public_id);
+
+        foreach ([
+            ['Что указано в Заключение Петрова.pdf?', $named->public_id],
+            ['Что указал Петров?', $named->public_id],
+            ['а что указал петров?', $named->public_id],
+            ['Что написано в договоре?', $contract->public_id],
+        ] as [$query, $expected]) {
+            $result = $this->resolver($semantic)->resolve($conversation, $query, $this->intent(), $state, $pool);
+            $this->assertSame([$expected], array_column($result->selected, 'material_id'), $query);
+            $this->assertNotSame('conversational_focus', $result->selected[0]['reason_code'], $query);
+        }
+        $this->assertSame(0, $semantic->calls);
+    }
+
+    public function test_ambiguous_new_referent_does_not_fall_back_to_focus(): void
+    {
+        $conversation = $this->conversation();
+        $focused = $this->material($conversation->project, 'Акт осмотра.pdf');
+        $first = $this->material($conversation->project, 'Заключение 2025.pdf');
+        $second = $this->material($conversation->project, 'Заключение 2026.pdf');
+        $pool = new ExpertContextCandidatePool([
+            $this->candidate($focused, ['last_primary']),
+            $this->candidate($first, ['project']),
+            $this->candidate($second, ['project']),
+        ], new ExpertAttachmentBatch(null, []), false);
+        $semantic = new FakeExpertSemanticResolver(new RuntimeException('Should not be called'));
+
+        $result = $this->resolver($semantic)->resolve($conversation, 'А что в другом заключении?',
+            $this->intent(), $this->focusedState($focused->public_id), $pool);
+
+        $this->assertTrue($result->ambiguous);
+        $this->assertSame([], $result->selected);
+        $this->assertEqualsCanonicalizing([$first->public_id, $second->public_id], array_column($result->ambiguousCandidates, 'material_public_id'));
+        $this->assertSame(0, $semantic->calls);
+    }
+
+    public function test_identity_routing_text_can_shift_focus_without_matching_filename(): void
+    {
+        $conversation = $this->conversation();
+        $focused = $this->material($conversation->project, 'Заключение Дягилевой.pdf');
+        $other = $this->material($conversation->project, 'Отчёт 2026.pdf');
+        $otherCandidate = new ExpertContextCandidate(
+            $other->public_id, $conversation->project->public_id, $other->original_name, $other->mime_type,
+            $other->category, ['project'], null,
+            ['aliases' => [$other->original_name], 'routing_text' => 'Эксперт Петров рассматривает объект'],
+            'uploaded',
+        );
+        $pool = new ExpertContextCandidatePool([
+            $this->candidate($focused, ['last_primary']), $otherCandidate,
+        ], new ExpertAttachmentBatch(null, []), false);
+        $semantic = new FakeExpertSemanticResolver(new RuntimeException('Should not be called'));
+
+        $result = $this->resolver($semantic)->resolve($conversation, 'А что указал Петров?',
+            $this->intent(), $this->focusedState($focused->public_id), $pool);
+
+        $this->assertSame([$other->public_id], array_column($result->selected, 'material_id'));
+        $this->assertSame('focus_shift', $result->selected[0]['reason_code']);
+        $this->assertSame(0, $semantic->calls);
+    }
+
+    public function test_new_current_attachment_overrides_old_focus_and_last_batch_does_not_define_focus(): void
+    {
+        $conversation = $this->conversation();
+        $focused = $this->material($conversation->project, 'Заключение Дягилевой.pdf');
+        $other = $this->material($conversation->project, 'Дополнительная экспертиза.pdf');
+        $images = array_map(fn (int $number): ExpertProjectMaterial => $this->material($conversation->project, "{$number}.jpg"), [1, 2, 3]);
+        $lastBatch = [$images[0]->public_id, $images[1]->public_id, $images[2]->public_id, $other->public_id, $focused->public_id];
+        $state = $this->focusedState($focused->public_id, $lastBatch);
+        $candidates = [
+            $this->candidate($focused, ['last_primary']),
+            $this->candidate($other, ['historical']),
+            ...array_map(fn (ExpertProjectMaterial $image): ExpertContextCandidate => $this->candidate($image, ['historical']), $images),
+        ];
+        $semantic = new FakeExpertSemanticResolver(new RuntimeException('Should not be called'));
+        $resolver = $this->resolver($semantic);
+
+        $followUp = $resolver->resolve($conversation, 'какой номер дела в этой экспертизе?', $this->intent(), $state,
+            new ExpertContextCandidatePool($candidates, new ExpertAttachmentBatch(null, []), false));
+        $newAttachment = $resolver->resolve($conversation, 'какой номер дела?', $this->intent(), $state,
+            new ExpertContextCandidatePool([
+                $this->candidate($focused, ['last_primary']), $this->candidate($other, ['current']),
+            ], new ExpertAttachmentBatch(null, [$other->public_id]), false));
+
+        $this->assertSame([$focused->public_id], array_column($followUp->selected, 'material_id'));
+        $this->assertSame('conversational_focus', $followUp->selected[0]['reason_code']);
+        $this->assertFalse($followUp->semanticUsed);
+        $this->assertSame([$other->public_id], array_column($newAttachment->selected, 'material_id'));
         $this->assertSame(0, $semantic->calls);
     }
 
@@ -237,7 +366,7 @@ final class ExpertContextResolverTest extends TestCase
         )]]]], 200)]);
 
         $result = app(ExpertRouterSemanticContextResolver::class)->resolve($conversation, 'Что написал Петров?',
-            $this->intent(), $this->state(), [$candidate], new ExpertContextConstraints([], [], false, false, []));
+            $this->intent(), $this->focusedState($material->public_id), [$candidate], new ExpertContextConstraints([], [], false, false, []));
 
         $this->assertSame($material->public_id, $result['selected'][0]['material_id']);
         Http::assertSentCount(1);
@@ -249,6 +378,9 @@ final class ExpertContextResolverTest extends TestCase
         $this->assertCount(2, $request['messages']);
         $routing = json_decode($request['messages'][1]['content'], true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($material->public_id, $routing['candidates'][0]['material_id']);
+        $this->assertSame([$material->public_id], $routing['focused_source_ids']);
+        $this->assertSame([$material->public_id], $routing['focused_primary_ids']);
+        $this->assertStringContainsString('preserve the focused source set', $request['messages'][0]['content']);
         $this->assertLessThanOrEqual(800, mb_strlen($routing['candidates'][0]['routing_text']));
         $this->assertStringNotContainsString('FALSE-ASSISTANT-EVIDENCE-991', json_encode($request, JSON_THROW_ON_ERROR));
     }
@@ -256,12 +388,21 @@ final class ExpertContextResolverTest extends TestCase
     private function resolver(ExpertSemanticContextResolver $semantic): ExpertContextResolver
     {
         return new ExpertContextResolver(new ExpertContextDeterministicResolver, $semantic,
-            app(ExpertContextResolutionValidator::class));
+            app(ExpertContextResolutionValidator::class), new ExpertContextContinuityResolver);
     }
 
     private function state(array $active = []): ExpertConversationMaterialState
     {
         return new ExpertConversationMaterialState(null, [], [], [], [], $active, []);
+    }
+
+    /** @param list<string> $lastBatch */
+    private function focusedState(string $id, array $lastBatch = []): ExpertConversationMaterialState
+    {
+        return new ExpertConversationMaterialState(
+            $lastBatch === [] ? null : new ExpertAttachmentBatch('previous-message', $lastBatch),
+            [$id], [$id], [], [], [], [], [$id], [$id], 'previous-message',
+        );
     }
 
     private function intent(): ExpertTaskIntent

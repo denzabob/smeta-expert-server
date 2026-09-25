@@ -144,6 +144,7 @@ final class ExpertContextCandidateProvider
             $truncated,
             (int) round((microtime(true) - $startedAt) * 1000),
             (int) round($identityLookupMs),
+            $historicalHints,
         );
     }
 }

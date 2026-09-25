@@ -13,6 +13,7 @@ final class ExpertContextResolver
         private readonly ExpertContextDeterministicResolver $deterministic,
         private readonly ExpertSemanticContextResolver $semantic,
         private readonly ExpertContextResolutionValidator $validator,
+        private readonly ExpertContextContinuityResolver $continuity,
     ) {}
 
     public function resolve(
@@ -39,6 +40,29 @@ final class ExpertContextResolver
         }
         if ($structural['complete']) {
             return $this->finish($pool, $intent, $constraints, $structural['selected'], $this->scope($structural['selected'], $intent), false, 'deterministic', 1.0, [], $startedAt, 0);
+        }
+
+        $continuity = $this->continuity->resolve($query, $intent, $state, $pool, $constraints);
+        if ($continuity['ambiguous_ids'] !== []) {
+            return $this->ambiguous($pool, $intent, $constraints, $continuity['ambiguous_ids'], $startedAt, false, 0);
+        }
+        if ($continuity['reason_code'] === 'focus_shift_unresolved') {
+            return $this->ambiguous($pool, $intent, $constraints, [], $startedAt, false, 0);
+        }
+        if ($continuity['continue_focus'] || $continuity['shift_ids'] !== []) {
+            $id = ($continuity['continue_focus'] ? $continuity['focused_ids'] : $continuity['shift_ids'])[0];
+            foreach ($pool->candidates as $candidate) {
+                if ($candidate->materialId === $id) {
+                    $selected = [[
+                        'material_id' => $id,
+                        'role' => 'primary',
+                        'origin' => $candidate->origins[0] ?? 'project',
+                        'reason_code' => $continuity['reason_code'],
+                    ]];
+
+                    return $this->finish($pool, $intent, $constraints, $selected, 'single', false, 'deterministic', 1.0, [], $startedAt, 0);
+                }
+            }
         }
 
         $needsSource = $this->needsSource($query, $intent, $state, $pool);

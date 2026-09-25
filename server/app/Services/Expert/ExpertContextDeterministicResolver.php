@@ -136,8 +136,18 @@ final class ExpertContextDeterministicResolver
             return ['selected' => array_values($selected), 'complete' => true, 'ambiguous_ids' => []];
         }
 
+        $historical = array_values(array_filter($pool->explicitHistoricalIds,
+            static fn (string $id): bool => isset($byId[$id]) && ! in_array($id, $constraints->hardExcludedIds, true)));
+        if ($current === [] && ! $intent->crossDocument && $historical !== []) {
+            if (count($historical) > 1) {
+                return ['selected' => [], 'complete' => false, 'ambiguous_ids' => $historical];
+            }
+
+            return ['selected' => [$this->source($byId[$historical[0]], 'primary', 'explicit_user_selection')], 'complete' => true, 'ambiguous_ids' => []];
+        }
+
         $pastReference = preg_match('/\b(?:предыдущ\p{L}*|прошл\p{L}*|ранее|тот|тому|вернемся|вернёмся)\b/u', ExpertContextLexicalMatcher::normalize($query)) === 1;
-        if ($current === [] && $pastReference && count($state->lastResolvedSourceSet) === 1) {
+        if ($current === [] && $pastReference && $state->focusedPrimaryIds === [] && count($state->lastResolvedSourceSet) === 1) {
             $id = $state->lastResolvedSourceSet[0];
             if (isset($byId[$id]) && ! in_array($id, $constraints->hardExcludedIds, true)) {
                 return ['selected' => [$this->source($byId[$id], 'primary', 'recent_source_reference')], 'complete' => true, 'ambiguous_ids' => []];

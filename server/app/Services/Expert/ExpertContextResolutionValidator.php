@@ -16,6 +16,7 @@ final class ExpertContextResolutionValidator
         'exact_alias_match', 'recent_source_reference', 'semantic_identity_match',
         'semantic_context_match', 'active_candidate_match', 'ordinal_reference',
         'project_exhaustive',
+        'conversational_focus', 'focus_shift',
     ];
 
     /** @param array<string, mixed> $response @param list<ExpertContextCandidate> $candidates @return array{selected: list<array{material_id: string, role: string, origin: string, reason_code: string}>, ambiguous: bool, ambiguous_ids: list<string>, confidence: float} */

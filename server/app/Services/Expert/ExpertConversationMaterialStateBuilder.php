@@ -18,6 +18,7 @@ final class ExpertConversationMaterialStateBuilder
             ->reorder()->orderByDesc('id');
 
         $sourceSets = [];
+        $focus = null;
         // Empty text-only snapshots should not displace the recent source sets,
         // while the number of inspected messages remains bounded.
         $snapshotMessages = $messageQuery()->whereNotNull('metadata->expert_context_snapshot')
@@ -30,6 +31,10 @@ final class ExpertConversationMaterialStateBuilder
             $sourceSet = ExpertConversationSourceSet::fromSnapshot((string) $message->public_id, $snapshot);
             if ($sourceSet->materialIds !== []) {
                 $sourceSets[] = $sourceSet;
+                if ($focus === null && $sourceSet->primaryIds !== []
+                    && ! (bool) ($snapshot['ambiguity']['ambiguous'] ?? false)) {
+                    $focus = $sourceSet;
+                }
                 if (count($sourceSets) >= $limit) {
                     break;
                 }
@@ -56,6 +61,9 @@ final class ExpertConversationMaterialStateBuilder
             $sourceSets,
             $active,
             $batches,
+            $focus?->materialIds ?? [],
+            $focus?->primaryIds ?? [],
+            $focus?->messageId,
         );
 
         Log::info('Expert conversation material state resolved', [
@@ -66,6 +74,9 @@ final class ExpertConversationMaterialStateBuilder
             'last_resolved_count' => count($state->lastResolvedSourceSet),
             'last_primary_count' => count($state->lastPrimarySourceSet),
             'last_comparison_count' => count($state->lastComparisonSourceSet),
+            'focused_source_count' => count($state->focusedSourceSet),
+            'focused_primary_count' => count($state->focusedPrimaryIds),
+            'focused_at_message_id' => $state->focusedAtMessageId,
         ]);
 
         return $state;

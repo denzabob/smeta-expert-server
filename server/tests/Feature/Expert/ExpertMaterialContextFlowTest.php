@@ -108,9 +108,9 @@ class ExpertMaterialContextFlowTest extends TestCase
         $this->send($user, $conversation, ['content' => 'Что это?', 'material_public_ids' => [$a->public_id]])->assertCreated();
         $this->assertSame([], $conversation->activeMaterials()->pluck('public_id')->all());
         $this->send($user, $conversation, ['content' => 'Какие ГОСТ указаны?'])
-            ->assertUnprocessable()->assertJsonPath('code', 'expert_context_ambiguous');
+            ->assertCreated();
         $this->assertCount(2, $provider->chatRequests);
-        $this->assertSame([], $provider->chatRequests[1]->materialContext);
+        $this->assertSame([$a->public_id], array_column($provider->chatRequests[1]->materialContext, 'public_id'));
 
         $this->send($user, $conversation, ['content' => 'Что это за документ?', 'material_public_ids' => [$b->public_id]])->assertCreated();
         $this->assertSame([$b->public_id], array_column($provider->chatRequests[2]->materialContext, 'public_id'));
@@ -141,9 +141,9 @@ class ExpertMaterialContextFlowTest extends TestCase
             ->assertOk()->assertJsonCount(0, 'active_materials');
         $this->assertSame($snapshot, $conversation->messages()->where('role', 'user')->firstOrFail()->metadata['expert_context_snapshot']);
         $this->send($user, $conversation, ['content' => 'Какие ГОСТ указаны?'])
-            ->assertUnprocessable()->assertJsonPath('code', 'expert_context_ambiguous');
+            ->assertCreated();
         $this->assertCount(2, $provider->chatRequests);
-        $this->assertSame([], $provider->chatRequests[1]->materialContext);
+        $this->assertSame([$a->public_id], array_column($provider->chatRequests[1]->materialContext, 'public_id'));
     }
 
     public function test_ambiguous_context_api_lists_project_scoped_candidates(): void

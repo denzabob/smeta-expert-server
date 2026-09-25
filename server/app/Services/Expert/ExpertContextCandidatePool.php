@@ -13,6 +13,8 @@ final readonly class ExpertContextCandidatePool
         public bool $projectSearchTruncated,
         public int $discoveryMs = 0,
         public int $identityLookupMs = 0,
+        /** @var list<string> */
+        public array $explicitHistoricalIds = [],
     ) {}
 
     /** @return array{count: int, hash: string, project_search_truncated: bool} */
