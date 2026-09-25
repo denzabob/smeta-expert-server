@@ -20,6 +20,7 @@ final class ExpertChatMaterialContextBuilder
         private readonly ExpertVisionImagePreparer $imagePreparer,
         private readonly ExpertPdfOcrCache $ocrCache,
         private readonly ExpertMaterialProcessingLimits $limits,
+        private readonly ExpertMaterialIdentityService $identities,
     ) {}
 
     /** @param list<string> $publicIds */
@@ -110,6 +111,7 @@ final class ExpertChatMaterialContextBuilder
                 ? 'pdf.text_cache'
                 : 'pdf.ocr_cache';
             if ($cached !== null) {
+                $this->identities->enrichPdfCandidate($candidate, $cached->text);
                 $activity->record($cachePrefix.'.hit', 'material', $candidate->name);
                 $textMaterials[] = [
                     'public_id' => $candidate->materialPublicId,

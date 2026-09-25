@@ -25,6 +25,8 @@ use App\Policies\MaterialTypePatternPolicy;
 use App\Services\Expert\ExpertMaterialTextExtractor;
 use App\Services\Expert\ExpertMaterialTextExtractorInterface;
 use App\Services\Expert\ExpertSemanticTaskClassifier;
+use App\Services\Expert\ExpertSemanticContextResolver;
+use App\Services\Expert\ExpertRouterSemanticContextResolver;
 use App\Services\Expert\NullExpertSemanticTaskClassifier;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Gate;
@@ -41,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ClassifierArchiveCommandRunner::class, ProcessClassifierArchiveCommandRunner::class);
         $this->app->bind(ExpertMaterialTextExtractorInterface::class, ExpertMaterialTextExtractor::class);
         $this->app->singleton(ExpertSemanticTaskClassifier::class, NullExpertSemanticTaskClassifier::class);
+        $this->app->bind(ExpertSemanticContextResolver::class, ExpertRouterSemanticContextResolver::class);
     }
 
     /**

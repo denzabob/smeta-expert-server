@@ -79,7 +79,7 @@ class MessageController extends Controller
             $storedUser = $conversation->messages()->where('role', 'user')->where('metadata->client_message_id', $clientMessageId)->first();
             $plan = $this->expertChat->contextPlan($conversation, $content, $materialPublicIds, $historicalIds, $storedUser);
             if ($plan->diagnostics['requires_material_disambiguation'] ?? false) {
-                throw ExpertMaterialContextException::ambiguousActiveMaterials();
+                throw ExpertMaterialContextException::ambiguousContext($plan->resolution?->ambiguousCandidates ?? []);
             }
             $this->expertChat->assertWorkloadExecutable($conversation->project, $plan, $requestedMode);
             $materialContext = $this->materialContextBuilder->buildPartitioned(
@@ -118,6 +118,7 @@ class MessageController extends Controller
             return response()->json([
                 'message' => $exception->getMessage(),
                 'code' => $exception->errorCode,
+                ...($exception->errorCode === 'expert_context_ambiguous' ? ['candidates' => $exception->candidates] : []),
             ], $exception->status);
         } catch (ExpertPdfOcrException $exception) {
             return response()->json([

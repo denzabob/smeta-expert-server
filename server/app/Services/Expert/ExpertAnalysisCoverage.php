@@ -46,7 +46,7 @@ final readonly class ExpertAnalysisCoverage
         }
 
         $items = [];
-        foreach ($pack->resolvedMaterials as $materialId) {
+        foreach ($pack->resolution?->selected === null ? $pack->resolvedMaterials : array_column($pack->resolution->selected, 'material_id') as $materialId) {
             $detail = $details[(string) $materialId] ?? null;
             $items[] = new ExpertAnalysisCoverageItem(
                 (string) $materialId,

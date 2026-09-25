@@ -5,6 +5,23 @@ return [
         'idempotency_lock_seconds' => (int) env('EXPERT_CHAT_IDEMPOTENCY_LOCK_SECONDS', 900),
         'idempotency_wait_seconds' => (int) env('EXPERT_CHAT_IDEMPOTENCY_WAIT_SECONDS', 5),
     ],
+    'context_resolution' => [
+        'max_project_candidates' => (int) env('EXPERT_CONTEXT_MAX_PROJECT_CANDIDATES', 40),
+    ],
+    'context' => [
+        'recent_source_sets_limit' => (int) env('EXPERT_CONTEXT_RECENT_SOURCE_SETS_LIMIT', 8),
+        'resolver' => [
+            'version' => 'v1',
+            'max_semantic_candidates' => (int) env('EXPERT_CONTEXT_MAX_SEMANTIC_CANDIDATES', 40),
+            'semantic_routing_text_max_chars' => (int) env('EXPERT_CONTEXT_SEMANTIC_ROUTING_TEXT_MAX_CHARS', 800),
+            'semantic_max_output_tokens' => (int) env('EXPERT_CONTEXT_SEMANTIC_MAX_OUTPUT_TOKENS', 500),
+            'min_confidence' => (float) env('EXPERT_CONTEXT_SEMANTIC_MIN_CONFIDENCE', 0.5),
+        ],
+        'identity' => [
+            'version' => (string) env('EXPERT_MATERIAL_IDENTITY_VERSION', 'v1'),
+            'routing_text_max_chars' => (int) env('EXPERT_MATERIAL_IDENTITY_ROUTING_TEXT_MAX_CHARS', 5000),
+        ],
+    ],
     'streaming' => [
         'lock_seconds' => (int) env('EXPERT_STREAM_LOCK_SECONDS', 900),
         'run_ttl_seconds' => (int) env('EXPERT_STREAM_RUN_TTL_SECONDS', 1800),

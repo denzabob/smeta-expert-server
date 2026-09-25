@@ -118,7 +118,12 @@ final class MessageStreamController extends Controller
             return response()->json(['message' => $exception->getMessage(), 'code' => 'expert_continue_not_allowed'], 422);
         }
         if ($exception instanceof ExpertMaterialContextException || $exception instanceof ExpertPdfOcrException || $exception instanceof ExpertVisionException) {
-            return response()->json(['message' => $exception->getMessage(), 'code' => $exception->errorCode], $exception->status);
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->errorCode,
+                ...($exception instanceof ExpertMaterialContextException && $exception->errorCode === 'expert_context_ambiguous'
+                    ? ['candidates' => $exception->candidates] : []),
+            ], $exception->status);
         }
         if ($exception instanceof \App\Services\Expert\ExpertModelPolicyException) {
             return response()->json(['message' => $exception->getMessage(), 'code' => $exception->errorCode], $exception->status);

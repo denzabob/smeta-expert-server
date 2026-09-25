@@ -10,6 +10,7 @@ final class LLMTaskProfileResolver
     public const EXPERT_CHAT = 'expert_chat';
     public const EXPERT_FAST = 'expert_fast';
     public const EXPERT_DEEP = 'expert_deep';
+    public const EXPERT_CONTEXT_RESOLVER = 'expert_context_resolver';
 
     public function __construct(
         private readonly LLMSettingsRepository $settings,

@@ -16,7 +16,7 @@ final class ExpertContextPlannerIntentTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_active_comparison_is_targeted_multi_and_not_retrieval(): void
+    public function test_active_comparison_stays_ambiguous_without_structural_sources(): void
     {
         $conversation = $this->conversation();
         $first = $this->material($conversation->project, 'Дополнительная экспертиза.pdf');
@@ -30,11 +30,13 @@ final class ExpertContextPlannerIntentTest extends TestCase
             [],
         );
 
-        $this->assertSame('targeted_multi', $plan->scope);
+        $this->assertSame('retrieval_multi', $plan->scope);
         $this->assertSame(ExpertTaskIntent::COMPARE, $plan->intent?->taskType);
         $this->assertSame(ExpertTaskIntent::ACTIVE, $plan->intent?->materialScope);
         $this->assertTrue($plan->intent?->crossDocument);
-        $this->assertSame([$first->public_id, $second->public_id], $plan->resolvedMaterials);
+        $this->assertSame([], $plan->resolvedMaterials);
+        $this->assertTrue($plan->diagnostics['requires_material_disambiguation']);
+        $this->assertCount(2, $plan->candidatePool?->candidates ?? []);
     }
 
     public function test_current_attachments_remain_current_for_extraction(): void
@@ -77,6 +79,42 @@ final class ExpertContextPlannerIntentTest extends TestCase
         $this->assertSame('exhaustive_multi', $plan->scope);
         $this->assertSame('exhaustive', $plan->coverageMode);
         $this->assertSame(ExpertTaskIntent::FIND, $plan->intent?->taskType);
+        $this->assertSame([], $plan->resolvedMaterials);
+    }
+
+    public function test_unrelated_active_candidate_does_not_change_explicit_current_sources(): void
+    {
+        $conversation = $this->conversation();
+        $current = $this->material($conversation->project, 'Current.pdf');
+        $planner = app(\App\Services\Expert\ExpertContextPlanner::class);
+        $before = $planner->plan($conversation, 'Сравни приложенный документ', [$current->public_id], []);
+
+        $unrelated = $this->material($conversation->project, 'Unrelated.pdf');
+        $conversation->activeMaterials()->sync([$unrelated->id]);
+        $after = $planner->plan($conversation, 'Сравни приложенный документ', [$current->public_id], []);
+
+        $this->assertSame([$current->public_id], $before->resolvedMaterials);
+        $this->assertSame($before->resolvedMaterials, $after->resolvedMaterials);
+        $this->assertSame([$unrelated->public_id], $after->activeMaterials);
+    }
+
+    public function test_exhaustive_query_without_structural_sources_does_not_select_project_library(): void
+    {
+        $conversation = $this->conversation();
+        $this->material($conversation->project, 'A.pdf');
+        $this->material($conversation->project, 'B.pdf');
+
+        $plan = app(\App\Services\Expert\ExpertContextPlanner::class)->plan(
+            $conversation,
+            'Найди все упоминания ГОСТ',
+            [],
+            [],
+        );
+
+        $this->assertSame([], $plan->resolvedMaterials);
+        $this->assertSame('exhaustive_multi', $plan->scope);
+        $this->assertTrue($plan->diagnostics['requires_material_disambiguation']);
+        $this->assertCount(2, $plan->candidatePool?->candidates ?? []);
     }
 
     private function conversation(): ExpertConversation

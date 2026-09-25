@@ -27,6 +27,7 @@ final class ExpertChatStreamingService
         private readonly ExpertChatMaterialContextBuilder $materialContextBuilder,
         private readonly ExpertChatMaterialContextDiagnostics $materialDiagnostics,
         private readonly ExpertPdfOcrCache $ocrCache,
+        private readonly ExpertMaterialIdentityService $identities,
         private readonly LLMTaskProfileResolver $profiles,
     ) {}
 
@@ -54,7 +55,7 @@ final class ExpertChatStreamingService
             $historicalIds = $this->chat->historicalMaterialPublicIds($conversation, $content, $existingUser, hasCurrentMaterials: $persistedIds !== []);
             $plan = $this->chat->contextPlan($conversation, $content, $persistedIds, $historicalIds, $existingUser);
             if ($plan->diagnostics['requires_material_disambiguation'] ?? false) {
-                throw ExpertMaterialContextException::ambiguousActiveMaterials();
+                throw ExpertMaterialContextException::ambiguousContext($plan->resolution?->ambiguousCandidates ?? []);
             }
             $this->chat->assertWorkloadExecutable($conversation->project, $plan, $requestedMode);
             $userMessage = $this->chat->prepareStreamingUserMessage($conversation, $content, $clientMessageId, $fingerprint, $materialPublicIds, $requestedMode);
@@ -219,7 +220,7 @@ final class ExpertChatStreamingService
             $materialBundle = $run->materialContext === null
                 ? $this->materialContextBuilder->buildPartitioned(
                     $run->conversation->project,
-                    $run->materialPublicIds,
+                    $run->contextPack?->currentMaterials ?? $run->materialPublicIds,
                     $historicalIds,
                     $activity,
                     $run->contextPack === null ? [] : array_values(array_diff($run->contextPack->resolvedMaterials, $run->contextPack->currentMaterials, $run->contextPack->historicalMaterials)),
@@ -241,8 +242,8 @@ final class ExpertChatStreamingService
             }
 
             $request = $run->isContinuation
-                ? $this->chat->buildContinuationRequest($run->conversation, $run->userMessage, $run->existingAssistant, $materialBundle)
-                : $this->chat->buildStreamingRequest($run->conversation, $run->userMessage, $materialBundle);
+                ? $this->chat->buildContinuationRequest($run->conversation, $run->userMessage, $run->existingAssistant, $materialBundle, $runId)
+                : $this->chat->buildStreamingRequest($run->conversation, $run->userMessage, $materialBundle, $runId);
             $token->tick();
 
             foreach ($materialContext->ocrCandidates as $candidate) {
@@ -321,51 +322,51 @@ final class ExpertChatStreamingService
         } finally {
             $terminalized = false;
             try {
-            if ($status === 'completed' && $executionPlan !== null && isset($materialBundle)) {
-                $coveragePack = $run->contextPack ?? $materialBundle->plan;
-                if ($coveragePack !== null) {
-                    $executionPlan = $executionPlan->withCoverage(
-                        ExpertAnalysisCoverage::fromBundle($coveragePack, $materialBundle)->markAllProcessed(),
-                    );
-                    $metadata = [...$metadata, ...$executionPlan->toMetadata()];
+                if ($status === 'completed' && $executionPlan !== null && isset($materialBundle)) {
+                    $coveragePack = $run->contextPack ?? $materialBundle->plan;
+                    if ($coveragePack !== null) {
+                        $executionPlan = $executionPlan->withCoverage(
+                            ExpertAnalysisCoverage::fromBundle($coveragePack, $materialBundle)->markAllProcessed(),
+                        );
+                        $metadata = [...$metadata, ...$executionPlan->toMetadata()];
+                    }
                 }
-            }
-            if ($status === 'completed' && $activity->openActivityCodes() !== []) {
-                Log::warning('Expert chat completed with open activities.', [
-                    'run_id' => $runId,
-                    'activity_codes' => $activity->openActivityCodes(),
-                ]);
-            }
-            $activity->terminalize(match ($status) {
-                'completed' => 'completed',
-                'stopped' => 'skipped',
-                default => 'failed',
-            });
-            $assistant = $this->chat->persistStreamingAssistant(
-                $run->conversation,
-                $run->userMessage,
-                $content,
-                $status === 'completed' ? 'completed' : ($status === 'stopped' ? 'stopped' : 'interrupted'),
-                $runId,
-                $finishReason,
-                [...$metadata, 'latency_ms' => (int) round((microtime(true) - $startedAt) * 1000)],
-                $run->existingAssistant,
-            );
-            if ($assistant !== null) {
-                $activity->record('response.persisted', 'response');
-            }
-            if ($status === 'stopped') {
-                $activity->record('generation.cancelled', 'generation');
-            } elseif ($status === 'interrupted') {
-                $activity->record('generation.interrupted', 'generation');
-            }
-            $this->runs->mark($runId, match ($status) {
-                'completed' => 'completed',
-                'stopped' => 'cancelled',
-                'interrupted' => 'interrupted',
-                default => 'failed',
-            });
-            $terminalized = true;
+                if ($status === 'completed' && $activity->openActivityCodes() !== []) {
+                    Log::warning('Expert chat completed with open activities.', [
+                        'run_id' => $runId,
+                        'activity_codes' => $activity->openActivityCodes(),
+                    ]);
+                }
+                $activity->terminalize(match ($status) {
+                    'completed' => 'completed',
+                    'stopped' => 'skipped',
+                    default => 'failed',
+                });
+                $assistant = $this->chat->persistStreamingAssistant(
+                    $run->conversation,
+                    $run->userMessage,
+                    $content,
+                    $status === 'completed' ? 'completed' : ($status === 'stopped' ? 'stopped' : 'interrupted'),
+                    $runId,
+                    $finishReason,
+                    [...$metadata, 'latency_ms' => (int) round((microtime(true) - $startedAt) * 1000)],
+                    $run->existingAssistant,
+                );
+                if ($assistant !== null) {
+                    $activity->record('response.persisted', 'response');
+                }
+                if ($status === 'stopped') {
+                    $activity->record('generation.cancelled', 'generation');
+                } elseif ($status === 'interrupted') {
+                    $activity->record('generation.interrupted', 'generation');
+                }
+                $this->runs->mark($runId, match ($status) {
+                    'completed' => 'completed',
+                    'stopped' => 'cancelled',
+                    'interrupted' => 'interrupted',
+                    default => 'failed',
+                });
+                $terminalized = true;
             } finally {
                 try {
                     if (! $terminalized) {
@@ -438,6 +439,7 @@ final class ExpertChatStreamingService
 
             try {
                 $this->ocrCache->put($candidate, $parsed);
+                $this->identities->enrichPdfCandidate($candidate, $parsed->text);
                 if ($activityId !== null) {
                     $activity->complete(
                         $activityId,

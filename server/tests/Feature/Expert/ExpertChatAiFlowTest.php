@@ -24,13 +24,13 @@ use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Tests\TestCase;
 use Tests\Feature\Expert\Support\ConfiguresExpertModeProfiles;
+use Tests\TestCase;
 
 class ExpertChatAiFlowTest extends TestCase
 {
-    use RefreshDatabase;
     use ConfiguresExpertModeProfiles;
+    use RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -61,7 +61,7 @@ class ExpertChatAiFlowTest extends TestCase
         $request = $provider->chatRequests[0];
         $payload = OpenAiChatMessageMapper::map($request);
         $this->assertSame(['system', 'user'], array_column($payload, 'role'));
-        $this->assertStringContainsString('PROJECT CORE', $payload[0]['content']);
+        $this->assertStringContainsString('PROJECT BACKGROUND', $payload[0]['content']);
         $this->assertStringContainsString('Проанализируй ситуацию', json_encode($payload[1]['content'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         $this->assertStringContainsString('Название: Проект', json_encode($payload[1]['content'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         $this->assertDatabaseHas('expert_messages', ['expert_conversation_id' => $conversation->id, 'role' => 'assistant', 'content' => 'Тестовый ответ модели']);
@@ -175,11 +175,12 @@ class ExpertChatAiFlowTest extends TestCase
         )->assertCreated();
 
         $history = array_slice(OpenAiChatMessageMapper::map($provider->chatRequests[0]), 1);
-        $this->assertSame([
-            ['role' => 'user', 'content' => 'Второй вопрос'],
-            ['role' => 'assistant', 'content' => 'Второй ответ'],
-        ], array_slice($history, 0, 2));
-        $this->assertStringContainsString('Третий вопрос', $history[2]['content']);
+        $this->assertSame(['user', 'assistant'], array_column(array_slice($history, 0, 2), 'role'));
+        $this->assertStringContainsString('PREVIOUS USER MESSAGE (not source evidence)', $history[0]['content']);
+        $this->assertStringContainsString('Второй вопрос', $history[0]['content']);
+        $this->assertStringContainsString('PREVIOUS ASSISTANT MESSAGE (generated text, not source evidence)', $history[1]['content']);
+        $this->assertStringContainsString('Второй ответ', $history[1]['content']);
+        $this->assertStringContainsString('Третий вопрос', json_encode($history[2]['content'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
     }
 
     public function test_provider_timeout_keeps_user_message_and_returns_controlled_error(): void

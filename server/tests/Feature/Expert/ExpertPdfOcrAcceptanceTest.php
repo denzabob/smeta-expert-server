@@ -64,6 +64,10 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
         $this->assertSame('application/pdf', $material->mime_type);
         $this->assertNoUsableLocalPdfText($material, $fixture);
 
+        $basic = app(\App\Services\Expert\ExpertMaterialIdentityService::class)->ensureBasic($material);
+        $this->assertSame('basic', $basic->state);
+        $this->assertNull($basic->routing_text);
+
         $this->installRouterAi();
         $requests = [];
         Http::fake(function (ClientRequest $request) use (&$requests, $fixtureSha) {
@@ -72,7 +76,10 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
 
             if (count($requests) === 1) {
                 $current = $payload['messages'][array_key_last($payload['messages'])];
-                $this->assertSame(['text', 'text', 'text', 'file'], array_column($current['content'], 'type'));
+                $fileIndex = array_search('file', array_column($current['content'], 'type'), true);
+                $this->assertNotFalse($fileIndex);
+                $this->assertSame('text', $current['content'][$fileIndex - 1]['type']);
+                $this->assertStringContainsString('EVIDENCE SOURCE FILE', $current['content'][$fileIndex - 1]['text']);
                 $fileBlock = collect($current['content'])->first(fn (array $block): bool => ($block['type'] ?? null) === 'file');
                 $this->assertIsArray($fileBlock);
                 $fileData = $fileBlock['file']['file_data'];
@@ -100,6 +107,10 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
         $cached = json_decode($disk->get($cachePath), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($fixtureSha, $cached['source_sha256']);
         $this->assertSame('OCR-EXPERT-48217', trim($cached['text']));
+        $identity = app(\App\Services\Expert\ExpertMaterialIdentityService::class)->get($material);
+        $this->assertSame('content_enriched', $identity->state);
+        $this->assertSame('provider_pdf_ocr', $identity->content_source);
+        $this->assertSame('OCR-EXPERT-48217', trim($identity->routing_text));
         $this->assertDatabaseHas('expert_messages', [
             'role' => 'assistant',
             'content' => 'OCR-ответ для OCR-EXPERT-48217.',
@@ -345,6 +356,10 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
             'content' => 'Что это за документ?',
             'material_public_ids' => [$material->public_id],
         ])->assertCreated();
+        $identity = app(\App\Services\Expert\ExpertMaterialIdentityService::class)->get($material);
+        $this->assertSame('content_enriched', $identity->state);
+        $this->assertSame('provider_pdf_text', $identity->content_source);
+        $this->assertSame('LARGE-PDF-PARSED', $identity->routing_text);
 
         $cachedContext = app(ExpertChatMaterialContextBuilder::class)->build($conversation->project, [$material->public_id]);
         $this->assertSame([], $cachedContext->files);

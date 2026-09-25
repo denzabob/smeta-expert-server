@@ -739,6 +739,10 @@ class LLMRouter
 
     private function requestForProvider(LLMChatRequest $request, ?array $profile, LLMProviderInterface $provider): LLMChatRequest
     {
+        // The internal source resolver fixes temperature/output bounds independently of answer profiles.
+        if (($request->parameters['_context_resolver_parameters'] ?? false) === true) {
+            return $request;
+        }
         if ($profile === null) {
             return $request;
         }

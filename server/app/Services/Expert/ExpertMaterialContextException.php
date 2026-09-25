@@ -13,6 +13,7 @@ class ExpertMaterialContextException extends RuntimeException
         string $message,
         public readonly int $status = 422,
         public readonly ?string $reason = null,
+        public readonly array $candidates = [],
     ) {
         parent::__construct($message);
     }
@@ -97,6 +98,11 @@ class ExpertMaterialContextException extends RuntimeException
         );
     }
 
+    public static function evidenceMismatch(): self
+    {
+        return new self('expert_evidence_context_mismatch', 'Не удалось подготовить выбранные источники для ответа.', 422);
+    }
+
     public static function originalUnavailable(): self
     {
         return new self('original_material_unavailable', 'Исходный материал сообщения удалён и больше недоступен.', 422);
@@ -128,5 +134,11 @@ class ExpertMaterialContextException extends RuntimeException
     public static function ambiguousActiveMaterials(): self
     {
         return new self('active_material_ambiguous', 'Уточните название материала или приложите его к сообщению.', 422);
+    }
+
+    /** @param list<array{material_public_id: string, name: string}> $candidates */
+    public static function ambiguousContext(array $candidates = []): self
+    {
+        return new self('expert_context_ambiguous', 'Уточните, какой материал нужно использовать.', 422, candidates: $candidates);
     }
 }

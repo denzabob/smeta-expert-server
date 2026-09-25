@@ -243,6 +243,7 @@ class RouterAiProvider implements LLMProviderInterface, LLMStreamingProviderInte
                     'messages' => OpenAiChatMessageMapper::map($request),
                     'temperature' => $request->parameters['temperature'] ?? $this->temperature,
                     'max_tokens' => $request->parameters['max_tokens'] ?? $this->maxTokens,
+                    'response_format' => $request->parameters['response_format'] ?? null,
                     'reasoning_effort' => $request->parameters['reasoning_effort'] ?? null,
                     'plugins' => $this->pdfParserPlugin($request),
                 ], static fn (mixed $value): bool => $value !== null));

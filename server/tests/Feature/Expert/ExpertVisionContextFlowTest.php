@@ -70,9 +70,12 @@ class ExpertVisionContextFlowTest extends TestCase
             $currentText = json_encode($current['content'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
             $this->assertStringContainsString('VISION-MIX-9274', $currentText);
             $this->assertSame(1, substr_count($currentText, 'VISION-MIX-9274'));
-            $this->assertSame(['text', 'text', 'text', 'text', 'image_url'], array_column($current['content'], 'type'));
-            $this->assertSame('Опиши видимый дефект', $current['content'][0]['text']);
-            $url = $current['content'][array_key_last($current['content'])]['image_url']['url'];
+            $imageIndex = array_search('image_url', array_column($current['content'], 'type'), true);
+            $this->assertNotFalse($imageIndex);
+            $this->assertStringContainsString('CURRENT USER REQUEST:', $current['content'][0]['text']);
+            $this->assertStringContainsString('Опиши видимый дефект', $current['content'][0]['text']);
+            $this->assertStringContainsString('EVIDENCE SOURCE IMAGE', $current['content'][$imageIndex - 1]['text']);
+            $url = $current['content'][$imageIndex]['image_url']['url'];
             $this->assertStringStartsWith('data:image/jpeg;base64,', $url);
             $bytes = base64_decode(substr($url, strlen('data:image/jpeg;base64,')), true);
             $this->assertIsString($bytes);

@@ -8,8 +8,8 @@ use App\Models\Expert\ExpertConversation;
 use App\Models\Expert\ExpertProject;
 use App\Models\User;
 use App\Services\Expert\ExpertChatMaterialContext;
-use App\Services\Expert\ExpertChatRunRegistry;
 use App\Services\Expert\ExpertChatRunInProgressException;
+use App\Services\Expert\ExpertChatRunRegistry;
 use App\Services\Expert\ExpertChatStreamingService;
 use App\Services\Expert\ExpertMaterialService;
 use App\Services\LLM\CircuitBreaker;
@@ -26,6 +26,7 @@ use App\Services\LLM\Exceptions\LLMProviderException;
 use App\Services\LLM\LLMErrorClassifier;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMSettingsRepository;
+use App\Services\LLM\OpenAiChatMessageMapper;
 use App\Services\LLM\Providers\RouterAiProvider;
 use GuzzleHttp\Client;
 use GuzzleHttp\HandlerStack;
@@ -35,8 +36,8 @@ use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Tests\TestCase;
 use Psr\Http\Message\RequestInterface;
+use Tests\TestCase;
 
 final class ExpertChatStreamingFlowTest extends TestCase
 {
@@ -74,7 +75,9 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $checks = 0;
         $service->emit($run, static function (string $event, array $data) use (&$events): void {
             $events[] = compact('event', 'data');
-        }, static function () use (&$checks): bool { return ++$checks >= 8; });
+        }, static function () use (&$checks): bool {
+            return ++$checks >= 8;
+        });
 
         $this->assertSame('cancelled', end($events)['event']);
         $this->assertTrue($cancelled);
@@ -116,7 +119,9 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $run = $service->start($conversation, 'Первый', (string) Str::uuid(), app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint('Первый', []), new ExpertChatMaterialContext([], []));
         sleep(2);
         $events = [];
-        $service->emit($run, static function (string $event, array $data) use (&$events): void { $events[] = compact('event', 'data'); });
+        $service->emit($run, static function (string $event, array $data) use (&$events): void {
+            $events[] = compact('event', 'data');
+        });
 
         $this->assertSame('provider_timeout', end($events)['data']['error_code']);
         $this->assertSame(0, $provider->streamCalls);
@@ -399,6 +404,11 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertSame(1, $conversation->messages()->where('role', 'user')->count());
         $this->assertSame(1, $conversation->messages()->where('role', 'assistant')->count());
         $this->assertSame([$material->public_id], array_column($provider->chatRequests[1]->materialContext, 'public_id'));
+        $this->assertSame(['primary'], array_column($provider->chatRequests[1]->materialContext, 'evidence_role'));
+        $firstPayload = OpenAiChatMessageMapper::map($provider->chatRequests[0]);
+        $continuedPayload = OpenAiChatMessageMapper::map($provider->chatRequests[1]);
+        $this->assertSame($firstPayload[1]['content'], $continuedPayload[1]['content']);
+        $this->assertStringContainsString('generated text, not source evidence', $continuedPayload[2]['content']);
     }
 
     public function test_continue_reports_deleted_original_material_without_substituting_a_file(): void
@@ -454,7 +464,9 @@ final class ExpertChatStreamingFlowTest extends TestCase
     private function pendingRouterAi(bool &$cancelled): RouterAiProvider
     {
         $handler = static function (RequestInterface $request, array $options) use (&$cancelled): Promise {
-            return new Promise(null, static function () use (&$cancelled): void { $cancelled = true; });
+            return new Promise(null, static function () use (&$cancelled): void {
+                $cancelled = true;
+            });
         };
 
         return new RouterAiProvider(

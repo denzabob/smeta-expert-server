@@ -15,6 +15,7 @@ final class ExpertMaterialContextBuilder
     public function __construct(
         private readonly ExpertMaterialTextExtractorInterface $extractor,
         private readonly ExpertMaterialProcessingLimits $limits,
+        private readonly ExpertMaterialIdentityService $identities,
     ) {}
 
     /**
@@ -133,6 +134,8 @@ final class ExpertMaterialContextBuilder
                     throw $failure;
                 }
             }
+
+            $this->identities->bestEffortEnrich($material, $text, 'local_text', 'local_extractor_v1', hash('sha256', $contents));
 
             $contextEntry = [
                 'public_id' => (string) $material->public_id,
