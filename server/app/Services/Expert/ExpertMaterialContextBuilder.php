@@ -8,7 +8,6 @@ use App\Models\Expert\ExpertProject;
 use App\Models\Expert\ExpertProjectMaterial;
 use App\Services\LLM\Enums\LLMFileProcessingIntent;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 final class ExpertMaterialContextBuilder
 {
@@ -16,6 +15,7 @@ final class ExpertMaterialContextBuilder
         private readonly ExpertMaterialTextExtractorInterface $extractor,
         private readonly ExpertMaterialProcessingLimits $limits,
         private readonly ExpertMaterialIdentityService $identities,
+        private readonly ExpertStorageService $storage,
     ) {}
 
     /**
@@ -40,7 +40,6 @@ final class ExpertMaterialContextBuilder
             throw ExpertMaterialContextException::notFound();
         }
 
-        $disk = Storage::disk('local');
         $maxTotalBytes = max(1, (int) config('expert.material_context.max_total_material_bytes', 10 * 1024 * 1024));
         $totalNonPdfBytes = 0;
 
@@ -60,11 +59,14 @@ final class ExpertMaterialContextBuilder
                     throw ExpertMaterialContextException::unsupported();
                 }
 
-                if (! $disk->exists($material->storage_path)) {
+                $disk = $this->storage->diskForMaterial($material);
+                $key = $this->storage->keyForMaterial($material);
+                $storageContext = $this->storage->contextForMaterial($material);
+                if (! $this->storage->exists($disk, $key, $storageContext)) {
                     throw ExpertMaterialContextException::extractionFailed();
                 }
 
-                $bytes = (int) $disk->size($material->storage_path);
+                $bytes = $this->storage->size($disk, $key, $storageContext);
             } catch (ExpertMaterialContextException $exception) {
                 $this->logMaterialContextFailure($material, $bytes, $exception);
                 throw $exception;
@@ -100,12 +102,12 @@ final class ExpertMaterialContextBuilder
             $material = $resolved['material'];
 
             try {
-                $contents = $disk->get($material->storage_path);
-                $text = $this->extractor->extract(
-                    $material,
-                    $contents,
-                    $disk->path($material->storage_path),
+                $contents = $this->storage->read(
+                    $this->storage->diskForMaterial($material),
+                    $this->storage->keyForMaterial($material),
+                    $this->storage->contextForMaterial($material),
                 );
+                $text = $this->extractor->extract($material, $contents);
             } catch (ExpertMaterialContextException $exception) {
                 $this->logMaterialContextFailure($material, $resolved['bytes'], $exception);
                 throw $exception;
@@ -230,8 +232,11 @@ final class ExpertMaterialContextBuilder
                     if (! $material) {
                         throw ExpertMaterialContextException::notFound();
                     }
-                    $disk = Storage::disk('local');
-                    $raw = $disk->get($material->storage_path);
+                    $raw = $this->storage->read(
+                        $this->storage->diskForMaterial($material),
+                        $this->storage->keyForMaterial($material),
+                        $this->storage->contextForMaterial($material),
+                    );
                     $bytes = strlen($raw);
                     $pageCount = (int) ($details[1] ?? 0);
                     $extractedChars = (int) ($details[2] ?? 0);
@@ -282,8 +287,10 @@ final class ExpertMaterialContextBuilder
                 if (! $material) {
                     throw ExpertMaterialContextException::notFound();
                 }
-                $disk = Storage::disk('local');
-                $bytes = (int) $disk->size($material->storage_path);
+                $disk = $this->storage->diskForMaterial($material);
+                $key = $this->storage->keyForMaterial($material);
+                $storageContext = $this->storage->contextForMaterial($material);
+                $bytes = $this->storage->size($disk, $key, $storageContext);
                 if ($bytes <= 0 || $bytes > $ocrLimit) {
                     throw ExpertPdfOcrException::tooLarge();
                 }
@@ -298,7 +305,7 @@ final class ExpertMaterialContextBuilder
                 if ($ocrPages > $this->pdfLimits()['max_total_pages']) {
                     throw ExpertPdfOcrException::tooManyPages();
                 }
-                $raw = $disk->get($material->storage_path);
+                $raw = $this->storage->read($disk, $key, $storageContext);
                 $ocrCandidates[] = new ExpertPdfOcrCandidate(
                     (string) $project->public_id,
                     (string) $material->public_id,

@@ -5,33 +5,38 @@ declare(strict_types=1);
 namespace App\Services\Expert;
 
 use App\Models\Expert\ExpertProject;
-use Illuminate\Support\Facades\Storage;
 
 final class ExpertWorkloadAssessor
 {
     public function __construct(
         private readonly ExpertMaterialProcessingLimits $limits,
+        private readonly ExpertStorageService $storage,
     ) {}
 
     public function assessProject(ExpertProject $project, ExpertContextPack $pack): ExpertWorkloadAssessment
     {
         $materials = [];
-        $disk = Storage::disk('local');
         $models = $project->materials()->whereIn('public_id', $pack->resolvedMaterials)->get()->keyBy('public_id');
 
         foreach ($pack->resolvedMaterials as $materialId) {
             $material = $models->get($materialId);
-            if ($material === null || ! $disk->exists($material->storage_path)) {
+            if ($material === null) {
+                continue;
+            }
+            $disk = $this->storage->diskForMaterial($material);
+            $key = $this->storage->keyForMaterial($material);
+            $storageContext = $this->storage->contextForMaterial($material);
+            if (! $this->storage->exists($disk, $key, $storageContext)) {
                 continue;
             }
 
             $extension = strtolower(ltrim(trim((string) $material->extension), '.'));
             $mimeType = strtolower(trim((string) $material->mime_type));
             $isPdf = $extension === 'pdf' || $mimeType === 'application/pdf';
-            $bytes = max(0, (int) $disk->size($material->storage_path));
+            $bytes = max(0, $this->storage->size($disk, $key, $storageContext));
             $pageCount = 0;
             if ($isPdf) {
-                $raw = $disk->get($material->storage_path);
+                $raw = $this->storage->read($disk, $key, $storageContext);
                 $count = preg_match_all('/\/Type\s*\/Page\b/', $raw);
                 $pageCount = max(1, is_int($count) ? $count : 0);
             }

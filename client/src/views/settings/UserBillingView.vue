@@ -156,7 +156,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   createBillingCheckout,
@@ -174,6 +174,7 @@ import PageContainer from '@/components/layout/PageContainer.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SectionCard from '@/components/layout/SectionCard.vue'
 import StatusChip from '@/components/layout/StatusChip.vue'
+import { STORAGE_USAGE_CHANGED_EVENT } from '@/api/storageUsageEvents'
 
 const loading = ref(true)
 const error = ref('')
@@ -303,6 +304,7 @@ const usageRows = computed(() => {
 })
 
 onMounted(async () => {
+  window.addEventListener(STORAGE_USAGE_CHANGED_EVENT, refreshBillingAfterStorageChange)
   const isPaymentReturn = route.query.payment_return === '1'
   if (isPaymentReturn) {
     paymentReturnNotice.value = {
@@ -317,6 +319,12 @@ onMounted(async () => {
     await handlePaymentReturn()
   }
 })
+
+onBeforeUnmount(() => window.removeEventListener(STORAGE_USAGE_CHANGED_EVENT, refreshBillingAfterStorageChange))
+
+function refreshBillingAfterStorageChange() {
+  void loadBilling()
+}
 
 async function loadBilling() {
   loading.value = true

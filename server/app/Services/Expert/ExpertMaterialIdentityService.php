@@ -7,7 +7,6 @@ namespace App\Services\Expert;
 use App\Models\Expert\ExpertMaterialIdentity;
 use App\Models\Expert\ExpertProjectMaterial;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 final class ExpertMaterialIdentityService
 {
@@ -15,6 +14,7 @@ final class ExpertMaterialIdentityService
         private readonly ExpertMaterialIdentityRepository $repository,
         private readonly ExpertMaterialIdentityTextBuilder $textBuilder,
         private readonly ExpertPdfOcrCache $ocrCache,
+        private readonly ExpertStorageService $storage,
     ) {}
 
     public function get(ExpertProjectMaterial $material): ExpertMaterialIdentity
@@ -205,18 +205,18 @@ final class ExpertMaterialIdentityService
 
     private function sourceSha256(ExpertProjectMaterial $material): ?string
     {
-        $path = (string) $material->storage_path;
-        if ($path === '') {
+        $key = $this->storage->keyForMaterial($material);
+        if ($key === '') {
             return null;
         }
         try {
-            $disk = Storage::disk('local');
-            if (! $disk->exists($path)) {
+            $disk = $this->storage->diskForMaterial($material);
+            $context = $this->storage->contextForMaterial($material);
+            if (! $this->storage->exists($disk, $key, $context)) {
                 return null;
             }
-            $sha = hash_file('sha256', $disk->path($path));
 
-            return $sha === false ? null : $sha;
+            return $this->storage->sha256($disk, $key, $context);
         } catch (\Throwable) {
             return null;
         }

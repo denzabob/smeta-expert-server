@@ -57,11 +57,17 @@ class BillingMeTest extends TestCase
             ->assertJsonPath('current_plan.code', 'legacy_unlimited')
             ->assertJsonPath('current_plan.name', 'Legacy Unlimited')
             ->assertJsonPath('subscription.status', 'active')
+            ->assertJsonPath('storage.used_bytes', 0)
+            ->assertJsonPath('storage.limit_bytes', null)
+            ->assertJsonPath('storage.remaining_bytes', null)
+            ->assertJsonPath('storage.usage_percent', null)
+            ->assertJsonPath('storage.materials_count', 0)
             ->assertJsonStructure([
                 'billing' => ['enabled', 'enforce_limits', 'log_only', 'checkout_enabled', 'mode_label'],
                 'current_plan' => ['code', 'name', 'description', 'price', 'currency', 'billing_period', 'is_default'],
                 'subscription' => ['status', 'current_period_start', 'current_period_end'],
                 'usage',
+                'storage' => ['used_bytes', 'limit_bytes', 'remaining_bytes', 'usage_percent', 'materials_count'],
                 'public_plans',
             ]);
     }

@@ -5,14 +5,17 @@ namespace App\Services\Admin;
 use App\Models\AdminAuditLog;
 use App\Models\User;
 use App\Services\Expert\ExpertStorageCleanupService;
+use App\Services\Expert\ExpertStorageService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 
 class AdminUserService
 {
-    public function __construct(private readonly ExpertStorageCleanupService $expertStorageCleanup) {}
+    public function __construct(
+        private readonly ExpertStorageCleanupService $expertStorageCleanup,
+        private readonly ExpertStorageService $expertStorage,
+    ) {}
 
     /**
      * Log an admin action to the audit log.
@@ -100,19 +103,48 @@ class AdminUserService
     public function hardDeleteUser(User $targetUser, User $admin, ?string $reason = null, ?string $ip = null): void
     {
         $expertCleanupTasks = [];
-        $expertProjectPublicIds = [];
+        $expertProjectCleanups = [];
 
-        DB::transaction(function () use ($targetUser, $admin, $reason, $ip, &$expertCleanupTasks, &$expertProjectPublicIds) {
+        DB::transaction(function () use ($targetUser, $admin, $reason, $ip, &$expertCleanupTasks, &$expertProjectCleanups) {
             $userId = $targetUser->id;
             $userName = $targetUser->name;
             $userEmail = $targetUser->email;
 
             if (Schema::hasTable('expert_projects')) {
-                $expertProjectPublicIds = DB::table('expert_projects')->where('user_id', $userId)->pluck('public_id')->all();
+                $expertProjects = DB::table('expert_projects')
+                    ->where('user_id', $userId)
+                    ->lockForUpdate()
+                    ->get(['id', 'public_id']);
+                $hasStorageDisk = Schema::hasTable('expert_project_materials')
+                    && Schema::hasColumn('expert_project_materials', 'storage_disk');
 
-                if ($this->expertStorageCleanup->journalIsAvailable()) {
-                    foreach ($expertProjectPublicIds as $publicId) {
-                        $expertCleanupTasks[] = $this->expertStorageCleanup->scheduleDirectory("expert/{$publicId}");
+                foreach ($expertProjects as $expertProject) {
+                    $disks = ['local', $this->expertStorage->cacheDisk()];
+                    if ($hasStorageDisk) {
+                        $disks = [
+                            ...$disks,
+                            ...DB::table('expert_project_materials')
+                                ->where('expert_project_id', $expertProject->id)
+                                ->pluck('storage_disk')
+                                ->map(fn ($disk) => is_string($disk) && trim($disk) !== '' ? trim($disk) : 'local')
+                                ->all(),
+                        ];
+                    }
+                    $disks = array_values(array_unique($disks));
+                    $directory = "expert/{$expertProject->public_id}";
+                    $context = [
+                        'project_id' => (int) $expertProject->id,
+                        'project_public_id' => (string) $expertProject->public_id,
+                    ];
+                    $expertProjectCleanups[] = ['directory' => $directory, 'disks' => $disks, 'context' => $context];
+
+                    if ($this->expertStorageCleanup->journalIsAvailable()) {
+                        foreach ($disks as $disk) {
+                            $expertCleanupTasks[] = [
+                                'task' => $this->expertStorageCleanup->scheduleDirectory($directory, $disk),
+                                'context' => $context,
+                            ];
+                        }
                     }
                 }
             }
@@ -143,21 +175,16 @@ class AdminUserService
         });
 
         if ($this->expertStorageCleanup->journalIsAvailable()) {
-            foreach ($expertCleanupTasks as $task) {
-                $this->expertStorageCleanup->attempt($task);
+        foreach ($expertCleanupTasks as $task) {
+            $this->expertStorageCleanup->attempt($task['task'], $task['context']);
             }
 
             return;
         }
 
-        foreach ($expertProjectPublicIds as $publicId) {
-            $directory = "expert/{$publicId}";
-            $disk = Storage::disk('local');
-
-            if ($disk->exists($directory) && ! $disk->deleteDirectory($directory)) {
-                Log::warning('Expert project files could not be removed after user hard delete.', [
-                    'directory' => $directory,
-                ]);
+        foreach ($expertProjectCleanups as $cleanup) {
+            foreach ($cleanup['disks'] as $disk) {
+                $this->expertStorageCleanup->deleteBestEffort('directory', $cleanup['directory'], $disk, $cleanup['context']);
             }
         }
     }

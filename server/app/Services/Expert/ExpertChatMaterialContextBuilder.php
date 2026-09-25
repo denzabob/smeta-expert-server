@@ -9,7 +9,6 @@ use App\Models\Expert\ExpertProjectMaterial;
 use App\Services\LLM\DTO\LLMFileContent;
 use App\Services\LLM\Enums\LLMFileProcessingIntent;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 final class ExpertChatMaterialContextBuilder
 {
@@ -21,6 +20,7 @@ final class ExpertChatMaterialContextBuilder
         private readonly ExpertPdfOcrCache $ocrCache,
         private readonly ExpertMaterialProcessingLimits $limits,
         private readonly ExpertMaterialIdentityService $identities,
+        private readonly ExpertStorageService $storage,
     ) {}
 
     /** @param list<string> $publicIds */
@@ -186,9 +186,19 @@ final class ExpertChatMaterialContextBuilder
         $extension = strtolower(ltrim(trim((string) $material->extension), '.'));
         $declaredMime = strtolower(trim((string) $material->mime_type));
         if (in_array($extension, self::IMAGE_EXTENSIONS, true) || str_starts_with($declaredMime, 'image/')) return true;
-        $disk = Storage::disk('local');
-        if (! $disk->exists($material->storage_path) || ! class_exists(\finfo::class)) return false;
-        $actualMime = (string) ((new \finfo(FILEINFO_MIME_TYPE))->file($disk->path($material->storage_path)) ?: '');
-        return str_starts_with($actualMime, 'image/');
+        $disk = $this->storage->diskForMaterial($material);
+        $key = $this->storage->keyForMaterial($material);
+        $context = $this->storage->contextForMaterial($material);
+        if (! $this->storage->exists($disk, $key, $context) || ! class_exists(\finfo::class)) return false;
+
+        try {
+            return $this->storage->withTemporaryFile($disk, $key, static function (string $path): bool {
+                $actualMime = (string) ((new \finfo(FILEINFO_MIME_TYPE))->file($path) ?: '');
+
+                return str_starts_with($actualMime, 'image/');
+            }, $context);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

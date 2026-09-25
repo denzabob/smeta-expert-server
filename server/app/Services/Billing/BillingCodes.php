@@ -116,6 +116,8 @@ class BillingCodes
 
     public const CAP_STORAGE_MAX_MB = 'storage.max_mb';
 
+    public const CAP_STORAGE_BYTES = 'storage_bytes';
+
     public const CAP_TEAM_MEMBERS_MAX_COUNT = 'team_members.max_count';
 
     public static function features(): array
@@ -189,6 +191,7 @@ class BillingCodes
             self::CAP_EVIDENCE_RUNS_MONTHLY_LIMIT,
             self::CAP_CHROME_CAPTURES_MONTHLY_LIMIT,
             self::CAP_STORAGE_MAX_MB,
+            self::CAP_STORAGE_BYTES,
             self::CAP_TEAM_MEMBERS_MAX_COUNT,
         ];
     }

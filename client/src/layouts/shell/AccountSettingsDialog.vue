@@ -65,6 +65,9 @@
                   <AccountSecuritySection />
                 </div>
 
+                <!-- Storage -->
+                <AccountStorageSection v-if="activeSection === 'storage'" />
+
                 <!-- Data -->
                 <div v-if="activeSection === 'data'" class="section-panel">
                   <h3 class="section-title">Данные</h3>
@@ -119,6 +122,7 @@ import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api/axios'
 import AccountSecuritySection from '@/components/settings/AccountSecuritySection.vue'
+import AccountStorageSection from '@/components/settings/AccountStorageSection.vue'
 import SettingsShell, { type SettingsSection } from '@/components/settings/shell/SettingsShell.vue'
 
 const props = defineProps<{
@@ -136,6 +140,7 @@ const user = computed(() => authStore.user)
 const sections: SettingsSection[] = [
   { id: 'profile', title: 'Профиль', icon: 'mdi-account-outline' },
   { id: 'security', title: 'Безопасность', icon: 'mdi-shield-outline' },
+  { id: 'storage', title: 'Хранилище', icon: 'mdi-folder-multiple-outline', dividerBefore: true },
   { id: 'data', title: 'Данные', icon: 'mdi-database-outline', dividerBefore: true },
 ]
 

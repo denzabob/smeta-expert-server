@@ -19,6 +19,25 @@ class ExpertCorePersistenceTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config()->set('expert.storage.disk', 's1');
+        config()->set('filesystems.disks.s1', [
+            'driver' => 's3',
+            'key' => 'test-access-key',
+            'secret' => 'test-secret',
+            'region' => 'us-east-1',
+            'bucket' => 'expert-test-bucket',
+            'endpoint' => 'https://s1.test.invalid',
+            'visibility' => 'private',
+            'stream_reads' => true,
+            'throw' => true,
+            'report' => false,
+        ]);
+        Storage::fake('s1');
+    }
+
     public function test_authentication_project_ownership_and_core_crud(): void
     {
         $this->getJson('/api/expert/projects')->assertUnauthorized();
@@ -83,10 +102,10 @@ class ExpertCorePersistenceTest extends TestCase
     {
         Storage::fake('local'); [$user,$project]=$this->project(); $other=User::factory()->create();
         $material=$this->actingAs($user,'sanctum')->post("/api/expert/projects/{$project->public_id}/materials",['file'=>UploadedFile::fake()->create('evidence.pdf',10,'application/pdf')],['Accept'=>'application/json'])->assertCreated()->assertJsonPath('original_name','evidence.pdf')->assertJsonMissingPath('storage_path');
-        $record=$project->materials()->firstOrFail(); Storage::disk('local')->assertExists($record->storage_path);
+        $record=$project->materials()->firstOrFail(); Storage::disk('s1')->assertExists($record->storage_path);
         $this->get('/api/expert/materials/'.$material->json('public_id').'/download')->assertOk()->assertHeader('content-disposition');
         $this->actingAs($other,'sanctum')->get('/api/expert/materials/'.$material->json('public_id').'/download')->assertForbidden();
-        Storage::disk('local')->delete($record->storage_path);
+        Storage::disk('s1')->delete($record->storage_path);
         $this->actingAs($user,'sanctum')->get('/api/expert/materials/'.$material->json('public_id').'/download')->assertNotFound();
         $this->actingAs($user,'sanctum')->post("/api/expert/projects/{$project->public_id}/materials",['file'=>UploadedFile::fake()->create('evil.exe',10,'application/x-msdownload')],['Accept'=>'application/json'])->assertUnprocessable();
         $this->post("/api/expert/projects/{$project->public_id}/materials",['file'=>UploadedFile::fake()->create('disguised.exe',10,'application/pdf')],['Accept'=>'application/json'])->assertUnprocessable();
@@ -102,7 +121,7 @@ class ExpertCorePersistenceTest extends TestCase
 
         $this->get($url)->assertOk()->assertHeader('content-type','image/jpeg');
         $this->actingAs($other,'sanctum')->get($url)->assertForbidden();
-        $record=$project->materials()->firstOrFail(); Storage::disk('local')->delete($record->storage_path);
+        $record=$project->materials()->firstOrFail(); Storage::disk('s1')->delete($record->storage_path);
         $this->actingAs($user,'sanctum')->get($url)->assertNotFound();
     }
 
@@ -115,7 +134,7 @@ class ExpertCorePersistenceTest extends TestCase
         $materialId=$this->post("/api/expert/projects/{$project->public_id}/materials",['file'=>$file],['Accept'=>'application/json'])->assertCreated()->json('public_id');
         $material=$project->materials()->where('public_id',$materialId)->firstOrFail();
         $finding=$this->postJson("/api/expert/projects/{$project->public_id}/findings",['type'=>'defect','title'=>'Скол','research_object_public_id'=>$object->public_id,'material_public_ids'=>[$materialId]])->assertCreated()->assertJsonPath('status','expert_confirmed')->assertJsonPath('research_object.public_id',$object->public_id)->assertJsonPath('materials.0.public_id',$materialId);
-        $this->deleteJson("/api/expert/materials/{$materialId}")->assertConflict(); Storage::disk('local')->assertExists($material->storage_path);
+        $this->deleteJson("/api/expert/materials/{$materialId}")->assertConflict(); Storage::disk('s1')->assertExists($material->storage_path);
         $foreignObject=$foreign->researchObjects()->create(['name'=>'Чужой объект']);
         $this->patchJson('/api/expert/findings/'.$finding->json('public_id'),['research_object_public_id'=>$foreignObject->public_id])->assertUnprocessable();
         $foreignMaterial=$foreign->materials()->create(['uploaded_by'=>$foreign->user_id,'original_name'=>'foreign.pdf','storage_path'=>'expert/foreign.pdf','mime_type'=>'application/pdf','extension'=>'pdf','size'=>10,'category'=>'document','status'=>'uploaded']);
@@ -142,7 +161,7 @@ class ExpertCorePersistenceTest extends TestCase
         $this->assertDatabaseMissing('expert_findings',['id'=>$finding->id]);
         $this->assertDatabaseMissing('expert_finding_material',['expert_finding_id'=>$finding->id,'expert_project_material_id'=>$material->id]);
         $this->assertDatabaseMissing('expert_storage_cleanup_tasks',['path'=>"expert/{$project->public_id}"]);
-        Storage::disk('local')->assertMissing($path);
+        Storage::disk('s1')->assertMissing($path);
     }
 
     public function test_project_delete_journals_failed_physical_cleanup_for_retry(): void
@@ -150,7 +169,6 @@ class ExpertCorePersistenceTest extends TestCase
         [$user,$project]=$this->project();
         $directory="expert/{$project->public_id}";
         $disk=Mockery::mock();
-        $disk->shouldReceive('exists')->once()->with($directory)->andReturn(true);
         $disk->shouldReceive('deleteDirectory')->once()->with($directory)->andReturn(false);
         Storage::shouldReceive('disk')->with('local')->andReturn($disk);
 
@@ -171,7 +189,7 @@ class ExpertCorePersistenceTest extends TestCase
 
         $this->assertDatabaseMissing('expert_project_materials',['id'=>$material->id]);
         $this->assertDatabaseMissing('expert_storage_cleanup_tasks',['path'=>$material->storage_path]);
-        Storage::disk('local')->assertMissing($material->storage_path);
+        Storage::disk('s1')->assertMissing($material->storage_path);
     }
 
     public function test_storage_cleanup_command_retries_journaled_private_file(): void
@@ -195,6 +213,7 @@ class ExpertCorePersistenceTest extends TestCase
         $this->actingAs($user,'sanctum')->post("/api/expert/projects/{$project->public_id}/materials",[
             'file'=>UploadedFile::fake()->create('evidence.pdf',10,'application/pdf'),
         ],['Accept'=>'application/json'])->assertCreated();
+        $this->assertDatabaseHas('expert_storage_usages', ['user_id' => $user->id, 'materials_count' => 1]);
         $project->findings()->create([
             'type'=>'fact','title'=>'Факт','status'=>'expert_confirmed','created_by'=>$user->id,
         ]);
@@ -203,7 +222,8 @@ class ExpertCorePersistenceTest extends TestCase
 
         $this->assertDatabaseMissing('users',['id'=>$user->id]);
         $this->assertDatabaseMissing('expert_projects',['id'=>$project->id]);
-        Storage::disk('local')->assertMissing("expert/{$project->public_id}");
+        $this->assertDatabaseMissing('expert_storage_usages', ['user_id' => $user->id]);
+        $this->assertSame([], Storage::disk('s1')->allFiles("expert/{$project->public_id}"));
     }
 
     private function project(): array

@@ -6,7 +6,6 @@ namespace App\Services\Expert;
 
 use App\Models\Expert\ExpertProjectMaterial;
 use App\Services\LLM\DTO\LLMImageContent;
-use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 final class ExpertVisionImagePreparer
@@ -19,114 +18,120 @@ final class ExpertVisionImagePreparer
 
     public function __construct(
         private readonly ExpertMaterialProcessingLimits $limitsResolver,
+        private readonly ExpertStorageService $storage,
     ) {}
 
     public function prepare(ExpertProjectMaterial $material): LLMImageContent
     {
-        $disk = Storage::disk('local');
+        $disk = $this->storage->diskForMaterial($material);
+        $key = $this->storage->keyForMaterial($material);
+        $context = $this->storage->contextForMaterial($material);
         $limits = $this->limitsResolver->resolve($material);
 
         try {
-            if (! $disk->exists($material->storage_path)) {
+            if (! $this->storage->exists($disk, $key, $context)) {
                 throw ExpertVisionException::invalid();
             }
 
-            $sourcePath = $disk->path($material->storage_path);
-            $sourceBytes = (int) ($disk->size($material->storage_path) ?: 0);
+            $sourceBytes = $this->storage->size($disk, $key, $context);
             if ($sourceBytes <= 0 || $sourceBytes > (int) ($limits['max_source_bytes'] ?? 15 * 1024 * 1024)) {
                 throw ExpertVisionException::tooLarge();
             }
 
-            $actualMime = $this->actualMime($sourcePath);
-            $extension = strtolower(ltrim(trim((string) $material->extension), '.'));
-            if (! isset(self::MIME_EXTENSIONS[$actualMime])
-                || strtolower(trim((string) $material->mime_type)) !== $actualMime
-                || ! in_array($extension, self::MIME_EXTENSIONS[$actualMime], true)) {
-                throw ExpertVisionException::invalid();
-            }
+            return $this->storage->withTemporaryFile($disk, $key, function (string $sourcePath) use ($material, $sourceBytes, $limits): LLMImageContent {
+                try {
+                    $actualMime = $this->actualMime($sourcePath);
+                    $extension = strtolower(ltrim(trim((string) $material->extension), '.'));
+                    if (! isset(self::MIME_EXTENSIONS[$actualMime])
+                        || strtolower(trim((string) $material->mime_type)) !== $actualMime
+                        || ! in_array($extension, self::MIME_EXTENSIONS[$actualMime], true)) {
+                        throw ExpertVisionException::invalid();
+                    }
 
-            $dimensions = @getimagesize($sourcePath);
-            if (! is_array($dimensions) || (string) ($dimensions['mime'] ?? '') !== $actualMime) {
-                throw ExpertVisionException::invalid();
-            }
+                    $dimensions = @getimagesize($sourcePath);
+                    if (! is_array($dimensions) || (string) ($dimensions['mime'] ?? '') !== $actualMime) {
+                        throw ExpertVisionException::invalid();
+                    }
 
-            $width = (int) ($dimensions[0] ?? 0);
-            $height = (int) ($dimensions[1] ?? 0);
-            $this->assertDimensions($width, $height, $limits);
+                    $width = (int) ($dimensions[0] ?? 0);
+                    $height = (int) ($dimensions[1] ?? 0);
+                    $this->assertDimensions($width, $height, $limits);
 
-            $decoder = match ($actualMime) {
-                'image/jpeg' => 'imagecreatefromjpeg',
-                'image/png' => 'imagecreatefrompng',
-                'image/webp' => 'imagecreatefromwebp',
-                default => null,
-            };
-            if ($decoder === null || ! function_exists($decoder)) {
-                throw ExpertVisionException::preparationFailed();
-            }
+                    $decoder = match ($actualMime) {
+                        'image/jpeg' => 'imagecreatefromjpeg',
+                        'image/png' => 'imagecreatefrompng',
+                        'image/webp' => 'imagecreatefromwebp',
+                        default => null,
+                    };
+                    if ($decoder === null || ! function_exists($decoder)) {
+                        throw ExpertVisionException::preparationFailed();
+                    }
 
-            $source = @$decoder($sourcePath);
-            if (! $source) {
-                throw ExpertVisionException::invalid();
-            }
+                    $source = @$decoder($sourcePath);
+                    if (! $source) {
+                        throw ExpertVisionException::invalid();
+                    }
 
-            $source = $this->applyOrientation($source, $actualMime === 'image/jpeg'
-                ? $this->readJpegExifOrientation($sourcePath)
-                : 1);
-            $width = imagesx($source);
-            $height = imagesy($source);
+                    $source = $this->applyOrientation($source, $actualMime === 'image/jpeg'
+                        ? $this->readJpegExifOrientation($sourcePath)
+                        : 1);
+                    $width = imagesx($source);
+                    $height = imagesy($source);
 
-            $maxOutputWidth = max(1, $limits['max_output_width']);
-            $maxOutputHeight = max(1, $limits['max_output_height']);
-            $scale = min($maxOutputWidth / $width, $maxOutputHeight / $height, 1);
-            $outputWidth = max(1, (int) floor($width * $scale));
-            $outputHeight = max(1, (int) floor($height * $scale));
-            $canvas = imagecreatetruecolor($outputWidth, $outputHeight);
-            if (! $canvas) {
-                throw ExpertVisionException::preparationFailed();
-            }
+                    $maxOutputWidth = max(1, $limits['max_output_width']);
+                    $maxOutputHeight = max(1, $limits['max_output_height']);
+                    $scale = min($maxOutputWidth / $width, $maxOutputHeight / $height, 1);
+                    $outputWidth = max(1, (int) floor($width * $scale));
+                    $outputHeight = max(1, (int) floor($height * $scale));
+                    $canvas = imagecreatetruecolor($outputWidth, $outputHeight);
+                    if (! $canvas) {
+                        throw ExpertVisionException::preparationFailed();
+                    }
 
-            $background = imagecolorallocate($canvas, 255, 255, 255);
-            imagefill($canvas, 0, 0, $background);
-            imagealphablending($canvas, true);
-            if (! imagecopyresampled(
-                $canvas, $source,
-                0, 0, 0, 0,
-                $outputWidth, $outputHeight, $width, $height,
-            )) {
-                throw ExpertVisionException::preparationFailed();
-            }
+                    $background = imagecolorallocate($canvas, 255, 255, 255);
+                    imagefill($canvas, 0, 0, $background);
+                    imagealphablending($canvas, true);
+                    if (! imagecopyresampled(
+                        $canvas, $source,
+                        0, 0, 0, 0,
+                        $outputWidth, $outputHeight, $width, $height,
+                    )) {
+                        throw ExpertVisionException::preparationFailed();
+                    }
 
-            ob_start();
-            $encoded = imagejpeg($canvas, null, max(40, min(95, $limits['jpeg_quality'])));
-            $bytes = ob_get_clean();
-            if (! $encoded || ! is_string($bytes) || $bytes === '') {
-                throw ExpertVisionException::preparationFailed();
-            }
+                    ob_start();
+                    $encoded = imagejpeg($canvas, null, max(40, min(95, $limits['jpeg_quality'])));
+                    $bytes = ob_get_clean();
+                    if (! $encoded || ! is_string($bytes) || $bytes === '') {
+                        throw ExpertVisionException::preparationFailed();
+                    }
 
-            if (strlen($bytes) > $limits['max_prepared_payload_bytes']) {
-                throw ExpertVisionException::tooLarge();
-            }
+                    if (strlen($bytes) > $limits['max_prepared_payload_bytes']) {
+                        throw ExpertVisionException::tooLarge();
+                    }
 
-            return new LLMImageContent(
-                materialPublicId: (string) $material->public_id,
-                name: $this->presentationName($material),
-                mimeType: 'image/jpeg',
-                bytes: $bytes,
-                width: $outputWidth,
-                height: $outputHeight,
-                sourceBytes: $sourceBytes,
-            );
+                    return new LLMImageContent(
+                        materialPublicId: (string) $material->public_id,
+                        name: $this->presentationName($material),
+                        mimeType: 'image/jpeg',
+                        bytes: $bytes,
+                        width: $outputWidth,
+                        height: $outputHeight,
+                        sourceBytes: $sourceBytes,
+                    );
+                } finally {
+                    if (isset($canvas)) {
+                        @imagedestroy($canvas);
+                    }
+                    if (isset($source)) {
+                        @imagedestroy($source);
+                    }
+                }
+            }, $context);
         } catch (ExpertVisionException $exception) {
             throw $exception;
         } catch (Throwable $exception) {
             throw ExpertVisionException::preparationFailed($exception);
-        } finally {
-            if (isset($canvas)) {
-                @imagedestroy($canvas);
-            }
-            if (isset($source)) {
-                @imagedestroy($source);
-            }
         }
     }
 

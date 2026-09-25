@@ -21,6 +21,8 @@ import {
   expertWorkTypeValues,
 } from './options'
 import { describeProjectMaterial, formatMaterialSize, safeMaterialDisplayName } from './materialPresentation'
+import { storageQuotaErrorMessage } from './storagePresentation'
+import { notifyStorageUsageChanged } from '@/api/storageUsageEvents'
 import { parseExpertSseStream } from './chatStreaming'
 import type { ExpertReasoningSummaryEvent, ExpertRunActivity } from './chatTimeline'
 
@@ -130,7 +132,7 @@ export type ExpertRunDiagnostic = {
   retryable: boolean
   lastActivityCode?: string
 }
-export type ExpertApiError = { status?: number; code?: string; message: string; validationErrors: ExpertValidationErrors; diagnostic?: ExpertRunDiagnostic }
+export type ExpertApiError = { status?: number; code?: string; message: string; validationErrors: ExpertValidationErrors; diagnostic?: ExpertRunDiagnostic; storage?: { used_bytes?: number; limit_bytes?: number | null; requested_bytes?: number; remaining_bytes?: number | null } }
 const streamErrorMessages: Record<string, string> = {
   provider_auth_failed: 'Провайдер AI недоступен из-за настройки доступа.',
   provider_model_not_found: 'Выбранная модель AI недоступна.',
@@ -364,17 +366,29 @@ export function mapExpertApiError(error: unknown): ExpertApiError {
   if (!axios.isAxiosError(error))
     return { message: 'Не удалось выполнить запрос.', validationErrors: {} }
   const data = error.response?.data as
-    | { message?: string; code?: string; errors?: ExpertValidationErrors }
+    | { message?: string; code?: string; errors?: ExpertValidationErrors; storage?: ExpertApiError['storage'] }
     | undefined
+  const quotaStorage = data?.storage
+  let message = data?.message
+  if (data?.code === 'STORAGE_QUOTA_EXCEEDED') {
+    const requested = Number(quotaStorage?.requested_bytes)
+    const remaining = Number(quotaStorage?.remaining_bytes)
+    if (Number.isFinite(requested) && Number.isFinite(remaining)) {
+      message = storageQuotaErrorMessage(requested, remaining)
+    }
+  } else if (data?.code === 'BILLING_LIMIT_CHECK_FAILED') {
+    message = 'Не удалось проверить лимит хранилища. Повторите попытку позже.'
+  }
   return {
     status: error.response?.status,
     code: data?.code,
     message:
-      data?.message ??
+      message ??
       (error.response?.status === 404
         ? 'Проект не найден.'
         : 'Не удалось выполнить запрос.'),
     validationErrors: data?.errors ?? {},
+    ...(quotaStorage ? { storage: quotaStorage } : {}),
   }
 }
 
@@ -494,6 +508,10 @@ export function createExpertApi(http?: AxiosInstance) {
         toProjectPayload(draft),
       )
       return mapExpertProject(data)
+    },
+    async deleteProject(id: string) {
+      await (await resolveHttp()).delete(`/api/expert/projects/${encodeURIComponent(id)}`)
+      notifyStorageUsageChanged()
     },
     async listResearchObjects(projectId: string) {
       const { data } = await (await resolveHttp()).get<ExpertCollection<ExpertResearchObjectDto>>(
@@ -691,6 +709,7 @@ export function createExpertApi(http?: AxiosInstance) {
           onUploadProgress: (event: AxiosProgressEvent) => options.onProgress?.(toProgress(event)),
         },
       )
+      notifyStorageUsageChanged()
       return mapMaterial(data)
     },
     async downloadMaterial(id: string, options: ExpertDownloadOptions = {}) {
@@ -719,6 +738,7 @@ export function createExpertApi(http?: AxiosInstance) {
     },
     async deleteMaterial(id: string) {
       await (await resolveHttp()).delete(`/api/expert/materials/${encodeURIComponent(id)}`)
+      notifyStorageUsageChanged()
     },
     async listFindings(projectId: string) {
       const { data } = await (await resolveHttp()).get<ExpertCollection<ExpertFindingDto>>(

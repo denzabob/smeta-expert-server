@@ -46,6 +46,20 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
     {
         parent::setUp();
         Storage::fake('local');
+        config()->set('expert.storage.disk', 's1');
+        config()->set('filesystems.disks.s1', [
+            'driver' => 's3',
+            'key' => 'test-access-key',
+            'secret' => 'test-secret',
+            'region' => 'us-east-1',
+            'bucket' => 'expert-test-bucket',
+            'endpoint' => 'https://s1.test.invalid',
+            'visibility' => 'private',
+            'stream_reads' => true,
+            'throw' => true,
+            'report' => false,
+        ]);
+        Storage::fake('s1');
         config([
             'expert.pdf_ocr.enabled' => true,
             'expert.pdf_ocr.engine' => 'mistral-ocr',
@@ -58,9 +72,9 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
         $fixture = $this->scannedPdfFixture();
         $fixtureSha = hash('sha256', $fixture);
         $material = $this->uploadPdf($user, $conversation->project, $fixture);
-        $disk = Storage::disk('local');
+        $sourceDisk = Storage::disk('s1');
 
-        $this->assertTrue($disk->exists($material->storage_path));
+        $this->assertTrue($sourceDisk->exists($material->storage_path));
         $this->assertSame('application/pdf', $material->mime_type);
         $this->assertNoUsableLocalPdfText($material, $fixture);
 
@@ -103,8 +117,9 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
         $candidate = $this->candidate($material, $fixture);
         $cache = app(ExpertPdfOcrCache::class);
         $cachePath = $cache->path($candidate);
-        $this->assertTrue($disk->exists($cachePath));
-        $cached = json_decode($disk->get($cachePath), true, 512, JSON_THROW_ON_ERROR);
+        $cacheDisk = Storage::disk('local');
+        $this->assertTrue($cacheDisk->exists($cachePath));
+        $cached = json_decode($cacheDisk->get($cachePath), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($fixtureSha, $cached['source_sha256']);
         $this->assertSame('OCR-EXPERT-48217', trim($cached['text']));
         $identity = app(\App\Services\Expert\ExpertMaterialIdentityService::class)->get($material);
@@ -226,7 +241,7 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
         $this->assertTrue(Storage::disk('local')->exists($cache->path($candidate)));
 
         $changed = $fixture."\n% changed source fingerprint\n";
-        Storage::disk('local')->put($material->storage_path, $changed);
+        Storage::disk('s1')->put($material->storage_path, $changed);
         $material->forceFill(['size' => strlen($changed)])->save();
 
         $context = app(ExpertChatMaterialContextBuilder::class)->build($conversation->project, [$material->public_id]);
@@ -513,7 +528,6 @@ final class ExpertPdfOcrAcceptanceTest extends TestCase
             app(ExpertMaterialTextExtractor::class)->extract(
                 $material,
                 $bytes,
-                Storage::disk('local')->path($material->storage_path),
             );
             $this->fail('The scanned fixture unexpectedly exposed a usable local PDF text layer.');
         } catch (ExpertMaterialContextException $exception) {

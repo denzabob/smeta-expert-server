@@ -23,6 +23,7 @@ vi.mock('vuetify/components/VSelect', () => ({ VSelect: { template: '<div />' } 
 
 import ExpertChatComposer from './ExpertChatComposer.vue'
 import type { ExpertChatMode } from '../../types'
+import type { ExpertMaterialUploadItem } from '../../composables/useExpertMaterialTransfers'
 
 const modeMenuStub = {
   props: { modelValue: { type: Boolean, default: undefined } },
@@ -59,6 +60,32 @@ function mountModeComposer(mode: ExpertChatMode = 'auto', onModeChange?: (mode: 
 afterEach(() => { document.body.innerHTML = '' })
 
 describe('Expert Chat composer local file drop', () => {
+  it('shows the available and requested amounts for a storage quota upload error', async () => {
+    const root = document.createElement('div')
+    document.body.append(root)
+    const uploadItem: ExpertMaterialUploadItem = {
+      id: 'upload-1', fingerprint: 'p:file', file: new File(['file'], 'Файл.pdf'), name: 'Файл.pdf',
+      kind: 'document', format: 'PDF', size: '1 КБ', icon: 'mdi-file-pdf-box', accent: 'pdf',
+      state: 'error', progress: 0,
+      error: {
+        isAxiosError: true,
+        response: {
+          status: 422,
+          data: {
+            code: 'STORAGE_QUOTA_EXCEEDED',
+            message: 'Недостаточно свободного места в хранилище.',
+            storage: { requested_bytes: 2048, remaining_bytes: 1024 },
+          },
+        },
+      },
+    }
+    const app = createApp(ExpertChatComposer, { contextChips: [], uploadItems: [uploadItem] })
+    app.mount(root)
+
+    expect(root.querySelector('.expert-composer__upload-error')?.textContent).toContain('нужно 2 КБ, доступно 1 КБ')
+    app.unmount()
+  })
+
   it('uses a compact mode pill instead of a select', async () => {
     const root = document.createElement('div')
     document.body.append(root)

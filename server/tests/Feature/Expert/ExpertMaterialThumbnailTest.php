@@ -18,6 +18,20 @@ class ExpertMaterialThumbnailTest extends TestCase
     {
         parent::setUp();
         Storage::fake('local');
+        config()->set('expert.storage.disk', 's1');
+        config()->set('filesystems.disks.s1', [
+            'driver' => 's3',
+            'key' => 'test-access-key',
+            'secret' => 'test-secret',
+            'region' => 'us-east-1',
+            'bucket' => 'expert-test-bucket',
+            'endpoint' => 'https://s1.test.invalid',
+            'visibility' => 'private',
+            'stream_reads' => true,
+            'throw' => true,
+            'report' => false,
+        ]);
+        Storage::fake('s1');
     }
 
     public function test_thumbnail_is_private_owner_scoped_and_non_image_is_controlled(): void

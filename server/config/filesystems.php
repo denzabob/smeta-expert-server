@@ -68,6 +68,27 @@ return [
             'report' => false,
         ],
 
+        // Expert originals use this disk only when EXPERT_STORAGE_DISK=s1.
+        // Keep the bucket private and stream reads for large downloads.
+        's1' => [
+            'driver' => 's3',
+            'key' => env('S1_ACCESS_KEY_ID'),
+            'secret' => env('S1_SECRET_ACCESS_KEY'),
+            'region' => env('S1_REGION'),
+            'bucket' => env('S1_BUCKET'),
+            'endpoint' => env('S1_ENDPOINT'),
+            'use_path_style_endpoint' => env('S1_USE_PATH_STYLE_ENDPOINT', false),
+            'visibility' => 'private',
+            'stream_reads' => true,
+            'http' => [
+                'connect_timeout' => (float) env('S1_CONNECT_TIMEOUT', 3),
+                'timeout' => (float) env('S1_REQUEST_TIMEOUT', 20),
+            ],
+            'retries' => 2,
+            'throw' => true,
+            'report' => false,
+        ],
+
     ],
 
     /*

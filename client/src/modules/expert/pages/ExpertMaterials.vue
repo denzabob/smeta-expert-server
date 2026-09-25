@@ -26,7 +26,7 @@
             color="primary"
           ><span class="expert-material-card__progress-value">{{ item.state === 'queued' ? '…' : `${item.progress}%` }}</span></v-progress-circular>
         </div>
-        <div class="expert-material-card__body"><strong :title="item.name">{{ item.name }}</strong><span>{{ item.format }} · {{ item.size }}</span></div>
+        <div class="expert-material-card__body"><strong :title="item.name">{{ item.name }}</strong><span>{{ item.format }} · {{ item.size }}</span><small v-if="item.state === 'error'" class="expert-material-card__upload-error">{{ uploadError(item) }}</small></div>
         <div class="expert-material-card__status">
           <v-chip size="x-small" variant="tonal" :color="item.state === 'error' ? 'error' : item.state === 'completed' ? undefined : 'primary'" :title="item.state === 'error' ? uploadError(item) : undefined">{{ uploadStateLabel(item.state) }}</v-chip>
         </div>
@@ -294,6 +294,7 @@ onBeforeUnmount(() => transfers.dispose())
 .expert-material-card__body strong, .expert-material-card__body span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .expert-material-card__body strong { font-size: .84rem; }
 .expert-material-card__body span { margin-top: 3px; color: rgba(var(--v-theme-on-surface-variant), .76); font-size: .71rem; }
+.expert-material-card__upload-error { display: block; margin-top: 5px; color: rgb(var(--v-theme-error)); font-size: .74rem; white-space: normal; }
 .expert-empty { display: grid; justify-items: center; padding: 64px 20px; color: rgba(var(--v-theme-on-surface-variant), .75); text-align: center; }
 .expert-empty h2 { margin: 14px 0 4px; color: rgb(var(--v-theme-on-surface)); font-size: 1.05rem; }
 .expert-empty p { max-width: 440px; margin: 0 0 18px; font-size: .8rem; }

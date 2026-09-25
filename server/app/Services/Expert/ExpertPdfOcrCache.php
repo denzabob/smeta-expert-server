@@ -7,14 +7,10 @@ namespace App\Services\Expert;
 use App\Models\Expert\ExpertProjectMaterial;
 use App\Services\LLM\DTO\LLMParsedFile;
 use App\Services\LLM\Enums\LLMFileProcessingIntent;
-use Illuminate\Support\Facades\Storage;
 
 final class ExpertPdfOcrCache
 {
-    private function disk()
-    {
-        return Storage::disk('local');
-    }
+    public function __construct(private readonly ExpertStorageService $storage) {}
 
     public function cacheDirectory(ExpertProjectMaterial $material): string
     {
@@ -32,7 +28,11 @@ final class ExpertPdfOcrCache
 
     public function get(ExpertPdfOcrCandidate $candidate): ?LLMParsedFile
     {
-        $disk = $this->disk();
+        $disk = $this->storage->cacheDisk();
+        $context = [
+            'project_public_id' => $candidate->projectPublicId,
+            'material_public_id' => $candidate->materialPublicId,
+        ];
         $path = $this->path($candidate);
         $legacyPath = $candidate->processingIntent === LLMFileProcessingIntent::PDF_OCR
             && $this->processingEngine($candidate->processingIntent) === 'mistral-ocr'
@@ -40,11 +40,11 @@ final class ExpertPdfOcrCache
             : null;
 
         foreach (array_values(array_filter([$path, $legacyPath])) as $candidatePath) {
-            if (! $disk->exists($candidatePath)) {
+            if (! $this->storage->exists($disk, $candidatePath, $context)) {
                 continue;
             }
 
-            $raw = $disk->get($candidatePath);
+            $raw = $this->storage->read($disk, $candidatePath, $context);
             $data = json_decode($raw, true);
             $isLegacyOcrPath = $legacyPath !== null && $candidatePath === $legacyPath;
             $this->assertPayload($data, $candidate, $isLegacyOcrPath);
@@ -115,7 +115,10 @@ final class ExpertPdfOcrCache
             throw ExpertPdfOcrException::cacheInvalid();
         }
 
-        $this->disk()->put($this->path($candidate), $json);
+        $this->storage->put($this->storage->cacheDisk(), $this->path($candidate), $json, [
+            'project_public_id' => $candidate->projectPublicId,
+            'material_public_id' => $candidate->materialPublicId,
+        ]);
     }
 
     public function processingEngine(LLMFileProcessingIntent $intent): string

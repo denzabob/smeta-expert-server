@@ -20,6 +20,32 @@ class BillingGateService
 
     public function check(User $user, string $capability, array $context = []): BillingGateResult
     {
+        return $this->evaluate($user, $capability, $context, strictLimit: false, recordEvent: true);
+    }
+
+    /**
+     * Evaluate a projected cumulative usage value. Equality remains allowed,
+     * which is required for byte quotas where a file may fill the limit exactly.
+     */
+    public function checkProjectedUsage(
+        User $user,
+        string $capability,
+        int $projectedUsage,
+        array $context = [],
+        bool $recordEvent = true,
+    ): BillingGateResult {
+        $context['usage'] = $projectedUsage;
+
+        return $this->evaluate($user, $capability, $context, strictLimit: true, recordEvent: $recordEvent);
+    }
+
+    private function evaluate(
+        User $user,
+        string $capability,
+        array $context,
+        bool $strictLimit,
+        bool $recordEvent,
+    ): BillingGateResult {
         $logOnly = (bool) config('billing.log_only', true);
         $enforced = (bool) config('billing.enforce_limits', false);
 
@@ -28,7 +54,7 @@ class BillingGateService
             $planCode = $plan?->code ?? (string) config('billing.default_plan', 'legacy_unlimited');
             $limit = $this->resolveLimit($plan, $capability);
             $usage = $this->resolveUsage($user, $capability, $context);
-            $wouldBlock = $limit !== null && $usage >= $limit;
+            $wouldBlock = $limit !== null && ($strictLimit ? $usage > $limit : $usage >= $limit);
 
             $allowed = true;
             $reason = $wouldBlock ? 'limit_would_block' : 'allowed';
@@ -50,7 +76,11 @@ class BillingGateService
                 reason: $reason,
             );
 
-            if (! $this->usageExclusion->shouldIgnoreUser($user) && ($wouldBlock || (bool) ($context['force_log'] ?? false))) {
+            if (
+                $recordEvent
+                && ! $this->usageExclusion->shouldIgnoreUser($user)
+                && ($wouldBlock || (bool) ($context['force_log'] ?? false))
+            ) {
                 $this->recordEvent($user, $result, $context);
             }
 

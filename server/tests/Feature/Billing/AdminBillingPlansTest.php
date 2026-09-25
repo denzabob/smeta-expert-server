@@ -235,6 +235,24 @@ class AdminBillingPlansTest extends TestCase
         $this->assertSame(5, $limits[BillingCodes::CAP_PDF_EXPORTS_MONTHLY_LIMIT]);
     }
 
+    public function test_storage_byte_limit_is_saved_through_the_existing_plan_admin_contract(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/admin/billing/plans', [
+                ...$this->planPayload('storage_bytes_plan'),
+                'limits' => [BillingCodes::CAP_STORAGE_BYTES => 5_368_709_120],
+            ])
+            ->assertCreated();
+
+        $planId = $response->json('data.id');
+        $this->assertSame(
+            5_368_709_120,
+            BillingPlan::query()->findOrFail($planId)->metadata_json['limits'][BillingCodes::CAP_STORAGE_BYTES],
+        );
+    }
+
     private function makePlan(string $code = 'test_plan', string $name = 'Test plan'): BillingPlan
     {
         return BillingPlan::query()->create([

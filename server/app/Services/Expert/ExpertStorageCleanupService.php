@@ -5,20 +5,21 @@ namespace App\Services\Expert;
 use App\Models\Expert\ExpertStorageCleanupTask;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
 class ExpertStorageCleanupService
 {
-    public function scheduleFile(string $path): ExpertStorageCleanupTask
+    public function __construct(private readonly ExpertStorageService $storage) {}
+
+    public function scheduleFile(string $path, string $disk = 'local'): ExpertStorageCleanupTask
     {
-        return $this->schedule('file', $path);
+        return $this->schedule('file', $path, $disk);
     }
 
-    public function scheduleDirectory(string $path): ExpertStorageCleanupTask
+    public function scheduleDirectory(string $path, string $disk = 'local'): ExpertStorageCleanupTask
     {
-        return $this->schedule('directory', $path);
+        return $this->schedule('directory', $path, $disk);
     }
 
     public function journalIsAvailable(): bool
@@ -26,49 +27,50 @@ class ExpertStorageCleanupService
         return Schema::hasTable('expert_storage_cleanup_tasks');
     }
 
-    public function deleteBestEffort(string $kind, string $path): void
+    public function deleteBestEffort(string $kind, string $path, string $disk = 'local', array $context = []): void
     {
         try {
             $this->assertManagedPath($path);
-            $disk = Storage::disk('local');
-
-            if ($disk->exists($path) && ! ($kind === 'directory'
-                ? $disk->deleteDirectory($path)
-                : $disk->delete($path))) {
-                Log::warning('Expert storage cleanup failed before the cleanup journal migration was available.', [
-                    'path' => $path,
-                    'kind' => $kind,
-                ]);
-            }
+            $kind === 'directory'
+                ? $this->storage->deleteDirectory($disk, $path, $context)
+                : $this->storage->delete($disk, $path, $context);
         } catch (Throwable $exception) {
-            Log::warning('Expert storage cleanup threw before the cleanup journal migration was available.', [
-                'path' => $path,
+            Log::warning('Expert storage cleanup failed before the cleanup journal migration was available.', [
+                'operation' => $kind === 'directory' ? 'delete_directory' : 'delete',
+                'disk' => $disk,
+                ...$context,
                 'kind' => $kind,
-                'exception' => $exception::class,
+                'exception_class' => $exception instanceof ExpertStorageException
+                    ? ($exception->sourceExceptionClass ?? $exception::class)
+                    : $exception::class,
+                'error_code' => $exception instanceof ExpertStorageException
+                    ? $exception->failureCode
+                    : 'CLEANUP_FAILED',
             ]);
         }
     }
 
-    public function attempt(ExpertStorageCleanupTask $task): bool
+    public function attempt(ExpertStorageCleanupTask $task, array $context = []): bool
     {
+        $context['cleanup_task_id'] = (int) $task->id;
+
         try {
             $this->assertManagedPath($task->path);
 
-            $disk = Storage::disk($task->disk);
-            $removed = ! $disk->exists($task->path)
-                || ($task->kind === 'directory'
-                    ? $disk->deleteDirectory($task->path)
-                    : $disk->delete($task->path));
+            $task->kind === 'directory'
+                ? $this->storage->deleteDirectory($task->disk, $task->path, $context)
+                : $this->storage->delete($task->disk, $task->path, $context);
+            $task->delete();
 
-            if ($removed) {
-                $task->delete();
-
-                return true;
-            }
-
-            $this->markFailed($task, 'Storage driver returned false.');
+            return true;
         } catch (Throwable $exception) {
-            $this->markFailed($task, $exception->getMessage());
+            $this->markFailed(
+                $task,
+                $exception instanceof ExpertStorageException ? $exception->failureCode : 'CLEANUP_FAILED',
+                $exception instanceof ExpertStorageException
+                    ? ($exception->sourceExceptionClass ?? $exception::class)
+                    : $exception::class,
+            );
         }
 
         return false;
@@ -103,12 +105,15 @@ class ExpertStorageCleanupService
         ];
     }
 
-    private function schedule(string $kind, string $path): ExpertStorageCleanupTask
+    private function schedule(string $kind, string $path, string $disk): ExpertStorageCleanupTask
     {
         $this->assertManagedPath($path);
+        if ($disk === '' || strlen($disk) > 32) {
+            throw new RuntimeException('Refusing to schedule cleanup for an invalid storage disk.');
+        }
 
         return ExpertStorageCleanupTask::query()->firstOrCreate(
-            ['disk' => 'local', 'path' => $path],
+            ['disk' => $disk, 'path' => $path],
             [
                 'kind' => $kind,
                 'attempts' => 0,
@@ -117,7 +122,7 @@ class ExpertStorageCleanupService
         );
     }
 
-    private function markFailed(ExpertStorageCleanupTask $task, string $error): void
+    private function markFailed(ExpertStorageCleanupTask $task, string $errorCode, string $exceptionClass): void
     {
         $attempts = $task->attempts + 1;
         $delays = config('expert.storage_cleanup_retry_delays_seconds', [60]);
@@ -126,16 +131,18 @@ class ExpertStorageCleanupService
 
         $task->forceFill([
             'attempts' => $attempts,
-            'last_error' => mb_substr($error, 0, 65535),
+            'last_error' => mb_substr($errorCode, 0, 65535),
             'next_attempt_at' => now()->addSeconds($delay),
         ])->save();
 
         Log::warning('Expert storage cleanup was deferred for retry.', [
             'task_id' => $task->id,
+            'operation' => $task->kind === 'directory' ? 'delete_directory' : 'delete',
             'disk' => $task->disk,
-            'path' => $task->path,
             'kind' => $task->kind,
             'attempts' => $attempts,
+            'exception_class' => $exceptionClass,
+            'error_code' => $errorCode,
         ]);
     }
 

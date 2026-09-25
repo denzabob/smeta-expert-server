@@ -1,5 +1,15 @@
 <?php
 return [
+    'storage' => [
+        'disk' => (string) env('EXPERT_STORAGE_DISK', 's1'),
+        'cache_disk' => (string) env('EXPERT_STORAGE_CACHE_DISK', 'local'),
+    ],
+    'storage_migration' => [
+        'enabled' => filter_var(env('EXPERT_STORAGE_MIGRATION_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'grace_days' => env('EXPERT_STORAGE_MIGRATION_GRACE_DAYS'),
+    ],
+    'storage_reservation_ttl_minutes' => (int) env('EXPERT_STORAGE_RESERVATION_TTL_MINUTES', 60),
+
     'chat' => [
         'history_limit' => (int) env('EXPERT_CHAT_HISTORY_LIMIT', 20),
         'idempotency_lock_seconds' => (int) env('EXPERT_CHAT_IDEMPOTENCY_LOCK_SECONDS', 900),

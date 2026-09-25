@@ -53,7 +53,7 @@ final class ExpertContextCandidateProvider
 
         $max = max(1, (int) config('expert.context_resolution.max_project_candidates', 40));
         $projectQuery = $conversation->project->materials()->select([
-            'id', 'public_id', 'expert_project_id', 'original_name', 'storage_path', 'mime_type', 'extension', 'category', 'status', 'metadata',
+            'id', 'public_id', 'expert_project_id', 'original_name', 'storage_disk', 'storage_path', 'mime_type', 'extension', 'category', 'status', 'metadata',
         ]);
         if ($coverageMode !== ExpertTaskIntent::EXHAUSTIVE) {
             $tokens = ExpertContextLexicalMatcher::tokens($query);
@@ -82,7 +82,7 @@ final class ExpertContextCandidateProvider
         $missing = array_values(array_diff(array_keys($origins), $materials->keys()->all()));
         foreach (array_chunk($missing, 500) as $ids) {
             foreach ($conversation->project->materials()->whereIn('public_id', $ids)
-                ->get(['id', 'public_id', 'expert_project_id', 'original_name', 'storage_path', 'mime_type', 'extension', 'category', 'status', 'metadata']) as $material) {
+                ->get(['id', 'public_id', 'expert_project_id', 'original_name', 'storage_disk', 'storage_path', 'mime_type', 'extension', 'category', 'status', 'metadata']) as $material) {
                 $materials->put($material->public_id, $material);
             }
         }

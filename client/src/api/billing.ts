@@ -45,12 +45,26 @@ export type BillingPreviewUsageItem = {
   period: 'current' | 'month' | string
 }
 
+export type StorageUsageSnapshot = {
+  used_bytes: number
+  limit_bytes: number | null
+  remaining_bytes: number | null
+  usage_percent: number | null
+  materials_count: number
+  is_unlimited: boolean
+  is_over_limit: boolean
+  limit_available: boolean
+  limit_visible: boolean
+  enforcement_enabled: boolean
+}
+
 export type BillingPreview = {
   billing: BillingPreviewFlags
   current_plan: BillingPreviewPlan
   subscription: BillingPreviewSubscription
   usage: BillingPreviewUsageItem[]
   public_plans: BillingPreviewPlan[]
+  storage?: StorageUsageSnapshot
 }
 
 export type BillingPublicPlansResponse = {
@@ -123,6 +137,11 @@ export type BillingPaymentResultResponse = {
 
 export async function getMyBillingPreview(): Promise<BillingPreview> {
   const { data } = await api.get('/api/billing/me')
+  return data
+}
+
+export async function getMyStorageUsage(): Promise<StorageUsageSnapshot> {
+  const { data } = await api.get('/api/expert/storage')
   return data
 }
 

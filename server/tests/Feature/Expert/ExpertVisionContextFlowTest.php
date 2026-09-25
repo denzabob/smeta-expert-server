@@ -43,6 +43,20 @@ class ExpertVisionContextFlowTest extends TestCase
         parent::setUp();
         $this->configureExpertModeProfiles();
         Storage::fake('local');
+        config()->set('expert.storage.disk', 's1');
+        config()->set('filesystems.disks.s1', [
+            'driver' => 's3',
+            'key' => 'test-access-key',
+            'secret' => 'test-secret',
+            'region' => 'us-east-1',
+            'bucket' => 'expert-test-bucket',
+            'endpoint' => 'https://s1.test.invalid',
+            'visibility' => 'private',
+            'stream_reads' => true,
+            'throw' => true,
+            'report' => false,
+        ]);
+        Storage::fake('s1');
         Cache::forget('llm:routerai:model_catalog:v1');
     }
 
@@ -57,7 +71,7 @@ class ExpertVisionContextFlowTest extends TestCase
             ['Accept' => 'application/json'],
         )->assertCreated();
         $image = ExpertProjectMaterial::query()->where('public_id', $upload->json('public_id'))->firstOrFail();
-        $originalHash = hash('sha256', Storage::disk('local')->get($image->storage_path));
+        $originalHash = hash('sha256', Storage::disk('s1')->get($image->storage_path));
         $expected = app(ExpertVisionImagePreparer::class)->prepare($image);
         $this->installRouterAi();
 
@@ -109,7 +123,41 @@ class ExpertVisionContextFlowTest extends TestCase
 
         Http::assertSentCount(1);
         $this->assertDatabaseHas('expert_messages', ['role' => 'assistant', 'content' => 'На изображении обнаружен тестовый объект.']);
-        $this->assertSame($originalHash, hash('sha256', Storage::disk('local')->get($image->storage_path)));
+        $this->assertSame($originalHash, hash('sha256', Storage::disk('s1')->get($image->storage_path)));
+    }
+
+    public function test_vision_preparation_reads_image_from_configured_non_local_disk(): void
+    {
+        Storage::fake('expert_vision_test');
+        config()->set('expert.storage.disk', 'expert_vision_test');
+
+        $user = User::factory()->create();
+        $project = ExpertProject::create([
+            'user_id' => $user->id,
+            'name' => 'Image storage test',
+            'domain' => 'other',
+            'work_type' => 'other',
+        ]);
+        $contents = $this->jpegFixture();
+        $key = "expert/{$project->public_id}/materials/object-image.jpg";
+        Storage::disk('expert_vision_test')->put($key, $contents);
+        $material = $project->materials()->create([
+            'uploaded_by' => $user->id,
+            'original_name' => 'object-image.jpg',
+            'storage_disk' => 'expert_vision_test',
+            'storage_path' => $key,
+            'mime_type' => 'image/jpeg',
+            'extension' => 'jpg',
+            'size' => strlen($contents),
+            'category' => 'image',
+            'status' => 'uploaded',
+        ]);
+
+        $prepared = app(ExpertVisionImagePreparer::class)->prepare($material);
+
+        $this->assertSame('image/jpeg', $prepared->mimeType);
+        $this->assertGreaterThan(0, strlen($prepared->bytes));
+        $this->assertSame($contents, Storage::disk('expert_vision_test')->get($key));
     }
 
     public function test_preparer_supports_formats_orientation_and_fail_closed_validation(): void

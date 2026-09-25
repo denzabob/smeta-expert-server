@@ -13,5 +13,5 @@ interface ExpertMaterialTextExtractorInterface
     /**
      * @throws ExpertMaterialContextException
      */
-    public function extract(ExpertProjectMaterial $material, string $contents, string $absolutePath): string;
+    public function extract(ExpertProjectMaterial $material, string $contents): string;
 }

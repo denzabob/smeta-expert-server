@@ -16,7 +16,10 @@ use ZipArchive;
 
 final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorInterface
 {
-    public function __construct(private readonly ?Parser $pdfParser = null) {}
+    public function __construct(
+        private readonly ExpertStorageService $storage,
+        private readonly ?Parser $pdfParser = null,
+    ) {}
 
     public function supports(ExpertProjectMaterial $material): bool
     {
@@ -31,7 +34,7 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
             || str_starts_with($mimeType, 'text/');
     }
 
-    public function extract(ExpertProjectMaterial $material, string $contents, string $absolutePath): string
+    public function extract(ExpertProjectMaterial $material, string $contents): string
     {
         $extension = $this->extension($material);
 
@@ -41,8 +44,16 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
 
         try {
             return match ($extension) {
-                'docx' => $this->extractDocx($absolutePath),
-                'xlsx' => $this->extractXlsx($absolutePath),
+                'docx' => $this->storage->withTemporaryFileFromContents(
+                    $contents,
+                    fn (string $path): string => $this->extractDocx($path, $contents),
+                    $this->storage->contextForMaterial($material),
+                ),
+                'xlsx' => $this->storage->withTemporaryFileFromContents(
+                    $contents,
+                    fn (string $path): string => $this->extractXlsx($path, $contents),
+                    $this->storage->contextForMaterial($material),
+                ),
                 'pdf' => $this->extractPdf($contents),
                 default => $this->normaliseText($contents),
             };
@@ -53,15 +64,15 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
         }
     }
 
-    private function extractDocx(string $absolutePath): string
+    private function extractDocx(string $temporaryPath, string $contents): string
     {
         if (! class_exists(ZipArchive::class)) {
             throw ExpertMaterialContextException::extractionFailed();
         }
 
-        $this->assertZipSignature($absolutePath);
+        $this->assertZipSignature($contents);
         $archive = new ZipArchive;
-        if ($archive->open($absolutePath) !== true) {
+        if ($archive->open($temporaryPath) !== true) {
             throw ExpertMaterialContextException::extractionFailed();
         }
 
@@ -124,16 +135,17 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
         return $this->normaliseText(implode("\n", $blocks));
     }
 
-    private function extractXlsx(string $absolutePath): string
+    private function extractXlsx(string $temporaryPath, string $contents): string
     {
         $spreadsheet = null;
 
         try {
-            $this->assertSpreadsheetArchiveWithinLimit($absolutePath);
+            $this->assertZipSignature($contents);
+            $this->assertSpreadsheetArchiveWithinLimit($temporaryPath);
 
             $reader = new Xlsx;
             $reader->setReadDataOnly(true);
-            $spreadsheet = $reader->load($absolutePath);
+            $spreadsheet = $reader->load($temporaryPath);
             $maxCells = max(1, (int) config('expert.material_context.max_spreadsheet_cells', 5000));
             $cellCount = 0;
             $lines = [];
@@ -174,15 +186,14 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
         }
     }
 
-    private function assertSpreadsheetArchiveWithinLimit(string $absolutePath): void
+    private function assertSpreadsheetArchiveWithinLimit(string $temporaryPath): void
     {
         if (! class_exists(ZipArchive::class)) {
             throw ExpertMaterialContextException::extractionFailed();
         }
 
-        $this->assertZipSignature($absolutePath);
         $archive = new ZipArchive;
-        if ($archive->open($absolutePath) !== true) {
+        if ($archive->open($temporaryPath) !== true) {
             throw ExpertMaterialContextException::extractionFailed();
         }
 
@@ -361,11 +372,9 @@ final class ExpertMaterialTextExtractor implements ExpertMaterialTextExtractorIn
         }
     }
 
-    private function assertZipSignature(string $absolutePath): void
+    private function assertZipSignature(string $contents): void
     {
-        $signature = @file_get_contents($absolutePath, false, null, 0, 4);
-
-        if ($signature !== "PK\x03\x04") {
+        if (substr($contents, 0, 4) !== "PK\x03\x04") {
             throw ExpertMaterialContextException::extractionFailed();
         }
     }

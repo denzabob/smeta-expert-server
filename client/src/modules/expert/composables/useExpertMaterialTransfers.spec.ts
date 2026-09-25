@@ -79,6 +79,28 @@ describe('Expert material transfers', () => {
     expect(transfers.uploads.value).toEqual([])
   })
 
+  it('uploads a selected batch serially in selection order for partial quota success', async () => {
+    let finishFirst: ((value: ExpertProjectMaterial) => void) | undefined
+    const api = transferApi({
+      uploadMaterial: vi.fn()
+        .mockImplementationOnce(() => new Promise<ExpertProjectMaterial>((resolve) => { finishFirst = resolve }))
+        .mockResolvedValueOnce(material('m2', 'Второй.pdf')),
+    })
+    const transfers = useExpertMaterialTransfers(api, vi.fn())
+    const completed: string[] = []
+
+    transfers.queueUploads('p1', [file('Первый.pdf'), file('Второй.pdf')], (item) => completed.push(item.id))
+    expect(api.uploadMaterial).toHaveBeenCalledTimes(1)
+    expect(api.uploadMaterial).toHaveBeenNthCalledWith(1, 'p1', expect.objectContaining({ name: 'Первый.pdf' }), expect.anything())
+
+    finishFirst?.(material('m1', 'Первый.pdf'))
+    await flush()
+
+    expect(api.uploadMaterial).toHaveBeenCalledTimes(2)
+    expect(api.uploadMaterial).toHaveBeenNthCalledWith(2, 'p1', expect.objectContaining({ name: 'Второй.pdf' }), expect.anything())
+    expect(completed).toEqual(['m1', 'm2'])
+  })
+
   it('does not queue a duplicate file and allows removing only its failed transfer item', async () => {
     const api = transferApi({ uploadMaterial: vi.fn().mockRejectedValue(new Error('network')) })
     const transfers = useExpertMaterialTransfers(api, vi.fn())

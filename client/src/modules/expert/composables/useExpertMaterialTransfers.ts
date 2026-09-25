@@ -52,7 +52,9 @@ export function useExpertMaterialTransfers(
   const thumbnailTokens = new Map<string, number>()
   const thumbnailAccessOrder: string[] = []
   const maxThumbnailCache = 80
-  const maxConcurrentUploads = 3
+  // Preserve deterministic partial-success semantics in the order selected.
+  // The server-side usage row lock still protects other tabs and clients.
+  const maxConcurrentUploads = 1
   let activeUploads = 0
   let itemSequence = 0
   let previewSequence = 0

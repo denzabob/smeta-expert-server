@@ -1244,6 +1244,7 @@ const limitDefinitions = [
   { key: 'evidence_runs.monthly_limit', label: 'Проверки цен в месяц' },
   { key: 'chrome_captures.monthly_limit', label: 'Скриншоты из расширения в месяц' },
   { key: 'storage.max_mb', label: 'Хранилище файлов, МБ' },
+  { key: 'storage_bytes', label: 'Лимит файлов проектов, байт' },
   { key: 'team_members.max_count', label: 'Пользователи команды' },
 ] as const
 

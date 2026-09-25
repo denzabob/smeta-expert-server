@@ -9,6 +9,7 @@ use App\Domain\PriceIndices\Http\Middleware\EnsurePriceIndicesAccess;
 use App\Domain\PriceIndices\Http\Middleware\EnsurePriceIndicesUserAccess;
 use App\Http\Middleware\Authenticate;
 use App\Http\Middleware\EnforceSingleSession;
+use App\Services\Expert\ExpertStorageException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -48,5 +49,20 @@ return Application::configure(basePath: dirname(__DIR__))
 
             // Опционально: для web-роутов редирект на login, если у вас есть web-часть
             // return redirect()->guest(route('login'));
+        });
+
+        $exceptions->render(function (ExpertStorageException $e, Request $request) {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            $notFound = $e->failureCode === ExpertStorageException::FILE_NOT_FOUND;
+
+            return response()->json([
+                'code' => $e->failureCode,
+                'message' => $notFound
+                    ? 'Файл материала не найден.'
+                    : 'Хранилище материалов временно недоступно.',
+            ], $notFound ? 404 : 503);
         });
     })->create();

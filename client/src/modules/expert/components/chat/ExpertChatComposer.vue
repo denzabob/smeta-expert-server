@@ -11,6 +11,7 @@
             <v-btn size="x-small" variant="text" :aria-label="`Повторить загрузку: ${item.name}`" @click="$emit('retry-upload', item.id)">Повторить</v-btn>
             <v-btn icon="mdi-close" size="x-small" variant="text" :aria-label="`Убрать ошибочный файл: ${item.name}`" @click="$emit('remove-upload', item.id)" />
           </template>
+          <small v-if="item.state === 'error'" class="expert-composer__upload-error">{{ uploadErrorMessage(item) }}</small>
         </article>
       </div>
       <div v-if="materialContexts.length" class="expert-composer__material-contexts">
@@ -73,6 +74,7 @@ import type { ExpertChatContextChip } from '../../chatContext'
 import { normalizeExpertChatDraft, shouldSubmitExpertChatComposer } from '../../chatComposer'
 import type { ExpertMaterialImagePreview, ExpertMaterialUploadItem } from '../../composables/useExpertMaterialTransfers'
 import type { ExpertChatMode, ExpertMessageMaterialContext } from '../../types'
+import { mapExpertApiError } from '../../api'
 
 const props = withDefaults(defineProps<{
   contextChips: ExpertChatContextChip[]
@@ -198,6 +200,10 @@ function uploadStateLabel(state: ExpertMaterialUploadItem['state']) {
   return state === 'queued' ? 'В очереди' : state === 'uploading' ? 'Загружается' : state === 'processing' ? 'Обрабатывается' : state === 'completed' ? 'Загружен' : 'Ошибка загрузки'
 }
 
+function uploadErrorMessage(item: ExpertMaterialUploadItem) {
+  return item.error ? mapExpertApiError(item.error).message : 'Не удалось загрузить'
+}
+
 watch(text, () => { void nextTick(resizeTextarea) })
 onMounted(resizeTextarea)
 const hasContextArea = computed(() => props.uploadItems.length > 0 || props.materialContexts.length > 0 || props.contextChips.length > 0 || props.allowWholeProjectContext)
@@ -214,6 +220,7 @@ const sendDisabled = computed(() => props.busy || Boolean(props.sendBlockedReaso
 .expert-composer__upload-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .expert-composer__upload-state { color: rgba(var(--v-theme-on-surface-variant), .76); white-space: nowrap; font-size: .66rem; }
 .expert-composer__upload--error .expert-composer__upload-state { color: currentColor; }
+.expert-composer__upload-error { grid-column: 1 / -1; color: rgb(var(--v-theme-error)); font-size: .72rem; }
 .expert-composer__material-contexts { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .expert-composer__contexts-label { flex: 0 0 auto; color: rgba(var(--v-theme-on-surface-variant), .7); font-size: .66rem; font-weight: 700; }
 .expert-composer__material-name { display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; white-space: nowrap; }

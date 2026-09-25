@@ -9,9 +9,11 @@ use App\Http\Controllers\Api\Expert\MessageFeedbackController;
 use App\Http\Controllers\Api\Expert\MessageStreamController;
 use App\Http\Controllers\Api\Expert\ProjectController;
 use App\Http\Controllers\Api\Expert\ResearchObjectController;
+use App\Http\Controllers\Api\Expert\StorageController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('expert')->middleware('auth:sanctum')->group(function () {
+    Route::get('storage', StorageController::class);
     Route::apiResource('projects', ProjectController::class)->names([
         'index' => 'expert.projects.index',
         'store' => 'expert.projects.store',

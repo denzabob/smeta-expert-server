@@ -57,6 +57,8 @@ server/storage/logs/
 server/tests/
 !server/tests/
 server/tests/*
+!server/tests/Integration/
+!server/tests/Integration/ExpertS1StorageIntegrationTest.php
 !server/tests/Shell/
 !server/tests/Shell/deploy-app-skip-migrate.sh
 !server/tests/Unit/

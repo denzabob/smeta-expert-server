@@ -5,7 +5,11 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 class ExpertProjectService
 {
-    public function __construct(private readonly ExpertStorageCleanupService $storageCleanup) {}
+    public function __construct(
+        private readonly ExpertStorageCleanupService $storageCleanup,
+        private readonly ExpertStorageService $storage,
+        private readonly ExpertStorageUsageService $storageUsage,
+    ) {}
 
     public function create(int $userId, array $data): ExpertProject
     {
@@ -19,21 +23,52 @@ class ExpertProjectService
     public function delete(ExpertProject $project): void
     {
         $directory="expert/{$project->public_id}";
+        $journalAvailable = $this->storageCleanup->journalIsAvailable();
+        $cleanup = DB::transaction(function () use ($directory, $project, $journalAvailable): array {
+            $target = ExpertProject::query()->lockForUpdate()->findOrFail($project->id);
+            $disks = $this->cleanupDisks($target);
+            $context = $this->storage->contextForProject($target);
 
-        if (! $this->storageCleanup->journalIsAvailable()) {
-            DB::transaction(fn () => $project->delete());
-            $this->storageCleanup->deleteBestEffort('directory', $directory);
+            $totals = $target->materials()
+                ->selectRaw('COALESCE(SUM(size), 0) AS originals_bytes')
+                ->selectRaw('COUNT(*) AS materials_count')
+                ->first();
+            $this->storageUsage->decrement(
+                (int) $target->user_id,
+                (int) ($totals->originals_bytes ?? 0),
+                (int) ($totals->materials_count ?? 0),
+            );
+
+            $tasks = $journalAvailable
+                ? array_map(fn (string $disk) => $this->storageCleanup->scheduleDirectory($directory, $disk), $disks)
+                : [];
+            $target->delete();
+
+            return ['tasks' => $tasks, 'disks' => $disks, 'context' => $context];
+        }, 3);
+
+        if ($journalAvailable) {
+            foreach ($cleanup['tasks'] as $task) {
+                $this->storageCleanup->attempt($task, $cleanup['context']);
+            }
 
             return;
         }
 
-        $task = DB::transaction(function () use ($directory, $project) {
-            $task = $this->storageCleanup->scheduleDirectory($directory);
-            $project->delete();
+        foreach ($cleanup['disks'] as $disk) {
+            $this->storageCleanup->deleteBestEffort('directory', $directory, $disk, $cleanup['context']);
+        }
+    }
 
-            return $task;
-        });
+    /** @return list<string> */
+    private function cleanupDisks(ExpertProject $project): array
+    {
+        $disks = $project->materials()->get(['storage_disk'])
+            ->map(fn ($material): string => $this->storage->diskForMaterial($material))
+            ->all();
+        $disks[] = $this->storage->cacheDisk();
+        $disks[] = 'local';
 
-        $this->storageCleanup->attempt($task);
+        return array_values(array_unique($disks));
     }
 }

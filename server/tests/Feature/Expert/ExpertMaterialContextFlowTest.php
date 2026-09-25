@@ -47,6 +47,21 @@ class ExpertMaterialContextFlowTest extends TestCase
 
         $this->configureExpertModeProfiles();
         Storage::fake('local');
+        config()->set('expert.storage.disk', 's1');
+        config()->set('filesystems.disks.s1', [
+            'driver' => 's3',
+            'key' => 'test-access-key',
+            'secret' => 'test-secret',
+            'region' => 'us-east-1',
+            'bucket' => 'expert-test-bucket',
+            'endpoint' => 'https://s1.test.invalid',
+            'use_path_style_endpoint' => true,
+            'visibility' => 'private',
+            'stream_reads' => true,
+            'throw' => true,
+            'report' => false,
+        ]);
+        Storage::fake('s1');
     }
 
     public function test_real_txt_fixture_content_reaches_fake_llm_payload_and_response_is_saved(): void
@@ -403,6 +418,51 @@ class ExpertMaterialContextFlowTest extends TestCase
         $this->assertStringContainsString('A1: Код', $context[2]['text']);
         $this->assertStringContainsString('[Sheet: Лист2]', $context[2]['text']);
         $this->assertStringContainsString('PDF-31415', $context[3]['text']);
+    }
+
+    public function test_s1_backed_txt_docx_xlsx_and_text_pdf_are_read_for_ai_context(): void
+    {
+        $this->configureFakeS1();
+        [, $conversation] = $this->conversation();
+        config(['expert.material_context.xlsx_enabled' => true]);
+
+        $project = $conversation->project;
+        $txt = $this->material($project, 'Точный.txt', 'text/plain', 'S1 TXT marker', 's1');
+        $docx = $this->material(
+            $project,
+            'Договор.docx',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            $this->docxFixture(),
+            's1',
+        );
+        $xlsx = $this->material(
+            $project,
+            'Данные.xlsx',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            $this->xlsxFixture(),
+            's1',
+        );
+        $pdf = $this->material(
+            $project,
+            'Текстовый.pdf',
+            'application/pdf',
+            $this->pdfFixture('S1 text PDF context marker: PDF-31415-S1'),
+            's1',
+        );
+
+        $context = app(ExpertMaterialContextBuilder::class)->build($project, [
+            $txt->public_id,
+            $docx->public_id,
+            $xlsx->public_id,
+            $pdf->public_id,
+        ]);
+
+        $this->assertSame('S1 TXT marker', $context[0]['text']);
+        $this->assertStringContainsString("Заголовок\nТекст договора\nПункт | Значение", $context[1]['text']);
+        $this->assertStringContainsString('[Sheet: Лист1]', $context[2]['text']);
+        $this->assertStringContainsString('A1: Код', $context[2]['text']);
+        $this->assertStringContainsString('PDF-31415-S1', $context[3]['text']);
+        $this->assertSame(['s1'], $project->materials()->pluck('storage_disk')->unique()->all());
     }
 
     public function test_mixed_docx_jpeg_pdf_context_and_persisted_attachment_order(): void
@@ -1029,15 +1089,16 @@ class ExpertMaterialContextFlowTest extends TestCase
         );
     }
 
-    private function material(ExpertProject $project, string $name, string $mimeType, string $contents): ExpertProjectMaterial
+    private function material(ExpertProject $project, string $name, string $mimeType, string $contents, string $disk = 'local'): ExpertProjectMaterial
     {
         $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
         $path = "expert/{$project->public_id}/materials/".Str::uuid().'.'.$extension;
-        Storage::disk('local')->put($path, $contents);
+        Storage::disk($disk)->put($path, $contents);
 
         return $project->materials()->create([
             'uploaded_by' => $project->user_id,
             'original_name' => $name,
+            'storage_disk' => $disk === 'local' ? null : $disk,
             'storage_path' => $path,
             'mime_type' => $mimeType,
             'extension' => $extension,
@@ -1045,6 +1106,27 @@ class ExpertMaterialContextFlowTest extends TestCase
             'category' => $extension === 'xlsx' ? 'spreadsheet' : 'document',
             'status' => 'uploaded',
         ]);
+    }
+
+    private function configureFakeS1(): void
+    {
+        config(['filesystems.disks.s1' => [
+            'driver' => 's3',
+            'key' => 'test-access-key',
+            'secret' => 'test-secret',
+            'region' => 'us-east-1',
+            'bucket' => 'expert-test-bucket',
+            'endpoint' => 'https://s1.test.invalid',
+            'use_path_style_endpoint' => true,
+            'visibility' => 'private',
+            'stream_reads' => true,
+            'http' => ['connect_timeout' => 3, 'timeout' => 20],
+            'retries' => 0,
+            'throw' => true,
+            'report' => false,
+        ]]);
+        Storage::purge('s1');
+        Storage::fake('s1');
     }
 
     private function assertMaterialContextError(

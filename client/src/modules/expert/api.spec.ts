@@ -193,6 +193,27 @@ describe('Expert persistence mapping', () => {
     expect(conflict).toMatchObject({status:409,code:'expert_request_conflict',message:'Snapshot изменён.'})
   })
 
+  it('shows quota errors with the requested and available byte amounts', () => {
+    const mapped = mapExpertApiError({
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: {
+          code: 'STORAGE_QUOTA_EXCEEDED',
+          message: 'Недостаточно свободного места в хранилище.',
+          storage: { used_bytes: 500, limit_bytes: 1024, requested_bytes: 900, remaining_bytes: 524 },
+        },
+      },
+    })
+
+    expect(mapped).toMatchObject({
+      status: 422,
+      code: 'STORAGE_QUOTA_EXCEEDED',
+      message: 'Недостаточно места: нужно 900 Б, доступно 524 Б.',
+      storage: { requested_bytes: 900, remaining_bytes: 524 },
+    })
+  })
+
   it('dispatches only versioned activity and dedicated safe-summary stream events', async () => {
     vi.stubGlobal('document', { cookie: '' })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response([
