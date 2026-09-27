@@ -67,6 +67,9 @@ server/tests/Unit/*
 !server/tests/Unit/Billing/*.php
 !server/tests/Unit/Services/
 !server/tests/Unit/Services/*.php
+!server/tests/Unit/Console/
+server/tests/Unit/Console/*
+!server/tests/Unit/Console/SmetaStorageResetDatabaseTest.php
 !server/tests/Feature/
 server/tests/Feature/*
 !server/tests/Feature/PriceIndices/

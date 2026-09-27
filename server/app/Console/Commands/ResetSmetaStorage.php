@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\Storage\ObjectStorage;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -72,7 +73,11 @@ class ResetSmetaStorage extends Command
 
         try {
             $databaseObjectsRemoved = DB::transaction(fn () => $this->clearDatabaseReferences());
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            Log::error('Smeta storage reset database failure', [
+                'exception' => $exception,
+            ]);
+
             $this->error('DATABASE_RESET_FAILED: ссылки на файлы не очищены, физические файлы сохранены');
             return self::FAILURE;
         }
@@ -147,20 +152,35 @@ class ResetSmetaStorage extends Command
                 }
             });
 
-            if (in_array($table, ['import_sessions', 'evidence_assets', 'generic_evidence_assets'], true)) {
-                $rows = $query->select('id')->get();
-                foreach ($rows as $row) {
-                    DB::table($table)->where('id', $row->id)->delete();
-                    $changed++;
+            if ($table === 'import_sessions') {
+                $ids = $query->pluck('id');
+                if ($ids->isEmpty()) {
+                    continue;
+                }
+
+                if (Schema::hasTable('import_column_mappings')
+                    && Schema::hasColumn('import_column_mappings', 'import_session_id')) {
+                    $changed += DB::table('import_column_mappings')
+                        ->whereIn('import_session_id', $ids)
+                        ->delete();
+                }
+
+                $changed += DB::table($table)->whereIn('id', $ids)->delete();
+                continue;
+            }
+
+            if (in_array($table, ['evidence_assets', 'generic_evidence_assets'], true)) {
+                $ids = $query->pluck('id');
+                if ($ids->isNotEmpty()) {
+                    $changed += DB::table($table)->whereIn('id', $ids)->delete();
                 }
                 continue;
             }
 
-            $diskPresent = Schema::hasColumn($table, 'storage_disk');
             $extra = [];
             if ($table === 'price_import_sessions') {
                 foreach (['raw_rows', 'file_hash'] as $column) {
-                    if (Schema::hasColumn($table, $column)) {
+                    if (Schema::hasColumn($table, $column) && $this->columnIsNullable($table, $column)) {
                         $extra[$column] = null;
                     }
                 }
@@ -169,17 +189,46 @@ class ResetSmetaStorage extends Command
             $rows = $query->select('id')->get();
             foreach ($rows as $row) {
                 $update = $extra;
+                $locatorWasCleared = false;
                 foreach ($existingColumns as $column) {
-                    $update[$column] = null;
+                    if ($this->columnIsNullable($table, $column)) {
+                        $update[$column] = null;
+                        $locatorWasCleared = true;
+                    }
                 }
-                if ($diskPresent) {
+
+                if ($locatorWasCleared
+                    && Schema::hasColumn($table, 'storage_disk')
+                    && $this->columnIsNullable($table, 'storage_disk')) {
                     $update['storage_disk'] = null;
                 }
-                DB::table($table)->where('id', $row->id)->update($update);
-                $changed++;
+
+                if ($update === []) {
+                    continue;
+                }
+
+                $updateQuery = DB::table($table)->where('id', $row->id)
+                    ->where(function ($query) use ($update) {
+                        foreach (array_keys($update) as $column) {
+                            $query->orWhereNotNull($column);
+                        }
+                    });
+
+                $changed += $updateQuery->update($update);
             }
         }
 
         return $changed;
+    }
+
+    private function columnIsNullable(string $table, string $column): bool
+    {
+        foreach (Schema::getColumns($table) as $metadata) {
+            if (($metadata['name'] ?? null) === $column) {
+                return (bool) ($metadata['nullable'] ?? false);
+            }
+        }
+
+        return false;
     }
 }
