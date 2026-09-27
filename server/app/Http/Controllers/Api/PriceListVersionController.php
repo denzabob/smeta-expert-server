@@ -8,6 +8,7 @@ use App\Models\EvidenceRecord;
 use App\Models\GenericEvidenceAsset;
 use App\Models\PriceList;
 use App\Models\PriceListVersion;
+use App\Services\Storage\ObjectStorage;
 use App\Models\SupplierOperation;
 use App\Models\SupplierOperationPrice;
 use App\Models\MaterialPrice;
@@ -199,7 +200,7 @@ class PriceListVersionController extends Controller
      * 
      * GET /api/price-list-versions/{version}/download
      */
-    public function download(Request $request, PriceListVersion $version)
+    public function download(Request $request, PriceListVersion $version, ObjectStorage $storage)
     {
         $this->authorizeVersion($request, $version);
 
@@ -223,15 +224,10 @@ class PriceListVersionController extends Controller
             ], 404);
         }
 
-        if (!Storage::disk($storageDisk)->exists($filePath)) {
-            return response()->json([
-                'message' => 'Файл не найден в хранилище'
-            ], 404);
-        }
-
-        return Storage::disk($storageDisk)->download(
+        return $storage->downloadResponse(
+            $storageDisk,
             $filePath,
-            $originalFilename ?? 'price_list_v' . $version->version_number
+            $originalFilename ?? 'price_list_v' . $version->version_number,
         );
     }
 
@@ -512,7 +508,7 @@ class PriceListVersionController extends Controller
      *   notes:           optional string
      *   manual_label:    optional string (label for manual entries)
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, ObjectStorage $storage): JsonResponse
     {
         $validated = $request->validate([
             'price_list_id' => 'required|integer|exists:price_lists,id',
@@ -535,7 +531,7 @@ class PriceListVersionController extends Controller
         $versionNumber = $priceList->getNextVersionNumber();
 
         $filePath = null;
-        $storageDisk = 'local';
+        $storageDisk = ObjectStorage::DISK;
         $originalFilename = null;
         $sha256 = null;
         $sizeBytes = null;
@@ -548,12 +544,15 @@ class PriceListVersionController extends Controller
             $sizeBytes = $file->getSize();
             $sha256 = hash_file('sha256', $file->getRealPath());
 
-            $directory = "price-lists/{$priceList->supplier_id}/{$priceList->id}";
-            $filename = "v{$versionNumber}_" . time() . '.' . $file->getClientOriginalExtension();
-            $filePath = $file->storeAs($directory, $filename, $storageDisk);
+            $filePath = $storage->storeUploaded(
+                "price-lists/{$priceList->supplier_id}/{$priceList->id}",
+                $file,
+                (int) $request->user()->id,
+            );
         }
 
-        $version = PriceListVersion::create([
+        try {
+            $version = PriceListVersion::create([
             'price_list_id'    => $priceList->id,
             'version_number'   => $versionNumber,
             'source_type'      => $sourceType,
@@ -569,7 +568,14 @@ class PriceListVersionController extends Controller
             'currency'         => $priceList->default_currency ?? 'RUB',
             'notes'            => $validated['notes'] ?? null,
             'manual_label'     => $validated['manual_label'] ?? null,
-        ]);
+            ]);
+        } catch (\Throwable $exception) {
+            if ($filePath !== null) {
+                $storage->delete(ObjectStorage::DISK, $filePath);
+            }
+
+            throw $exception;
+        }
 
         return response()->json([
             'id'                => $version->id,
@@ -640,7 +646,7 @@ class PriceListVersionController extends Controller
                 'mime_type'         => $asset->mime_type,
                 'file_size'         => $asset->file_size,
                 'download_url'      => $asset->file_path
-                    ? \Illuminate\Support\Facades\Storage::disk('public')->url($asset->file_path)
+                    ? url("/api/generic-evidence-assets/{$asset->id}/file")
                     : null,
             ];
         })->values()->all();
@@ -965,12 +971,13 @@ class PriceListVersionController extends Controller
         $assetsCount = 0;
         if ($request->hasFile('files')) {
             foreach ($request->file('files') as $file) {
-                $path = $file->store('evidence-records/' . $uuid, 'public');
+                $path = app(ObjectStorage::class)->storeUploaded('evidence-records/' . $uuid, $file, (int) $request->user()->id);
                 GenericEvidenceAsset::create([
                     'uuid'               => (string) \Illuminate\Support\Str::uuid(),
                     'evidence_record_id' => $record->id,
                     'asset_type'         => 'document',
                     'file_path'          => $path,
+                    'storage_disk'       => ObjectStorage::DISK,
                     'original_filename'  => $file->getClientOriginalName(),
                     'mime_type'          => $file->getMimeType(),
                     'file_size'          => $file->getSize(),

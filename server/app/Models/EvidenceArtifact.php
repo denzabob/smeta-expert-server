@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class EvidenceArtifact extends Model
 {
+    protected $hidden = ['screenshot_path', 'storage_disk'];
     use HasFactory;
 
     public const MODE_AUTO = 'auto';
@@ -35,6 +36,7 @@ class EvidenceArtifact extends Model
         'extracted_name',
         'extracted_article',
         'screenshot_path',
+        'storage_disk',
         'screenshot_sha256',
         'html_sha256',
         'viewport_w',
@@ -94,4 +96,3 @@ class EvidenceArtifact extends Model
         return $this->hasMany(EvidenceAsset::class);
     }
 }
-

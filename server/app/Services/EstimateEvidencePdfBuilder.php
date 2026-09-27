@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\EstimateEvidenceRun;
 use App\Models\Project;
+use App\Services\Storage\ObjectStorage;
 use Carbon\Carbon;
 
 /**
@@ -21,6 +22,7 @@ class EstimateEvidencePdfBuilder
 {
     public function __construct(
         private FinishedProductFacadeSnapshotPresenter $finishedProductFacadeSnapshotPresenter,
+        private ObjectStorage $storage,
     ) {}
 
     /**
@@ -237,10 +239,12 @@ class EstimateEvidencePdfBuilder
 
         // Resolve image path and existence.
         $imagePath   = null;
+        $imageStorageDisk = null;
         $imageExists = false;
         if ($imageAsset) {
             $imagePath   = $imageAsset['file_path'] ?? null;
-            $imageExists = $imagePath && file_exists(storage_path('app/public/' . $imagePath));
+            $imageStorageDisk = $imageAsset['storage_disk'] ?? 'public';
+            $imageExists = $imagePath && $this->storage->exists($imageStorageDisk, $imagePath);
         }
 
         // ── Attachment mode + caption ────────────────────────────────────────
@@ -324,6 +328,7 @@ class EstimateEvidencePdfBuilder
             'attachment_mode'    => $attachmentMode,
             'attachment_caption' => $attachmentCaption,
             'image_path'         => $imagePath,
+            'image_storage_disk' => $imageStorageDisk,
             'image_exists'       => $imageExists,
             'doc_assets'         => $docAssetsHuman,
             'price_display'      => $this->formatMoney($observedPrice),

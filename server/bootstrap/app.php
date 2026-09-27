@@ -10,6 +10,7 @@ use App\Domain\PriceIndices\Http\Middleware\EnsurePriceIndicesUserAccess;
 use App\Http\Middleware\Authenticate;
 use App\Http\Middleware\EnforceSingleSession;
 use App\Services\Expert\ExpertStorageException;
+use App\Services\Storage\ObjectStorageException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -63,6 +64,21 @@ return Application::configure(basePath: dirname(__DIR__))
                 'message' => $notFound
                     ? 'Файл материала не найден.'
                     : 'Хранилище материалов временно недоступно.',
+            ], $notFound ? 404 : 503);
+        });
+
+        $exceptions->render(function (ObjectStorageException $e, Request $request) {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            $notFound = $e->failureCode === ObjectStorageException::FILE_NOT_FOUND;
+
+            return response()->json([
+                'code' => $e->failureCode,
+                'message' => $notFound
+                    ? 'Файл не найден в хранилище.'
+                    : 'Хранилище файлов временно недоступно.',
             ], $notFound ? 404 : 503);
         });
     })->create();

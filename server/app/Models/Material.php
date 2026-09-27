@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Material extends Model
 {
+    protected $hidden = ['last_price_screenshot_path', 'storage_disk'];
     use HasFactory;
 
     // Material types
@@ -156,6 +157,7 @@ class Material extends Model
         'price_per_unit',
         'source_url',
         'last_price_screenshot_path',
+        'storage_disk',
         'availability_status',
         'price_checked_at',
         'is_active',

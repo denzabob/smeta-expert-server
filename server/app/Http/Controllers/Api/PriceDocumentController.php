@@ -6,10 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\PriceList;
 use App\Models\PriceListVersion;
 use App\Models\Supplier;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 /**
  * Price Document Controller (DMS mode).
@@ -36,7 +37,7 @@ class PriceDocumentController extends Controller
      *   title:          optional price list name (auto-generated if empty)
      *   effective_date: optional date
      */
-    public function store(Request $request, Supplier $supplier): JsonResponse
+    public function store(Request $request, Supplier $supplier, ObjectStorage $storage): JsonResponse
     {
         $this->authorizeSupplier($request, $supplier);
 
@@ -56,14 +57,17 @@ class PriceDocumentController extends Controller
         $sourceType = $validated['source_type'];
         $type = $purpose === 'facades' ? PriceList::TYPE_MATERIALS : PriceList::TYPE_OPERATIONS;
 
-        return DB::transaction(function () use ($request, $supplier, $validated, $purpose, $sourceType, $type) {
+        $storedPath = null;
+
+        try {
+            return DB::transaction(function () use ($request, $supplier, $validated, $purpose, $sourceType, $type, $storage, &$storedPath) {
             // Find or create a price list for this supplier+purpose
             $priceList = $this->findOrCreatePriceList($supplier, $type, $purpose, $validated['title'] ?? null);
 
             $versionNumber = $priceList->getNextVersionNumber();
 
             $filePath = null;
-            $storageDisk = 'local';
+            $storageDisk = ObjectStorage::DISK;
             $originalFilename = null;
             $sha256 = null;
             $sizeBytes = null;
@@ -76,9 +80,8 @@ class PriceDocumentController extends Controller
                 $sizeBytes = $file->getSize();
                 $sha256 = hash_file('sha256', $file->getRealPath());
 
-                $directory = "price-lists/{$supplier->id}/{$priceList->id}";
-                $filename = "v{$versionNumber}_" . time() . '.' . $file->getClientOriginalExtension();
-                $filePath = $file->storeAs($directory, $filename, $storageDisk);
+                $filePath = $storage->storeUploaded("price-lists/{$supplier->id}/{$priceList->id}", $file, (int) $request->user()->id);
+                $storedPath = $filePath;
             }
 
             // Create version
@@ -122,7 +125,14 @@ class PriceDocumentController extends Controller
                     'size_bytes'        => $version->size_bytes,
                 ],
             ], 201);
-        });
+            });
+        } catch (Throwable $exception) {
+            if ($storedPath) {
+                $storage->delete(ObjectStorage::DISK, $storedPath);
+            }
+
+            throw $exception;
+        }
     }
 
     /**

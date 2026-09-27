@@ -5,11 +5,9 @@ namespace App\Services\PriceImport;
 use App\Models\PriceImportSession;
 use App\Models\PriceList;
 use App\Models\PriceListVersion;
-use App\Models\Supplier;
 use App\Models\User;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 /**
  * Сервис управления сессиями импорта прайсов
@@ -28,7 +26,8 @@ class PriceImportSessionService
     public function __construct(
         PriceFileParser $parser,
         CandidateMatchingService $matchingService,
-        PriceImportExecutorV2 $executor
+        PriceImportExecutorV2 $executor,
+        private readonly ObjectStorage $storage,
     ) {
         $this->parser = $parser;
         $this->matchingService = $matchingService;
@@ -82,8 +81,8 @@ class PriceImportSessionService
             'price_list_version_id' => $priceListVersion->id,
             'supplier_id' => $supplierId,
             'target_type' => $targetType,
-            'file_path' => $existingSession->file_path,
-            'storage_disk' => $existingSession->storage_disk ?? 'local',
+            'file_path' => ($existingSession->storage_disk ?? 'local') === ObjectStorage::DISK ? $existingSession->file_path : null,
+            'storage_disk' => ($existingSession->storage_disk ?? 'local') === ObjectStorage::DISK ? ObjectStorage::DISK : null,
             'original_filename' => $existingSession->original_filename,
             'file_type' => $existingSession->file_type ?? PriceImportSession::FILE_TYPE_PASTE,
             'file_hash' => $existingSession->file_hash,
@@ -135,9 +134,6 @@ class PriceImportSessionService
         // Store file
         $filename = $file->getClientOriginalName();
         $fileType = PriceFileParser::detectFileType($filename);
-        $storagePath = "price_imports/{$user->id}/" . Str::uuid() . '.' . $file->getClientOriginalExtension();
-        
-        Storage::put($storagePath, $fileContent);
 
         // Get or create price list version
         $priceListVersion = null;
@@ -146,25 +142,32 @@ class PriceImportSessionService
             $priceListVersion = $this->getOrCreateDraftVersion($priceList);
         }
 
+        $storagePath = $this->storage->storeUploaded('price-imports', $file, (int) $user->id);
+
         // Create session
-        $session = PriceImportSession::create([
-            'user_id' => $user->id,
-            'price_list_version_id' => $priceListVersion?->id,
-            'supplier_id' => $supplierId,
-            'target_type' => $targetType,
-            'file_path' => $storagePath,
-            'storage_disk' => 'local',
-            'original_filename' => $filename,
-            'file_type' => $fileType,
-            'file_hash' => $fileHash,
-            'status' => PriceImportSession::STATUS_CREATED,
-            'header_row_index' => $options['header_row_index'] ?? 0,
-            'sheet_index' => $options['sheet_index'] ?? 0,
-            'options' => array_filter([
-                'csv_encoding' => $options['csv_encoding'] ?? 'UTF-8',
-                'csv_delimiter' => $options['csv_delimiter'] ?? ',',
-            ]),
-        ]);
+        try {
+            $session = PriceImportSession::create([
+                'user_id' => $user->id,
+                'price_list_version_id' => $priceListVersion?->id,
+                'supplier_id' => $supplierId,
+                'target_type' => $targetType,
+                'file_path' => $storagePath,
+                'storage_disk' => ObjectStorage::DISK,
+                'original_filename' => $filename,
+                'file_type' => $fileType,
+                'file_hash' => $fileHash,
+                'status' => PriceImportSession::STATUS_CREATED,
+                'header_row_index' => $options['header_row_index'] ?? 0,
+                'sheet_index' => $options['sheet_index'] ?? 0,
+                'options' => array_filter([
+                    'csv_encoding' => $options['csv_encoding'] ?? 'UTF-8',
+                    'csv_delimiter' => $options['csv_delimiter'] ?? ',',
+                ]),
+            ]);
+        } catch (\Throwable $exception) {
+            $this->storage->delete(ObjectStorage::DISK, $storagePath);
+            throw $exception;
+        }
 
         // Parse full file immediately and store complete raw rows.
         // Preview in UI is produced separately from stored rows.
@@ -339,7 +342,7 @@ class PriceImportSessionService
         // stored raw_rows to avoid "File not found" hard failure.
         $hasFilePath = !empty($session->file_path);
         $storageDisk = $session->storage_disk ?? 'local';
-        $fileExists = $hasFilePath && Storage::disk($storageDisk)->exists($session->file_path);
+        $fileExists = $hasFilePath && $this->storage->exists($storageDisk, $session->file_path);
 
         if ($fileExists) {
             try {

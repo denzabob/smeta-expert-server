@@ -166,23 +166,6 @@ Route::middleware(InternalOnlyMiddleware::class)->group(function () {
     Route::get('/parsing/get-urls/{supplier}', [UrlCollectionController::class, 'getUrls']);
 });
 
-// ========== Screenshot / public-storage file serving ==========
-// Serves evidence screenshot assets through the /api/ prefix so that
-// production nginx (which routes only /api/ to the backend) delivers
-// the actual image instead of the SPA shell.
-// Restricted to the screenshots/ directory; rejects path-traversal.
-Route::get('screenshots/{path}', function (string $path) {
-    // Normalise and reject traversal
-    $fullPath = 'screenshots/' . $path;
-    if (str_contains($fullPath, '..') || str_contains($fullPath, "\0")) {
-        abort(404);
-    }
-    if (!\Illuminate\Support\Facades\Storage::disk('public')->exists($fullPath)) {
-        abort(404);
-    }
-    return \Illuminate\Support\Facades\Storage::disk('public')->response($fullPath);
-})->where('path', '.+');
-
 // Защищённые маршруты
 Route::middleware('auth:sanctum')->group(function () {
     // ========== Security: Auth-Method Profile + Universal Step-Up ==========
@@ -495,6 +478,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ========== Evidence Assets API ==========
     Route::get('evidence-assets/{assetId}/file', [\App\Http\Controllers\Api\EvidenceAssetController::class, 'file']);
+    Route::get('generic-evidence-assets/{assetId}/file', [\App\Http\Controllers\Api\GenericEvidenceAssetController::class, 'file']);
+    Route::get('material-price-histories/{historyId}/screenshot', [MaterialCatalogController::class, 'screenshot']);
 
     // ========== Generic Evidence Domain (Block G1) ==========
     Route::get('projects/{project}/evidence-runs', [EvidenceRunController::class, 'index']);
@@ -775,6 +760,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ========== Price Import API ==========
     Route::get('price-imports', [\App\Http\Controllers\Api\PriceImportController::class, 'index']);
     Route::post('price-imports', [\App\Http\Controllers\Api\PriceImportController::class, 'store']);
+    Route::get('price-imports/{id}/file', [\App\Http\Controllers\Api\PriceImportController::class, 'downloadFoundationFile'])->whereNumber('id');
     Route::get('price-imports/{id}/items', [\App\Http\Controllers\Api\PriceImportController::class, 'items'])->whereNumber('id');
     Route::post('price-import-items/{id}/bind', [\App\Http\Controllers\Api\PriceImportController::class, 'bindItem']);
     Route::post('price-import-items/{id}/ignore', [\App\Http\Controllers\Api\PriceImportController::class, 'ignoreItem']);

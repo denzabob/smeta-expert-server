@@ -70,8 +70,8 @@ export interface PriceObservation {
   is_verified: boolean
   currency: string
   availability: string | null
-  screenshot_path: string | null
-  snapshot_path: string | null
+  screenshot_url: string | null
+  snapshot_url: string | null
   created_at: string
 }
 
@@ -191,7 +191,7 @@ export interface MaterialDetail extends CatalogMaterial {
 
 export interface LatestScreenshot {
   url: string
-  path: string
+  path: string | null
   is_image: boolean
   source: string
   captured_at: string | null

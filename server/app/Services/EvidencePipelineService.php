@@ -14,6 +14,7 @@ use App\Models\Material;
 use App\Models\MaterialPriceHistory;
 use App\Models\ProjectPosition;
 use App\Models\RevisionRunItem;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -448,6 +449,7 @@ class EvidencePipelineService
             'extracted_name'        => $extractResult['name'] ?? null,
             'extracted_article'     => $extractResult['article'] ?? null,
             'screenshot_path'       => $captureResult['screenshotPath'],
+            'storage_disk'          => ObjectStorage::DISK,
             'confidence_score'      => $extractResult['parseConfidence'] ?? null,
             'trust_score'           => 60,
             'captured_at'           => now(),
@@ -460,6 +462,7 @@ class EvidencePipelineService
                 'evidence_artifact_id' => $artifact->id,
                 'asset_type'           => 'screenshot',
                 'file_path'            => $captureResult['screenshotPath'],
+                'storage_disk'         => ObjectStorage::DISK,
                 'mime_type'            => 'image/jpeg',
             ]);
         }
@@ -516,6 +519,7 @@ class EvidencePipelineService
             'raw_source_url'        => $rawUrl,
             'normalized_source_url' => $normalizedUrl,
             'screenshot_path'       => $captureResult['screenshotPath'],
+            'storage_disk'          => ObjectStorage::DISK,
             'observed_at'           => now(),
             'region_id'             => $regionId,
             'source_type'           => MaterialPriceHistory::SOURCE_WEB,

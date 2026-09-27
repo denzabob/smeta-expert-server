@@ -8,27 +8,32 @@ use App\Models\OperationPriceSource;
 use App\Models\PriceImport;
 use App\Models\PriceImportItem;
 use App\Models\User;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
 
 class PriceImportService
 {
+    public function __construct(private readonly ObjectStorage $storage) {}
+
     public function create(User $user, array $validated, ?UploadedFile $file = null): PriceImport
     {
-        return DB::transaction(function () use ($user, $validated, $file) {
+        $storedPath = $file ? $this->storeFile($user, $file) : null;
+
+        try {
+            return DB::transaction(function () use ($user, $validated, $file, $storedPath) {
             $importType = $file ? PriceImport::TYPE_EXCEL : PriceImport::TYPE_MANUAL;
 
             $priceImport = PriceImport::create([
                 'user_id' => $user->id,
                 'type' => $importType,
                 'status' => PriceImport::STATUS_PENDING,
-                'file_path' => $file ? $this->storeFile($user, $file) : null,
+                'file_path' => $storedPath,
+                'storage_disk' => $storedPath ? ObjectStorage::DISK : null,
             ]);
 
             $items = $file
@@ -52,7 +57,14 @@ class PriceImportService
             ]);
 
             return $priceImport->fresh('items');
-        });
+            });
+        } catch (\Throwable $exception) {
+            if ($storedPath) {
+                $this->storage->delete(ObjectStorage::DISK, $storedPath);
+            }
+
+            throw $exception;
+        }
     }
 
     public function bindItem(User $user, int $itemId, int $operationId): PriceImportItem
@@ -99,12 +111,7 @@ class PriceImportService
 
     private function storeFile(User $user, UploadedFile $file): string
     {
-        $extension = $file->getClientOriginalExtension() ?: 'txt';
-        $path = sprintf('price_import_foundation/%d/%s.%s', $user->id, Str::uuid(), $extension);
-
-        Storage::disk('local')->put($path, $file->getContent());
-
-        return $path;
+        return $this->storage->storeUploaded('price-imports/foundation', $file, (int) $user->id);
     }
 
     /**

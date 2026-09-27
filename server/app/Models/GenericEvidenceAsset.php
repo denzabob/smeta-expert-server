@@ -9,11 +9,14 @@ class GenericEvidenceAsset extends Model
 {
     protected $table = 'generic_evidence_assets';
 
+    protected $hidden = ['file_path', 'storage_disk'];
+
     protected $fillable = [
         'uuid',
         'evidence_record_id',
         'asset_type',
         'file_path',
+        'storage_disk',
         'original_filename',
         'mime_type',
         'file_size',

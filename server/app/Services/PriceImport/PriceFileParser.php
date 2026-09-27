@@ -3,7 +3,7 @@
 namespace App\Services\PriceImport;
 
 use App\Models\PriceImportSession;
-use Illuminate\Support\Facades\Storage;
+use App\Services\Storage\ObjectStorage;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 /**
@@ -14,6 +14,8 @@ class PriceFileParser
     private const MAX_ROWS_PREVIEW = 100;
     private const MAX_ROWS_FULL = 50000;
 
+    public function __construct(private readonly ObjectStorage $storage) {}
+
     /**
      * Parse uploaded file and return rows.
      * 
@@ -21,19 +23,22 @@ class PriceFileParser
      */
     public function parse(PriceImportSession $session, bool $fullParse = false): array
     {
-        $path = $session->getStoragePath();
-        
-        if (!$path || !file_exists($path)) {
+        if (!$session->file_path) {
             throw new ParsingException('File not found');
         }
 
-        return match ($session->file_type) {
-            PriceImportSession::FILE_TYPE_XLSX,
-            PriceImportSession::FILE_TYPE_XLS => $this->parseExcel($path, $session, $fullParse),
-            PriceImportSession::FILE_TYPE_CSV => $this->parseCsv($path, $session, $fullParse),
-            PriceImportSession::FILE_TYPE_HTML => $this->parseHtml($path, $session, $fullParse),
-            default => throw new ParsingException("Unsupported file type: {$session->file_type}"),
-        };
+        return $this->storage->withTemporaryFile(
+            $session->storage_disk ?? 'local',
+            $session->file_path,
+            $session->file_type ?? '',
+            fn (string $path) => match ($session->file_type) {
+                PriceImportSession::FILE_TYPE_XLSX,
+                PriceImportSession::FILE_TYPE_XLS => $this->parseExcel($path, $session, $fullParse),
+                PriceImportSession::FILE_TYPE_CSV => $this->parseCsv($path, $session, $fullParse),
+                PriceImportSession::FILE_TYPE_HTML => $this->parseHtml($path, $session, $fullParse),
+                default => throw new ParsingException("Unsupported file type: {$session->file_type}"),
+            },
+        );
     }
 
     /**

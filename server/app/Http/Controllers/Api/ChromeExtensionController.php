@@ -15,6 +15,7 @@ use App\Models\RevisionRunItem;
 use App\Models\User;
 use App\Services\Billing\BillingCodes;
 use App\Services\ChromeExtractService;
+use App\Services\Storage\ObjectStorage;
 use App\Services\UrlNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -659,7 +660,8 @@ class ChromeExtensionController extends Controller
         $uploadedFile = $validated['screenshot_file'];
         // File upload is non-transactional; DB writes below are atomic.
         // If the transaction fails the uploaded file remains as an orphan on disk.
-        $path = $uploadedFile->store('screenshots/chrome/' . now()->format('Y/m'), 'public');
+        $storage = app(ObjectStorage::class);
+        $path = $storage->storeUploaded('screenshots/chrome', $uploadedFile, (int) $request->user()->id);
 
         $urlNormalizer = app(UrlNormalizer::class);
         $rawUrl = $validated['source_url'];
@@ -680,6 +682,7 @@ class ChromeExtensionController extends Controller
                 'extracted_price'       => (float) $validated['price_per_unit'],
                 'currency'              => strtoupper((string) $validated['currency']),
                 'screenshot_path'       => $path,
+                'storage_disk'          => ObjectStorage::DISK,
                 'trust_score'           => 60,
                 'captured_at'           => now(),
                 'created_by'            => auth()->id(),
@@ -690,6 +693,7 @@ class ChromeExtensionController extends Controller
                 'evidence_artifact_id' => $artifact->id,
                 'asset_type'           => 'screenshot',
                 'file_path'            => $path,
+                'storage_disk'         => ObjectStorage::DISK,
                 'original_filename'    => $uploadedFile->getClientOriginalName(),
                 'mime_type'            => $uploadedFile->getClientMimeType(),
                 'file_size'            => $uploadedFile->getSize(),
@@ -704,6 +708,7 @@ class ChromeExtensionController extends Controller
                 'raw_source_url' => $rawUrl,
                 'normalized_source_url' => $normalized,
                 'screenshot_path' => $path,
+                'storage_disk' => ObjectStorage::DISK,
                 'observed_at' => now(),
                 'region_id' => $validated['region_id'] ?? $item->run->project->region_id,
                 'source_type' => MaterialPriceHistory::SOURCE_CHROME_EXT,

@@ -6,11 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\FinishedProductPriceEvidenceAsset;
 use App\Models\FinishedProductPriceSource;
 use App\Services\FinishedProductPriceEvidenceAssetAccessService;
+use App\Services\Storage\ObjectStorage;
 use App\Services\FinishedProductSpecificationAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -38,7 +38,7 @@ class FinishedProductPriceEvidenceAssetController extends Controller
         ]);
     }
 
-    public function store(Request $request, FinishedProductPriceSource $source): JsonResponse
+    public function store(Request $request, FinishedProductPriceSource $source, ObjectStorage $storage): JsonResponse
     {
         $source = $this->accessService->resolveOwnedSource((int) $request->user()->id, $source);
 
@@ -98,12 +98,10 @@ class FinishedProductPriceEvidenceAssetController extends Controller
 
         if ($request->hasFile('file')) {
             $file = $request->file('file');
-            $directory = "finished-product-evidence/{$request->user()->id}/{$source->id}";
-            $extension = $file->getClientOriginalExtension();
-            $filename = Str::uuid()->toString() . ($extension ? '.' . $extension : '');
-            $filePath = $file->storeAs($directory, $filename, 'public');
+            $filePath = $storage->storeUploaded('finished-product-evidence/' . $source->id, $file, (int) $request->user()->id);
 
             $payload['file_path'] = $filePath;
+            $payload['storage_disk'] = ObjectStorage::DISK;
             $payload['original_name'] = $file->getClientOriginalName();
             $payload['mime_type'] = $file->getMimeType() ?: $file->getClientMimeType();
             $payload['file_size'] = $file->getSize();
@@ -142,12 +140,12 @@ class FinishedProductPriceEvidenceAssetController extends Controller
         return in_array($scheme, ['http', 'https'], true) && $host !== '';
     }
 
-    public function destroy(Request $request, FinishedProductPriceEvidenceAsset $asset): JsonResponse
+    public function destroy(Request $request, FinishedProductPriceEvidenceAsset $asset, ObjectStorage $storage): JsonResponse
     {
         $asset = $this->accessService->resolveOwnedEvidenceAsset((int) $request->user()->id, $asset);
 
         if ($asset->file_path) {
-            Storage::disk('public')->delete($asset->file_path);
+            $storage->delete($asset->storage_disk ?: 'public', $asset->file_path);
         }
 
         $asset->delete();
@@ -155,7 +153,7 @@ class FinishedProductPriceEvidenceAssetController extends Controller
         return response()->json(null, 204);
     }
 
-    public function open(Request $request, FinishedProductPriceEvidenceAsset $asset): StreamedResponse|Response
+    public function open(Request $request, FinishedProductPriceEvidenceAsset $asset, ObjectStorage $storage): StreamedResponse|Response
     {
         $asset = $this->accessService->resolveOwnedEvidenceAsset((int) $request->user()->id, $asset);
         $source = $asset->source;
@@ -172,24 +170,18 @@ class FinishedProductPriceEvidenceAssetController extends Controller
             abort(404, 'Файл доказательства недоступен.');
         }
 
-        $disk = Storage::disk('public');
-        if (!$disk->exists($filePath)) {
-            abort(404, 'Файл не найден.');
-        }
-
         $filename = $asset->original_name ?: basename($filePath);
         $mimeType = $asset->mime_type ?: null;
         $isDownload = $request->boolean('download');
         $inlinePreview = !$isDownload && $this->canPreviewInline($asset->asset_type, $mimeType, $filePath);
         $disposition = $inlinePreview ? 'inline' : 'attachment';
 
-        return $disk->response(
+        return $storage->downloadResponse(
+            $asset->storage_disk ?: 'public',
             $filePath,
             $filename,
-            array_filter([
-                'Content-Disposition' => $disposition . '; filename="' . addslashes($filename) . '"',
-                'Content-Type' => $mimeType,
-            ]),
+            $mimeType,
+            $inlinePreview,
         );
     }
 
@@ -220,7 +212,6 @@ class FinishedProductPriceEvidenceAssetController extends Controller
         return [
             'id' => $asset->id,
             'asset_type' => $asset->asset_type,
-            'file_path' => $asset->file_path,
             'original_name' => $asset->original_name,
             'mime_type' => $asset->mime_type,
             'file_size' => $asset->file_size,

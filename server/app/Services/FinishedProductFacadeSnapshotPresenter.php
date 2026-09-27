@@ -216,8 +216,6 @@ class FinishedProductFacadeSnapshotPresenter
             'mime_type' => $asset['mime_type'] ?? null,
             'file_size' => $asset['file_size'] ?? null,
             'source_url' => $asset['source_url'] ?? null,
-            'file_path' => $asset['file_path'] ?? data_get($asset, 'storage_reference.path'),
-            'storage_reference' => $asset['storage_reference'] ?? null,
             'content_hash' => $asset['content_hash'] ?? null,
             'captured_at' => $asset['captured_at'] ?? null,
             'captured_at_display' => $this->formatDateTime($asset['captured_at'] ?? null),

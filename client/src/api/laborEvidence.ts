@@ -34,7 +34,7 @@ export interface LaborEvidenceAsset {
   uuid: string
   evidence_record_id: number
   asset_type: 'screenshot' | 'document' | string
-  file_path: string
+  file_path?: string | null
   original_filename: string | null
   mime_type: string | null
   file_size: number | null
@@ -252,12 +252,7 @@ export interface ProjectLaborCostResponse {
 }
 
 export function laborAssetUrl(asset: LaborEvidenceAsset): string {
-  if (!asset.file_path) return '#'
-  if (asset.file_path.startsWith('screenshots/')) {
-    return `/api/${asset.file_path}`
-  }
-
-  return `/storage/${asset.file_path}`
+  return asset.id ? `/api/generic-evidence-assets/${asset.id}/file` : '#'
 }
 
 export function laborRegionLabel(region?: RegionOption | null): string {

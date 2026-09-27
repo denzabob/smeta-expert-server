@@ -113,15 +113,14 @@ def _vendor_from_host(host: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]", "_", vendor)[:80]
 
 
-def _build_screenshot_path(normalized_url: str) -> tuple[Path, str]:
+def _build_screenshot_path(normalized_url: str, output_dir: str) -> tuple[Path, str]:
     host = (urlparse(normalized_url).hostname or "unknown")
     vendor = _vendor_from_host(host)
     date_str = time.strftime("%Y-%m-%d", time.localtime())
     url_hash = hashlib.sha1(normalized_url.encode("utf-8")).hexdigest()[:24]
 
     relative = f"screenshots/{vendor}/{date_str}/{url_hash}.jpg"
-    project_root = Path(__file__).resolve().parent.parent
-    full = project_root / "server" / "storage" / "app" / "public" / relative
+    full = Path(output_dir).expanduser().resolve() / relative
     full.parent.mkdir(parents=True, exist_ok=True)
     return full, relative
 
@@ -169,7 +168,7 @@ def _make_route_handler(allow_host: str):
     return handler
 
 
-def capture_generic(url: str, price: str, currency: str, region_id: int) -> dict:
+def capture_generic(url: str, price: str, currency: str, region_id: int, output_dir: str) -> dict:
     del price, currency, region_id
 
     started_at = time.monotonic()
@@ -179,7 +178,7 @@ def capture_generic(url: str, price: str, currency: str, region_id: int) -> dict
     # Try up to 2 attempts (initial + 1 retry)
     last_result = None
     for attempt in range(1, 3):
-        result = _capture_attempt(url, attempt, started_at, navigation_timeout_ms, total_timeout_seconds)
+        result = _capture_attempt(url, attempt, started_at, navigation_timeout_ms, total_timeout_seconds, output_dir)
         if result["status"] == "ok":
             return result
         last_result = result
@@ -194,11 +193,18 @@ def capture_generic(url: str, price: str, currency: str, region_id: int) -> dict
     return last_result
 
 
-def _capture_attempt(url: str, attempt: int, started_at: float, navigation_timeout_ms: int, total_timeout_seconds: int) -> dict:
+def _capture_attempt(
+    url: str,
+    attempt: int,
+    started_at: float,
+    navigation_timeout_ms: int,
+    total_timeout_seconds: int,
+    output_dir: str,
+) -> dict:
 
     normalized = normalize_url(url)
     host = (urlparse(normalized).hostname or "").replace("www.", "")
-    file_path, relative = _build_screenshot_path(normalized)
+    file_path, relative = _build_screenshot_path(normalized, output_dir)
 
     _log_info("screenshot.start", url=normalized)
 
@@ -339,8 +345,8 @@ def _capture_attempt(url: str, attempt: int, started_at: float, navigation_timeo
                 browser.close()
 
 
-def capture(url: str, price: str, currency: str, region_id: int) -> dict:
-    return capture_generic(url, price, currency, region_id)
+def capture(url: str, price: str, currency: str, region_id: int, output_dir: str) -> dict:
+    return capture_generic(url, price, currency, region_id, output_dir)
 
 
 def main():
@@ -351,9 +357,10 @@ def main():
     parser.add_argument("--region-id", type=int, default=0)
     parser.add_argument("--material-id", type=int, default=0)
     parser.add_argument("--revision-run-item-id", type=int, default=0)
+    parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
 
-    result = capture(args.url, args.price, args.currency, args.region_id)
+    result = capture(args.url, args.price, args.currency, args.region_id, args.output_dir)
     print(json.dumps(result, ensure_ascii=False))
     sys.exit(0)
 

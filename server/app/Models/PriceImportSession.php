@@ -6,11 +6,12 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 
 class PriceImportSession extends Model
 {
     use HasFactory, HasUuids;
+
+    protected $hidden = ['file_path', 'storage_disk'];
 
     protected $table = 'price_import_sessions';
 
@@ -102,9 +103,12 @@ class PriceImportSession extends Model
         if (!$this->file_path) {
             return null;
         }
-        // Use Storage facade to get the correct path based on disk configuration
         $disk = $this->storage_disk ?? 'local';
-        return Storage::disk($disk)->path($this->file_path);
+        if ($disk !== 'local') {
+            return null;
+        }
+
+        return \Storage::disk($disk)->path($this->file_path);
     }
 
     /**

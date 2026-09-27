@@ -543,21 +543,12 @@ const isLinked = (item: PriceListVersionItem) => {
 
 const hasFile = (ver: PriceListVersion | null) => {
   if (!ver) return false
-  return !!(ver.file_path || ver.source_file_path || ver.original_filename)
+  return !!ver.original_filename
 }
 
 const getDisplayFilename = (ver: PriceListVersion | null) => {
   if (!ver) return ''
-  if (ver.original_filename) return ver.original_filename
-  if (ver.source_file_path) {
-    const parts = ver.source_file_path.split(/[/\\]/)
-    return parts[parts.length - 1]
-  }
-  if (ver.file_path) {
-    const parts = ver.file_path.split(/[/\\]/)
-    return parts[parts.length - 1]
-  }
-  return ''
+  return ver.original_filename || ''
 }
 
 const downloadFile = async () => {

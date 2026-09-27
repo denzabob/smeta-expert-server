@@ -23,7 +23,10 @@ class PriceImport extends Model
         'type',
         'status',
         'file_path',
+        'storage_disk',
     ];
+
+    protected $hidden = ['file_path', 'storage_disk'];
 
     public function user(): BelongsTo
     {

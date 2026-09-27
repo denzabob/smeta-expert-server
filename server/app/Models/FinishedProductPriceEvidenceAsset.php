@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class FinishedProductPriceEvidenceAsset extends Model
 {
+    protected $hidden = ['file_path', 'storage_disk'];
     use HasFactory;
 
     public const TYPE_SCREENSHOT = 'screenshot';
@@ -19,6 +20,7 @@ class FinishedProductPriceEvidenceAsset extends Model
         'finished_product_price_source_id',
         'asset_type',
         'file_path',
+        'storage_disk',
         'original_name',
         'mime_type',
         'file_size',

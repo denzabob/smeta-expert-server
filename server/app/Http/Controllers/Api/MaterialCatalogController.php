@@ -19,13 +19,13 @@ use App\Services\MaterialParseService;
 use App\Services\TrustScoreService;
 use App\Services\UrlNormalizer;
 use App\Services\MaterialConfirmationService;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 
 class MaterialCatalogController extends Controller
 {
@@ -312,6 +312,7 @@ class MaterialCatalogController extends Controller
             'source_type' => $validated['observation_source_type'] ?? 'manual',
             'screenshot_path' => $validated['screenshot_path'] ?? null,
             'snapshot_path' => $validated['snapshot_path'] ?? null,
+            'storage_disk' => $this->smetaStorageDiskForPaths($validated['screenshot_path'] ?? null, $validated['snapshot_path'] ?? null),
             'currency' => 'RUB',
         ];
 
@@ -421,9 +422,7 @@ class MaterialCatalogController extends Controller
      *  2. GenericEvidenceAsset via evidence_record_id on the latest observation
      *  3. null — no proof screenshot available
      *
-     * URLs are generated through the /api/screenshots/ route so that production
-     * nginx (which forwards only /api/ to the backend) serves the actual image
-     * instead of the SPA shell.
+     * The returned URL resolves through an authenticated S1-backed file route.
      */
     protected function resolveLatestScreenshot($observations): ?array
     {
@@ -432,12 +431,12 @@ class MaterialCatalogController extends Controller
             if (!empty($obs->screenshot_path)) {
                 $isImage = $this->isImagePath($obs->screenshot_path);
                 return [
-                    'url'         => $this->screenshotUrl($obs->screenshot_path),
-                    'path'        => $obs->screenshot_path,
+                    'url'         => url("/api/material-price-histories/{$obs->id}/screenshot?type=screenshot"),
+                    'path'        => null,
                     'is_image'    => $isImage,
                     'source'      => $obs->source_type ?? 'unknown',
                     'captured_at' => ($obs->observed_at ?? $obs->created_at)?->toIso8601String(),
-                    'exists'      => Storage::disk('public')->exists($obs->screenshot_path),
+                    'exists'      => app(ObjectStorage::class)->exists($obs->storage_disk ?: 'public', $obs->screenshot_path),
                 ];
             }
 
@@ -445,12 +444,12 @@ class MaterialCatalogController extends Controller
             if (!empty($obs->snapshot_path)) {
                 $isImage = $this->isImagePath($obs->snapshot_path);
                 return [
-                    'url'         => $this->screenshotUrl($obs->snapshot_path),
-                    'path'        => $obs->snapshot_path,
+                    'url'         => url("/api/material-price-histories/{$obs->id}/screenshot?type=snapshot"),
+                    'path'        => null,
                     'is_image'    => $isImage,
                     'source'      => $obs->source_type ?? 'unknown',
                     'captured_at' => ($obs->observed_at ?? $obs->created_at)?->toIso8601String(),
-                    'exists'      => Storage::disk('public')->exists($obs->snapshot_path),
+                    'exists'      => app(ObjectStorage::class)->exists($obs->storage_disk ?: 'public', $obs->snapshot_path),
                 ];
             }
 
@@ -462,12 +461,12 @@ class MaterialCatalogController extends Controller
                 if ($asset && !empty($asset->file_path)) {
                     $isImage = $this->isImagePath($asset->file_path);
                     return [
-                        'url'         => $this->screenshotUrl($asset->file_path),
-                        'path'        => $asset->file_path,
+                        'url'         => url("/api/generic-evidence-assets/{$asset->id}/file"),
+                        'path'        => null,
                         'is_image'    => $isImage,
                         'source'      => $obs->source_type ?? 'chrome_ext',
                         'captured_at' => ($obs->observed_at ?? $obs->created_at)?->toIso8601String(),
-                        'exists'      => Storage::disk('public')->exists($asset->file_path),
+                        'exists'      => app(ObjectStorage::class)->exists($asset->storage_disk ?: 'public', $asset->file_path),
                     ];
                 }
             }
@@ -476,29 +475,47 @@ class MaterialCatalogController extends Controller
         return null;
     }
 
-    /**
-     * Build a screenshot URL that routes through /api/screenshots/ so that
-     * production nginx delivers the real image instead of the SPA shell.
-     *
-     * Paths starting with "screenshots/" are served by the dedicated API route.
-     * Other paths (e.g. legacy parser snapshots) fall back to the public disk URL.
-     */
-    private function screenshotUrl(string $path): string
+    public function screenshot(Request $request, int $historyId, ObjectStorage $storage)
     {
-        if (str_starts_with($path, 'screenshots/')) {
-            // Strip the "screenshots/" prefix — the route already adds it.
-            $relativePath = substr($path, strlen('screenshots/'));
-            return url('/api/screenshots/' . $relativePath);
+        $history = MaterialPriceHistory::with('material')->findOrFail($historyId);
+        $material = $history->material;
+
+        abort_unless($material, 404);
+        if ($material->user_id && (int) $material->user_id !== (int) $request->user()->id) {
+            abort(403, 'Доступ запрещен');
         }
 
-        // Fallback for non-screenshot paths (legacy parser snapshots etc.)
-        return Storage::disk('public')->url($path);
+        $field = $request->query('type') === 'snapshot' ? 'snapshot_path' : 'screenshot_path';
+        $path = $history->{$field};
+        abort_unless($path, 404);
+
+        $response = $storage->downloadResponse(
+            $history->storage_disk ?: 'public',
+            $path,
+            'material-' . $material->id . '-history-' . $history->id . '-' . $field . '.' . (pathinfo($path, PATHINFO_EXTENSION) ?: 'bin'),
+            $this->isImagePath($path) ? 'image/' . (pathinfo($path, PATHINFO_EXTENSION) === 'jpg' ? 'jpeg' : pathinfo($path, PATHINFO_EXTENSION)) : null,
+            true,
+        );
+        $response->headers->set('Cache-Control', 'private, no-store');
+
+        return $response;
     }
 
     private function isImagePath(string $path): bool
     {
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
         return in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true);
+    }
+
+    private function smetaStorageDiskForPaths(?string $screenshotPath, ?string $snapshotPath): ?string
+    {
+        foreach ([$screenshotPath, $snapshotPath] as $path) {
+            if (is_string($path) && str_starts_with($path, ObjectStorage::PREFIX . '/')) {
+                return ObjectStorage::DISK;
+            }
+        }
+
+        return null;
     }
 
     private const MATERIAL_TYPE_TO_COST_COMPONENT = [
@@ -817,8 +834,8 @@ class MaterialCatalogController extends Controller
                 'is_verified' => $obs->is_verified,
                 'currency' => $obs->currency,
                 'availability' => $obs->availability,
-                'screenshot_path' => $obs->screenshot_path,
-                'snapshot_path' => $obs->snapshot_path,
+                'screenshot_url' => $obs->screenshot_path ? url("/api/material-price-histories/{$obs->id}/screenshot?type=screenshot") : null,
+                'snapshot_url' => $obs->snapshot_path ? url("/api/material-price-histories/{$obs->id}/screenshot?type=snapshot") : null,
                 'created_at' => $obs->created_at,
             ];
         });
@@ -864,6 +881,7 @@ class MaterialCatalogController extends Controller
             'availability' => $validated['availability'] ?? null,
             'screenshot_path' => $validated['screenshot_path'] ?? null,
             'snapshot_path' => $validated['snapshot_path'] ?? null,
+            'storage_disk' => $this->smetaStorageDiskForPaths($validated['screenshot_path'] ?? null, $validated['snapshot_path'] ?? null),
         ]);
 
         // Update material's current price if this is newer

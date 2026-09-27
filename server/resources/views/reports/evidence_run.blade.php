@@ -342,7 +342,7 @@
                 <td class="col-img">
                   @if($entry['attachment_mode'] === 'image' && $entry['image_exists'])
                     <div class="shot-box">
-                      <img src="{{ storage_path('app/public/' . $entry['image_path']) }}" alt="Подтверждающий материал" />
+                      <img src="{{ $entry['image_local_path'] ?? storage_path('app/public/' . $entry['image_path']) }}" alt="Подтверждающий материал" />
                     </div>
                   @elseif($entry['attachment_mode'] === 'document' && !empty($entry['doc_assets']))
                     @foreach($entry['doc_assets'] as $docAsset)
@@ -524,7 +524,7 @@
                   </div>
                 @elseif($entry['attachment_mode'] === 'image' && $entry['image_exists'])
                   <div class="shot-box">
-                    <img src="{{ storage_path('app/public/' . $entry['image_path']) }}" alt="Подтверждающий материал" />
+                    <img src="{{ $entry['image_local_path'] ?? storage_path('app/public/' . $entry['image_path']) }}" alt="Подтверждающий материал" />
                   </div>
                 @elseif($entry['attachment_mode'] === 'document' && !empty($entry['doc_assets']))
                   @foreach($entry['doc_assets'] as $docAsset)

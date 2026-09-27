@@ -10,6 +10,7 @@ use App\Models\RevisionRunItem;
 use App\Services\EvidencePipelineService;
 use App\Services\MaterialParseService;
 use App\Services\ScreenshotCaptureService;
+use App\Services\Storage\ObjectStorage;
 use App\Services\UrlNormalizer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -146,6 +147,7 @@ class UpdateMaterialObservationForRevisionItem implements ShouldQueue
                     'raw_source_url' => $rawUrl,
                     'normalized_source_url' => $normalizedUrl,
                     'screenshot_path' => $shotNoPrice['screenshot_path'],
+                    'storage_disk' => ObjectStorage::DISK,
                     'observed_at' => now(),
                     'region_id' => $regionId,
                     'source_type' => MaterialPriceHistory::SOURCE_WEB,
@@ -224,6 +226,7 @@ class UpdateMaterialObservationForRevisionItem implements ShouldQueue
             'raw_source_url' => $rawUrl,
             'normalized_source_url' => $normalizedUrl,
             'screenshot_path' => $shot['screenshot_path'],
+            'storage_disk' => ObjectStorage::DISK,
             'observed_at' => now(),
             'region_id' => $regionId,
             'source_type' => MaterialPriceHistory::SOURCE_WEB,

@@ -22,6 +22,7 @@ use App\Models\Project;
 use App\Models\ProjectPosition;
 use App\Services\MaterialConfirmationService;
 use App\Services\Billing\BillingCodes;
+use App\Services\Storage\ObjectStorage;
 use App\Services\EvidenceRunFinalizer;
 use App\Services\EvidenceRunItemCollector;
 use App\Services\EstimateEvidencePdfBuilder;
@@ -30,7 +31,6 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -42,6 +42,7 @@ class EvidenceRunController extends Controller
         private EvidenceRunItemCollector $itemCollector,
         private EvidenceRunFinalizer $finalizer,
         private EstimateEvidencePdfBuilder $pdfBuilder,
+        private ObjectStorage $storage,
         private MaterialConfirmationService $confirmationService,
         private FinishedProductEvidenceRecordBridge $finishedProductEvidenceRecordBridge,
     ) {}
@@ -385,7 +386,7 @@ class EvidenceRunController extends Controller
     /**
      * POST /api/evidence-records/{id}/assets
      */
-    public function uploadAsset(Request $request, int $id): JsonResponse
+    public function uploadAsset(Request $request, int $id, ObjectStorage $storage): JsonResponse
     {
         $record = EvidenceRecord::findOrFail($id);
 
@@ -399,13 +400,14 @@ class EvidenceRunController extends Controller
         ]);
 
         $file = $request->file('file');
-        $path = $file->store('evidence-records/' . $record->uuid, 'public');
+        $path = $storage->storeUploaded('evidence-records/' . $record->uuid, $file, (int) $request->user()->id);
 
         $asset = GenericEvidenceAsset::create([
             'uuid'              => (string) Str::uuid(),
             'evidence_record_id' => $record->id,
             'asset_type'        => $request->input('asset_type', 'screenshot'),
             'file_path'         => $path,
+            'storage_disk'      => ObjectStorage::DISK,
             'original_filename' => $file->getClientOriginalName(),
             'mime_type'         => $file->getMimeType(),
             'file_size'         => $file->getSize(),
@@ -413,7 +415,7 @@ class EvidenceRunController extends Controller
         ]);
 
         $assetMetadata = [
-            'disk' => 'public',
+            'disk' => ObjectStorage::DISK,
             'path' => $path,
             'mime_type' => $asset->mime_type,
             'original_name' => $asset->original_filename,
@@ -446,7 +448,15 @@ class EvidenceRunController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $asset,
+            'data'    => [
+                'id' => $asset->id,
+                'uuid' => $asset->uuid,
+                'asset_type' => $asset->asset_type,
+                'original_filename' => $asset->original_filename,
+                'mime_type' => $asset->mime_type,
+                'file_size' => $asset->file_size,
+                'download_url' => url("/api/generic-evidence-assets/{$asset->id}/file"),
+            ],
         ], 201);
     }
 
@@ -502,7 +512,7 @@ class EvidenceRunController extends Controller
             'mime_type'         => $asset->mime_type,
             'file_size'         => $asset->file_size,
             'download_url'      => $asset->file_path
-                ? Storage::disk('public')->url($asset->file_path)
+                ? url("/api/generic-evidence-assets/{$asset->id}/file")
                 : null,
         ])->values()->all();
 
@@ -911,7 +921,7 @@ class EvidenceRunController extends Controller
      * POST /api/projects/{project}/evidence-runs/{runId}/items/{itemId}/manual-resolve
      * Manual fallback: create evidence record from uploaded proof + resolve item in one step.
      */
-    public function manualResolveItem(Request $request, Project $project, int $runId, int $itemId): JsonResponse
+    public function manualResolveItem(Request $request, Project $project, int $runId, int $itemId, ObjectStorage $storage): JsonResponse
     {
         $this->authorize('update', $project);
 
@@ -942,7 +952,10 @@ class EvidenceRunController extends Controller
             'extracted_name' => 'nullable|string|max:500',
         ]);
 
-        $response = DB::transaction(function () use ($request, $item, $run) {
+        $storedPath = null;
+
+        try {
+            $response = DB::transaction(function () use ($request, $item, $run, $storage, &$storedPath) {
             $file = $request->file('file');
 
             // 1. Create EvidenceRecord
@@ -964,12 +977,14 @@ class EvidenceRunController extends Controller
             ]);
 
             // 2. Store uploaded file as asset
-            $path = $file->store('evidence-records/' . $record->uuid, 'public');
+            $path = $storage->storeUploaded('evidence-records/' . $record->uuid, $file, (int) $request->user()->id);
+            $storedPath = $path;
             GenericEvidenceAsset::create([
                 'uuid'               => (string) Str::uuid(),
                 'evidence_record_id' => $record->id,
                 'asset_type'         => 'document',
                 'file_path'          => $path,
+                'storage_disk'       => ObjectStorage::DISK,
                 'original_filename'  => $file->getClientOriginalName(),
                 'mime_type'          => $file->getMimeType(),
                 'file_size'          => $file->getSize(),
@@ -992,7 +1007,14 @@ class EvidenceRunController extends Controller
                 'success' => true,
                 'data'    => $item->fresh()->load('evidenceRecord'),
             ], 201);
-        });
+            });
+        } catch (\Throwable $exception) {
+            if ($storedPath) {
+                $storage->delete(ObjectStorage::DISK, $storedPath);
+            }
+
+            throw $exception;
+        }
 
         $this->recordUsageEvent(BillingCodes::METRIC_EVIDENCE_ITEMS_RESOLVED, 1, [
             'project' => $project,
@@ -1078,31 +1100,66 @@ class EvidenceRunController extends Controller
         ]);
 
         $viewData = $this->pdfBuilder->build($run, $project);
+        $temporaryPaths = [];
+        $materialized = [];
 
-        $pdf = Pdf::loadView('reports.evidence_run', $viewData)
-            ->setPaper('a4')
-            ->setOption('isHtml5ParserEnabled', true)
-            ->setOption('isPhpEnabled', false)
-            ->setOption('defaultFont', 'DejaVu Sans')
-            ->setOption('fontDir', config('dompdf.font_dir'))
-            ->setOption('fontCache', config('dompdf.font_cache_dir'));
+        try {
+            $this->materializeEvidencePdfImages($viewData, $temporaryPaths, $materialized);
 
-        $rawFilename = "evidence_{$project->number}_run_{$run->id}.pdf";
-        $filename = preg_replace('#[\\/:*?"<>|]#', '_', $rawFilename);
+            $pdf = Pdf::loadView('reports.evidence_run', $viewData)
+                ->setPaper('a4')
+                ->setOption('isHtml5ParserEnabled', true)
+                ->setOption('isPhpEnabled', false)
+                ->setOption('defaultFont', 'DejaVu Sans')
+                ->setOption('fontDir', config('dompdf.font_dir'))
+                ->setOption('fontCache', config('dompdf.font_cache_dir'));
 
-        $this->recordUsageEvent(BillingCodes::METRIC_PDF_EVIDENCE_RUN_GENERATED, 1, [
-            'project' => $project,
-            'feature_code' => BillingCodes::FEATURE_PDF_EVIDENCE,
-            'subject_type' => EstimateEvidenceRun::class,
-            'subject_id' => $run->id,
-            'unit' => 'count',
-            'source' => 'api',
-            'metadata' => [
-                'controller' => static::class,
-                'action' => __FUNCTION__,
-            ],
-        ]);
+            $rawFilename = "evidence_{$project->number}_run_{$run->id}.pdf";
+            $filename = preg_replace('#[\\/:*?"<>|]#', '_', $rawFilename);
 
-        return $pdf->download($filename);
+            $this->recordUsageEvent(BillingCodes::METRIC_PDF_EVIDENCE_RUN_GENERATED, 1, [
+                'project' => $project,
+                'feature_code' => BillingCodes::FEATURE_PDF_EVIDENCE,
+                'subject_type' => EstimateEvidenceRun::class,
+                'subject_id' => $run->id,
+                'unit' => 'count',
+                'source' => 'api',
+                'metadata' => [
+                    'controller' => static::class,
+                    'action' => __FUNCTION__,
+                ],
+            ]);
+
+            return $pdf->download($filename);
+        } finally {
+            foreach (array_unique($temporaryPaths) as $temporaryPath) {
+                @unlink($temporaryPath);
+            }
+        }
+    }
+
+    private function materializeEvidencePdfImages(array &$value, array &$temporaryPaths, array &$materialized): void
+    {
+        foreach ($value as &$item) {
+            if (is_array($item)) {
+                $path = $item['image_path'] ?? null;
+                $disk = $item['image_storage_disk'] ?? null;
+                if ($path && $disk === ObjectStorage::DISK && !empty($item['image_exists'])) {
+                    $cacheKey = $disk . ':' . $path;
+                    if (!isset($materialized[$cacheKey])) {
+                        $materialized[$cacheKey] = $this->storage->materializeTemporaryFile(
+                            $disk,
+                            $path,
+                            pathinfo($path, PATHINFO_EXTENSION),
+                        );
+                        $temporaryPaths[] = $materialized[$cacheKey];
+                    }
+                    $item['image_local_path'] = $materialized[$cacheKey];
+                }
+
+                $this->materializeEvidencePdfImages($item, $temporaryPaths, $materialized);
+            }
+        }
+        unset($item);
     }
 }

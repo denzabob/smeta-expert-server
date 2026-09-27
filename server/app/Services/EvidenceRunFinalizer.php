@@ -129,6 +129,7 @@ class EvidenceRunFinalizer
                     'uuid'      => $a->uuid,
                     'asset_type' => $a->asset_type,
                     'file_path'  => $a->file_path,
+                    'storage_disk' => $a->storage_disk ?: 'public',
                     'original_filename' => $a->original_filename,
                     'mime_type'  => $a->mime_type,
                     'sha256'     => $a->sha256,

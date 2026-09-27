@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\PriceListVersion;
 use App\Models\ProjectPositionPriceQuote;
 use App\Models\RevisionPublication;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Secure download endpoint for price list files.
@@ -23,7 +23,7 @@ class PublicPriceFileController extends Controller
      * @param int $versionId  — PriceListVersion ID
      * @param string $documentToken — RevisionPublication public_id (acts as document token)
      */
-    public function download(int $versionId, string $documentToken)
+    public function download(int $versionId, string $documentToken, ObjectStorage $storage)
     {
         // 1. Find the publication by document_token (= public_id)
         $publication = RevisionPublication::where('public_id', $documentToken)
@@ -78,17 +78,17 @@ class PublicPriceFileController extends Controller
             abort(404, 'No file attached to this price list version.');
         }
 
-        $disk = Storage::disk($version->storage_disk);
-        if (!$disk->exists($version->file_path)) {
-            abort(404, 'File not found on storage.');
-        }
-
         $filename = $version->original_filename ?: basename($version->file_path);
 
-        return $disk->download($version->file_path, $filename, [
-            'Content-Type' => $this->guessContentType($filename),
-            'Cache-Control' => 'no-store, must-revalidate',
-        ]);
+        $response = $storage->downloadResponse(
+            $version->storage_disk,
+            $version->file_path,
+            $filename,
+            $this->guessContentType($filename),
+        );
+        $response->headers->set('Cache-Control', 'no-store, must-revalidate');
+
+        return $response;
     }
 
     /**

@@ -11,6 +11,8 @@ class ImportSession extends Model
 {
     use HasFactory;
 
+    protected $hidden = ['file_path', 'storage_disk'];
+
     protected $fillable = [
         'user_id',
         'project_id',

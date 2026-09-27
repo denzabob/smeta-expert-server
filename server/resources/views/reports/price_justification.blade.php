@@ -97,6 +97,7 @@
     };
 
     $assetStoragePath = static function (array $asset): ?string {
+      if (!empty($asset['pdf_local_path']) && is_file($asset['pdf_local_path'])) return $asset['pdf_local_path'];
       $path = $asset['file_path'] ?? data_get($asset, 'storage_reference.path');
       if (!$path || !is_string($path)) return null;
 
@@ -620,13 +621,15 @@
             @endif
           @else
             @php
-              $screenshotPath = !empty($row['screenshot_path']) && file_exists(storage_path('app/public/' . $row['screenshot_path']))
+              $screenshotPath = !empty($row['pdf_local_path']) && is_file($row['pdf_local_path'])
+                ? $row['pdf_local_path']
+                : (!empty($row['screenshot_path']) && file_exists(storage_path('app/public/' . $row['screenshot_path']))
                 ? storage_path('app/public/' . $row['screenshot_path'])
-                : null;
+                : null);
             @endphp
             @if($screenshotPath)
               <div class="shot-wrap">
-                <img src="{{ storage_path('app/public/' . $row['screenshot_path']) }}" alt="screenshot" />
+                <img src="{{ $screenshotPath }}" alt="screenshot" />
               </div>
             @elseif($sourceUrl)
               <div class="confirmation-note">Подтверждение: источник цены указан.</div>

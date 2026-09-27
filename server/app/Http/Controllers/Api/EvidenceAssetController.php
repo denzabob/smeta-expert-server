@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\EvidenceAsset;
-use Illuminate\Support\Facades\Storage;
+use App\Services\Storage\ObjectStorage;
 
 class EvidenceAssetController extends Controller
 {
-    public function file(int $assetId)
+    public function file(int $assetId, ObjectStorage $storage)
     {
         $asset = EvidenceAsset::with('evidenceArtifact.revisionRun.project')
             ->findOrFail($assetId);
@@ -19,14 +19,12 @@ class EvidenceAssetController extends Controller
             abort(403, 'Access denied.');
         }
 
-        $disk = Storage::disk('public');
-
-        if (!$disk->exists($asset->file_path)) {
-            abort(404, 'File not found.');
-        }
-
-        return $disk->response($asset->file_path, $asset->original_filename, [
-            'Content-Type' => $asset->mime_type ?? 'application/octet-stream',
-        ]);
+        return $storage->downloadResponse(
+            $asset->storage_disk ?: 'public',
+            $asset->file_path,
+            $asset->original_filename ?: basename($asset->file_path),
+            $asset->mime_type ?: 'application/octet-stream',
+            str_starts_with((string) $asset->mime_type, 'image/'),
+        );
     }
 }

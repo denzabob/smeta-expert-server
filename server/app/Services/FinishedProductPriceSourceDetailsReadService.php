@@ -52,7 +52,6 @@ class FinishedProductPriceSourceDetailsReadService
                 return [
                     'id' => $asset->id,
                     'asset_type' => $asset->asset_type,
-                    'file_path' => $asset->file_path,
                     'original_name' => $asset->original_name,
                     'mime_type' => $asset->mime_type,
                     'file_size' => $asset->file_size,

@@ -7,11 +7,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EvidenceAsset extends Model
 {
+    protected $hidden = ['file_path', 'storage_disk'];
     protected $fillable = [
         'uuid',
         'evidence_artifact_id',
         'asset_type',
         'file_path',
+        'storage_disk',
         'original_filename',
         'mime_type',
         'file_size',

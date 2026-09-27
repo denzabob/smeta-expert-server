@@ -24,6 +24,7 @@ use App\Services\FinishedProductPositionSnapshotReader;
 use App\Services\MaterialConfirmationService;
 use App\Services\ProjectReportReadinessService;
 use App\Services\SnapshotService;
+use App\Services\Storage\ObjectStorage;
 use App\Services\UrlNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -215,7 +216,7 @@ class RevisionRunController extends Controller
         }
 
         $uploadedFile = $validated['screenshot_file'];
-        $path = $uploadedFile->store('screenshots/manual/' . now()->format('Y/m'), 'public');
+        $path = app(ObjectStorage::class)->storeUploaded('screenshots/manual', $uploadedFile, (int) $request->user()->id);
         $rawUrl = $validated['source_url'] ?? $item->source_url ?? $material->source_url;
         $normalized = $this->urlNormalizer->normalize($rawUrl);
 
@@ -236,6 +237,7 @@ class RevisionRunController extends Controller
                 'extracted_price'       => (float) $validated['price_per_unit'],
                 'currency'              => strtoupper((string) $validated['currency']),
                 'screenshot_path'       => $path,
+                'storage_disk'          => ObjectStorage::DISK,
                 'trust_score'           => 60,
                 'captured_at'           => now(),
                 'created_by'            => auth()->id(),
@@ -246,6 +248,7 @@ class RevisionRunController extends Controller
                 'evidence_artifact_id' => $artifact->id,
                 'asset_type'           => 'screenshot',
                 'file_path'            => $path,
+                'storage_disk'         => ObjectStorage::DISK,
                 'original_filename'    => $uploadedFile->getClientOriginalName(),
                 'mime_type'            => $uploadedFile->getClientMimeType(),
                 'file_size'            => $uploadedFile->getSize(),
@@ -260,6 +263,7 @@ class RevisionRunController extends Controller
                 'raw_source_url' => $rawUrl,
                 'normalized_source_url' => $normalized,
                 'screenshot_path' => $path,
+                'storage_disk' => ObjectStorage::DISK,
                 'observed_at' => now(),
                 'region_id' => $validated['region_id'] ?? $item->run->project->region_id,
                 'source_type' => MaterialPriceHistory::SOURCE_MANUAL,
@@ -439,6 +443,7 @@ class RevisionRunController extends Controller
                 'source_url' => $item->source_url,
                 'observed_at' => $h?->observed_at?->toIso8601String(),
                 'screenshot_path' => $h?->screenshot_path,
+                'storage_disk' => $h?->storage_disk ?: 'public',
                 'price_per_unit' => $h?->price_per_unit,
                 'currency' => $h?->currency,
                 'true_score' => $h?->true_score,
@@ -650,7 +655,7 @@ class RevisionRunController extends Controller
         }
 
         $uploadedFile = $validated['document_file'];
-        $path = $uploadedFile->store('evidence/documents/expenses/' . now()->format('Y/m'), 'public');
+        $path = app(ObjectStorage::class)->storeUploaded('evidence/documents/expenses', $uploadedFile, (int) $request->user()->id);
 
         $asset = DB::transaction(function () use ($artifact, $uploadedFile, $path) {
             $asset = EvidenceAsset::create([
@@ -658,6 +663,7 @@ class RevisionRunController extends Controller
                 'evidence_artifact_id' => $artifact->id,
                 'asset_type'           => 'document',
                 'file_path'            => $path,
+                'storage_disk'         => ObjectStorage::DISK,
                 'original_filename'    => $uploadedFile->getClientOriginalName(),
                 'mime_type'            => $uploadedFile->getClientMimeType(),
                 'file_size'            => $uploadedFile->getSize(),

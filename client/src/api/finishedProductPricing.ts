@@ -126,7 +126,6 @@ export interface FinishedProductPriceSourcePayload {
 export interface FinishedProductPriceEvidenceAssetDetails {
   id: number
   asset_type: string | null
-  file_path: string | null
   original_name: string | null
   mime_type: string | null
   file_size: number | null
@@ -288,7 +287,6 @@ function normalizeDetails(payload: any): FinishedProductPriceSourceDetails {
       ? payload.evidence_assets.map((item: any) => ({
           id: Number(item?.id ?? 0),
           asset_type: item?.asset_type ?? null,
-          file_path: item?.file_path ?? null,
           original_name: item?.original_name ?? null,
           mime_type: item?.mime_type ?? null,
           file_size: item?.file_size !== null && item?.file_size !== undefined ? Number(item.file_size) : null,

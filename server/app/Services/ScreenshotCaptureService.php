@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Log;
+use App\Services\Storage\ObjectStorage;
+use Illuminate\Support\Facades\File;
 use Symfony\Component\Process\Process;
 
 class ScreenshotCaptureService
@@ -49,28 +51,31 @@ class ScreenshotCaptureService
             return $result;
         }
 
-        $pythonPath = (string) config('parser.python_path', 'python3');
-        $scriptPath = base_path('parser/screenshot_by_url.py');
-
-        $command = [
-            $pythonPath,
-            $scriptPath,
-            '--url', $url,
-            '--price', (string) $price,
-            '--currency', $currency,
-            '--region-id', (string) ($regionId ?? 0),
-        ];
-
-        if ($materialId) {
-            $command[] = '--material-id';
-            $command[] = (string) $materialId;
-        }
-        if ($revisionRunItemId) {
-            $command[] = '--revision-run-item-id';
-            $command[] = (string) $revisionRunItemId;
-        }
-
+        $captureDirectory = null;
         try {
+            $captureDirectory = $this->createTemporaryCaptureDirectory();
+            $pythonPath = (string) config('parser.python_path', 'python3');
+            $scriptPath = base_path('parser/screenshot_by_url.py');
+
+            $command = [
+                $pythonPath,
+                $scriptPath,
+                '--url', $url,
+                '--price', (string) $price,
+                '--currency', $currency,
+                '--region-id', (string) ($regionId ?? 0),
+                '--output-dir', $captureDirectory,
+            ];
+
+            if ($materialId) {
+                $command[] = '--material-id';
+                $command[] = (string) $materialId;
+            }
+            if ($revisionRunItemId) {
+                $command[] = '--revision-run-item-id';
+                $command[] = (string) $revisionRunItemId;
+            }
+
             $process = new Process($command, base_path(), [
                 'PYTHONPATH' => base_path(),
                 'PLAYWRIGHT_BROWSERS_PATH' => '/root/.cache/ms-playwright',
@@ -138,14 +143,32 @@ class ScreenshotCaptureService
 
             $result = [
                 'status' => $status,
-                'screenshot_path' => $parsed['screenshot_path'] ?? null,
+                'screenshot_path' => $this->resolveTemporaryCapturePath(
+                    $captureDirectory,
+                    $parsed['screenshot_path'] ?? null,
+                ),
                 'meta' => $meta,
             ];
+
+            if ($result['status'] === 'ok' && !$result['screenshot_path']) {
+                $result['status'] = 'error';
+                $result['meta'] = ['reason' => 'screenshot_output_missing'];
+            }
+
+            if ($result['status'] === 'ok' && $result['screenshot_path']) {
+                try {
+                    $result['screenshot_path'] = $this->persistScreenshot((string) $result['screenshot_path']);
+                } catch (\Throwable) {
+                    $result['status'] = 'error';
+                    $result['screenshot_path'] = null;
+                    $result['meta'] = ['reason' => 'screenshot_storage_failed'];
+                }
+            }
 
             if ($result['status'] === 'ok' && $result['screenshot_path']) {
                 Log::info('screenshot.saved', [
                     'url' => $url,
-                    'screenshot_path' => $result['screenshot_path'],
+                    'disk' => 's1',
                     'duration_ms' => (int) ((microtime(true) - $startedAt) * 1000),
                 ]);
             } else {
@@ -159,8 +182,40 @@ class ScreenshotCaptureService
 
             return $result;
         } finally {
+            if ($captureDirectory !== null) {
+                File::deleteDirectory($captureDirectory);
+            }
             $this->releaseSlotLock($slot['handle']);
         }
+    }
+
+    private function createTemporaryCaptureDirectory(): string
+    {
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'smeta-screenshot-' . bin2hex(random_bytes(16));
+
+        if (!mkdir($path, 0700, true) && !is_dir($path)) {
+            throw new \RuntimeException('Could not create temporary screenshot directory.');
+        }
+
+        return $path;
+    }
+
+    private function resolveTemporaryCapturePath(string $directory, mixed $relativePath): ?string
+    {
+        if (!is_string($relativePath) || $relativePath === '' || str_contains($relativePath, '..')) {
+            return null;
+        }
+
+        $normalized = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($relativePath, '/\\'));
+        $candidate = realpath($directory . DIRECTORY_SEPARATOR . $normalized);
+        $root = realpath($directory);
+
+        if (!$candidate || !$root || !is_file($candidate)
+            || !str_starts_with($candidate, rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+
+        return $candidate;
     }
 
     private function mapProcessFailureStatus(Process $process): string
@@ -178,6 +233,19 @@ class ScreenshotCaptureService
         }
 
         return 'error';
+    }
+
+    private function persistScreenshot(string $sourcePath): string
+    {
+        if (is_file($sourcePath) && is_readable($sourcePath)) {
+            try {
+                return app(ObjectStorage::class)->importFile('screenshots/captured', $sourcePath);
+            } finally {
+                @unlink($sourcePath);
+            }
+        }
+
+        throw new \RuntimeException('Screenshot output is missing.');
     }
 
     private function acquireSlotLock(int $maxParallel, int $waitSeconds): ?array

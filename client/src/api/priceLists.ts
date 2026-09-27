@@ -47,8 +47,6 @@ export interface PriceListVersion {
   captured_at?: string | null
   source_type?: 'file' | 'manual' | 'url' | null
   source_url?: string | null
-  source_file_path?: string | null
-  file_path?: string | null
   original_filename?: string | null
   manual_label?: string | null
   size_bytes?: number | null

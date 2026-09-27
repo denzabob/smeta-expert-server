@@ -276,7 +276,6 @@ class FacadeService
             'plv.effective_date as version_effective_date',
             'plv.source_url as version_source_url',
             'plv.original_filename as version_original_filename',
-            'plv.file_path as version_file_path',
             'plv.storage_disk as version_storage_disk',
             'plv.version_number as version_number',
             'pl.name as price_list_name',
@@ -319,7 +318,6 @@ class FacadeService
                 'effective_date' => $row->version_effective_date,
                 'source_url' => $row->version_source_url,
                 'original_filename' => $row->version_original_filename,
-                'file_path' => $row->version_file_path,
                 'mismatch_flags' => $mismatchFlags,
                 'price_list_version_id' => $row->price_list_version_id,
             ];

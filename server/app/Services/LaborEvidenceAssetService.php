@@ -4,13 +4,15 @@ namespace App\Services;
 
 use App\Models\GenericEvidenceAsset;
 use App\Models\LaborEvidenceSource;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class LaborEvidenceAssetService
 {
+    public function __construct(private readonly ObjectStorage $storage) {}
+
     public function store(LaborEvidenceSource $source, UploadedFile $file, string $assetType, int $uploadedBy): GenericEvidenceAsset
     {
         return DB::transaction(function () use ($source, $file, $assetType, $uploadedBy) {
@@ -20,13 +22,18 @@ class LaborEvidenceAssetService
                 throw new \RuntimeException('Labor evidence source has no evidence record.');
             }
 
-            $path = $this->storeFile($record->uuid, $file, $assetType);
+            $path = $this->storage->storeUploaded(
+                $assetType === 'screenshot' ? 'screenshots/chrome/generic' : 'evidence-records/' . $record->uuid,
+                $file,
+                $uploadedBy,
+            );
 
             return GenericEvidenceAsset::create([
                 'uuid' => (string) Str::uuid(),
                 'evidence_record_id' => $record->id,
                 'asset_type' => $assetType,
                 'file_path' => $path,
+                'storage_disk' => ObjectStorage::DISK,
                 'original_filename' => $file->getClientOriginalName(),
                 'mime_type' => $file->getMimeType(),
                 'file_size' => $file->getSize(),
@@ -39,20 +46,12 @@ class LaborEvidenceAssetService
     public function delete(GenericEvidenceAsset $asset): void
     {
         DB::transaction(function () use ($asset) {
-            if ($asset->file_path && Storage::disk('public')->exists($asset->file_path)) {
-                Storage::disk('public')->delete($asset->file_path);
+            if ($asset->file_path) {
+                $this->storage->delete($asset->storage_disk ?: 'public', $asset->file_path);
             }
 
             $asset->delete();
         });
     }
 
-    private function storeFile(string $recordUuid, UploadedFile $file, string $assetType): string
-    {
-        if ($assetType === 'screenshot') {
-            return $file->store('screenshots/chrome/generic/' . now()->format('Y/m'), 'public');
-        }
-
-        return $file->store('evidence-records/' . $recordUuid, 'public');
-    }
 }

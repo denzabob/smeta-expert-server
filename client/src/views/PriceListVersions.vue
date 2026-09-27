@@ -148,7 +148,7 @@
                   Просмотр содержимого
                 </v-list-item>
                 <v-list-item
-                  v-if="item.source_file_path"
+                  v-if="item.original_filename"
                   @click="downloadVersion(item)"
                   prepend-icon="mdi-download"
                 >
@@ -322,7 +322,7 @@ const downloadVersion = async (version: PriceListVersion) => {
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = getFileName(version.source_file_path || `version_${version.id}.xlsx`) || ''
+    link.download = version.original_filename || `version_${version.id}.xlsx`
     link.click()
     window.URL.revokeObjectURL(url)
     showSnackbar('Файл загружен', 'success')
@@ -385,17 +385,8 @@ const getSourceLabel = (sourceType: string) => {
   }
 }
 
-const getFileName = (path: string) => {
-  if (!path) return ''
-  const parts = path.split(/[/\\]/)
-  return parts[parts.length - 1]
-}
-
 const getDisplayFilename = (ver: PriceListVersion) => {
-  if (ver.original_filename) return ver.original_filename
-  if (ver.source_file_path) return getFileName(ver.source_file_path)
-  if (ver.file_path) return getFileName(ver.file_path)
-  return ''
+  return ver.original_filename || ''
 }
 
 const formatBytes = (bytes: number) => {

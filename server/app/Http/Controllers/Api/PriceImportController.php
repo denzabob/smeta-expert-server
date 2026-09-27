@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PriceImport;
 use App\Models\PriceImportItem;
 use App\Services\PriceImportService;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -172,6 +173,21 @@ class PriceImportController extends Controller
         ]);
     }
 
+    public function downloadFoundationFile(Request $request, int $id, ObjectStorage $storage)
+    {
+        $priceImport = PriceImport::query()
+            ->where('user_id', $request->user()->id)
+            ->findOrFail($id);
+
+        abort_unless($priceImport->file_path, 404);
+
+        return $storage->downloadResponse(
+            $priceImport->storage_disk ?: 'local',
+            $priceImport->file_path,
+            'price-import-' . $priceImport->id . '.' . (pathinfo($priceImport->file_path, PATHINFO_EXTENSION) ?: 'xlsx'),
+        );
+    }
+
     private function formatFoundationImport(PriceImport $priceImport): array
     {
         return [
@@ -179,7 +195,7 @@ class PriceImportController extends Controller
             'user_id' => $priceImport->user_id,
             'type' => $priceImport->type,
             'status' => $priceImport->status,
-            'file_path' => $priceImport->file_path,
+            'download_url' => $priceImport->file_path ? url("/api/price-imports/{$priceImport->id}/file") : null,
             'created_at' => $priceImport->created_at?->toDateTimeString(),
             'items' => $priceImport->items
                 ->map(fn ($item) => $this->formatFoundationItem($item))

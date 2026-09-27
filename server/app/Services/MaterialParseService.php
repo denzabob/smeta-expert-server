@@ -288,6 +288,7 @@ class MaterialParseService
             'currency' => $observationData['currency'] ?? 'RUB',
             'screenshot_path' => $observationData['screenshot_path'] ?? null,
             'snapshot_path' => $observationData['snapshot_path'] ?? null,
+            'storage_disk' => $observationData['storage_disk'] ?? null,
         ]);
 
         if ($created) {

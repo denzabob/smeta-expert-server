@@ -11,6 +11,7 @@ use App\Models\GenericEvidenceAsset;
 use App\Models\Material;
 use App\Models\Operation;
 use App\Models\ProjectProfileRate;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,8 @@ use Illuminate\Support\Str;
 
 class ManualPricingSourceService
 {
+    public function __construct(private readonly ObjectStorage $storage) {}
+
     public function create(Request $request, array $validated): EvidenceRecord
     {
         return DB::transaction(function () use ($request, $validated) {
@@ -55,12 +58,13 @@ class ManualPricingSourceService
             ]);
 
             foreach ($this->uploadedFiles($request) as $file) {
-                $path = $file->store('evidence-records/' . $recordUuid, 'public');
+                $path = $this->storage->storeUploaded('evidence-records/' . $recordUuid, $file, (int) $request->user()->id);
                 GenericEvidenceAsset::create([
                     'uuid'               => (string) Str::uuid(),
                     'evidence_record_id' => $record->id,
                     'asset_type'         => 'document',
                     'file_path'          => $path,
+                    'storage_disk'       => ObjectStorage::DISK,
                     'original_filename'  => $file->getClientOriginalName(),
                     'mime_type'          => $file->getMimeType(),
                     'file_size'          => $file->getSize(),

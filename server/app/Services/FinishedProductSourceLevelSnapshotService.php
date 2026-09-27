@@ -97,8 +97,9 @@ class FinishedProductSourceLevelSnapshotService
                                 'file_size' => $asset->file_size,
                                 'source_url' => $asset->source_url,
                                 'file_path' => $asset->file_path,
+                                'storage_disk' => $asset->storage_disk ?: 'public',
                                 'storage_reference' => $asset->file_path
-                                    ? ['disk' => 'public', 'path' => $asset->file_path]
+                                    ? ['disk' => $asset->storage_disk ?: 'public', 'path' => $asset->file_path]
                                     : null,
                                 'content_hash' => $asset->content_hash,
                                 'captured_at' => $asset->captured_at?->toIso8601String(),

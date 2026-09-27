@@ -14,13 +14,14 @@ class SpreadsheetReader
     private string $filePath;
     private string $fileType;
     private array $options;
+    private bool $deleteFileOnDestruct;
 
     /**
      * @param string $filePath Full path to the file
      * @param string $fileType File type: xlsx, xls, csv
      * @param array $options Reader options (encoding, delimiter for CSV)
      */
-    public function __construct(string $filePath, string $fileType, array $options = [])
+    public function __construct(string $filePath, string $fileType, array $options = [], bool $deleteFileOnDestruct = false)
     {
         if (!file_exists($filePath)) {
             throw new RuntimeException("File not found: {$filePath}");
@@ -33,6 +34,14 @@ class SpreadsheetReader
             'csv_delimiter' => ',',
             'sheet_index' => 0,
         ], $options);
+        $this->deleteFileOnDestruct = $deleteFileOnDestruct;
+    }
+
+    public function __destruct()
+    {
+        if ($this->deleteFileOnDestruct) {
+            @unlink($this->filePath);
+        }
     }
 
     /**

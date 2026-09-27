@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\FinishedProductPriceEvidenceAsset;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Support\Facades\Storage;
 
 class FinishedProductPriceEvidenceAssetAccessService
@@ -28,8 +29,8 @@ class FinishedProductPriceEvidenceAssetAccessService
             return $this->noAccess();
         }
 
-        $disk = Storage::disk('public');
-        if (!$disk->exists($filePath)) {
+        $disk = $asset->storage_disk ?: 'public';
+        if (!app(ObjectStorage::class)->exists($disk, $filePath)) {
             return $this->noAccess();
         }
 

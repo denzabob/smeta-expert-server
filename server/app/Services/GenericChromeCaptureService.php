@@ -14,6 +14,7 @@ use App\Models\EstimateEvidenceRun;
 use App\Models\EvidenceLink;
 use App\Models\EvidenceRecord;
 use App\Models\GenericEvidenceAsset;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,6 +24,7 @@ class GenericChromeCaptureService
     public function __construct(
         private UrlNormalizer $urlNormalizer,
         private MaterialConfirmationService $confirmationService,
+        private ObjectStorage $storage,
     ) {}
 
     /**
@@ -219,13 +221,14 @@ class GenericChromeCaptureService
             return $existing;
         }
 
-        $path = $file->store('screenshots/chrome/generic/' . now()->format('Y/m'), 'public');
+        $path = $this->storage->storeUploaded('screenshots/chrome/generic', $file, (int) $record->created_by);
 
         return GenericEvidenceAsset::create([
             'uuid'               => (string) Str::uuid(),
             'evidence_record_id' => $record->id,
             'asset_type'         => 'screenshot',
             'file_path'          => $path,
+            'storage_disk'       => ObjectStorage::DISK,
             'original_filename'  => $file->getClientOriginalName(),
             'mime_type'          => $file->getMimeType(),
             'file_size'          => $file->getSize(),

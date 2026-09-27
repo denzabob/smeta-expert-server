@@ -12,6 +12,8 @@ class PriceListVersion extends Model
 {
     use HasFactory;
 
+    protected $hidden = ['file_path', 'storage_disk'];
+
     protected $fillable = [
         'price_list_id',
         'version_number',
@@ -89,7 +91,8 @@ class PriceListVersion extends Model
         if (!$this->file_path) {
             return null;
         }
-        return storage_path("app/{$this->file_path}");
+        $disk = $this->storage_disk ?? 'local';
+        return $disk === 'local' ? \Storage::disk($disk)->path($this->file_path) : null;
     }
 
     /**

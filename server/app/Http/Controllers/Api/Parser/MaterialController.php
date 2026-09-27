@@ -10,12 +10,14 @@ use App\Models\MaterialPriceHistory;
 use Carbon\Carbon;
 use App\Services\UrlNormalizer;
 use App\Services\Material\EdgeMaterialNormalizer;
+use App\Services\Storage\ObjectStorage;
 
 class MaterialController extends Controller
 {
     public function __construct(
         private UrlNormalizer $urlNormalizer,
-        private EdgeMaterialNormalizer $edgeMaterialNormalizer
+        private EdgeMaterialNormalizer $edgeMaterialNormalizer,
+        private ObjectStorage $storage,
     ) {}
     /**
      * Создаёт или обновляет материал, полученный от парсера.
@@ -52,6 +54,8 @@ class MaterialController extends Controller
         }
 
         $data = $validator->validated();
+        $data['screenshot_path'] = $this->storage->ingestGeneratedPath('screenshots/parser', $data['screenshot_path'] ?? null);
+        $data['storage_disk'] = $data['screenshot_path'] ? ObjectStorage::DISK : null;
         $normalizedEdge = ($data['type'] ?? null) === Material::TYPE_EDGE
             ? $this->edgeMaterialNormalizer->normalize($data)
             : null;
@@ -135,6 +139,9 @@ class MaterialController extends Controller
             $screenshotPath = $needNewScreenshot 
                 ? ($data['screenshot_path'] ?? null)
                 : ($lastHistory ? $lastHistory->screenshot_path : ($data['screenshot_path'] ?? null));
+            $screenshotDisk = $needNewScreenshot
+                ? ($data['storage_disk'] ?? null)
+                : ($lastHistory?->storage_disk ?? $data['storage_disk'] ?? null);
 
             if ($priceChanged) {
                 // === Цена изменилась ===
@@ -150,6 +157,7 @@ class MaterialController extends Controller
                 $material->price_per_unit = $incomingPrice;
                 $material->source_url = $data['source_url'];
                 $material->last_price_screenshot_path = $screenshotPath;
+                $material->storage_disk = $screenshotDisk;
                 if (isset($data['availability_status'])) {
                     $material->availability_status = $data['availability_status'];
                 }
@@ -173,6 +181,7 @@ class MaterialController extends Controller
                     'raw_source_url' => $data['source_url'],
                     'normalized_source_url' => $this->urlNormalizer->normalize($data['source_url']),
                     'screenshot_path' => $screenshotPath,
+                    'storage_disk' => $screenshotDisk,
                     'true_score' => 100,
                 ]);
                 
@@ -194,10 +203,12 @@ class MaterialController extends Controller
                 if ($statusChanged) {
                     $material->availability_status = $data['availability_status'];
                     $material->last_price_screenshot_path = $screenshotPath;
+                    $material->storage_disk = $screenshotDisk;
                     
                     // Обновляем скриншот в текущей активной записи истории
                     if ($lastHistory) {
                         $lastHistory->screenshot_path = $screenshotPath;
+                        $lastHistory->storage_disk = $screenshotDisk;
                         $lastHistory->save();
                     }
                 }
@@ -241,6 +252,7 @@ class MaterialController extends Controller
                 'price_per_unit' => $data['price_per_unit'],
                 'source_url' => $data['source_url'],
                 'last_price_screenshot_path' => $data['screenshot_path'] ?? null,
+                'storage_disk' => $data['storage_disk'] ?? null,
                 'availability_status' => $data['availability_status'] ?? null,
                 'price_checked_at' => $parsedAt, // Сразу ставим время проверки
                 'is_active' => true,
@@ -264,6 +276,7 @@ class MaterialController extends Controller
                 'raw_source_url' => $data['source_url'],
                 'normalized_source_url' => $this->urlNormalizer->normalize($data['source_url']),
                 'screenshot_path' => $data['screenshot_path'] ?? null,
+                'storage_disk' => $data['storage_disk'] ?? null,
                 'true_score' => 100,
             ]);
             
@@ -352,6 +365,9 @@ class MaterialController extends Controller
      */
     protected function processSingleMaterial(array $data): array
     {
+        $data['screenshot_path'] = $this->storage->ingestGeneratedPath('screenshots/parser', $data['screenshot_path'] ?? null);
+        $data['storage_disk'] = $data['screenshot_path'] ? ObjectStorage::DISK : null;
+
         $normalizedEdge = ($data['type'] ?? null) === Material::TYPE_EDGE
             ? $this->edgeMaterialNormalizer->normalize($data)
             : null;
@@ -416,6 +432,7 @@ class MaterialController extends Controller
                 $material->price_per_unit = $incomingPrice;
                 $material->source_url = $data['source_url'];
                 $material->last_price_screenshot_path = $data['screenshot_path'] ?? null;
+                $material->storage_disk = $data['storage_disk'] ?? null;
                 if (isset($data['availability_status'])) {
                     $material->availability_status = $data['availability_status'];
                 }
@@ -439,6 +456,7 @@ class MaterialController extends Controller
                     'raw_source_url' => $data['source_url'],
                     'normalized_source_url' => $this->urlNormalizer->normalize($data['source_url']),
                     'screenshot_path' => $data['screenshot_path'] ?? null,
+                    'storage_disk' => $data['storage_disk'] ?? null,
                     'true_score' => 100,
                 ]);
                 
@@ -484,6 +502,7 @@ class MaterialController extends Controller
                 'price_per_unit' => $data['price_per_unit'],
                 'source_url' => $data['source_url'],
                 'last_price_screenshot_path' => $data['screenshot_path'] ?? null,
+                'storage_disk' => $data['storage_disk'] ?? null,
                 'availability_status' => $data['availability_status'] ?? null,
                 'price_checked_at' => $parsedAt,
                 'is_active' => true,
@@ -506,6 +525,7 @@ class MaterialController extends Controller
                 'raw_source_url' => $data['source_url'],
                 'normalized_source_url' => $this->urlNormalizer->normalize($data['source_url']),
                 'screenshot_path' => $data['screenshot_path'] ?? null,
+                'storage_disk' => $data['storage_disk'] ?? null,
                 'true_score' => 100,
             ]);
             

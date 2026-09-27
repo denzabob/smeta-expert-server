@@ -10,14 +10,15 @@ use App\Models\EvidenceLink;
 use App\Models\EvidenceRecord;
 use App\Models\FinishedProductPriceEvidenceAsset;
 use App\Models\GenericEvidenceAsset;
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class FinishedProductEvidenceRecordBridge
 {
     public function __construct(
         private UrlNormalizer $urlNormalizer,
+        private ObjectStorage $storage,
     ) {}
 
     public function materializeForSpecification(int $specificationId, int $userId): int
@@ -143,6 +144,7 @@ class FinishedProductEvidenceRecordBridge
                 'evidence_record_id' => $record->id,
                 'asset_type' => $this->toGenericAssetType($assetType),
                 'file_path' => $genericFilePath,
+                'storage_disk' => ObjectStorage::DISK,
                 'original_filename' => $asset->original_name,
                 'mime_type' => $asset->mime_type,
                 'file_size' => $asset->file_size,
@@ -168,18 +170,11 @@ class FinishedProductEvidenceRecordBridge
         FinishedProductPriceEvidenceAsset $asset,
         EvidenceRecord $record,
     ): string {
-        $sourcePath = (string) $asset->file_path;
-        $disk = Storage::disk('public');
-
-        if (!$disk->exists($sourcePath)) {
-            return $sourcePath;
-        }
-
-        $extension = pathinfo($asset->original_name ?: $sourcePath, PATHINFO_EXTENSION);
-        $targetPath = 'evidence-records/' . $record->uuid . '/' . Str::uuid()->toString() . ($extension ? '.' . $extension : '');
-
-        $disk->put($targetPath, $disk->get($sourcePath));
-
-        return $targetPath;
+        return $this->storage->copy(
+            $asset->storage_disk ?: 'public',
+            (string) $asset->file_path,
+            'evidence-records/' . $record->uuid,
+            (int) $record->created_by,
+        );
     }
 }

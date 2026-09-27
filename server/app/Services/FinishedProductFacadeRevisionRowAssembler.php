@@ -117,6 +117,7 @@ class FinishedProductFacadeRevisionRowAssembler
             'source_url' => $row['source_url'] ?? null,
             'observed_at' => $row['observed_at'] ?? null,
             'screenshot_path' => $row['screenshot_path'] ?? null,
+            'storage_disk' => $row['storage_disk'] ?? 'public',
             'true_score' => $row['true_score'] ?? null,
             'source_type' => $row['source_type'] ?? null,
             'capture_source' => $row['capture_source'] ?? null,

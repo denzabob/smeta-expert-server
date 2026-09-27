@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MaterialPriceHistory extends Model
 {
+    protected $hidden = ['screenshot_path', 'snapshot_path', 'storage_disk'];
     use HasFactory;
 
     // Source types
@@ -24,6 +25,7 @@ class MaterialPriceHistory extends Model
         'price_per_unit',
         'source_url',
         'screenshot_path',
+        'storage_disk',
         // New observation fields
         'region_id',
         'observed_at',
