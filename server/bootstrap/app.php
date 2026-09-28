@@ -41,6 +41,13 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        $exceptions->render(function (\App\Services\Storage\StorageQuotaException $e, Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                $response = $e->toApiResponse();
+                return response()->json($response['body'], $response['status']);
+            }
+            return null;
+        });
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([

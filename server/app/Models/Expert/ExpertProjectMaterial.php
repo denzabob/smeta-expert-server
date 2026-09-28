@@ -5,6 +5,8 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 class ExpertProjectMaterial extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     use HasPublicUuid;
     protected $fillable = ['expert_project_id', 'uploaded_by', 'original_name', 'storage_disk', 'storage_path', 'mime_type', 'extension', 'size', 'category', 'status', 'metadata'];
     protected $hidden = ['id', 'expert_project_id', 'uploaded_by', 'storage_disk', 'storage_path'];

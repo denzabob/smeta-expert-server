@@ -659,15 +659,17 @@ class ChromeExtensionController extends Controller
 
         $uploadedFile = $validated['screenshot_file'];
         // File upload is non-transactional; DB writes below are atomic.
-        // If the transaction fails the uploaded file remains as an orphan on disk.
+        // The account lifecycle compensates the object if DB finalization fails.
         $storage = app(ObjectStorage::class);
-        $path = $storage->storeUploaded('screenshots/chrome', $uploadedFile, (int) $request->user()->id);
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $upload = $accountFiles->prepareUploaded('screenshots/chrome', $uploadedFile, (int) $request->user()->id);
+        $path = $upload->path();
 
         $urlNormalizer = app(UrlNormalizer::class);
         $rawUrl = $validated['source_url'];
         $normalized = $urlNormalizer->normalize($rawUrl);
 
-        $result = DB::transaction(function () use ($item, $material, $validated, $path, $rawUrl, $normalized, $uploadedFile) {
+        $result = $accountFiles->commit([$upload], function () use ($item, $material, $validated, $path, $rawUrl, $normalized, $uploadedFile) {
             $artifact = EvidenceArtifact::create([
                 'uuid'                  => (string) Str::uuid(),
                 'material_id'           => $material->id,

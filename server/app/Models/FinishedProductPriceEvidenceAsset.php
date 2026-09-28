@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class FinishedProductPriceEvidenceAsset extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     protected $hidden = ['file_path', 'storage_disk'];
     use HasFactory;
 

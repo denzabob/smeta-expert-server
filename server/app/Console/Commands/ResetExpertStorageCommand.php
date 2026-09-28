@@ -56,10 +56,12 @@ final class ResetExpertStorageCommand extends Command
         $initialFileDbObjects = $this->fileDbObjectCount();
 
         try {
-            $activeReservations = DB::table('expert_storage_upload_reservations')
+            $activeReservations = DB::table('storage_upload_reservations')
+                ->where('module', 'expert')
                 ->where('status', 'reserved')
                 ->where('expires_at', '>', now())
                 ->count();
+            $activeReservations += DB::table('expert_storage_upload_reservations')->where('status', 'reserved')->where('expires_at', '>', now())->count();
             if ($activeReservations > 0) {
                 $this->error("ACTIVE_STORAGE_RESERVATIONS: {$activeReservations}; дождитесь завершения загрузок и повторите reset.");
 
@@ -78,13 +80,16 @@ final class ResetExpertStorageCommand extends Command
                 }
             }
 
+            $protected = DB::table('storage_files as files')->join('storage_file_links as links', 'links.storage_file_id', '=', 'files.id')
+                ->where('links.module', '!=', 'expert')->select('files.disk', 'files.path')->distinct()->get()
+                ->groupBy('disk')->map(fn ($rows) => $rows->pluck('path')->all())->all();
             $before = [];
             foreach (['local', 's1'] as $disk) {
                 $before[$disk] = $storage->inventoryPrefix(
                     $disk,
                     'expert',
                     ['operation' => 'storage_reset_preflight'],
-                    static fn (string $key): bool => ! str_starts_with($key, 'expert/health-checks/'),
+                    static fn (string $key): bool => ! str_starts_with($key, 'expert/health-checks/') && ! in_array($key, $protected[$disk] ?? [], true),
                 );
             }
         } catch (Throwable $exception) {
@@ -131,6 +136,9 @@ final class ResetExpertStorageCommand extends Command
             return self::FAILURE;
         }
 
+        foreach (DB::table('storage_upload_reservations')->where('module', 'expert')->where('status', 'reserved')->pluck('reservation_id') as $id) {
+            app(\App\Services\Storage\StorageUsageService::class)->release($id, expired: true);
+        }
         $this->deleteRowsInChunks('expert_storage_upload_reservations');
         $this->deleteRowsInChunks('expert_storage_migrations');
         if (Schema::hasTable('expert_message_materials')) {
@@ -151,13 +159,13 @@ final class ResetExpertStorageCommand extends Command
                     $disk,
                     'expert',
                     ['operation' => 'storage_reset'],
-                    static fn (string $key): bool => ! str_starts_with($key, 'expert/health-checks/'),
+                    static fn (string $key): bool => ! str_starts_with($key, 'expert/health-checks/') && ! in_array($key, $protected[$disk] ?? [], true),
                 );
                 $after = $storage->inventoryPrefix(
                     $disk,
                     'expert',
                     ['operation' => 'storage_reset_verify'],
-                    static fn (string $key): bool => ! str_starts_with($key, 'expert/health-checks/'),
+                    static fn (string $key): bool => ! str_starts_with($key, 'expert/health-checks/') && ! in_array($key, $protected[$disk] ?? [], true),
                 );
                 $physicalFilesRemoved += max(0, $before[$disk]['files'] - $after['files']);
                 $bytesRemoved += max(0, $before[$disk]['bytes'] - $after['bytes']);
@@ -173,7 +181,7 @@ final class ResetExpertStorageCommand extends Command
                         $disk,
                         'expert',
                         ['operation' => 'storage_reset_verify'],
-                        static fn (string $key): bool => ! str_starts_with($key, 'expert/health-checks/'),
+                        static fn (string $key): bool => ! str_starts_with($key, 'expert/health-checks/') && ! in_array($key, $protected[$disk] ?? [], true),
                     );
                     $physicalFilesRemoved += max(0, $before[$disk]['files'] - $after['files']);
                     $bytesRemoved += max(0, $before[$disk]['bytes'] - $after['bytes']);

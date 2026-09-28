@@ -144,7 +144,7 @@ class FinishedProductEvidenceRecordBridge
                 'evidence_record_id' => $record->id,
                 'asset_type' => $this->toGenericAssetType($assetType),
                 'file_path' => $genericFilePath,
-                'storage_disk' => ObjectStorage::DISK,
+                'storage_disk' => $this->storage->resolveDisk($asset->storage_disk, (string) $asset->file_path),
                 'original_filename' => $asset->original_name,
                 'mime_type' => $asset->mime_type,
                 'file_size' => $asset->file_size,
@@ -170,11 +170,8 @@ class FinishedProductEvidenceRecordBridge
         FinishedProductPriceEvidenceAsset $asset,
         EvidenceRecord $record,
     ): string {
-        return $this->storage->copy(
-            $asset->storage_disk ?: 'public',
-            (string) $asset->file_path,
-            'evidence-records/' . $record->uuid,
-            (int) $record->created_by,
-        );
+        // This is another business reference to the same physical object.
+        // Legacy locators remain readable without creating an unaccounted copy.
+        return (string) $asset->file_path;
     }
 }

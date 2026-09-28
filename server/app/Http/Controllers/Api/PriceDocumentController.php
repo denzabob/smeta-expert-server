@@ -57,10 +57,12 @@ class PriceDocumentController extends Controller
         $sourceType = $validated['source_type'];
         $type = $purpose === 'facades' ? PriceList::TYPE_MATERIALS : PriceList::TYPE_OPERATIONS;
 
-        $storedPath = null;
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $upload = $sourceType === 'file' && $request->hasFile('file')
+            ? $accountFiles->prepareUploaded("price-lists/{$supplier->id}", $request->file('file'), (int) $request->user()->id) : null;
 
         try {
-            return DB::transaction(function () use ($request, $supplier, $validated, $purpose, $sourceType, $type, $storage, &$storedPath) {
+            return $accountFiles->commit($upload ? [$upload] : [], function () use ($request, $supplier, $validated, $purpose, $sourceType, $type, $upload) {
             // Find or create a price list for this supplier+purpose
             $priceList = $this->findOrCreatePriceList($supplier, $type, $purpose, $validated['title'] ?? null);
 
@@ -80,8 +82,7 @@ class PriceDocumentController extends Controller
                 $sizeBytes = $file->getSize();
                 $sha256 = hash_file('sha256', $file->getRealPath());
 
-                $filePath = $storage->storeUploaded("price-lists/{$supplier->id}/{$priceList->id}", $file, (int) $request->user()->id);
-                $storedPath = $filePath;
+                $filePath = $upload->path();
             }
 
             // Create version
@@ -127,10 +128,6 @@ class PriceDocumentController extends Controller
             ], 201);
             });
         } catch (Throwable $exception) {
-            if ($storedPath) {
-                $storage->delete(ObjectStorage::DISK, $storedPath);
-            }
-
             throw $exception;
         }
     }

@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class RevisionRun extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     public const STATUS_PENDING = 'PENDING';
     public const STATUS_IN_PROGRESS = 'IN_PROGRESS';
     public const STATUS_NEEDS_MANUAL = 'NEEDS_MANUAL';

@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ImportSession extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     use HasFactory;
 
     protected $hidden = ['file_path', 'storage_disk'];

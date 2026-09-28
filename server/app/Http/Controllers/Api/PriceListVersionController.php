@@ -544,15 +544,13 @@ class PriceListVersionController extends Controller
             $sizeBytes = $file->getSize();
             $sha256 = hash_file('sha256', $file->getRealPath());
 
-            $filePath = $storage->storeUploaded(
-                "price-lists/{$priceList->supplier_id}/{$priceList->id}",
-                $file,
-                (int) $request->user()->id,
-            );
+            $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+            $upload = $accountFiles->prepareUploaded("price-lists/{$priceList->supplier_id}/{$priceList->id}", $file, (int) $request->user()->id);
+            $filePath = $upload->path();
         }
 
         try {
-            $version = PriceListVersion::create([
+            $version = app(\App\Services\Storage\AccountFileStorage::class)->commit(isset($upload) ? [$upload] : [], fn () => PriceListVersion::create([
             'price_list_id'    => $priceList->id,
             'version_number'   => $versionNumber,
             'source_type'      => $sourceType,
@@ -568,12 +566,8 @@ class PriceListVersionController extends Controller
             'currency'         => $priceList->default_currency ?? 'RUB',
             'notes'            => $validated['notes'] ?? null,
             'manual_label'     => $validated['manual_label'] ?? null,
-            ]);
+            ]));
         } catch (\Throwable $exception) {
-            if ($filePath !== null) {
-                $storage->delete(ObjectStorage::DISK, $filePath);
-            }
-
             throw $exception;
         }
 
@@ -953,7 +947,10 @@ class PriceListVersionController extends Controller
         }
 
         $uuid = (string) \Illuminate\Support\Str::uuid();
-
+        $files = $request->file('files', []);
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $uploads = $accountFiles->prepareUploads('evidence-records/' . $uuid, $files, (int) $request->user()->id);
+        return $accountFiles->commit($uploads, function () use ($request, $validated, $costComponent, $captureMethod, $metadata, $uuid, $files, $uploads) {
         $record = EvidenceRecord::create([
             'uuid'                => $uuid,
             'cost_component'      => $costComponent,
@@ -970,8 +967,8 @@ class PriceListVersionController extends Controller
         // Store uploaded files as GenericEvidenceAsset rows (same path as EvidenceRunController::uploadAsset)
         $assetsCount = 0;
         if ($request->hasFile('files')) {
-            foreach ($request->file('files') as $file) {
-                $path = app(ObjectStorage::class)->storeUploaded('evidence-records/' . $uuid, $file, (int) $request->user()->id);
+            foreach ($files as $index => $file) {
+                $path = $uploads[$index]->path();
                 GenericEvidenceAsset::create([
                     'uuid'               => (string) \Illuminate\Support\Str::uuid(),
                     'evidence_record_id' => $record->id,
@@ -988,6 +985,7 @@ class PriceListVersionController extends Controller
         }
 
         return [$record, $assetsCount];
+        });
     }
 
     /**

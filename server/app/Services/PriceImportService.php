@@ -22,10 +22,12 @@ class PriceImportService
 
     public function create(User $user, array $validated, ?UploadedFile $file = null): PriceImport
     {
-        $storedPath = $file ? $this->storeFile($user, $file) : null;
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $upload = $file ? $accountFiles->prepareUploaded('price-imports/foundation', $file, (int) $user->id) : null;
+        $storedPath = $upload?->path();
 
         try {
-            return DB::transaction(function () use ($user, $validated, $file, $storedPath) {
+            return $accountFiles->commit($upload ? [$upload] : [], function () use ($user, $validated, $file, $storedPath) {
             $importType = $file ? PriceImport::TYPE_EXCEL : PriceImport::TYPE_MANUAL;
 
             $priceImport = PriceImport::create([
@@ -59,10 +61,6 @@ class PriceImportService
             return $priceImport->fresh('items');
             });
         } catch (\Throwable $exception) {
-            if ($storedPath) {
-                $this->storage->delete(ObjectStorage::DISK, $storedPath);
-            }
-
             throw $exception;
         }
     }
@@ -107,11 +105,6 @@ class PriceImportService
         ])->save();
 
         return $item->fresh(['import', 'operation']);
-    }
-
-    private function storeFile(User $user, UploadedFile $file): string
-    {
-        return $this->storage->storeUploaded('price-imports/foundation', $file, (int) $user->id);
     }
 
     /**

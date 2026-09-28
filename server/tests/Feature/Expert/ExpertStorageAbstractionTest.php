@@ -6,6 +6,9 @@ namespace Tests\Feature\Expert;
 
 use App\Models\Expert\ExpertProject;
 use App\Models\User;
+use App\Models\BillingPlan;
+use App\Jobs\DeleteAccountStorageFiles;
+use App\Services\Storage\ObjectStorage;
 use App\Services\Expert\ExpertMaterialContextBuilder;
 use App\Services\Expert\ExpertStorageException;
 use App\Services\Expert\ExpertStorageService;
@@ -21,6 +24,14 @@ use Tests\TestCase;
 class ExpertStorageAbstractionTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['billing.default_plan' => 'storage-test-default']);
+        BillingPlan::query()->create(['code' => 'storage-test-default', 'name' => 'Storage test',
+            'is_active' => true, 'metadata_json' => ['limits' => ['storage_bytes' => null]]]);
+    }
 
     public function test_configured_disk_upload_read_download_and_delete_keep_private_contract(): void
     {
@@ -86,6 +97,7 @@ class ExpertStorageAbstractionTest extends TestCase
         $this->assertSame(0, $usage->reservedBytes);
 
         $this->actingAs($user, 'sanctum')->deleteJson("/api/expert/projects/{$project->public_id}")->assertNoContent();
+        (new DeleteAccountStorageFiles())->handle(app(ObjectStorage::class));
         Storage::disk('s1')->assertMissing($material->storage_path);
         $this->assertDatabaseMissing('expert_storage_cleanup_tasks', [
             'disk' => 's1',
@@ -235,6 +247,7 @@ class ExpertStorageAbstractionTest extends TestCase
         $this->assertNotEmpty(Storage::disk('local')->allFiles("expert/{$project->public_id}/thumbnails/{$image->public_id}"));
 
         $this->deleteJson("/api/expert/projects/{$project->public_id}")->assertNoContent();
+        (new DeleteAccountStorageFiles())->handle(app(ObjectStorage::class));
         Storage::disk('s1')->assertMissing($s1Material->storageKey());
         Storage::disk('s1')->assertMissing($image->storageKey());
         $this->assertSame([], Storage::disk('local')->allFiles("expert/{$project->public_id}/thumbnails"));
@@ -275,13 +288,13 @@ class ExpertStorageAbstractionTest extends TestCase
         $this->assertStringNotContainsString('127.0.0.1', $response->getContent());
         $this->assertStringNotContainsString('test-secret-never-log', $response->getContent());
         $this->assertDatabaseCount('expert_project_materials', 0);
-        $this->assertDatabaseHas('expert_storage_usages', [
+        $this->assertDatabaseHas('storage_usages', [
             'user_id' => $user->id,
-            'originals_bytes' => 0,
+            'used_bytes' => 0,
             'reserved_bytes' => 0,
-            'materials_count' => 0,
+            'files_count' => 0,
         ]);
-        $this->assertDatabaseHas('expert_storage_upload_reservations', [
+        $this->assertDatabaseHas('storage_upload_reservations', [
             'user_id' => $user->id,
             'status' => 'released',
         ]);

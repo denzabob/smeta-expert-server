@@ -14,8 +14,7 @@ class ExpertMaterialService
     public function __construct(
         private readonly ExpertStorageService $storage,
         private readonly ExpertStorageCleanupService $storageCleanup,
-        private readonly ExpertStorageUsageService $storageUsage,
-        private readonly ExpertStorageQuotaService $storageQuota,
+        private readonly \App\Services\Storage\StorageUsageService $storageUsage,
         private readonly ExpertMaterialThumbnailService $thumbnails,
         private readonly ExpertPdfOcrCache $ocrCache,
     ) {}
@@ -40,39 +39,8 @@ class ExpertMaterialService
             DB::transaction(function () use ($project, $userId, $reservationId, $size): void {
                 $target = ExpertProject::query()->lockForUpdate()->findOrFail($project->id);
                 $owner = User::query()->findOrFail((int) $target->user_id);
-                $usage = $this->storageUsage->lockUserUsage($owner);
-                $decision = $this->storageQuota->decide(
-                    $owner,
-                    $usage,
-                    $size,
-                    ['action' => 'expert.material.upload', 'project_id' => (int) $target->id],
-                );
-
-                if (! $decision->allowed) {
-                    Log::notice('Expert storage quota rejected a material upload.', [
-                        'user_id' => (int) $target->user_id,
-                        'project_id' => (int) $target->id,
-                        'plan_code' => $decision->planCode,
-                        'used_bytes' => $decision->usedBytes,
-                        'limit_bytes' => $decision->limitBytes,
-                        'requested_bytes' => $decision->requestedBytes,
-                        'projected_bytes' => $decision->projectedBytes,
-                        'remaining_bytes' => $decision->remainingBytes,
-                        'reason' => $decision->reason,
-                        'error_code' => $decision->reason === 'exception'
-                            ? 'BILLING_LIMIT_CHECK_FAILED'
-                            : 'STORAGE_QUOTA_EXCEEDED',
-                    ]);
-                    throw new ExpertStorageQuotaException($decision);
-                }
-
-                $this->storageUsage->reserveUpload(
-                    $owner,
-                    (int) $target->id,
-                    $reservationId,
-                    $size,
-                    (int) config('expert.storage_reservation_ttl_minutes', 60),
-                );
+                $this->storageUsage->reserve((int) $owner->id, 'expert', $size, $reservationId,
+                    (int) config('expert.storage_reservation_ttl_minutes', 60));
             }, 3);
             $reservationCreated = true;
 
@@ -80,11 +48,16 @@ class ExpertMaterialService
             // local fallback: the configured primary disk must be S1.
             $putAttempted = true;
             $storedKey = $this->storage->putUploadedFile($disk, $directory, $file, $storedName, $context);
+            $size = $this->storage->size($disk, $storedKey, $context);
 
             return DB::transaction(function () use ($project, $userId, $file, $disk, $storedKey, $extension, $size, $reservationId): ExpertProjectMaterial {
                 $target = ExpertProject::query()->lockForUpdate()->findOrFail($project->id);
                 $owner = User::query()->findOrFail((int) $target->user_id);
-                $this->storageUsage->consumeUploadReservation($owner, $reservationId, $size);
+                $this->storageUsage->finalize($reservationId, [
+                    'disk' => $disk, 'path' => $storedKey, 'purpose' => 'expert_material',
+                    'size_bytes' => $size, 'mime_type' => $file->getMimeType(),
+                    'original_filename' => $file->getClientOriginalName(), 'billable' => true,
+                ]);
 
                 return ExpertProjectMaterial::create([
                     'expert_project_id' => $target->id,
@@ -105,7 +78,7 @@ class ExpertMaterialService
             }
             if ($reservationCreated) {
                 try {
-                    $this->storageUsage->releaseUploadReservation($reservationId);
+                    $this->storageUsage->release($reservationId);
                 } catch (\Throwable $releaseException) {
                     Log::warning('Expert storage upload reservation release failed.', [
                         'operation' => 'release_reservation',
@@ -189,14 +162,18 @@ class ExpertMaterialService
             $cacheDisk = $this->storage->cacheDisk();
             $context = $this->storage->contextForMaterial($target);
 
-            $this->storageUsage->decrement((int) $project->user_id, (int) $target->size);
+            $this->storageUsage->unlink('expert', $target->getTable(), (int) $target->id);
+            $shared = \Illuminate\Support\Facades\DB::table('storage_files')
+                ->where('disk', $disk)->where('path', $key)->where('status', 'active')->exists();
 
             if ($journalAvailable) {
                 $tasks = [
-                    $this->storageCleanup->scheduleFile($key, $disk),
                     $this->storageCleanup->scheduleDirectory($this->thumbnails->cacheDirectory($target), $cacheDisk),
                     $this->storageCleanup->scheduleDirectory($this->ocrCache->cacheDirectory($target), $cacheDisk),
                 ];
+                if (!$shared) {
+                    $tasks[] = $this->storageCleanup->scheduleFile($key, $disk);
+                }
                 $target->delete();
 
                 return ['journal' => true, 'tasks' => $tasks, 'context' => $context];
@@ -208,7 +185,7 @@ class ExpertMaterialService
                 'journal' => false,
                 'context' => $context,
                 'items' => [
-                    ['kind' => 'file', 'path' => $key, 'disk' => $disk],
+                    ...($shared ? [] : [['kind' => 'file', 'path' => $key, 'disk' => $disk]]),
                     ['kind' => 'directory', 'path' => $this->thumbnails->cacheDirectory($target), 'disk' => $cacheDisk],
                     ['kind' => 'directory', 'path' => $this->ocrCache->cacheDirectory($target), 'disk' => $cacheDisk],
                 ],

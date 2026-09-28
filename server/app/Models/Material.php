@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Material extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     protected $hidden = ['last_price_screenshot_path', 'storage_disk'];
     use HasFactory;
 

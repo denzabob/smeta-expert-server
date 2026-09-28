@@ -29,22 +29,20 @@ class ExpertProjectService
             $disks = $this->cleanupDisks($target);
             $context = $this->storage->contextForProject($target);
 
-            $totals = $target->materials()
-                ->selectRaw('COALESCE(SUM(size), 0) AS originals_bytes')
-                ->selectRaw('COUNT(*) AS materials_count')
-                ->first();
-            $this->storageUsage->decrement(
-                (int) $target->user_id,
-                (int) ($totals->originals_bytes ?? 0),
-                (int) ($totals->materials_count ?? 0),
-            );
+            foreach ($target->materials()->get() as $material) {
+                app(\App\Services\Storage\StorageUsageService::class)->unlink('expert', $material->getTable(), (int) $material->id);
+            }
 
+            // Originals are removed individually by the generic retry job: a shared
+            // object must never be removed by a project-directory cleanup.
+            $cacheDisks = array_values(array_diff($disks, ['s1']));
             $tasks = $journalAvailable
-                ? array_map(fn (string $disk) => $this->storageCleanup->scheduleDirectory($directory, $disk), $disks)
+                ? array_map(fn (string $disk) => $this->storageCleanup->scheduleDirectory($directory, $disk), $cacheDisks)
                 : [];
             $target->delete();
 
-            return ['tasks' => $tasks, 'disks' => $disks, 'context' => $context];
+            DB::afterCommit(fn () => \App\Jobs\DeleteAccountStorageFiles::enqueue());
+            return ['tasks' => $tasks, 'disks' => $cacheDisks, 'context' => $context];
         }, 3);
 
         if ($journalAvailable) {

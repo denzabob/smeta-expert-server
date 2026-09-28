@@ -168,6 +168,7 @@ Route::middleware(InternalOnlyMiddleware::class)->group(function () {
 
 // Защищённые маршруты
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('account/storage', \App\Http\Controllers\Api\AccountStorageController::class);
     // ========== Security: Auth-Method Profile + Universal Step-Up ==========
     // throttle:N,M  → N attempts per M minutes per authenticated user+IP
     Route::get('security/auth-status', [\App\Http\Controllers\Api\SecurityController::class, 'authStatus']);

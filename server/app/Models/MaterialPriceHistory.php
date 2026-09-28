@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MaterialPriceHistory extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     protected $hidden = ['screenshot_path', 'snapshot_path', 'storage_disk'];
     use HasFactory;
 

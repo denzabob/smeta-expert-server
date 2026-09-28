@@ -1,5 +1,8 @@
 <?php
 
+\Illuminate\Support\Facades\Schedule::job(new \App\Jobs\ExpireStorageUploadReservations())->everyFiveMinutes()->withoutOverlapping();
+\Illuminate\Support\Facades\Schedule::job(new \App\Jobs\DeleteAccountStorageFiles())->everyFiveMinutes()->withoutOverlapping();
+
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;

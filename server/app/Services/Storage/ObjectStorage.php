@@ -361,13 +361,13 @@ class ObjectStorage
         try {
             $written = Storage::disk($disk)->writeStream($path, $stream);
             if ($written === false) {
-                throw new ObjectStorageException(ObjectStorageException::BACKEND_UNAVAILABLE);
+                throw new ObjectStorageException(ObjectStorageException::BACKEND_UNAVAILABLE, objectDisk: $disk, objectPath: $path);
             }
         } catch (ObjectStorageException $exception) {
             throw $exception;
         } catch (Throwable $exception) {
             $this->logFailure('write');
-            throw new ObjectStorageException(ObjectStorageException::BACKEND_UNAVAILABLE, $exception);
+            throw new ObjectStorageException(ObjectStorageException::BACKEND_UNAVAILABLE, $exception, $disk, $path);
         }
     }
 

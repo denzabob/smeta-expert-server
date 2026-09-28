@@ -10,6 +10,7 @@ use Carbon\Carbon;
 
 class ProjectRevision extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
     use HasUuids;
 
     protected $table = 'project_revisions';

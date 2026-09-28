@@ -402,9 +402,11 @@ class EvidenceRunController extends Controller
         ]);
 
         $file = $request->file('file');
-        $path = $storage->storeUploaded('evidence-records/' . $record->uuid, $file, (int) $request->user()->id);
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $upload = $accountFiles->prepareUploaded('evidence-records/' . $record->uuid, $file, (int) $request->user()->id);
+        $path = $upload->path();
 
-        $asset = GenericEvidenceAsset::create([
+        $asset = $accountFiles->commit([$upload], fn () => GenericEvidenceAsset::create([
             'uuid'              => (string) Str::uuid(),
             'evidence_record_id' => $record->id,
             'asset_type'        => $request->input('asset_type', 'screenshot'),
@@ -414,7 +416,7 @@ class EvidenceRunController extends Controller
             'mime_type'         => $file->getMimeType(),
             'file_size'         => $file->getSize(),
             'sha256'            => hash_file('sha256', $file->getRealPath()),
-        ]);
+        ]));
 
         $assetMetadata = [
             'disk' => ObjectStorage::DISK,
@@ -954,15 +956,19 @@ class EvidenceRunController extends Controller
             'extracted_name' => 'nullable|string|max:500',
         ]);
 
-        $storedPath = null;
+        $file = $request->file('file');
+        $recordUuid = (string) Str::uuid();
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $upload = $accountFiles->prepareUploaded('evidence-records/' . $recordUuid, $file, (int) $request->user()->id);
+        $path = $upload->path();
 
         try {
-            $response = DB::transaction(function () use ($request, $item, $run, $storage, &$storedPath) {
+            $response = $accountFiles->commit([$upload], function () use ($request, $item, $run, $file, $path, $recordUuid) {
             $file = $request->file('file');
 
             // 1. Create EvidenceRecord
             $record = EvidenceRecord::create([
-                'uuid'                => (string) Str::uuid(),
+                'uuid'                => $recordUuid,
                 'cost_component'      => $item->cost_component,
                 'source_type'         => SourceType::MANUAL_INPUT,
                 'capture_method'      => CaptureMethod::FILE_UPLOAD,
@@ -979,8 +985,6 @@ class EvidenceRunController extends Controller
             ]);
 
             // 2. Store uploaded file as asset
-            $path = $storage->storeUploaded('evidence-records/' . $record->uuid, $file, (int) $request->user()->id);
-            $storedPath = $path;
             GenericEvidenceAsset::create([
                 'uuid'               => (string) Str::uuid(),
                 'evidence_record_id' => $record->id,
@@ -1011,10 +1015,6 @@ class EvidenceRunController extends Controller
             ], 201);
             });
         } catch (\Throwable $exception) {
-            if ($storedPath) {
-                $storage->delete(ObjectStorage::DISK, $storedPath);
-            }
-
             throw $exception;
         }
 

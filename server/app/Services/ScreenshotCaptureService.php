@@ -15,7 +15,8 @@ class ScreenshotCaptureService
         string $currency = 'RUB',
         ?int $regionId = null,
         ?int $materialId = null,
-        ?int $revisionRunItemId = null
+        ?int $revisionRunItemId = null,
+        ?int $ownerId = null,
     ): array {
         $startedAt = microtime(true);
         $maxParallel = max(1, (int) config('parser.screenshot_max_parallel', 3));
@@ -157,7 +158,9 @@ class ScreenshotCaptureService
 
             if ($result['status'] === 'ok' && $result['screenshot_path']) {
                 try {
-                    $result['screenshot_path'] = $this->persistScreenshot((string) $result['screenshot_path']);
+                    $result['screenshot_path'] = $this->persistScreenshot((string) $result['screenshot_path'], $revisionRunItemId, $ownerId);
+                } catch (\App\Services\Storage\StorageQuotaException $e) {
+                    throw $e;
                 } catch (\Throwable) {
                     $result['status'] = 'error';
                     $result['screenshot_path'] = null;
@@ -235,11 +238,31 @@ class ScreenshotCaptureService
         return 'error';
     }
 
-    private function persistScreenshot(string $sourcePath): string
+    private function persistScreenshot(string $sourcePath, ?int $revisionRunItemId, ?int $ownerId): string
     {
         if (is_file($sourcePath) && is_readable($sourcePath)) {
             try {
-                return app(ObjectStorage::class)->importFile('screenshots/captured', $sourcePath);
+                $item = $revisionRunItemId ? \App\Models\RevisionRunItem::findOrFail($revisionRunItemId) : null;
+                $projectOwner = $item?->run?->project?->user_id;
+                if ($ownerId !== null && $projectOwner !== null && $ownerId !== (int) $projectOwner) {
+                    throw new \LogicException('Screenshot account owner mismatch.');
+                }
+                $ownerId ??= $projectOwner ? (int) $projectOwner : null;
+                if ($ownerId === null) {
+                    // Global parser collection is a system source, not account-owned storage.
+                    return app(ObjectStorage::class)->importFile('screenshots/parser', $sourcePath);
+                }
+                if ($item === null) {
+                    throw new \LogicException('An account screenshot requires a business reference.');
+                }
+                $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+                $upload = $accountFiles->prepareFile('screenshots/captured', $sourcePath, $ownerId);
+                return $accountFiles->commit([$upload], function () use ($upload, $item) {
+                    $id = \Illuminate\Support\Facades\DB::table('storage_files')
+                        ->where('disk', ObjectStorage::DISK)->where('path', $upload->path())->value('id');
+                    app(\App\Services\Storage\StorageUsageService::class)->link((int) $id, 'smeta', $item->getTable(), (int) $item->id);
+                    return $upload->path();
+                });
             } finally {
                 @unlink($sourcePath);
             }

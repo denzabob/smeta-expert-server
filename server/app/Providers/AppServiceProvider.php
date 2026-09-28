@@ -51,6 +51,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        foreach (array_keys(\App\Services\Storage\StorageFileReferences::SOURCES) as $model) {
+            $model::observe(\App\Observers\StorageFileReferenceObserver::class);
+        }
+        foreach ([\App\Models\Project::class, \App\Models\Supplier::class, \App\Models\PriceList::class,
+            \App\Models\EvidenceRecord::class, \App\Models\FinishedProductPriceSource::class,
+            \App\Models\FinishedProductSpecification::class, \App\Models\RevisionRun::class,
+            \App\Models\Material::class, \App\Models\RevisionRunItem::class] as $model) {
+            $model::observe(\App\Observers\StorageCascadeReferenceObserver::class);
+        }
         Relation::morphMap([
             'material' => \App\Models\Material::class,
             'project_position' => \App\Models\ProjectPosition::class,

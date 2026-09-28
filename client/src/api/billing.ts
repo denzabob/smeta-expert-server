@@ -46,6 +46,7 @@ export type BillingPreviewUsageItem = {
 }
 
 export type StorageUsageSnapshot = {
+  reserved_bytes?: number
   used_bytes: number
   limit_bytes: number | null
   remaining_bytes: number | null
@@ -141,8 +142,33 @@ export async function getMyBillingPreview(): Promise<BillingPreview> {
 }
 
 export async function getMyStorageUsage(): Promise<StorageUsageSnapshot> {
-  const { data } = await api.get('/api/expert/storage')
-  return data
+  const { data } = await api.get<AccountStorageSnapshot>('/api/account/storage')
+  return {
+    used_bytes: data.used_bytes,
+    reserved_bytes: data.reserved_bytes,
+    limit_bytes: data.limit_bytes,
+    remaining_bytes: data.available_bytes,
+    usage_percent: data.percent,
+    materials_count: data.files_count,
+    is_unlimited: data.is_unlimited,
+    is_over_limit: data.over_quota,
+    limit_available: true,
+    limit_visible: true,
+    enforcement_enabled: true,
+  }
+}
+
+export type AccountStorageSnapshot = {
+  used_bytes: number
+  reserved_bytes: number
+  limit_bytes: number | null
+  available_bytes: number | null
+  is_unlimited: boolean
+  over_quota: boolean
+  percent: number | null
+  files_count: number
+  categories: Record<'images' | 'files', { bytes: number; count: number }>
+  modules: Record<'expert' | 'smeta', { bytes: number; count: number }>
 }
 
 export async function getBillingCapabilities(): Promise<BillingCapabilitiesResponse> {

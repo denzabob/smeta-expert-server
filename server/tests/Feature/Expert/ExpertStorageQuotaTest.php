@@ -15,6 +15,7 @@ use App\Services\Billing\BillingUsageExclusionService;
 use App\Services\Expert\ExpertStorageQuotaService;
 use App\Services\Expert\ExpertStorageUsageService;
 use App\Services\Expert\ExpertStorageUsageSnapshot;
+use App\Services\Storage\StorageUsageService;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -59,7 +60,7 @@ class ExpertStorageQuotaTest extends TestCase
     public function test_upload_is_allowed_at_the_exact_limit_and_snapshot_uses_plan_bytes(): void
     {
         [$user, $project] = $this->project();
-        $file = UploadedFile::fake()->create('exact.pdf', 1, 'application/pdf');
+        $file = UploadedFile::fake()->createWithContent('exact.pdf', str_repeat('x', 1 * 1024));
         $this->subscribe($user, 'exact_plan', $file->getSize());
 
         $response = $this->upload($user, $project, $file);
@@ -79,7 +80,7 @@ class ExpertStorageQuotaTest extends TestCase
     public function test_enforced_projected_usage_rejects_before_creating_an_s1_object(): void
     {
         [$user, $project] = $this->project();
-        $file = UploadedFile::fake()->create('too-large.pdf', 2, 'application/pdf');
+        $file = UploadedFile::fake()->createWithContent('too-large.pdf', str_repeat('x', 2 * 1024));
         $this->subscribe($user, 'small_plan', $file->getSize() - 1);
 
         $response = $this->upload($user, $project, $file);
@@ -91,16 +92,16 @@ class ExpertStorageQuotaTest extends TestCase
             ->assertJsonPath('storage.remaining_bytes', $file->getSize() - 1);
 
         $this->assertDatabaseCount('expert_project_materials', 0);
-        $this->assertDatabaseMissing('expert_storage_usages', ['user_id' => $user->id]);
-        $this->assertDatabaseCount('expert_storage_upload_reservations', 0);
+        $this->assertDatabaseMissing('storage_usages', ['user_id' => $user->id]);
+        $this->assertDatabaseCount('storage_upload_reservations', 0);
         $this->assertSame([], Storage::disk('s1')->allFiles("expert/{$project->public_id}"));
     }
 
     public function test_sequential_batch_requests_keep_the_earlier_file_and_reject_the_next_one(): void
     {
         [$user, $project] = $this->project();
-        $first = UploadedFile::fake()->create('first.pdf', 1, 'application/pdf');
-        $second = UploadedFile::fake()->create('second.pdf', 1, 'application/pdf');
+        $first = UploadedFile::fake()->createWithContent('first.pdf', str_repeat('x', 1 * 1024));
+        $second = UploadedFile::fake()->createWithContent('second.pdf', str_repeat('x', 1 * 1024));
         $this->subscribe($user, 'batch_plan', $first->getSize());
 
         $this->upload($user, $project, $first)->assertCreated();
@@ -145,7 +146,7 @@ class ExpertStorageQuotaTest extends TestCase
             ->assertJsonPath('is_unlimited', false);
     }
 
-    public function test_non_enforced_billing_modes_allow_upload_but_visible_mode_reports_over_limit(): void
+    public function test_storage_quota_is_strict_even_when_other_billing_capabilities_are_not_enforced(): void
     {
         foreach (['off', 'admin_only', 'visible', 'checkout'] as $mode) {
             $this->setMode($mode);
@@ -153,27 +154,21 @@ class ExpertStorageQuotaTest extends TestCase
             $file = UploadedFile::fake()->create("{$mode}.pdf", 1, 'application/pdf');
             $this->subscribe($user, "{$mode}_plan", $file->getSize() - 1);
 
-            $this->upload($user, $project, $file)->assertCreated();
-
-            if ($mode === 'visible') {
-                $this->actingAs($user, 'sanctum')
-                    ->getJson('/api/expert/storage')
-                    ->assertOk()
-                    ->assertJsonPath('is_over_limit', true)
-                    ->assertJsonPath('limit_bytes', $file->getSize() - 1);
-            }
+            $this->upload($user, $project, $file)->assertUnprocessable()->assertJsonPath('code', 'STORAGE_QUOTA_EXCEEDED');
+            $this->assertSame(0, app(StorageUsageService::class)->getUserUsage((int) $user->id)['used_bytes']);
+            $this->assertSame([], Storage::disk('s1')->allFiles("expert/{$project->public_id}"));
         }
     }
 
     public function test_billing_check_observes_locked_usage_inside_the_upload_transaction(): void
     {
         [$user, $project] = $this->project();
-        $file = UploadedFile::fake()->create('locked.pdf', 1, 'application/pdf');
+        $file = UploadedFile::fake()->createWithContent('locked.pdf', str_repeat('x', 1 * 1024));
         $this->subscribe($user, 'locked_plan', $file->getSize());
 
         $storageRowLocked = false;
         DB::listen(static function (QueryExecuted $query) use (&$storageRowLocked): void {
-            if (str_contains(strtolower($query->sql), 'expert_storage_usages')
+            if (str_contains(strtolower($query->sql), 'storage_usages')
                 && str_contains(strtolower($query->sql), 'for update')) {
                 $storageRowLocked = true;
             }
@@ -181,15 +176,14 @@ class ExpertStorageQuotaTest extends TestCase
 
         $original = app(BillingGateService::class);
         $this->mock(BillingGateService::class, function ($mock) use ($user, $original, &$storageRowLocked): void {
-            $mock->shouldReceive('checkProjectedUsage')->once()->andReturnUsing(
-                function ($checkedUser, $capability, $projected, $context, $recordEvent) use ($user, $original, &$storageRowLocked) {
+            $mock->shouldReceive('storageLimit')->twice()->andReturnUsing(
+                function ($checkedUser) use ($user, $original, &$storageRowLocked) {
                     $this->assertTrue($checkedUser->is($user));
-                    $this->assertSame(BillingCodes::CAP_STORAGE_BYTES, $capability);
                     $this->assertTrue(DB::transactionLevel() >= 2);
                     $this->assertTrue($storageRowLocked);
-                    $this->assertDatabaseHas('expert_storage_usages', ['user_id' => $user->id]);
+                    $this->assertDatabaseHas('storage_usages', ['user_id' => $user->id]);
 
-                    return $original->checkProjectedUsage($checkedUser, $capability, $projected, $context, $recordEvent);
+                    return $original->storageLimit($checkedUser);
                 },
             );
         });
@@ -197,7 +191,7 @@ class ExpertStorageQuotaTest extends TestCase
         $this->upload($user, $project, $file)->assertCreated();
     }
 
-    public function test_fail_open_and_fail_closed_follow_the_shared_billing_gate_policy(): void
+    public function test_internal_billing_failure_always_fails_closed_regardless_of_fail_open_flag(): void
     {
         foreach ([true, false] as $failOpen) {
             config(['billing.fail_open' => $failOpen]);
@@ -214,11 +208,8 @@ class ExpertStorageQuotaTest extends TestCase
             app()->instance(BillingGateService::class, $gate);
 
             $response = $this->upload($user, $project, $file);
-            if ($failOpen) {
-                $response->assertCreated();
-            } else {
-                $response->assertStatus(503)->assertJsonPath('code', 'BILLING_LIMIT_CHECK_FAILED');
-            }
+            $response->assertStatus(503)->assertJsonPath('code', 'BILLING_LIMIT_CHECK_FAILED');
+            $this->assertSame([], Storage::disk('s1')->allFiles("expert/{$project->public_id}"));
 
             app()->forgetInstance(BillingGateService::class);
         }
@@ -227,7 +218,7 @@ class ExpertStorageQuotaTest extends TestCase
     public function test_downgrade_keeps_existing_material_readable_and_delete_frees_usage(): void
     {
         [$user, $project] = $this->project();
-        $file = UploadedFile::fake()->create('kept.pdf', 1, 'application/pdf');
+        $file = UploadedFile::fake()->createWithContent('kept.pdf', str_repeat('x', 1 * 1024));
         $plan = $this->subscribe($user, 'downgrade_plan', $file->getSize());
         $uploaded = $this->upload($user, $project, $file)->assertCreated();
         $material = ExpertProjectMaterial::query()->where('public_id', $uploaded->json('public_id'))->firstOrFail();
@@ -244,7 +235,7 @@ class ExpertStorageQuotaTest extends TestCase
             ->assertJsonPath('limit_bytes', 0)
             ->assertJsonPath('is_over_limit', true);
 
-        $blockedFile = UploadedFile::fake()->create('blocked-after-downgrade.pdf', 1, 'application/pdf');
+        $blockedFile = UploadedFile::fake()->createWithContent('blocked-after-downgrade.pdf', str_repeat('x', 1 * 1024));
         $this->upload($user, $project, $blockedFile)
             ->assertUnprocessable()
             ->assertJsonPath('code', 'STORAGE_QUOTA_EXCEEDED');
@@ -253,18 +244,21 @@ class ExpertStorageQuotaTest extends TestCase
         $this->actingAs($user, 'sanctum')->getJson('/api/expert/storage')->assertJsonPath('used_bytes', 0);
     }
 
-    public function test_storage_snapshot_remains_available_when_billing_ui_is_off_without_showing_plan_limit(): void
+    public function test_storage_snapshot_remains_available_with_shared_limit_when_billing_ui_is_off(): void
     {
         config(['billing.user_ui_enabled' => false]);
         [$user] = $this->project();
-        app(ExpertStorageUsageService::class)->increment($user, 1234);
+        $this->subscribe($user, 'ui_off_storage', 4096);
+        app(StorageUsageService::class)->register((int) $user->id, 'expert', [
+            'disk' => 's1', 'path' => 'expert/ui-off.txt', 'purpose' => 'material', 'size_bytes' => 1234,
+        ]);
 
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/expert/storage')
             ->assertOk()
             ->assertJsonPath('used_bytes', 1234)
-            ->assertJsonPath('limit_bytes', null)
-            ->assertJsonPath('limit_visible', false);
+            ->assertJsonPath('limit_bytes', 4096)
+            ->assertJsonPath('limit_visible', true);
 
         $this->actingAs($user, 'sanctum')->getJson('/api/billing/me')->assertNotFound();
     }

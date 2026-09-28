@@ -28,11 +28,13 @@ class ChromeLaborCaptureService
 
     public function capture(User $user, array $payload, UploadedFile $screenshot): array
     {
-        return DB::transaction(function () use ($user, $payload, $screenshot) {
-            $normalizedUrl = $this->urlNormalizer->normalize($payload['source_url']);
+        $normalizedUrl = $this->urlNormalizer->normalize($payload['source_url']);
+        $regionId = $this->resolveRegionId($user, $payload);
+        $laborProfileId = $this->resolveLaborProfileId($payload);
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $upload = $accountFiles->prepareUploaded('screenshots/chrome/generic', $screenshot, (int) $user->id);
+        return $accountFiles->commit([$upload], function () use ($user, $payload, $screenshot, $normalizedUrl, $regionId, $laborProfileId, $upload) {
             $provider = $this->resolveProvider($user, $payload, $normalizedUrl);
-            $regionId = $this->resolveRegionId($user, $payload);
-            $laborProfileId = $this->resolveLaborProfileId($payload);
 
             $evidenceRecord = EvidenceRecord::create([
                 'uuid' => (string) Str::uuid(),
@@ -83,6 +85,7 @@ class ChromeLaborCaptureService
                 $screenshot,
                 'screenshot',
                 (int) $user->id,
+                $upload,
             );
 
             $source = $source->load([

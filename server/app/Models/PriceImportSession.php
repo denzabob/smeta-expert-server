@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PriceImportSession extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     use HasFactory, HasUuids;
 
     protected $hidden = ['file_path', 'storage_disk'];

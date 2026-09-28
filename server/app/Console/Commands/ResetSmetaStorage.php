@@ -54,6 +54,11 @@ class ResetSmetaStorage extends Command
         }
 
         try {
+            if (Schema::hasTable('storage_upload_reservations') && DB::table('storage_upload_reservations')
+                ->where('module', 'smeta')->where('status', 'reserved')->where('expires_at', '>', now())->exists()) {
+                $this->error('ACTIVE_STORAGE_RESERVATIONS: завершите загрузки Смет перед reset.');
+                return self::FAILURE;
+            }
             $files = $this->plannedFiles($storage);
             $bytes = 0;
             foreach ($files as $disk => $paths) {
@@ -72,7 +77,29 @@ class ResetSmetaStorage extends Command
         $this->line("Bytes planned: {$bytes}");
 
         try {
-            $databaseObjectsRemoved = DB::transaction(fn () => $this->clearDatabaseReferences());
+            $databaseObjectsRemoved = DB::transaction(function () {
+                $changed = $this->clearDatabaseReferences();
+                if (Schema::hasTable('storage_files')) {
+                    $usage = app(\App\Services\Storage\StorageUsageService::class);
+                    $files = DB::table('storage_files')->where('module', 'smeta')->get();
+                    foreach ($files as $file) {
+                        if ($file->user_id !== null) {
+                            $usage->lockUserUsage((int) $file->user_id);
+                        }
+                        DB::table('storage_file_links')->where('storage_file_id', $file->id)->where('module', 'smeta')->delete();
+                        if (!DB::table('storage_file_links')->where('storage_file_id', $file->id)->exists()) {
+                            DB::table('storage_files')->where('id', $file->id)->update(['status' => 'deleting', 'updated_at' => now()]);
+                        }
+                    }
+                    foreach (DB::table('storage_upload_reservations')->where('module', 'smeta')->where('status', 'reserved')->pluck('reservation_id') as $id) {
+                        $usage->release($id);
+                    }
+                    foreach ($files->pluck('user_id')->filter()->unique() as $id) {
+                        $usage->recalculate((int) $id);
+                    }
+                }
+                return $changed;
+            });
         } catch (Throwable $exception) {
             Log::error('Smeta storage reset database failure', [
                 'exception' => $exception,
@@ -91,6 +118,10 @@ class ResetSmetaStorage extends Command
                 try {
                     $size = $storage->size($disk, $path);
                     if ($storage->delete($disk, $path)) {
+                        if (Schema::hasTable('storage_files')) {
+                            DB::table('storage_files')->where('disk', $disk)->where('path', $path)->where('status', 'deleting')
+                                ->update(['status' => 'deleted', 'deleted_at' => now(), 'updated_at' => now()]);
+                        }
                         $removedFiles++;
                         $removedBytes += $size;
                     } else {
@@ -124,6 +155,14 @@ class ResetSmetaStorage extends Command
                 $files[$disk] = [...$files[$disk], ...Storage::disk($disk)->allFiles($prefix)];
             }
             $files[$disk] = array_values(array_unique($files[$disk]));
+        }
+
+        if (Schema::hasTable('storage_files')) {
+            $protected = DB::table('storage_files as files')->join('storage_file_links as links', 'links.storage_file_id', '=', 'files.id')
+                ->where('links.module', '!=', 'smeta')->select('files.disk', 'files.path')->distinct()->get();
+            foreach ($protected as $file) {
+                $files[$file->disk] = array_values(array_diff($files[$file->disk] ?? [], [$file->path]));
+            }
         }
 
         return $files;

@@ -98,7 +98,9 @@ class FinishedProductPriceEvidenceAssetController extends Controller
 
         if ($request->hasFile('file')) {
             $file = $request->file('file');
-            $filePath = $storage->storeUploaded('finished-product-evidence/' . $source->id, $file, (int) $request->user()->id);
+            $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+            $upload = $accountFiles->prepareUploaded('finished-product-evidence/' . $source->id, $file, (int) $request->user()->id);
+            $filePath = $upload->path();
 
             $payload['file_path'] = $filePath;
             $payload['storage_disk'] = ObjectStorage::DISK;
@@ -108,7 +110,9 @@ class FinishedProductPriceEvidenceAssetController extends Controller
             $payload['content_hash'] = hash_file('sha256', $file->getRealPath());
         }
 
-        $asset = $source->evidenceAssets()->create($payload);
+        $asset = isset($upload)
+            ? $accountFiles->commit([$upload], fn () => $source->evidenceAssets()->create($payload))
+            : $source->evidenceAssets()->create($payload);
 
         return response()->json($this->formatAsset($asset), 201);
     }
@@ -144,11 +148,7 @@ class FinishedProductPriceEvidenceAssetController extends Controller
     {
         $asset = $this->accessService->resolveOwnedEvidenceAsset((int) $request->user()->id, $asset);
 
-        if ($asset->file_path) {
-            $storage->delete($asset->storage_disk ?: 'public', $asset->file_path);
-        }
-
-        $asset->delete();
+        \Illuminate\Support\Facades\DB::transaction(fn () => $asset->delete());
 
         return response()->json(null, 204);
     }

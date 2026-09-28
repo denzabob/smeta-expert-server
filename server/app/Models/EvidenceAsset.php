@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EvidenceAsset extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     protected $hidden = ['file_path', 'storage_disk'];
     protected $fillable = [
         'uuid',

@@ -3,7 +3,7 @@
     <div class="storage-settings__header">
       <div>
         <h3 class="section-title">Хранилище</h3>
-        <p class="section-desc">Объём оригиналов файлов в проектах Эксперта.</p>
+        <p class="section-desc">Использование хранилища аккаунта: файлы Эксперта и Смет.</p>
       </div>
       <v-btn
         icon="mdi-refresh"

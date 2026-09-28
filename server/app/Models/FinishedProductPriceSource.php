@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class FinishedProductPriceSource extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     use HasFactory;
 
     public const KIND_PRICE_LIST_ROW = 'price_list_row';

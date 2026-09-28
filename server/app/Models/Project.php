@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Project extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     use HasFactory;
 
     protected $fillable = [

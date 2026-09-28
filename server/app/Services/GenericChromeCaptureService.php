@@ -36,7 +36,7 @@ class GenericChromeCaptureService
      *     has a screenshot asset → reuse (fresh_reuse=true)
      *  3. Otherwise: create a new record + screenshot
      */
-    public function captureObservation(array $payload, int $userId, ?UploadedFile $screenshot = null): array
+    public function captureObservation(array $payload, int $userId, ?UploadedFile $screenshot = null, ?\App\Services\Storage\PreparedStorageUpload $upload = null): array
     {
         $normalized = $this->urlNormalizer->normalize($payload['source_url'] ?? null);
         $domain = $normalized ? (parse_url($normalized, PHP_URL_HOST) ?: null) : null;
@@ -58,13 +58,19 @@ class GenericChromeCaptureService
             $payload['cost_component'],
             $payload['observed_price'] ?? null,
         );
-        if ($freshEquivalent) {
+        if ($freshEquivalent && (int) $freshEquivalent->created_by === $userId) {
             return [
                 'record'      => $freshEquivalent,
                 'asset'       => null,
                 'duplicate'   => false,
                 'fresh_reuse' => true,
             ];
+        }
+
+        if ($screenshot && $upload === null) {
+            $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+            $prepared = $accountFiles->prepareUploaded('screenshots/chrome/generic', $screenshot, $userId);
+            return $accountFiles->commit([$prepared], fn () => $this->captureObservation($payload, $userId, $screenshot, $prepared));
         }
 
         // 3. Create new record
@@ -89,7 +95,7 @@ class GenericChromeCaptureService
 
         $asset = null;
         if ($screenshot) {
-            $asset = $this->storeScreenshot($record, $screenshot);
+            $asset = $this->storeScreenshot($record, $screenshot, $upload);
         }
 
         return [
@@ -133,8 +139,10 @@ class GenericChromeCaptureService
             ];
         }
 
-        return DB::transaction(function () use ($item, $payload, $userId, $screenshot, $run) {
-            $result = $this->captureObservation($payload, $userId, $screenshot);
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $upload = $screenshot ? $accountFiles->prepareUploaded('screenshots/chrome/generic', $screenshot, $userId) : null;
+        return $accountFiles->commit($upload ? [$upload] : [], function () use ($item, $payload, $userId, $screenshot, $run, $upload) {
+            $result = $this->captureObservation($payload, $userId, $screenshot, $upload);
             $record = $result['record'];
 
             // Link record to evidence item
@@ -208,7 +216,7 @@ class GenericChromeCaptureService
     /**
      * Store a screenshot as a GenericEvidenceAsset, with sha256-based dedup within the record.
      */
-    public function storeScreenshot(EvidenceRecord $record, UploadedFile $file): GenericEvidenceAsset
+    public function storeScreenshot(EvidenceRecord $record, UploadedFile $file, ?\App\Services\Storage\PreparedStorageUpload $upload = null): GenericEvidenceAsset
     {
         $sha256 = hash_file('sha256', $file->getRealPath());
 
@@ -221,7 +229,16 @@ class GenericChromeCaptureService
             return $existing;
         }
 
-        $path = $this->storage->storeUploaded('screenshots/chrome/generic', $file, (int) $record->created_by);
+        if ($upload === null) {
+            return app(\App\Services\Storage\AccountFileStorage::class)->upload(
+                'screenshots/chrome/generic', $file, (int) $record->created_by,
+                fn (string $path) => $this->createScreenshotAsset($record, $file, $path, $sha256));
+        }
+        return $this->createScreenshotAsset($record, $file, $upload->path(), $sha256);
+    }
+
+    private function createScreenshotAsset(EvidenceRecord $record, UploadedFile $file, string $path, string $sha256): GenericEvidenceAsset
+    {
 
         return GenericEvidenceAsset::create([
             'uuid'               => (string) Str::uuid(),

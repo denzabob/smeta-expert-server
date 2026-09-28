@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class GenericEvidenceAsset extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     protected $table = 'generic_evidence_assets';
 
     protected $hidden = ['file_path', 'storage_disk'];

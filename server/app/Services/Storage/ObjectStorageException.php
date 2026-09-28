@@ -9,7 +9,8 @@ class ObjectStorageException extends RuntimeException
     public const BACKEND_UNAVAILABLE = 'STORAGE_BACKEND_UNAVAILABLE';
     public const FILE_NOT_FOUND = 'STORAGE_FILE_NOT_FOUND';
 
-    public function __construct(public readonly string $failureCode, ?\Throwable $previous = null)
+    public function __construct(public readonly string $failureCode, ?\Throwable $previous = null,
+        public readonly ?string $objectDisk = null, public readonly ?string $objectPath = null)
     {
         parent::__construct($failureCode, 0, $previous);
     }

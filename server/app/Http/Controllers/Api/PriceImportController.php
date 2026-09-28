@@ -78,6 +78,8 @@ class PriceImportController extends Controller
             return response()->json([
                 'import' => $this->formatFoundationImport($priceImport),
             ], 201);
+        } catch (\App\Services\Storage\StorageQuotaException|\App\Services\Storage\ObjectStorageException $exception) {
+            throw $exception;
         } catch (\RuntimeException $exception) {
             return response()->json([
                 'message' => $exception->getMessage(),

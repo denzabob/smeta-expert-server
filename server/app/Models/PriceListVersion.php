@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class PriceListVersion extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     use HasFactory;
 
     protected $hidden = ['file_path', 'storage_disk'];

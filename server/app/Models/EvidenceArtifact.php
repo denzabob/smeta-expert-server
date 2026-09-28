@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class EvidenceArtifact extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
     protected $hidden = ['screenshot_path', 'storage_disk'];
     use HasFactory;
 

@@ -139,12 +139,13 @@ class ImportSessionService
             ->where($session->getKeyName(), '!=', $session->getKey())
             ->exists();
 
-        if (!$otherReferences) {
+        $registered = \Illuminate\Support\Facades\Schema::hasTable('storage_files')
+            && \Illuminate\Support\Facades\DB::table('storage_files')->where('disk', $session->storage_disk)->where('path', $session->file_path)->exists();
+        // Delete references first. Registered objects use the generic last-link job.
+        $session->delete();
+        if (!$otherReferences && !$registered) {
             $this->storage->delete($session->storage_disk, $session->file_path);
         }
-
-        // Delete the session (mappings will be cascade deleted)
-        $session->delete();
     }
 
     /**

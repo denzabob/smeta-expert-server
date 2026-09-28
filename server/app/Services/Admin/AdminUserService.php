@@ -156,6 +156,14 @@ class AdminUserService
             $this->deleteRelatedData($targetUser);
 
             // Force delete the user (bypasses soft delete)
+            if (Schema::hasTable('storage_files')) {
+                app(\App\Services\Storage\StorageUsageService::class)->lockUserUsage((int) $userId);
+                $fileIds = DB::table('storage_files')->where('user_id', $userId)->lockForUpdate()->pluck('id');
+                DB::table('storage_file_links')->whereIn('storage_file_id', $fileIds)->delete();
+                DB::table('storage_files')->whereIn('id', $fileIds)->where('status', '!=', 'deleted')
+                    ->update(['status' => 'deleting', 'deleted_at' => now(), 'updated_at' => now()]);
+                DB::afterCommit(fn () => \App\Jobs\DeleteAccountStorageFiles::enqueue());
+            }
             $targetUser->forceDelete();
 
             $this->audit(

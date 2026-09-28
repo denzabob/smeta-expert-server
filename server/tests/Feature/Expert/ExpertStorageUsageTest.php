@@ -7,6 +7,11 @@ namespace Tests\Feature\Expert;
 use App\Models\Expert\ExpertProject;
 use App\Models\Expert\ExpertProjectMaterial;
 use App\Models\User;
+use App\Models\BillingPlan;
+use App\Jobs\DeleteAccountStorageFiles;
+use App\Services\Storage\ObjectStorage;
+use App\Services\Storage\StorageUsageService;
+use Illuminate\Support\Facades\DB;
 use App\Services\Expert\ExpertMaterialService;
 use App\Services\Expert\ExpertProjectService;
 use App\Services\Expert\ExpertStorageException;
@@ -30,6 +35,9 @@ class ExpertStorageUsageTest extends TestCase
         $this->configureFakeS1();
         config(['expert.storage.disk' => 's1', 'expert.storage.cache_disk' => 'local']);
         Storage::fake('local');
+        config(['billing.default_plan' => 'storage-usage-default']);
+        BillingPlan::query()->create(['code' => 'storage-usage-default', 'name' => 'Usage test',
+            'is_active' => true, 'metadata_json' => ['limits' => ['storage_bytes' => null]]]);
     }
 
     public function test_local_and_s1_originals_share_owner_usage_and_project_delete_subtracts_once(): void
@@ -53,6 +61,7 @@ class ExpertStorageUsageTest extends TestCase
         $this->assertSame(0, app(ExpertStorageUsageService::class)->getUserUsage($otherUser)->usedBytes);
 
         app(ExpertProjectService::class)->delete($firstProject);
+        (new DeleteAccountStorageFiles())->handle(app(ObjectStorage::class));
         $usage = app(ExpertStorageUsageService::class)->getUserUsage($user);
         $this->assertSame(strlen('other'), $usage->usedBytes);
         $this->assertSame(1, $usage->materialsCount);
@@ -60,6 +69,7 @@ class ExpertStorageUsageTest extends TestCase
         $this->assertDatabaseMissing('expert_project_materials', ['id' => $remote->id]);
 
         app(ExpertProjectService::class)->delete($secondProject);
+        (new DeleteAccountStorageFiles())->handle(app(ObjectStorage::class));
         $usage = app(ExpertStorageUsageService::class)->getUserUsage($user);
         $this->assertSame(0, $usage->usedBytes);
         $this->assertSame(0, $usage->materialsCount);
@@ -122,20 +132,20 @@ class ExpertStorageUsageTest extends TestCase
         }
 
         $this->assertDatabaseCount('expert_project_materials', 0);
-        $this->assertDatabaseHas('expert_storage_usages', [
+        $this->assertDatabaseHas('storage_usages', [
             'user_id' => $user->id,
-            'originals_bytes' => 0,
+            'used_bytes' => 0,
             'reserved_bytes' => 0,
-            'materials_count' => 0,
+            'files_count' => 0,
         ]);
-        $this->assertDatabaseHas('expert_storage_upload_reservations', [
+        $this->assertDatabaseHas('storage_upload_reservations', [
             'user_id' => $user->id,
             'status' => 'released',
         ]);
         $this->assertSame([], Storage::disk('s1')->allFiles("expert/{$project->public_id}"));
     }
 
-    public function test_reconciliation_dry_run_is_read_only_and_repair_rebuilds_legacy_sizes(): void
+    public function test_reconciliation_dry_run_is_read_only_and_repair_uses_registry_sizes(): void
     {
         Storage::fake('local');
         [$firstUser, $firstProject] = $this->project();
@@ -145,6 +155,7 @@ class ExpertStorageUsageTest extends TestCase
         $this->material($secondProject, $secondUser, 'legacy-c.txt', 75);
 
         $this->counter($firstUser->id, 100, 1);
+        DB::table('storage_usages')->where('user_id', $secondUser->id)->delete();
 
         $this->artisan('expert:storage-reconcile', [
             '--user' => $firstUser->id,
@@ -154,12 +165,12 @@ class ExpertStorageUsageTest extends TestCase
             ->expectsOutputToContain('Projection не изменена.')
             ->assertSuccessful();
 
-        $this->assertDatabaseHas('expert_storage_usages', [
+        $this->assertDatabaseHas('storage_usages', [
             'user_id' => $firstUser->id,
-            'originals_bytes' => 100,
-            'materials_count' => 1,
+            'used_bytes' => 100,
+            'files_count' => 1,
         ]);
-        $this->assertDatabaseMissing('expert_storage_usages', ['user_id' => $secondUser->id]);
+        $this->assertDatabaseMissing('storage_usages', ['user_id' => $secondUser->id]);
 
         $this->artisan('expert:storage-reconcile', [
             '--all' => true,
@@ -168,20 +179,20 @@ class ExpertStorageUsageTest extends TestCase
             ->expectsOutputToContain('difference: +75 B')
             ->expectsOutputToContain('Projection не изменена.')
             ->assertSuccessful();
-        $this->assertDatabaseMissing('expert_storage_usages', ['user_id' => $secondUser->id]);
+        $this->assertDatabaseMissing('storage_usages', ['user_id' => $secondUser->id]);
 
         $this->artisan('expert:storage-reconcile', ['--user' => $firstUser->id])->assertSuccessful();
         $this->artisan('expert:storage-reconcile', ['--all' => true])->assertSuccessful();
 
-        $this->assertDatabaseHas('expert_storage_usages', [
+        $this->assertDatabaseHas('storage_usages', [
             'user_id' => $firstUser->id,
-            'originals_bytes' => 150,
-            'materials_count' => 2,
+            'used_bytes' => 150,
+            'files_count' => 2,
         ]);
-        $this->assertDatabaseHas('expert_storage_usages', [
+        $this->assertDatabaseHas('storage_usages', [
             'user_id' => $secondUser->id,
-            'originals_bytes' => 75,
-            'materials_count' => 1,
+            'used_bytes' => 75,
+            'files_count' => 1,
         ]);
 
         $usage = app(ExpertStorageUsageService::class)->getUserUsage($firstUser);
@@ -195,32 +206,35 @@ class ExpertStorageUsageTest extends TestCase
         ], $usage->toArray());
     }
 
-    public function test_multiple_increments_are_additive_and_underflow_is_logged_and_clamped(): void
+    public function test_registry_register_and_unlink_are_idempotent_without_accounting_underflow(): void
     {
-        Log::spy();
         $user = User::factory()->create();
-        $usage = app(ExpertStorageUsageService::class);
-
-        $usage->increment($user, 10);
-        $usage->increment($user, 20);
-        $this->assertDatabaseHas('expert_storage_usages', [
+        $usage = app(StorageUsageService::class);
+        foreach ([1 => 10, 2 => 20] as $id => $size) {
+            $metadata = ['disk' => 's1', 'path' => "expert/idempotent-{$id}", 'purpose' => 'material', 'size_bytes' => $size];
+            $links = [['source_type' => 'expert_project_materials', 'source_id' => $id]];
+            $usage->register((int) $user->id, 'expert', $metadata, $links);
+            $usage->register((int) $user->id, 'expert', $metadata, $links);
+        }
+        $this->assertDatabaseHas('storage_usages', [
             'user_id' => $user->id,
-            'originals_bytes' => 30,
-            'materials_count' => 2,
+            'used_bytes' => 30,
+            'files_count' => 2,
         ]);
 
-        $snapshot = $usage->decrement($user, 40, 3);
-        $this->assertSame(0, $snapshot->usedBytes);
-        $this->assertSame(0, $snapshot->materialsCount);
-        $this->assertDatabaseHas('expert_storage_usages', [
+        foreach ([1, 2] as $id) {
+            $usage->unlink('expert', 'expert_project_materials', $id);
+            $this->assertSame([], $usage->unlink('expert', 'expert_project_materials', $id));
+        }
+        $snapshot = $usage->getUserUsage((int) $user->id);
+        $this->assertSame(0, $snapshot['used_bytes']);
+        $this->assertSame(0, $snapshot['files_count']);
+        $this->assertDatabaseHas('storage_usages', [
             'user_id' => $user->id,
-            'originals_bytes' => 0,
-            'materials_count' => 0,
+            'used_bytes' => 0,
+            'files_count' => 0,
         ]);
-        Log::shouldHaveReceived('warning')->with('Expert storage usage decrement exceeded the recorded projection.', Mockery::on(
-            fn (array $context): bool => ($context['user_id'] ?? null) === $user->id
-                && ($context['error_code'] ?? null) === 'STORAGE_USAGE_UNDERFLOW',
-        ));
+        $this->assertDatabaseCount('expert_storage_usages', 0);
     }
 
     private function configureFakeS1(): void
@@ -271,7 +285,7 @@ class ExpertStorageUsageTest extends TestCase
 
     private function material(ExpertProject $project, User $user, string $name, int $size): ExpertProjectMaterial
     {
-        return $project->materials()->create([
+        $material = $project->materials()->create([
             'uploaded_by' => $user->id,
             'original_name' => $name,
             'storage_disk' => null,
@@ -282,15 +296,18 @@ class ExpertStorageUsageTest extends TestCase
             'category' => 'document',
             'status' => 'uploaded',
         ]);
+        app(StorageUsageService::class)->register((int) $user->id, 'expert', [
+            'disk' => 'local', 'path' => $material->storage_path, 'purpose' => 'material',
+            'size_bytes' => $size, 'mime_type' => 'text/plain', 'original_filename' => $name,
+        ], [['source_type' => $material->getTable(), 'source_id' => $material->id]]);
+        return $material;
     }
 
     private function counter(int $userId, int $bytes, int $count): void
     {
-        \Illuminate\Support\Facades\DB::table('expert_storage_usages')->insert([
-            'user_id' => $userId,
-            'originals_bytes' => $bytes,
-            'materials_count' => $count,
-            'created_at' => now(),
+        DB::table('storage_usages')->where('user_id', $userId)->update([
+            'used_bytes' => $bytes,
+            'files_count' => $count,
             'updated_at' => now(),
         ]);
     }

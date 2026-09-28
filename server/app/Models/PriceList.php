@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PriceList extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     use HasFactory;
 
     protected $fillable = [

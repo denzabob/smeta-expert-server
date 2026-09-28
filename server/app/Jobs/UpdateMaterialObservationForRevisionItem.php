@@ -101,6 +101,12 @@ class UpdateMaterialObservationForRevisionItem implements ShouldQueue
             ->where('region_id', $regionId)
             ->whereNotNull('screenshot_path')
             ->whereDate('created_at', today())
+            ->whereExists(function ($query) use ($item) {
+                $query->selectRaw('1')->from('storage_files')
+                    ->whereColumn('storage_files.path', 'material_price_histories.screenshot_path')
+                    ->where('storage_files.disk', 's1')->where('storage_files.status', 'active')
+                    ->where('storage_files.user_id', (int) $item->run->project->user_id);
+            })
             ->latest('id')
             ->first();
 
@@ -176,6 +182,12 @@ class UpdateMaterialObservationForRevisionItem implements ShouldQueue
             ->where('currency', 'RUB')
             ->where('region_id', $regionId)
             ->whereNotNull('screenshot_path')
+            ->whereExists(function ($query) use ($item) {
+                $query->selectRaw('1')->from('storage_files')
+                    ->whereColumn('storage_files.path', 'material_price_histories.screenshot_path')
+                    ->where('storage_files.disk', 's1')->where('storage_files.status', 'active')
+                    ->where('storage_files.user_id', (int) $item->run->project->user_id);
+            })
             ->latest('id')
             ->first();
 

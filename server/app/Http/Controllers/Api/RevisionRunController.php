@@ -216,13 +216,15 @@ class RevisionRunController extends Controller
         }
 
         $uploadedFile = $validated['screenshot_file'];
-        $path = app(ObjectStorage::class)->storeUploaded('screenshots/manual', $uploadedFile, (int) $request->user()->id);
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $upload = $accountFiles->prepareUploaded('screenshots/manual', $uploadedFile, (int) $request->user()->id);
+        $path = $upload->path();
         $rawUrl = $validated['source_url'] ?? $item->source_url ?? $material->source_url;
         $normalized = $this->urlNormalizer->normalize($rawUrl);
 
         // File upload above is non-transactional; DB writes below are atomic.
-        // If the transaction fails, the uploaded file remains as an orphan on disk.
-        $result = DB::transaction(function () use ($item, $material, $validated, $path, $rawUrl, $normalized, $uploadedFile) {
+        // The account lifecycle compensates the object if DB finalization fails.
+        $result = $accountFiles->commit([$upload], function () use ($item, $material, $validated, $path, $rawUrl, $normalized, $uploadedFile) {
             $artifact = EvidenceArtifact::create([
                 'uuid'                  => (string) Str::uuid(),
                 'material_id'           => $material->id,
@@ -678,9 +680,11 @@ class RevisionRunController extends Controller
         }
 
         $uploadedFile = $validated['document_file'];
-        $path = app(ObjectStorage::class)->storeUploaded('evidence/documents/expenses', $uploadedFile, (int) $request->user()->id);
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $upload = $accountFiles->prepareUploaded('evidence/documents/expenses', $uploadedFile, (int) $request->user()->id);
+        $path = $upload->path();
 
-        $asset = DB::transaction(function () use ($artifact, $uploadedFile, $path) {
+        $asset = $accountFiles->commit([$upload], function () use ($artifact, $uploadedFile, $path) {
             $asset = EvidenceAsset::create([
                 'uuid'                 => (string) Str::uuid(),
                 'evidence_artifact_id' => $artifact->id,

@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class RevisionRunItem extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     public const STATUS_PENDING = 'PENDING';
     public const STATUS_OK = 'OK';
     public const STATUS_BLOCKED = 'BLOCKED';

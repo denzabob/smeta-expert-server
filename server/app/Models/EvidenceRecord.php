@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class EvidenceRecord extends Model
 {
+    use \App\Models\Concerns\AccountsStorageReferences;
+
     protected $table = 'evidence_records';
 
     protected $fillable = [

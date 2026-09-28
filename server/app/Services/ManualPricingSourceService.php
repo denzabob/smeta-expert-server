@@ -23,7 +23,11 @@ class ManualPricingSourceService
 
     public function create(Request $request, array $validated): EvidenceRecord
     {
-        return DB::transaction(function () use ($request, $validated) {
+        $recordUuid = (string) Str::uuid();
+        $files = $this->uploadedFiles($request);
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $uploads = $accountFiles->prepareUploads('evidence-records/' . $recordUuid, $files, (int) $request->user()->id);
+        return $accountFiles->commit($uploads, function () use ($request, $validated, $recordUuid, $files, $uploads) {
             [$linkableType, $targetModelClass] = $this->resolveTargetMapping($validated['target_type']);
             $target = $targetModelClass::findOrFail($validated['target_id']);
             $costComponent = $this->resolveCostComponent($validated['target_type'], $target);
@@ -36,7 +40,6 @@ class ManualPricingSourceService
                 $metadata['justification_text'] = $validated['notes'];
             }
 
-            $recordUuid = (string) Str::uuid();
             $record = EvidenceRecord::create([
                 'uuid'                => $recordUuid,
                 'cost_component'      => $costComponent,
@@ -57,8 +60,8 @@ class ManualPricingSourceService
                 'relation_type'      => 'primary',
             ]);
 
-            foreach ($this->uploadedFiles($request) as $file) {
-                $path = $this->storage->storeUploaded('evidence-records/' . $recordUuid, $file, (int) $request->user()->id);
+            foreach ($files as $index => $file) {
+                $path = $uploads[$index]->path();
                 GenericEvidenceAsset::create([
                     'uuid'               => (string) Str::uuid(),
                     'evidence_record_id' => $record->id,

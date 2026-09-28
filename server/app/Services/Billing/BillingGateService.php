@@ -142,6 +142,17 @@ class BillingGateService
             ->first();
     }
 
+    /** Storage quotas are mandatory; billing observation/fail-open flags do not apply. */
+    public function storageLimit(User $user): array
+    {
+        $plan = $this->resolvePlan($user);
+        if ($plan === null) {
+            throw new \RuntimeException('The effective storage plan is unavailable.');
+        }
+
+        return ['limit' => $this->resolveLimit($plan, BillingCodes::CAP_STORAGE_BYTES), 'plan_code' => $plan->code];
+    }
+
     protected function resolveLimit(?BillingPlan $plan, string $capability): ?int
     {
         $limits = $plan?->metadata_json['limits'] ?? [];

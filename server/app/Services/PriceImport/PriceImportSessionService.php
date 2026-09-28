@@ -82,7 +82,7 @@ class PriceImportSessionService
             'supplier_id' => $supplierId,
             'target_type' => $targetType,
             'file_path' => ($existingSession->storage_disk ?? 'local') === ObjectStorage::DISK ? $existingSession->file_path : null,
-            'storage_disk' => ($existingSession->storage_disk ?? 'local') === ObjectStorage::DISK ? ObjectStorage::DISK : null,
+            'storage_disk' => $existingSession->storage_disk ?: ObjectStorage::DISK,
             'original_filename' => $existingSession->original_filename,
             'file_type' => $existingSession->file_type ?? PriceImportSession::FILE_TYPE_PASTE,
             'file_hash' => $existingSession->file_hash,
@@ -136,17 +136,20 @@ class PriceImportSessionService
         $fileType = PriceFileParser::detectFileType($filename);
 
         // Get or create price list version
-        $priceListVersion = null;
+        $priceList = null;
         if ($priceListId) {
             $priceList = PriceList::findOrFail($priceListId);
-            $priceListVersion = $this->getOrCreateDraftVersion($priceList);
         }
 
-        $storagePath = $this->storage->storeUploaded('price-imports', $file, (int) $user->id);
+        $accountFiles = app(\App\Services\Storage\AccountFileStorage::class);
+        $upload = $accountFiles->prepareUploaded('price-imports', $file, (int) $user->id);
+        $storagePath = $upload->path();
 
         // Create session
         try {
-            $session = PriceImportSession::create([
+            $session = $accountFiles->commit([$upload], function () use ($priceList, $user, $supplierId, $targetType, $storagePath, $filename, $fileType, $fileHash, $options) {
+                $priceListVersion = $priceList ? $this->getOrCreateDraftVersion($priceList) : null;
+                return PriceImportSession::create([
                 'user_id' => $user->id,
                 'price_list_version_id' => $priceListVersion?->id,
                 'supplier_id' => $supplierId,
@@ -164,8 +167,8 @@ class PriceImportSessionService
                     'csv_delimiter' => $options['csv_delimiter'] ?? ',',
                 ]),
             ]);
+            });
         } catch (\Throwable $exception) {
-            $this->storage->delete(ObjectStorage::DISK, $storagePath);
             throw $exception;
         }
 
