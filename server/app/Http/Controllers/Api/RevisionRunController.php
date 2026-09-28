@@ -429,6 +429,8 @@ class RevisionRunController extends Controller
             $h = $item->priceHistory;
             $material = $item->material;
             $fitting = $item->projectFitting;
+            $imageLocator = $this->priceJustificationImageLocator($h, $artifact);
+
             return [
                 'project_position_id' => $item->project_position_id,
                 'project_fitting_id' => $item->project_fitting_id,
@@ -442,8 +444,7 @@ class RevisionRunController extends Controller
                 'price_history_id' => $item->price_history_id,
                 'source_url' => $item->source_url,
                 'observed_at' => $h?->observed_at?->toIso8601String(),
-                'screenshot_path' => $h?->screenshot_path,
-                'storage_disk' => $h?->storage_disk ?: 'public',
+                ...$imageLocator,
                 'price_per_unit' => $h?->price_per_unit,
                 'currency' => $h?->currency,
                 'true_score' => $h?->true_score,
@@ -558,6 +559,28 @@ class RevisionRunController extends Controller
         }
 
         return $this->finalizedRevisionResponse($project, $revision, 'created');
+    }
+
+    /** @return array{screenshot_path: ?string, snapshot_path: ?string, storage_disk: ?string} */
+    private function priceJustificationImageLocator(?MaterialPriceHistory $history, ?EvidenceArtifact $artifact): array
+    {
+        $historyScreenshotPath = $history?->screenshot_path ?: $history?->snapshot_path;
+        $artifactImageAsset = $artifact?->assets?->first(fn ($asset) =>
+            str_starts_with((string) $asset->mime_type, 'image/')
+            || in_array($asset->asset_type, ['image', 'screenshot'], true)
+        );
+        $screenshotPath = $historyScreenshotPath
+            ?: $artifact?->screenshot_path
+            ?: $artifactImageAsset?->file_path;
+        $storageDisk = $historyScreenshotPath
+            ? ($history?->storage_disk ?: $artifact?->storage_disk ?: $artifactImageAsset?->storage_disk)
+            : ($artifact?->storage_disk ?: $artifactImageAsset?->storage_disk);
+
+        return [
+            'screenshot_path' => $screenshotPath,
+            'snapshot_path' => $history?->snapshot_path,
+            'storage_disk' => $storageDisk,
+        ];
     }
 
     private function finalizedRevisionResponse(Project $project, ProjectRevision $revision, string $status = 'created', ?string $message = null): JsonResponse

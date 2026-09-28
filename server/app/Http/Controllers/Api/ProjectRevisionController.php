@@ -16,7 +16,7 @@ use App\Services\FinishedProductFacadeSnapshotPresenter;
 use App\Services\ProjectReportReadinessService;
 use App\Services\Reports\ReportSettingsResolver;
 use App\Services\SnapshotService;
-use App\Services\Storage\ObjectStorage;
+use App\Services\PdfEvidenceImageMaterializer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
@@ -35,7 +35,7 @@ class ProjectRevisionController extends Controller
         private FinishedProductFacadeSnapshotPresenter $finishedProductFacadeSnapshotPresenter,
         private ReportSettingsResolver $reportSettingsResolver,
         private ProjectReportReadinessService $reportReadinessService,
-        private ObjectStorage $storage,
+        private PdfEvidenceImageMaterializer $pdfImageMaterializer,
     ) {}
 
     /**
@@ -552,7 +552,8 @@ class ProjectRevisionController extends Controller
                     'source_url' => $j['source_url'] ?? null,
                     'observed_at' => $j['observed_at'] ?? null,
                     'screenshot_path' => $j['screenshot_path'] ?? null,
-                    'storage_disk' => $j['storage_disk'] ?? 'public',
+                    'snapshot_path' => $j['snapshot_path'] ?? null,
+                    'storage_disk' => $j['storage_disk'] ?? null,
                     'true_score' => $j['true_score'] ?? null,
                     'source_type' => $j['source_type'] ?? null,
                     'capture_source' => $j['capture_source'] ?? null,
@@ -577,17 +578,15 @@ class ProjectRevisionController extends Controller
             ];
         })->values()->all();
 
-        $temporaryPaths = [];
-        try {
-            $this->materializePriceJustificationImages($rows, $temporaryPaths);
-
-            $evidenceSummary = is_array($snapshot['evidence_summary'] ?? null)
+        $evidenceSummary = is_array($snapshot['evidence_summary'] ?? null)
             ? $snapshot['evidence_summary']
             : null;
-            if (is_array($evidenceSummary)) {
-                $evidenceSummary['missing_items'] = $this->resolveMissingEvidenceItemsForPdf($project, $snapshot, $evidenceSummary);
-            }
+        if (is_array($evidenceSummary)) {
+            $evidenceSummary['missing_items'] = $this->resolveMissingEvidenceItemsForPdf($project, $snapshot, $evidenceSummary);
+        }
 
+        $action = __FUNCTION__;
+        return $this->pdfImageMaterializer->withPriceJustificationImages($rows, function (array $rows) use ($project, $revision, $evidenceSummary, $reportSettings, $action) {
             $pdf = Pdf::loadView('reports.price_justification', [
                 'project' => $project,
                 'revision' => $revision,
@@ -614,83 +613,13 @@ class ProjectRevisionController extends Controller
                 'source' => 'api',
                 'metadata' => [
                     'controller' => static::class,
-                    'action' => __FUNCTION__,
+                    'action' => $action,
                     'revision_number' => $revision->number,
                 ],
             ]);
 
             return $pdf->download($filename);
-        } finally {
-            foreach (array_unique($temporaryPaths) as $temporaryPath) {
-                @unlink($temporaryPath);
-            }
-        }
-    }
-
-    /** @param array<int, array<string, mixed>> $rows */
-    private function materializePriceJustificationImages(array &$rows, array &$temporaryPaths): void
-    {
-        foreach ($rows as &$row) {
-            if (($row['storage_disk'] ?? null) === ObjectStorage::DISK && !empty($row['screenshot_path'])) {
-                $row['pdf_local_path'] = $this->materializePriceFile(
-                    $row['screenshot_path'],
-                    ObjectStorage::DISK,
-                    $temporaryPaths,
-                );
-            }
-
-            $assetPaths = [];
-            foreach ((array) data_get($row, 'source_level_snapshot.sources', []) as $source) {
-                foreach ((array) ($source['evidence_assets'] ?? []) as $asset) {
-                    $assetId = data_get($asset, 'asset_ref.id');
-                    $path = data_get($asset, 'storage_reference.path') ?? ($asset['file_path'] ?? null);
-                    $disk = data_get($asset, 'storage_reference.disk') ?? ($asset['storage_disk'] ?? 'public');
-                    if ($assetId && $path && $disk === ObjectStorage::DISK && str_starts_with((string) ($asset['mime_type'] ?? ''), 'image/')) {
-                        $assetPaths[(int) $assetId] = $this->materializePriceFile($path, $disk, $temporaryPaths);
-                    }
-                }
-            }
-
-            if ($assetPaths !== []) {
-                $row['facade_snapshot_presentation']['sources'] ??= [];
-                $presentationSources = &$row['facade_snapshot_presentation']['sources'];
-                $this->attachPdfAssetPaths($presentationSources, $assetPaths);
-                unset($presentationSources);
-            }
-        }
-        unset($row);
-    }
-
-    /** @param array<int, string> $temporaryPaths */
-    private function materializePriceFile(string $path, string $disk, array &$temporaryPaths): string
-    {
-        if ($disk === ObjectStorage::DISK) {
-            $temporaryPath = $this->storage->materializeTemporaryFile($disk, $path, pathinfo($path, PATHINFO_EXTENSION));
-            $temporaryPaths[] = $temporaryPath;
-
-            return $temporaryPath;
-        }
-
-        return storage_path('app/public/' . ltrim($path, '/'));
-    }
-
-    /** @param array<int, array<string, mixed>> $sources */
-    private function attachPdfAssetPaths(array &$sources, array $assetPaths): void
-    {
-        foreach ($sources as &$source) {
-            if (!is_array($source['evidence_assets'] ?? null)) {
-                continue;
-            }
-
-            foreach ($source['evidence_assets'] as &$asset) {
-                $assetId = (int) ($asset['asset_id'] ?? 0);
-                if (isset($assetPaths[$assetId])) {
-                    $asset['pdf_local_path'] = $assetPaths[$assetId];
-                }
-            }
-            unset($asset);
-        }
-        unset($source);
+        });
     }
 
     /**

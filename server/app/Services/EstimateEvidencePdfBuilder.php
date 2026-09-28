@@ -229,11 +229,9 @@ class EstimateEvidencePdfBuilder
 
         // ── Attachments ──────────────────────────────────────────────────────
         $assets     = $record['assets'] ?? [];
-        $imageAsset = collect($assets)->first(
-            fn($a) => str_starts_with($a['mime_type'] ?? '', 'image/')
-        );
+        $imageAsset = collect($assets)->first(fn ($asset) => $this->isImageAsset($asset));
         $docAssets  = collect($assets)
-            ->filter(fn($a) => !str_starts_with($a['mime_type'] ?? '', 'image/'))
+            ->filter(fn ($asset) => !$this->isImageAsset($asset))
             ->values()
             ->all();
 
@@ -242,9 +240,14 @@ class EstimateEvidencePdfBuilder
         $imageStorageDisk = null;
         $imageExists = false;
         if ($imageAsset) {
-            $imagePath   = $imageAsset['file_path'] ?? null;
-            $imageStorageDisk = $imageAsset['storage_disk'] ?? 'public';
-            $imageExists = $imagePath && $this->storage->exists($imageStorageDisk, $imagePath);
+            $imagePath = data_get($imageAsset, 'storage_reference.path') ?: ($imageAsset['file_path'] ?? null);
+            if (is_string($imagePath) && trim($imagePath) !== '') {
+                $imageStorageDisk = $this->storage->resolveDisk(
+                    data_get($imageAsset, 'storage_reference.disk') ?? ($imageAsset['storage_disk'] ?? null),
+                    $imagePath,
+                );
+                $imageExists = $this->storage->exists($imageStorageDisk, $imagePath);
+            }
         }
 
         // ── Attachment mode + caption ────────────────────────────────────────
@@ -362,6 +365,23 @@ class EstimateEvidencePdfBuilder
             'source_level_snapshot' => $facadeSourceLevelSnapshot,
             'facade_snapshot_presentation' => $facadeSnapshotPresentation,
         ];
+    }
+
+    /** @param array<string, mixed> $asset */
+    private function isImageAsset(array $asset): bool
+    {
+        if (str_starts_with((string) ($asset['mime_type'] ?? ''), 'image/')) {
+            return true;
+        }
+
+        if (in_array($asset['asset_type'] ?? null, ['image', 'screenshot'], true)) {
+            return true;
+        }
+
+        $path = data_get($asset, 'storage_reference.path') ?: ($asset['file_path'] ?? null);
+
+        return is_string($path)
+            && in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), ['bmp', 'gif', 'jpeg', 'jpg', 'png', 'svg', 'webp'], true);
     }
 
     private function formatSalary(

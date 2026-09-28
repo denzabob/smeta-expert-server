@@ -157,6 +157,36 @@ class ObjectStorage
         }
     }
 
+    /**
+     * Resolve a persisted locator's disk while preserving older local/public rows.
+     * S1 keys are namespaced under `smeta/`; for older rows without disk metadata,
+     * inspect both legacy disks instead of assuming that every locator is public.
+     */
+    public function resolveDisk(?string $disk, string $path, string $legacyDefault = 'public'): string
+    {
+        $normalizedPath = ltrim(str_replace('\\', '/', trim($path)), '/');
+        if (str_starts_with($normalizedPath, self::PREFIX . '/')) {
+            return self::DISK;
+        }
+
+        $disk = trim((string) $disk);
+        if ($disk !== '') {
+            return $disk;
+        }
+
+        foreach (array_unique([$legacyDefault, 'public', 'local']) as $candidate) {
+            try {
+                if (Storage::disk($candidate)->exists($path)) {
+                    return $candidate;
+                }
+            } catch (Throwable) {
+                // Continue checking configured legacy disks; callers still verify the resolved locator.
+            }
+        }
+
+        return $legacyDefault;
+    }
+
     public function size(string $disk, string $path): int
     {
         try {
@@ -195,7 +225,12 @@ class ObjectStorage
     /**
      * Create a temporary local copy whose lifecycle is owned by the caller.
      */
-    public function materializeTemporaryFile(string $disk, string $path, string $extension): string
+    public function materializeTemporaryFile(
+        string $disk,
+        string $path,
+        string $extension,
+        ?string $temporaryDirectory = null,
+    ): string
     {
         try {
             $stream = Storage::disk($disk)->readStream($path);
@@ -208,7 +243,13 @@ class ObjectStorage
             throw new ObjectStorageException(ObjectStorageException::FILE_NOT_FOUND);
         }
 
-        $basePath = tempnam(sys_get_temp_dir(), 'smeta-');
+        $temporaryDirectory ??= sys_get_temp_dir();
+        if (!is_dir($temporaryDirectory) || !is_writable($temporaryDirectory)) {
+            fclose($stream);
+            throw new ObjectStorageException(ObjectStorageException::BACKEND_UNAVAILABLE);
+        }
+
+        $basePath = tempnam($temporaryDirectory, 'smeta-');
         if ($basePath === false) {
             fclose($stream);
             throw new ObjectStorageException(ObjectStorageException::BACKEND_UNAVAILABLE);

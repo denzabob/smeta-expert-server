@@ -27,6 +27,7 @@ use App\Services\EvidenceRunFinalizer;
 use App\Services\EvidenceRunItemCollector;
 use App\Services\EstimateEvidencePdfBuilder;
 use App\Services\FinishedProductEvidenceRecordBridge;
+use App\Services\PdfEvidenceImageMaterializer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +43,7 @@ class EvidenceRunController extends Controller
         private EvidenceRunItemCollector $itemCollector,
         private EvidenceRunFinalizer $finalizer,
         private EstimateEvidencePdfBuilder $pdfBuilder,
+        private PdfEvidenceImageMaterializer $pdfImageMaterializer,
         private ObjectStorage $storage,
         private MaterialConfirmationService $confirmationService,
         private FinishedProductEvidenceRecordBridge $finishedProductEvidenceRecordBridge,
@@ -1100,12 +1102,8 @@ class EvidenceRunController extends Controller
         ]);
 
         $viewData = $this->pdfBuilder->build($run, $project);
-        $temporaryPaths = [];
-        $materialized = [];
 
-        try {
-            $this->materializeEvidencePdfImages($viewData, $temporaryPaths, $materialized);
-
+        return $this->pdfImageMaterializer->withEvidenceRunImages($viewData, function (array $viewData) use ($run, $project) {
             $pdf = Pdf::loadView('reports.evidence_run', $viewData)
                 ->setPaper('a4')
                 ->setOption('isHtml5ParserEnabled', true)
@@ -1131,35 +1129,6 @@ class EvidenceRunController extends Controller
             ]);
 
             return $pdf->download($filename);
-        } finally {
-            foreach (array_unique($temporaryPaths) as $temporaryPath) {
-                @unlink($temporaryPath);
-            }
-        }
-    }
-
-    private function materializeEvidencePdfImages(array &$value, array &$temporaryPaths, array &$materialized): void
-    {
-        foreach ($value as &$item) {
-            if (is_array($item)) {
-                $path = $item['image_path'] ?? null;
-                $disk = $item['image_storage_disk'] ?? null;
-                if ($path && $disk === ObjectStorage::DISK && !empty($item['image_exists'])) {
-                    $cacheKey = $disk . ':' . $path;
-                    if (!isset($materialized[$cacheKey])) {
-                        $materialized[$cacheKey] = $this->storage->materializeTemporaryFile(
-                            $disk,
-                            $path,
-                            pathinfo($path, PATHINFO_EXTENSION),
-                        );
-                        $temporaryPaths[] = $materialized[$cacheKey];
-                    }
-                    $item['image_local_path'] = $materialized[$cacheKey];
-                }
-
-                $this->materializeEvidencePdfImages($item, $temporaryPaths, $materialized);
-            }
-        }
-        unset($item);
+        });
     }
 }

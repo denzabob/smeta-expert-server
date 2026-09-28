@@ -98,12 +98,7 @@
 
     $assetStoragePath = static function (array $asset): ?string {
       if (!empty($asset['pdf_local_path']) && is_file($asset['pdf_local_path'])) return $asset['pdf_local_path'];
-      $path = $asset['file_path'] ?? data_get($asset, 'storage_reference.path');
-      if (!$path || !is_string($path)) return null;
-
-      $absolutePath = storage_path('app/public/' . ltrim($path, '/'));
-
-      return file_exists($absolutePath) ? $absolutePath : null;
+      return null;
     };
 
     $moneyForPdf = static fn (?string $value): ?string => $value
@@ -623,9 +618,7 @@
             @php
               $screenshotPath = !empty($row['pdf_local_path']) && is_file($row['pdf_local_path'])
                 ? $row['pdf_local_path']
-                : (!empty($row['screenshot_path']) && file_exists(storage_path('app/public/' . $row['screenshot_path']))
-                ? storage_path('app/public/' . $row['screenshot_path'])
-                : null);
+                : null;
             @endphp
             @if($screenshotPath)
               <div class="shot-wrap">

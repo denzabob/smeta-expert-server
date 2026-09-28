@@ -340,9 +340,9 @@
                 </td>
 
                 <td class="col-img">
-                  @if($entry['attachment_mode'] === 'image' && $entry['image_exists'])
+                  @if($entry['attachment_mode'] === 'image' && $entry['image_exists'] && !empty($entry['image_local_path']) && is_file($entry['image_local_path']))
                     <div class="shot-box">
-                      <img src="{{ $entry['image_local_path'] ?? storage_path('app/public/' . $entry['image_path']) }}" alt="Подтверждающий материал" />
+                      <img src="{{ $entry['image_local_path'] }}" alt="Подтверждающий материал" />
                     </div>
                   @elseif($entry['attachment_mode'] === 'document' && !empty($entry['doc_assets']))
                     @foreach($entry['doc_assets'] as $docAsset)
@@ -522,9 +522,9 @@
                     @endif
                     <div>{{ $presentation['basis_note'] ?? 'Источник основан на зафиксированном snapshot позиции.' }}</div>
                   </div>
-                @elseif($entry['attachment_mode'] === 'image' && $entry['image_exists'])
+                @elseif($entry['attachment_mode'] === 'image' && $entry['image_exists'] && !empty($entry['image_local_path']) && is_file($entry['image_local_path']))
                   <div class="shot-box">
-                    <img src="{{ $entry['image_local_path'] ?? storage_path('app/public/' . $entry['image_path']) }}" alt="Подтверждающий материал" />
+                    <img src="{{ $entry['image_local_path'] }}" alt="Подтверждающий материал" />
                   </div>
                 @elseif($entry['attachment_mode'] === 'document' && !empty($entry['doc_assets']))
                   @foreach($entry['doc_assets'] as $docAsset)
