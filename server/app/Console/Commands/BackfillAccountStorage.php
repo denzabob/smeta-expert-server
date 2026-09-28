@@ -38,7 +38,12 @@ final class BackfillAccountStorage extends Command
                             if (str_starts_with($locator['path'], 'smeta/screenshots/parser/')) {
                                 continue; // Platform catalog source, even inside an account revision snapshot.
                             }
-                            if ($locator['disk'] !== 's1') {
+                            // A Smeta locator is an S1 object even if a legacy write
+                            // left storage_disk empty on the business row.
+                            $disk = str_starts_with($locator['path'], 'smeta/')
+                                ? ObjectStorage::DISK
+                                : (string) ($locator['disk'] ?? '');
+                            if ($disk !== ObjectStorage::DISK) {
                                 if ($model instanceof \App\Models\ImportSession || $model instanceof \App\Models\Material) {
                                     continue; // TTL processing sources and global catalog cache pointers.
                                 }
@@ -51,22 +56,22 @@ final class BackfillAccountStorage extends Command
                                 }
                                 throw new \RuntimeException('STORAGE_OWNER_UNRESOLVED');
                             }
-                            $key = $locator['disk'] . ':' . $locator['path'];
+                            $key = $disk . ':' . $locator['path'];
                             $module = $model instanceof \App\Models\Expert\ExpertProjectMaterial ? 'expert' : 'smeta';
                             $physicalModule = str_starts_with($locator['path'], 'expert/') ? 'expert' : 'smeta';
                             $declaredSize = $model->getAttribute('size_bytes') ?? $model->getAttribute('file_size')
                                 ?? ($module === 'expert' ? $model->getAttribute('size') : null);
                             if (!isset($files[$key])) {
-                                if (!$objects->exists($locator['disk'], $locator['path'])) {
+                                if (!$objects->exists($disk, $locator['path'])) {
                                     throw new \RuntimeException('STORAGE_OBJECT_MISSING');
                                 }
-                                $actualSize = $objects->size($locator['disk'], $locator['path']);
+                                $actualSize = $objects->size($disk, $locator['path']);
                                 $files[$key] = [
                                     'user_id' => $owner, 'module' => $physicalModule, 'links' => [],
-                                    'metadata' => $locator + [
+                                    'metadata' => ['disk' => $disk, 'path' => $locator['path']] + [
                                         'purpose' => $model->getTable(), 'size_bytes' => $actualSize,
                                         'original_filename' => $model->original_filename ?? $model->original_name,
-                                        'mime_type' => $model->mime_type ?? Storage::disk($locator['disk'])->mimeType($locator['path']),
+                                        'mime_type' => $model->mime_type ?? Storage::disk($disk)->mimeType($locator['path']),
                                         'billable' => !($model instanceof \App\Models\ImportSession),
                                     ],
                                 ];

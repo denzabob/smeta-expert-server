@@ -5,6 +5,8 @@ namespace Tests\Feature\Billing;
 use App\Models\BillingPlan;
 use App\Models\EvidenceRecord;
 use App\Models\GenericEvidenceAsset;
+use App\Models\Material;
+use App\Models\MaterialPriceHistory;
 use App\Models\Expert\ExpertProject;
 use App\Models\User;
 use App\Models\Project;
@@ -205,6 +207,91 @@ class AccountStorageLifecycleTest extends TestCase
         $this->assertDatabaseCount('storage_file_links', 1);
         $this->assertSame(3, app(StorageUsageService::class)->getUserUsage($this->user->id)['used_bytes']);
         $this->artisan('storage:usage-audit')->expectsOutputToContain('Used mismatches: 0')->assertSuccessful();
+    }
+
+    public function test_smeta_history_infers_s1_disk_for_a_smeta_screenshot_locator(): void
+    {
+        $material = Material::create([
+            'user_id' => $this->user->id,
+            'origin' => 'user',
+            'name' => 'S1 screenshot material',
+            'article' => 'S1-' . Str::random(8),
+            'type' => Material::TYPE_PLATE,
+            'unit' => 'м²',
+            'price_per_unit' => 100,
+            'is_active' => true,
+            'version' => 1,
+        ]);
+
+        $history = MaterialPriceHistory::create([
+            'material_id' => $material->id,
+            'version' => 1,
+            'valid_from' => now()->toDateString(),
+            'price_per_unit' => 100,
+            'source_type' => 'chrome_ext',
+            'screenshot_path' => 'smeta/screenshots/chrome/generic/' . $this->user->id . '/capture.png',
+            'storage_disk' => null,
+        ]);
+
+        $this->assertSame(ObjectStorage::DISK, $history->fresh()->storage_disk);
+    }
+
+    public function test_backfill_accepts_smeta_history_with_blank_storage_disk(): void
+    {
+        $record = $this->record();
+        $material = Material::create([
+            'user_id' => $this->user->id,
+            'origin' => 'user',
+            'name' => 'Backfill S1 material',
+            'article' => 'BACKFILL-' . Str::random(8),
+            'type' => Material::TYPE_PLATE,
+            'unit' => 'м²',
+            'price_per_unit' => 100,
+            'is_active' => true,
+            'version' => 1,
+        ]);
+        $key = 'smeta/screenshots/chrome/generic/' . $this->user->id . '/production.png';
+        Storage::disk('s1')->put($key, 'abc');
+
+        DB::table('material_price_histories')->insert([
+            'material_id' => $material->id,
+            'version' => 1,
+            'valid_from' => now()->toDateString(),
+            'price_per_unit' => 100,
+            'source_type' => 'chrome_ext',
+            'observed_at' => now(),
+            'currency' => 'RUB',
+            'source_url' => 'https://example.test/material',
+            'screenshot_path' => $key,
+            'storage_disk' => null,
+            'evidence_record_id' => $record->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $asset = GenericEvidenceAsset::create([
+            'uuid' => (string) Str::uuid(),
+            'evidence_record_id' => $record->id,
+            'asset_type' => 'screenshot',
+            'storage_disk' => ObjectStorage::DISK,
+            'file_path' => $key,
+            'file_size' => 3,
+        ]);
+
+        $this->artisan('storage:backfill-registry')->assertSuccessful();
+        $this->assertDatabaseHas('storage_files', [
+            'disk' => ObjectStorage::DISK,
+            'path' => $key,
+            'user_id' => $this->user->id,
+            'module' => 'smeta',
+        ]);
+        $this->assertDatabaseCount('storage_file_links', 2);
+        $this->assertDatabaseHas('storage_file_links', [
+            'source_type' => 'material_price_histories',
+        ]);
+        $this->assertDatabaseHas('storage_file_links', [
+            'source_type' => 'generic_evidence_assets',
+            'source_id' => $asset->id,
+        ]);
     }
 
     public function test_actual_size_exceeding_limit_compensates_before_business_creation(): void

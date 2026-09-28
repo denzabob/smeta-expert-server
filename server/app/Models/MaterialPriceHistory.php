@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Storage\ObjectStorage;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -57,6 +58,24 @@ class MaterialPriceHistory extends Model
         'true_score' => 'integer',
         'validation_confidence' => 'integer',
     ];
+
+    /**
+     * Smeta screenshot/snapshot locators are S1-backed. Keep the business row
+     * self-describing even when an older write flow omitted storage_disk.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $history): void {
+            foreach ([$history->screenshot_path, $history->snapshot_path] as $path) {
+                if (is_string($path) && str_starts_with($path, 'smeta/')) {
+                    if ($history->storage_disk !== ObjectStorage::DISK) {
+                        $history->storage_disk = ObjectStorage::DISK;
+                    }
+                    return;
+                }
+            }
+        });
+    }
 
     public function material(): BelongsTo
     {

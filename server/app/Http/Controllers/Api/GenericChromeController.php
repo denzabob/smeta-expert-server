@@ -14,6 +14,7 @@ use App\Models\EstimateEvidenceRun;
 use App\Services\Billing\BillingCodes;
 use App\Services\ChromeExtractService;
 use App\Services\GenericChromeCaptureService;
+use App\Services\Storage\ObjectStorage;
 use App\Services\TrustScoreService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -370,6 +371,11 @@ class GenericChromeController extends Controller
                         ?? $evidenceResult['record']->assets()->where('asset_type', 'screenshot')->first();
                     if ($bridgeAsset && !empty($bridgeAsset->file_path)) {
                         $bridgeData['screenshot_path'] = $bridgeAsset->file_path;
+                        $assetDisk = $bridgeAsset->storage_disk
+                            ?: (str_starts_with($bridgeAsset->file_path, 'smeta/') ? ObjectStorage::DISK : null);
+                        if ($assetDisk !== null) {
+                            $bridgeData['storage_disk'] = $assetDisk;
+                        }
                     }
                     $materialResult['observation']->update($bridgeData);
                 }
