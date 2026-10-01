@@ -35,7 +35,7 @@ final class BackfillAccountStorage extends Command
                 $class::query()->orderBy('id')->chunkById(200, function ($rows) use (&$files, $references, $objects) {
                     foreach ($rows as $model) {
                         foreach ($references->locators($model) as $locator) {
-                            if (str_starts_with($locator['path'], 'smeta/screenshots/parser/')) {
+                            if ($references->isPlatformLocator($locator['path'])) {
                                 continue; // Platform catalog source, even inside an account revision snapshot.
                             }
                             // A Smeta locator is an S1 object even if a legacy write
@@ -43,10 +43,10 @@ final class BackfillAccountStorage extends Command
                             $disk = str_starts_with($locator['path'], 'smeta/')
                                 ? ObjectStorage::DISK
                                 : (string) ($locator['disk'] ?? '');
+                            if ($references->isNonPersistentLocator($model, $locator)) {
+                                continue; // TTL processing sources and global catalog cache pointers.
+                            }
                             if ($disk !== ObjectStorage::DISK) {
-                                if ($model instanceof \App\Models\ImportSession || $model instanceof \App\Models\Material) {
-                                    continue; // TTL processing sources and global catalog cache pointers.
-                                }
                                 throw new \RuntimeException('UNEXPECTED_LEGACY_PERSISTENT_LOCATOR');
                             }
                             $owner = $references->owner($model);
@@ -57,7 +57,7 @@ final class BackfillAccountStorage extends Command
                                 throw new \RuntimeException('STORAGE_OWNER_UNRESOLVED');
                             }
                             $key = $disk . ':' . $locator['path'];
-                            $module = $model instanceof \App\Models\Expert\ExpertProjectMaterial ? 'expert' : 'smeta';
+                            $module = $references->module($model);
                             $physicalModule = str_starts_with($locator['path'], 'expert/') ? 'expert' : 'smeta';
                             $declaredSize = $model->getAttribute('size_bytes') ?? $model->getAttribute('file_size')
                                 ?? ($module === 'expert' ? $model->getAttribute('size') : null);

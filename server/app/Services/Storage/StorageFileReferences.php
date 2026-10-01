@@ -66,7 +66,7 @@ final class StorageFileReferences
             $path = $model->getAttribute($column);
             if (is_string($path) && $path !== '') {
                 $disk = $model->getAttribute('storage_disk');
-                $disk = str_starts_with($path, 'smeta/') ? 's1' : ($disk ?: ($model instanceof \App\Models\Expert\ExpertProjectMaterial ? 'local' : 'public'));
+                $disk = str_starts_with($path, 'smeta/') ? ObjectStorage::DISK : ($disk ?: ($model instanceof \App\Models\Expert\ExpertProjectMaterial ? 'local' : 'public'));
                 $result[$disk . ':' . $path] = ['disk' => $disk, 'path' => $path];
             }
         }
@@ -78,13 +78,70 @@ final class StorageFileReferences
         foreach (['screenshot_path', 'snapshot_path', 'file_path'] as $key) {
             $path = $snapshot[$key] ?? null;
             if (is_string($path) && $path !== '' && !filter_var($path, FILTER_VALIDATE_URL)) {
-                $disk = str_starts_with($path, 'smeta/') ? 's1' : ($snapshot['storage_disk'] ?? 'public');
+                $disk = str_starts_with($path, 'smeta/') ? ObjectStorage::DISK : ($snapshot['storage_disk'] ?? 'public');
                 $result[$disk . ':' . $path] = ['disk' => $disk, 'path' => $path];
             }
         }
         foreach ($snapshot as $value) {
             if (is_array($value)) { $this->snapshotLocators($value, $result); }
         }
+    }
+
+    public function isPlatformLocator(string $path): bool
+    {
+        return str_starts_with($path, 'smeta/screenshots/parser/');
+    }
+
+    public function isNonPersistentLocator(Model $model, array $locator): bool
+    {
+        if (!$model instanceof \App\Models\ImportSession && !$model instanceof \App\Models\Material) {
+            return false;
+        }
+
+        $declaredDisk = $model->getAttribute('storage_disk');
+        return $declaredDisk !== ObjectStorage::DISK && !str_starts_with($locator['path'], 'smeta/');
+    }
+
+    public function module(Model $model): string
+    {
+        return $model instanceof \App\Models\Expert\ExpertProjectMaterial ? 'expert' : 'smeta';
+    }
+
+    public function isCanonicalPath(string $module, string $path): bool
+    {
+        return str_starts_with($path, $module . '/');
+    }
+
+    public function declaredDisk(Model $model, string $path): ?string
+    {
+        if ($model instanceof \App\Models\ProjectRevision) {
+            $snapshot = json_decode((string) $model->snapshot_json, true, flags: JSON_THROW_ON_ERROR);
+            return $this->snapshotDeclaredDisk(is_array($snapshot) ? $snapshot : [], $path);
+        }
+
+        $disk = $model->getAttribute('storage_disk');
+        return is_string($disk) && trim($disk) !== '' ? trim($disk) : null;
+    }
+
+    private function snapshotDeclaredDisk(array $snapshot, string $path): ?string
+    {
+        foreach (['screenshot_path', 'snapshot_path', 'file_path'] as $key) {
+            if (($snapshot[$key] ?? null) === $path) {
+                $disk = $snapshot['storage_disk'] ?? null;
+                return is_string($disk) && trim($disk) !== '' ? trim($disk) : null;
+            }
+        }
+
+        foreach ($snapshot as $value) {
+            if (is_array($value)) {
+                $disk = $this->snapshotDeclaredDisk($value, $path);
+                if ($disk !== null) {
+                    return $disk;
+                }
+            }
+        }
+
+        return null;
     }
 
     public function sync(Model $model): void

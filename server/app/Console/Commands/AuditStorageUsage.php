@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Storage\StorageUsageService;
+use App\Services\Storage\StorageCoverageAudit;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -11,9 +12,9 @@ use Throwable;
 class AuditStorageUsage extends Command
 {
     protected $signature = 'storage:usage-audit {--user=} {--all}';
-    protected $description = 'Read-only comparison of account storage projections with registry totals';
+    protected $description = 'Read-only comparison of account storage projections and persistent locator coverage';
 
-    public function handle(StorageUsageService $usage): int
+    public function handle(StorageUsageService $usage, StorageCoverageAudit $coverage): int
     {
         $user = $this->option('user');
         if (($user !== null && (bool) $this->option('all')) || ($user !== null && (!ctype_digit((string) $user) || (int) $user < 1))) {
@@ -51,7 +52,24 @@ class AuditStorageUsage extends Command
             });
             $this->info("Usage mismatches: {$mismatches}; duplicate objects: {$duplicates}");
             $this->info("Used mismatches: {$counts['used']}; reserved mismatches: {$counts['reserved']}; module mismatches: {$counts['module']}; category mismatches: {$counts['category']}");
-            return $mismatches === 0 && $duplicates === 0 ? self::SUCCESS : self::FAILURE;
+            $coverageResult = $coverage->audit($user !== null ? (int) $user : null);
+            foreach ($coverageResult['issues'] as $issue) {
+                $this->line(json_encode($issue, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+            }
+            $this->info(sprintf(
+                'Coverage: unregistered persistent: %d; orphan registry: %d; invalid locators: %d',
+                $coverageResult['unregistered'],
+                $coverageResult['orphan'],
+                $coverageResult['invalid_locators'],
+            ));
+
+            return $mismatches === 0
+                && $duplicates === 0
+                && $coverageResult['unregistered'] === 0
+                && $coverageResult['orphan'] === 0
+                && $coverageResult['invalid_locators'] === 0
+                ? self::SUCCESS
+                : self::FAILURE;
         } catch (Throwable $e) {
             Log::error('Storage usage audit failed', ['exception' => $e]);
             $this->error('STORAGE_USAGE_AUDIT_FAILED');

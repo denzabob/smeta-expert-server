@@ -195,6 +195,7 @@ class AccountStorageUsageTest extends TestCase
         $this->artisan('storage:usage-audit')
             ->expectsOutput('Usage mismatches: 0; duplicate objects: 0')
             ->expectsOutput('Used mismatches: 0; reserved mismatches: 0; module mismatches: 0; category mismatches: 0')
+            ->expectsOutput('Coverage: unregistered persistent: 0; orphan registry: 0; invalid locators: 0')
             ->assertExitCode(0);
         DB::table('storage_usages')->where('user_id', 1)->update(['used_bytes' => 9, 'images_count' => 1]);
         $this->artisan('storage:usage-audit', ['--user' => 1])
