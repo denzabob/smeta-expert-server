@@ -138,6 +138,108 @@ class StorageCoverageAuditTest extends TestCase
         $this->assertCoveragePasses();
     }
 
+    public function test_legacy_public_revision_locator_is_historical_and_does_not_require_registry(): void
+    {
+        $project = Project::create([
+            'user_id' => $this->user->id,
+            'number' => 'COVERAGE-HISTORICAL',
+            'expert_name' => 'Coverage historical',
+            'address' => 'Fixture',
+        ]);
+        $snapshot = json_encode([
+            'price_justifications' => [[
+                'screenshot_path' => 'screenshots/chrome/generic/2026/04/legacy.jpg',
+                'storage_disk' => 'public',
+            ]],
+        ], JSON_THROW_ON_ERROR);
+        ProjectRevision::create([
+            'project_id' => $project->id,
+            'number' => 1,
+            'status' => 'locked',
+            'snapshot_json' => $snapshot,
+            'snapshot_hash' => hash('sha256', $snapshot),
+        ]);
+
+        $this->artisan('storage:usage-audit', ['--all' => true])->assertExitCode(0);
+        $this->assertSame(1, app(\App\Services\Storage\StorageCoverageAudit::class)->audit()['historical']);
+    }
+
+    public function test_legacy_public_revision_locator_is_skipped_by_backfill(): void
+    {
+        $project = Project::create([
+            'user_id' => $this->user->id,
+            'number' => 'BACKFILL-HISTORICAL',
+            'expert_name' => 'Backfill historical',
+            'address' => 'Fixture',
+        ]);
+        $snapshot = json_encode([
+            'screenshot_path' => 'screenshots/chrome/generic/2026/04/legacy-backfill.jpg',
+            'storage_disk' => 'public',
+        ], JSON_THROW_ON_ERROR);
+        ProjectRevision::create([
+            'project_id' => $project->id,
+            'number' => 1,
+            'status' => 'locked',
+            'snapshot_json' => $snapshot,
+            'snapshot_hash' => hash('sha256', $snapshot),
+        ]);
+
+        $this->artisan('storage:backfill-registry', ['--dry-run' => true])->assertSuccessful();
+    }
+
+    public function test_canonical_s1_revision_locator_without_registry_is_reported(): void
+    {
+        $project = Project::create([
+            'user_id' => $this->user->id,
+            'number' => 'COVERAGE-REVISION-S1',
+            'expert_name' => 'Coverage revision S1',
+            'address' => 'Fixture',
+        ]);
+        $snapshot = json_encode([
+            'price_justifications' => [[
+                'screenshot_path' => 'smeta/screenshots/chrome/generic/1/modern.jpg',
+                'storage_disk' => ObjectStorage::DISK,
+            ]],
+        ], JSON_THROW_ON_ERROR);
+        ProjectRevision::create([
+            'project_id' => $project->id,
+            'number' => 1,
+            'status' => 'locked',
+            'snapshot_json' => $snapshot,
+            'snapshot_hash' => hash('sha256', $snapshot),
+        ]);
+
+        $this->assertCoverageFailureContains('UNREGISTERED_PERSISTENT_FILE');
+    }
+
+    public function test_noncanonical_explicit_s1_revision_locator_is_not_hidden_as_historical(): void
+    {
+        $project = Project::create([
+            'user_id' => $this->user->id,
+            'number' => 'COVERAGE-REVISION-S1-PATH',
+            'expert_name' => 'Coverage revision S1 path',
+            'address' => 'Fixture',
+        ]);
+        $snapshot = json_encode([
+            'price_justifications' => [[
+                'screenshot_path' => 'screenshots/chrome/generic/1/incorrect-modern.jpg',
+                'storage_disk' => ObjectStorage::DISK,
+            ]],
+        ], JSON_THROW_ON_ERROR);
+        ProjectRevision::create([
+            'project_id' => $project->id,
+            'number' => 1,
+            'status' => 'locked',
+            'snapshot_json' => $snapshot,
+            'snapshot_hash' => hash('sha256', $snapshot),
+        ]);
+
+        $result = $this->artisan('storage:usage-audit', ['--all' => true])
+            ->expectsOutputToContain('INVALID_PERSISTENT_PATH');
+        $result->assertExitCode(1);
+        $this->assertSame(0, app(\App\Services\Storage\StorageCoverageAudit::class)->audit()['historical']);
+    }
+
     public function test_multiple_business_links_count_one_physical_object(): void
     {
         $path = 'smeta/evidence-records/shared.pdf';

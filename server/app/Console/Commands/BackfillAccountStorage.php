@@ -38,6 +38,9 @@ final class BackfillAccountStorage extends Command
                             if ($references->isPlatformLocator($locator['path'])) {
                                 continue; // Platform catalog source, even inside an account revision snapshot.
                             }
+                            if ($references->isHistoricalProjectRevisionLocator($model, $locator)) {
+                                continue; // Immutable legacy snapshot; not an account-owned S1 object.
+                            }
                             // A Smeta locator is an S1 object even if a legacy write
                             // left storage_disk empty on the business row.
                             $disk = str_starts_with($locator['path'], 'smeta/')

@@ -22,12 +22,13 @@ final class StorageCoverageAudit
     public function __construct(private readonly StorageFileReferences $references) {}
 
     /**
-     * @return array{unregistered:int, orphan:int, invalid_disk:int, invalid_path:int, invalid_locators:int, issues:array<int,array<string,mixed>>}
+     * @return array{unregistered:int, orphan:int, invalid_disk:int, invalid_path:int, invalid_locators:int, historical:int, issues:array<int,array<string,mixed>>}
      */
     public function audit(?int $userId = null): array
     {
         $expected = [];
         $issues = [];
+        $historical = 0;
         $hasBusinessSourceTable = false;
 
         foreach (array_keys(StorageFileReferences::SOURCES) as $class) {
@@ -37,7 +38,7 @@ final class StorageCoverageAudit
             }
             $hasBusinessSourceTable = true;
 
-            $class::query()->orderBy('id')->chunkById(200, function ($rows) use (&$expected, &$issues, $userId): void {
+            $class::query()->orderBy('id')->chunkById(200, function ($rows) use (&$expected, &$issues, &$historical, $userId): void {
                 foreach ($rows as $model) {
                     $owner = $this->references->owner($model);
                     if ($owner === null || ($userId !== null && $owner !== $userId)) {
@@ -46,6 +47,11 @@ final class StorageCoverageAudit
 
                     foreach ($this->references->locators($model) as $locator) {
                         if ($this->references->isPlatformLocator($locator['path'])) {
+                            continue;
+                        }
+
+                        if ($this->references->isHistoricalProjectRevisionLocator($model, $locator)) {
+                            $historical++;
                             continue;
                         }
 
@@ -107,6 +113,7 @@ final class StorageCoverageAudit
                 'invalid_disk' => 0,
                 'invalid_path' => 0,
                 'invalid_locators' => 0,
+                'historical' => 0,
                 'issues' => [],
             ];
         }
@@ -179,7 +186,7 @@ final class StorageCoverageAudit
         ];
         $counts['invalid_locators'] = $counts['invalid_disk'] + $counts['invalid_path'];
 
-        return $counts + ['issues' => $issues];
+        return $counts + ['historical' => $historical, 'issues' => $issues];
     }
 
     /** @return array<string,mixed> */

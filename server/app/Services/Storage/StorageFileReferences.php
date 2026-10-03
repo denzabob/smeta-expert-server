@@ -92,6 +92,31 @@ final class StorageFileReferences
         return str_starts_with($path, 'smeta/screenshots/parser/');
     }
 
+    /**
+     * Legacy public locators in an immutable project snapshot describe the
+     * historical report state. They are not account-owned registry objects.
+     * Canonical S1-prefixed locators remain owning references and must be
+     * covered by storage_files/storage_file_links.
+     */
+    public function isHistoricalProjectRevisionLocator(Model $model, array $locator): bool
+    {
+        if (!$model instanceof \App\Models\ProjectRevision) {
+            return false;
+        }
+
+        $path = ltrim(str_replace('\\', '/', (string) ($locator['path'] ?? '')), '/');
+
+        // An explicit S1 locator is current storage even when its path is
+        // malformed. Let coverage report the invalid path instead of hiding
+        // a new write-flow defect as historical data.
+        if (($locator['disk'] ?? null) === ObjectStorage::DISK) {
+            return false;
+        }
+
+        return !str_starts_with($path, ObjectStorage::PREFIX . '/')
+            && !str_starts_with($path, 'expert/');
+    }
+
     public function isNonPersistentLocator(Model $model, array $locator): bool
     {
         if (!$model instanceof \App\Models\ImportSession && !$model instanceof \App\Models\Material) {

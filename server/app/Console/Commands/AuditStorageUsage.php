@@ -62,6 +62,10 @@ class AuditStorageUsage extends Command
                 $coverageResult['orphan'],
                 $coverageResult['invalid_locators'],
             ));
+            $this->info(sprintf(
+                'Historical snapshot locators skipped: %d',
+                $coverageResult['historical'],
+            ));
 
             return $mismatches === 0
                 && $duplicates === 0
