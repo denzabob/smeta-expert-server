@@ -12,8 +12,8 @@ vi.mock('vuetify/components/VProgressCircular', () => ({ VProgressCircular: { te
 import { applyExpertTimelineActivity, createExpertTimelineRun, type ExpertTimelineRun } from '../../chatTimeline'
 import ExpertChatActivityTimeline from './ExpertChatActivityTimeline.vue'
 
-async function renderTimeline(runs: ExpertTimelineRun[], showSlowWaiting = false): Promise<string> {
-  const app = createSSRApp({ render: () => h(ExpertChatActivityTimeline, { runs, showSlowWaiting }) })
+async function renderTimeline(runs: ExpertTimelineRun[]): Promise<string> {
+  const app = createSSRApp({ render: () => h(ExpertChatActivityTimeline, { runs }) })
   app.component('v-icon', { template: '<i />' })
   app.component('v-progress-circular', { template: '<i />' })
   return renderToString(app)
@@ -50,6 +50,15 @@ describe('Expert activity timeline presentation', () => {
     expect(html).toContain('Формирую ответ…')
     expect(html).not.toContain('Запрос принят')
     expect(html).not.toContain('Ход обработки')
+  })
+
+  it('shows a save status after model completion until the run is terminal', async () => {
+    let runs = [createExpertTimelineRun('run-1')]
+    runs = applyExpertTimelineActivity(runs, { runId: 'run-1', seq: 1, activityId: 'model', code: 'model.completed', status: 'completed', category: 'model' })
+    expect(await renderTimeline(runs)).toContain('Сохраняю ответ…')
+
+    runs = applyExpertTimelineActivity(runs, { runId: 'run-1', seq: 2, activityId: 'response', code: 'response.persisted', status: 'completed', category: 'response' })
+    expect(await renderTimeline(runs)).toContain('Сохраняю ответ…')
   })
 
   it('renders significant material activities sequentially before a terminal event', async () => {

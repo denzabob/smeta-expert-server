@@ -37,7 +37,6 @@ export interface ExpertTimelinePresentation {
 const MAX_RUNS_PER_ASSISTANT = 3
 const MAX_ACTIVITIES_PER_RUN = 24
 const MAX_REASONING_SUMMARY_CHARS = 4000
-export const EXPERT_SLOW_FIRST_TOKEN_MS = 800
 export const EXPERT_SIGNIFICANT_WAIT_MS = 1600
 
 const significantActivityPrefixes = [

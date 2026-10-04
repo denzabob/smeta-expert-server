@@ -35,6 +35,26 @@ function frame(event: string, data: Record<string, unknown>) {
   return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 }
 
+function mountAssistantMessage(message: { value: ExpertMessage }, runs: { value: ExpertTimelineRun[] }) {
+  const root = document.createElement('div')
+  const app = createApp({ render: () => h(ExpertChatMessage, { message: message.value, timelineRuns: runs.value }) })
+  app.component('v-icon', { template: '<i />' })
+  app.component('v-btn', { template: '<button><slot /></button>' })
+  app.component('v-menu', { template: '<div><slot name="activator" :props="{}" /><slot /></div>' })
+  app.component('v-list', { template: '<ul><slot /></ul>' })
+  app.component('v-list-item', { template: '<li />' })
+  app.component('v-dialog', { template: '<div><slot /></div>' })
+  app.component('v-card', { template: '<div><slot /></div>' })
+  app.component('v-card-title', { template: '<div><slot /></div>' })
+  app.component('v-card-text', { template: '<div><slot /></div>' })
+  app.component('v-card-actions', { template: '<div><slot /></div>' })
+  app.component('v-spacer', { template: '<span />' })
+  app.component('v-snackbar', { template: '<div><slot /></div>' })
+  app.mount(root)
+
+  return { app, root }
+}
+
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('Expert Chat real DOM stream', () => {
@@ -68,30 +88,37 @@ describe('Expert Chat real DOM stream', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })))
     const client = createExpertApi({ getUri: () => 'https://expert.test' } as unknown as AxiosInstance)
     const assistant = ref<ExpertMessage>({ id: 'assistant-1', role: 'assistant', text: '', createdAt: '2026-09-19T10:00:00Z', deliveryState: 'sending' })
-    const root = document.createElement('div')
-    const app = createApp({ render: () => h(ExpertChatMessage, { message: assistant.value }) })
-    app.component('v-icon', { template: '<i />' })
-    app.component('v-btn', { template: '<button><slot /></button>' })
-    app.component('v-menu', { template: '<div><slot name="activator" :props="{}" /><slot /></div>' })
-    app.component('v-list', { template: '<ul><slot /></ul>' })
-    app.component('v-list-item', { template: '<li />' })
-    app.mount(root)
+    const runs = ref<ExpertTimelineRun[]>([])
+    const { app, root } = mountAssistantMessage(assistant, runs)
 
     let done = false
     let deltaCount = 0
     const request = client.streamMessage('conversation-1', 'Вопрос', 'message-1', [], {
-      onRun: () => undefined,
+      onRun: (runId) => { runs.value = [createExpertTimelineRun(runId)] },
       onDelta: (_runId, _seq, text) => { assistant.value = { ...assistant.value, text: assistant.value.text + text }; deltaCount++ },
-      onDone: () => { done = true; assistant.value = { ...assistant.value, deliveryState: 'sent' } },
+      onActivity: (activity) => { runs.value = applyExpertTimelineActivity(runs.value, activity) },
+      onDone: () => { done = true; runs.value = finishExpertTimelineRun(runs.value, 'run-1', 'completed'); assistant.value = { ...assistant.value, deliveryState: 'sent' } },
       onCancelled: () => undefined,
       onError: () => undefined,
     })
+    expect(root.querySelector('.expert-activity-current')).not.toBeNull()
+
     controller.enqueue(frame('run', { version: 1, run_id: 'run-1', user_message: { public_id: 'u1', role: 'user', content: 'Вопрос', created_at: '2026-09-19T10:00:00Z' } }))
+    controller.enqueue(frame('activity', { version: 1, run_id: 'run-1', seq: 1, activity_id: 'model-request', code: 'model.request.started', status: 'started', category: 'model' }))
+    await vi.waitFor(() => expect(root.textContent).toContain('Ожидаю ответ модели…'))
+    expect(root.querySelector('.expert-activity-current')).not.toBeNull()
+
+    controller.enqueue(frame('activity', { version: 1, run_id: 'run-1', seq: 2, activity_id: 'model-request', code: 'model.first_token', status: 'completed', category: 'model' }))
+    await vi.waitFor(() => expect(root.textContent).toContain('Формирую ответ…'))
+    expect(deltaCount).toBe(0)
+
     controller.enqueue(frame('delta', { version: 1, seq: 1, text: 'Первый абзац.' }))
     await vi.waitFor(() => expect(deltaCount).toBe(1))
     await pause(60)
     await nextTick()
     expect(root.textContent).toContain('Первый абзац.')
+    expect(root.textContent).toContain('Формирую ответ…')
+    expect(root.querySelector('.expert-activity-current')).not.toBeNull()
     expect(root.textContent).not.toContain('Второй абзац.')
     expect(done).toBe(false)
 
@@ -104,10 +131,98 @@ describe('Expert Chat real DOM stream', () => {
     expect(root.textContent).toContain('Второй абзац.')
     expect(done).toBe(false)
 
+    controller.enqueue(frame('activity', { version: 1, run_id: 'run-1', seq: 3, activity_id: 'model-complete', code: 'model.completed', status: 'completed', category: 'model' }))
+    await vi.waitFor(() => expect(root.textContent).toContain('Сохраняю ответ…'))
+    expect(root.querySelector('.expert-activity-current')).not.toBeNull()
+    controller.enqueue(frame('activity', { version: 1, run_id: 'run-1', seq: 4, activity_id: 'response', code: 'response.persisted', status: 'completed', category: 'response' }))
     controller.enqueue(frame('done', { version: 1 }))
     controller.close()
     await request
     expect(done).toBe(true)
+    expect(root.querySelector('.expert-activity-current')).toBeNull()
+    expect(root.textContent).toContain('Второй абзац.')
+    app.unmount()
+  })
+
+  it.each(['cancelled', 'error'] as const)('hides the activity indicator after %s and keeps partial text', async (terminalEvent) => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const stream = new ReadableStream<Uint8Array>({ start(value) { controller = value } })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })))
+    const client = createExpertApi({ getUri: () => 'https://expert.test' } as unknown as AxiosInstance)
+    const assistant = ref<ExpertMessage>({ id: 'assistant-1', role: 'assistant', text: '', createdAt: '2026-09-19T10:00:00Z', deliveryState: 'sending' })
+    const runs = ref<ExpertTimelineRun[]>([])
+    const { app, root } = mountAssistantMessage(assistant, runs)
+    const request = client.streamMessage('conversation-1', 'Вопрос', 'message-1', [], {
+      onRun: (runId) => { runs.value = [createExpertTimelineRun(runId)] },
+      onDelta: (_runId, _seq, text) => { assistant.value = { ...assistant.value, text: assistant.value.text + text } },
+      onActivity: (activity) => { runs.value = applyExpertTimelineActivity(runs.value, activity) },
+      onDone: () => undefined,
+      onCancelled: () => {
+        runs.value = finishExpertTimelineRun(runs.value, 'run-1', 'cancelled')
+        assistant.value = { ...assistant.value, deliveryState: 'sent', generationStatus: 'stopped' }
+      },
+      onError: () => {
+        runs.value = finishExpertTimelineRun(runs.value, 'run-1', 'interrupted')
+        assistant.value = { ...assistant.value, deliveryState: 'error', generationStatus: 'interrupted' }
+      },
+    })
+    controller.enqueue(frame('run', { version: 1, run_id: 'run-1', user_message: { public_id: 'u1', role: 'user', content: 'Вопрос', created_at: '2026-09-19T10:00:00Z' } }))
+    controller.enqueue(frame('activity', { version: 1, run_id: 'run-1', seq: 1, activity_id: 'model-request', code: 'model.request.started', status: 'started', category: 'model' }))
+    controller.enqueue(frame('activity', { version: 1, run_id: 'run-1', seq: 2, activity_id: 'model-request', code: 'model.first_token', status: 'completed', category: 'model' }))
+    controller.enqueue(frame('delta', { version: 1, seq: 1, text: 'Частичный ответ.' }))
+    await vi.waitFor(() => expect(root.textContent).toContain('Частичный ответ.'))
+    expect(root.textContent).toContain('Формирую ответ…')
+    expect(root.querySelector('.expert-activity-current')).not.toBeNull()
+
+    controller.enqueue(frame(terminalEvent, terminalEvent === 'error'
+      ? { version: 1, run_id: 'run-1', code: 'provider_timeout', error_code: 'provider_timeout', retryable: true }
+      : { version: 1, run_id: 'run-1' }))
+    controller.close()
+    await request
+    await nextTick()
+
+    expect(root.querySelector('.expert-activity-current')).toBeNull()
+    expect(root.textContent).toContain('Частичный ответ.')
+    app.unmount()
+  })
+
+  it('keeps the indicator alongside an existing answer while a continuation streams', async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const stream = new ReadableStream<Uint8Array>({ start(value) { controller = value } })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })))
+    const client = createExpertApi({ getUri: () => 'https://expert.test' } as unknown as AxiosInstance)
+    const assistant = ref<ExpertMessage>({ id: 'assistant-1', role: 'assistant', text: 'Уже сохранённая часть.', createdAt: '2026-09-19T10:00:00Z', deliveryState: 'sending' })
+    const runs = ref<ExpertTimelineRun[]>([])
+    const { app, root } = mountAssistantMessage(assistant, runs)
+    const request = client.streamMessage('conversation-1', '', 'continuation-1', [], {
+      onRun: (runId) => { runs.value = [createExpertTimelineRun(runId)] },
+      onDelta: (_runId, _seq, text) => { assistant.value = { ...assistant.value, text: assistant.value.text + text } },
+      onActivity: (activity) => { runs.value = applyExpertTimelineActivity(runs.value, activity) },
+      onDone: () => {
+        runs.value = finishExpertTimelineRun(runs.value, 'run-continue', 'completed')
+        assistant.value = { ...assistant.value, deliveryState: 'sent' }
+      },
+      onCancelled: () => undefined,
+      onError: () => undefined,
+    }, undefined, 'assistant-1')
+    expect(root.querySelector('.expert-activity-current')).not.toBeNull()
+    controller.enqueue(frame('run', { version: 1, run_id: 'run-continue', user_message: { public_id: 'u1', role: 'user', content: 'Вопрос', created_at: '2026-09-19T10:00:00Z' } }))
+    controller.enqueue(frame('activity', { version: 1, run_id: 'run-continue', seq: 1, activity_id: 'model-request', code: 'model.request.started', status: 'started', category: 'model' }))
+    await vi.waitFor(() => expect(root.textContent).toContain('Ожидаю ответ модели…'))
+    controller.enqueue(frame('activity', { version: 1, run_id: 'run-continue', seq: 2, activity_id: 'model-request', code: 'model.first_token', status: 'completed', category: 'model' }))
+    controller.enqueue(frame('delta', { version: 1, seq: 1, text: ' Продолжение.' }))
+    await vi.waitFor(() => expect(root.textContent).toContain('Продолжение.'))
+    await pause(60)
+    await nextTick()
+    expect(root.textContent).toContain('Уже сохранённая часть.')
+    expect(root.textContent).toContain('Формирую ответ…')
+    expect(root.querySelector('.expert-activity-current')).not.toBeNull()
+
+    controller.enqueue(frame('done', { version: 1 }))
+    controller.close()
+    await request
+    expect(root.querySelector('.expert-activity-current')).toBeNull()
+    expect(root.textContent).toContain('Продолжение.')
     app.unmount()
   })
 

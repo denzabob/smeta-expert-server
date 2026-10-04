@@ -10,8 +10,11 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { ExpertRunActivity, ExpertTimelineRun } from '../../chatTimeline'
 
-const props = withDefaults(defineProps<{ runs: ExpertTimelineRun[]; showSlowWaiting?: boolean }>(), { showSlowWaiting: false })
+const props = defineProps<{ runs: ExpertTimelineRun[] }>()
 const run = computed(() => [...props.runs].reverse().find((item) => !item.terminal))
+const isSaving = computed(() => run.value?.activities.some((item) =>
+  ['model.completed', 'response.persisted'].includes(item.code) && item.status !== 'started',
+) ?? false)
 const current = computed<ExpertRunActivity | undefined>(() => {
   const open = run.value?.activities.filter((item) => item.status === 'started') ?? []
   return [...open].reverse().find((item) => item.code.startsWith('pdf.ocr.') || item.code.startsWith('pdf.text.') || item.code.startsWith('pdf.text_cache.'))
@@ -20,6 +23,7 @@ const current = computed<ExpertRunActivity | undefined>(() => {
     ?? run.value?.activities[run.value.activities.length - 1]
 })
 const label = computed(() => {
+  if (isSaving.value) return 'Сохраняю ответ…'
   const activity = current.value
   if (!activity) return 'Подготавливаю запрос…'
   if (activity.code.startsWith('pdf.ocr.')) return activity.detail ? `Распознаю ${activity.detail}…` : 'Распознаю документ…'

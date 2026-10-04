@@ -81,7 +81,6 @@
             :allow-continue="Boolean(continuableAssistantIds[message.id]) || message.generationStatus === 'stopped' || message.generationStatus === 'interrupted'"
             :image-previews="transfers.thumbnailPreviews.value"
             :timeline-runs="timelineRunsFor(message.id)"
-            :show-slow-waiting="showSlowWaitingFor(message.id)"
             :retry-disabled="streamActive"
             :feedback-enabled="projectMode === 'real'"
             @action="notify"
@@ -213,7 +212,6 @@ import {
   appendExpertReasoningSummary,
   applyExpertTimelineActivity,
   finishExpertTimelineRun,
-  EXPERT_SLOW_FIRST_TOKEN_MS,
   EXPERT_SIGNIFICANT_WAIT_MS,
   markExpertTimelineSignificant,
   moveExpertTimelineRuns,
@@ -285,8 +283,6 @@ const activeRunId = ref<string | null>(null)
 const activeAbort = ref<AbortController | null>(null)
 const continuableAssistantIds = ref<Record<string, true>>({})
 const timelineByAssistant = ref<Record<string, ExpertTimelineRun[]>>({})
-const slowWaitingRunIds = ref<Record<string, true>>({})
-const slowWaitingTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const significantWaitTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const streamActive = computed(() => ['starting', 'streaming', 'stopping'].includes(generationState.value))
 let conversationsSequence = 0
@@ -298,7 +294,7 @@ function resetTransientGenerationState() {
   generationState.value = 'idle'
   activeRunId.value = null
   activeAbort.value = null
-  clearAllSlowWaiting()
+  clearAllSignificantWaits()
 }
 
 const conversation = computed(() => conversationList.value.find((item) => item.id === conversationId.value))
@@ -428,13 +424,6 @@ function beginTimelineRun(assistantId: string, runId: string, materialCount = 0)
     significantWaitTimers.delete(runId)
     markTimelineSignificant(assistantId, runId)
   }, EXPERT_SIGNIFICANT_WAIT_MS))
-  const timer = setTimeout(() => {
-    slowWaitingTimers.delete(runId)
-    if (timelineRunsFor(assistantId).some((run) => run.runId === runId && run.terminal === undefined)) {
-      slowWaitingRunIds.value = { ...slowWaitingRunIds.value, [runId]: true }
-    }
-  }, EXPERT_SLOW_FIRST_TOKEN_MS)
-  slowWaitingTimers.set(runId, timer)
 }
 
 function markTimelineSignificant(assistantId: string, runId: string) {
@@ -450,24 +439,8 @@ function clearSignificantWait(runId: string) {
   significantWaitTimers.delete(runId)
 }
 
-function clearSlowWaiting(runId: string) {
-  const timer = slowWaitingTimers.get(runId)
-  if (timer !== undefined) clearTimeout(timer)
-  slowWaitingTimers.delete(runId)
-  if (!slowWaitingRunIds.value[runId]) return
-  const { [runId]: removed, ...remaining } = slowWaitingRunIds.value
-  void removed
-  slowWaitingRunIds.value = remaining
-}
-
-function showSlowWaitingFor(assistantId: string): boolean {
-  return timelineRunsFor(assistantId).some((run) => run.terminal === undefined && slowWaitingRunIds.value[run.runId] === true)
-}
-
-function clearAllSlowWaiting() {
-  for (const runId of [...slowWaitingTimers.keys()]) clearSlowWaiting(runId)
+function clearAllSignificantWaits() {
   for (const runId of [...significantWaitTimers.keys()]) clearSignificantWait(runId)
-  slowWaitingRunIds.value = {}
 }
 
 function applyTimelineActivity(assistantId: string, activity: ExpertRunActivity) {
@@ -488,7 +461,6 @@ function appendTimelineSummary(assistantId: string, summary: ExpertReasoningSumm
 }
 
 function finishTimelineRun(assistantId: string, runId: string, terminal: 'completed' | 'cancelled' | 'interrupted') {
-  clearSlowWaiting(runId)
   clearSignificantWait(runId)
   timelineByAssistant.value = {
     ...timelineByAssistant.value,
@@ -697,7 +669,6 @@ function removeConversationState(id: string) {
   )
   for (const assistantId of removedAssistantIds) {
     for (const run of timelineByAssistant.value[assistantId] ?? []) {
-      clearSlowWaiting(run.runId)
       clearSignificantWait(run.runId)
     }
   }
@@ -796,7 +767,6 @@ async function persistMessage(message: ExpertMessage) {
         onDelta: (runId, seq, text) => {
           if (runId !== activeRunId.value || seq <= lastSeq) return
           lastSeq = seq
-          clearSlowWaiting(runId)
           clearSignificantWait(runId)
           updateMessageText(localAssistantId, text)
           if (targetConversationId === conversationId.value) scheduleActiveResponseFollow()
@@ -944,7 +914,6 @@ async function continueMessage(assistantId: string) {
       onDelta: (runId, seq, text) => {
         if (runId !== activeRunId.value || seq <= lastSeq) return
         lastSeq = seq
-        clearSlowWaiting(runId)
         clearSignificantWait(runId)
         updateMessageText(assistantId, text)
         scheduleActiveResponseFollow()
@@ -1249,11 +1218,11 @@ watch(messageArea, (element, _, onCleanup) => {
 watch(() => props.project.id, () => {
   composerMaterialContexts.value = []
   timelineByAssistant.value = {}
-  clearAllSlowWaiting()
+  clearAllSignificantWaits()
   transfers.clearUploads()
   transfers.syncImagePreviews(props.project.materials)
 })
-onBeforeUnmount(() => { activeAbort.value?.abort(); if (followFrame) cancelAnimationFrame(followFrame); clearAllSlowWaiting(); timelineByAssistant.value = {}; transfers.dispose() })
+onBeforeUnmount(() => { activeAbort.value?.abort(); if (followFrame) cancelAnimationFrame(followFrame); clearAllSignificantWaits(); timelineByAssistant.value = {}; transfers.dispose() })
 </script>
 
 <style scoped>
