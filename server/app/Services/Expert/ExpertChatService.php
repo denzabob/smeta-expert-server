@@ -304,12 +304,22 @@ final class ExpertChatService
         return $this->modelPolicy->resolve($mode, $requirements, $tools);
     }
 
-    public function assertWorkloadExecutable(ExpertProject $project, ExpertContextPack $pack, string $requestedMode): void
-    {
+    /** @param (\Closure(array<string, mixed>): void)|null $onAssessment */
+    public function assertWorkloadExecutable(
+        ExpertProject $project,
+        ExpertContextPack $pack,
+        string $requestedMode,
+        ?\Closure $onAssessment = null,
+    ): void {
         if ($pack->scope === 'project' && $pack->coverageMode === ExpertTaskIntent::EXHAUSTIVE) {
+            $onAssessment?->__invoke([
+                'execution_strategy' => ExpertAnalysisExecutionStrategy::RETRIEVAL,
+                'material_count' => count($pack->resolvedMaterials),
+            ]);
             throw ExpertMaterialContextException::retrievalPipelineRequired();
         }
         $assessment = $this->workloadAssessor->assessProject($project, $pack);
+        $onAssessment?->__invoke($assessment->toMetadata());
         if (! ExpertAnalysisExecutionStrategy::requiresPipeline($assessment->executionStrategy)) {
             return;
         }
@@ -437,6 +447,14 @@ final class ExpertChatService
                 ],
             ]);
             $this->attachments->persist($conversation, $message, $materialPublicIds);
+            $activeMaterialIds = $message->attachments()
+                ->whereNotNull('expert_project_material_id')
+                ->pluck('expert_project_material_id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all();
+            if ($activeMaterialIds !== []) {
+                $conversation->activeMaterials()->syncWithoutDetaching($activeMaterialIds);
+            }
 
             return $message;
         });

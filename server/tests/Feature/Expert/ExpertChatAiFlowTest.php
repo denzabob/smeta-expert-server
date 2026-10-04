@@ -384,7 +384,18 @@ class ExpertChatAiFlowTest extends TestCase
         $this->assertSame(1, $conversation->messages()->where('role', 'user')->count());
         $this->assertSame(1, $conversation->messages()->where('role', 'assistant')->count());
         $this->assertSame(2, $conversation->messages()->where('role', 'user')->sole()->attachments()->count());
+        $this->assertSame([$first->public_id, $second->public_id], $conversation->activeMaterials()->pluck('public_id')->all());
         $this->assertSame([$first->public_id, $second->public_id], array_column($provider->chatRequests[array_key_last($provider->chatRequests)]->materialContext, 'public_id'));
+
+        $contextUrl = "/api/expert/projects/{$conversation->project->public_id}/conversations/{$conversation->public_id}/context";
+        $this->putJson($contextUrl, ['active_material_ids' => [$first->public_id]])
+            ->assertOk()->assertJsonCount(1, 'active_materials');
+        $this->postJson($this->messageUrl($conversation), [
+            'content' => 'Проанализируй',
+        ], ['X-Expert-Message-Id' => $messageId])->assertOk();
+        $this->assertSame([$first->public_id], $conversation->activeMaterials()->pluck('public_id')->all());
+        $this->assertSame(2, $conversation->messages()->where('role', 'user')->sole()->attachments()->count());
+        $this->assertSame(0, $conversation->activeMaterials()->where('expert_project_materials.id', $second->id)->count());
     }
 
     public function test_deleted_material_remains_in_message_history_as_unavailable(): void

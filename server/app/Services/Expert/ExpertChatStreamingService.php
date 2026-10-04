@@ -17,12 +17,14 @@ use App\Services\LLM\Exceptions\LLMUnsupportedCapabilityException;
 use App\Services\LLM\LLMRouter;
 use App\Services\LLM\LLMTaskProfileResolver;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 final class ExpertChatStreamingService
 {
     public function __construct(
         private readonly ExpertChatService $chat,
         private readonly ExpertChatRunRegistry $runs,
+        private readonly ExpertAiRunEventRecorder $runEvents,
         private readonly LLMRouter $router,
         private readonly ExpertChatMaterialContextBuilder $materialContextBuilder,
         private readonly ExpertChatMaterialContextDiagnostics $materialDiagnostics,
@@ -32,7 +34,7 @@ final class ExpertChatStreamingService
     ) {}
 
     /**
-     * @param  ExpertChatMaterialContext|list<string>  $materialContextOrPublicIds
+     * @param  ExpertChatMaterialContext|list<string>|null  $materialContextOrPublicIds
      *
      * A prepared context is retained as a narrow test seam for the 4D.1
      * lifecycle tests. HTTP streaming runs pass public IDs so material work can
@@ -42,26 +44,80 @@ final class ExpertChatStreamingService
         ExpertConversation $conversation,
         string $content,
         string $clientMessageId,
-        string $fingerprint,
-        ExpertChatMaterialContext|array $materialContextOrPublicIds,
+        ?string $fingerprint,
+        ExpertChatMaterialContext|array|null $materialContextOrPublicIds,
         string $requestedMode = ExpertModeResolution::AUTO,
     ): ExpertChatStreamingRun {
-        $lock = $this->runs->acquireConversation($conversation);
         $startedAt = microtime(true);
+        $runId = (string) Str::uuid();
+        $registryRun = null;
+        $lock = null;
+
         try {
-            $materialPublicIds = $this->materialPublicIds($materialContextOrPublicIds);
+            $registryRun = $this->runs->create(
+                $conversation,
+                startedAt: $startedAt,
+                clientMessageId: $clientMessageId,
+                requestedMode: $requestedMode,
+                selectedMaterialCount: is_array($materialContextOrPublicIds) ? count($materialContextOrPublicIds) : 0,
+                runId: $runId,
+            );
+            $lock = $this->runs->acquireConversation($conversation);
+            $this->runs->stage($runId, 'context');
+            $this->runEvents->record($runId, 'lifecycle', 'info', 'context.resolve.started', 'started', [
+                'requested_mode' => $requestedMode,
+            ]);
+
+            $materialPublicIds = $materialContextOrPublicIds instanceof ExpertChatMaterialContext
+                ? []
+                : $this->chat->requestMaterialPublicIds($conversation, $clientMessageId, $materialContextOrPublicIds);
+            $fingerprint ??= $this->chat->requestFingerprint($content, $materialPublicIds, $requestedMode);
             $existingUser = $conversation->messages()->where('role', 'user')->where('metadata->client_message_id', $clientMessageId)->first();
             $persistedIds = $existingUser === null ? $materialPublicIds : $this->chat->persistedMaterialPublicIds($existingUser);
             $historicalIds = $this->chat->historicalMaterialPublicIds($conversation, $content, $existingUser, hasCurrentMaterials: $persistedIds !== []);
             $plan = $this->chat->contextPlan($conversation, $content, $persistedIds, $historicalIds, $existingUser);
+            $this->runs->stage($runId, 'context', [
+                'selected_material_count' => count($materialPublicIds),
+                'persisted_material_count' => count($persistedIds),
+                'resolved_material_count' => count($plan->resolvedMaterials),
+                'active_material_count' => count($plan->activeMaterials),
+                'metadata' => [
+                    'scope' => $plan->scope,
+                    'coverage_mode' => $plan->coverageMode,
+                ],
+            ]);
+            $this->runEvents->record($runId, 'lifecycle', 'info', 'context.resolve.completed', 'completed', [
+                'material_count' => count($materialPublicIds),
+                'resolved_material_count' => count($plan->resolvedMaterials),
+                'active_material_count' => count($plan->activeMaterials),
+                'requested_mode' => $requestedMode,
+            ]);
             if ($plan->diagnostics['requires_material_disambiguation'] ?? false) {
                 throw ExpertMaterialContextException::ambiguousContext($plan->resolution?->ambiguousCandidates ?? []);
             }
-            $this->chat->assertWorkloadExecutable($conversation->project, $plan, $requestedMode);
+            $this->chat->assertWorkloadExecutable(
+                $conversation->project,
+                $plan,
+                $requestedMode,
+                function (array $assessment) use ($runId, $requestedMode): void {
+                    $this->recordWorkloadAssessment($runId, $requestedMode, $assessment);
+                },
+            );
             $userMessage = $this->chat->prepareStreamingUserMessage($conversation, $content, $clientMessageId, $fingerprint, $materialPublicIds, $requestedMode);
+            $persistedMessageIds = $this->chat->persistedMaterialPublicIds($userMessage);
+            $this->runs->stage($runId, 'materials', [
+                'user_message_id' => (int) $userMessage->id,
+                'selected_material_count' => count($materialPublicIds),
+                'persisted_material_count' => count($persistedMessageIds),
+                'resolved_material_count' => count($plan->resolvedMaterials),
+                'active_material_count' => count($plan->activeMaterials),
+            ]);
             $this->chat->recordContext($conversation, $userMessage, $plan);
             $existingAssistant = $this->chat->assistantReplyFor($conversation, $userMessage);
-            $registryRun = $this->runs->create($conversation, $existingAssistant?->public_id, $startedAt);
+            if ($existingAssistant !== null) {
+                $this->runs->stage($runId, 'materials', ['assistant_message_id' => (int) $existingAssistant->id]);
+                $this->runs->setAssistantMessagePublicId($runId, $existingAssistant->public_id);
+            }
 
             return new ExpertChatStreamingRun(
                 $conversation,
@@ -76,11 +132,19 @@ final class ExpertChatStreamingService
                 ExpertModeResolution::normalise($requestedMode),
             );
         } catch (\Throwable $exception) {
-            if (isset($registryRun)) {
-                $this->runs->mark($registryRun['run_id'], 'failed');
-            }
-            $lock->release();
-            throw $exception;
+            $this->runs->finish(
+                $runId,
+                'failed',
+                'error',
+                $this->errorCode($exception) ?? $this->startErrorCode($exception),
+                false,
+                null,
+                $exception::class,
+                $startedAt,
+            );
+            $lock?->release();
+
+            throw new ExpertChatRunStartFailure($runId, $exception);
         }
     }
 
@@ -98,16 +162,55 @@ final class ExpertChatStreamingService
         if ($userMessage === null) {
             throw new ExpertChatStreamException('Исходное сообщение для продолжения не найдено.');
         }
-        $persistedPublicIds = $this->chat->persistedMaterialPublicIds($userMessage);
-        $historicalIds = $this->chat->historicalMaterialPublicIds($conversation, $userMessage->content, $userMessage, hasCurrentMaterials: $persistedPublicIds !== []);
-        $plan = $this->chat->contextPlan($conversation, $userMessage->content, $persistedPublicIds, $historicalIds, $userMessage);
         $requestedMode = ExpertModeResolution::normalise(is_array($userMessage->metadata) && is_string($userMessage->metadata['requested_mode'] ?? null) ? $userMessage->metadata['requested_mode'] : ExpertModeResolution::AUTO);
-        $this->chat->assertWorkloadExecutable($conversation->project, $plan, $requestedMode);
-
-        $lock = $this->runs->acquireConversation($conversation);
         $startedAt = microtime(true);
+        $runId = (string) Str::uuid();
+        $registryRun = null;
+        $lock = null;
+
         try {
-            $registryRun = $this->runs->create($conversation, $assistantMessage->public_id, $startedAt);
+            $metadata = is_array($userMessage->metadata) ? $userMessage->metadata : [];
+            $clientMessageId = is_string($metadata['client_message_id'] ?? null) ? $metadata['client_message_id'] : (string) Str::uuid();
+            $registryRun = $this->runs->create(
+                $conversation,
+                $assistantMessage->public_id,
+                $startedAt,
+                $clientMessageId,
+                $requestedMode,
+                runId: $runId,
+                userMessageId: (int) $userMessage->id,
+            );
+            $lock = $this->runs->acquireConversation($conversation);
+            $this->runs->stage($runId, 'context', ['assistant_message_id' => (int) $assistantMessage->id]);
+            $this->runEvents->record($runId, 'lifecycle', 'info', 'context.resolve.started', 'started', [
+                'requested_mode' => $requestedMode,
+            ]);
+
+            $persistedPublicIds = $this->chat->persistedMaterialPublicIds($userMessage);
+            $historicalIds = $this->chat->historicalMaterialPublicIds($conversation, $userMessage->content, $userMessage, hasCurrentMaterials: $persistedPublicIds !== []);
+            $plan = $this->chat->contextPlan($conversation, $userMessage->content, $persistedPublicIds, $historicalIds, $userMessage);
+            $this->runs->stage($runId, 'context', [
+                'selected_material_count' => count($persistedPublicIds),
+                'persisted_material_count' => count($persistedPublicIds),
+                'resolved_material_count' => count($plan->resolvedMaterials),
+                'active_material_count' => count($plan->activeMaterials),
+                'metadata' => ['scope' => $plan->scope, 'coverage_mode' => $plan->coverageMode],
+            ]);
+            $this->runEvents->record($runId, 'lifecycle', 'info', 'context.resolve.completed', 'completed', [
+                'material_count' => count($persistedPublicIds),
+                'resolved_material_count' => count($plan->resolvedMaterials),
+                'active_material_count' => count($plan->activeMaterials),
+                'requested_mode' => $requestedMode,
+            ]);
+            $this->chat->assertWorkloadExecutable(
+                $conversation->project,
+                $plan,
+                $requestedMode,
+                function (array $assessment) use ($runId, $requestedMode): void {
+                    $this->recordWorkloadAssessment($runId, $requestedMode, $assessment);
+                },
+            );
+            $this->runs->stage($runId, 'materials');
 
             return new ExpertChatStreamingRun(
                 $conversation,
@@ -122,11 +225,19 @@ final class ExpertChatStreamingService
                 $requestedMode,
             );
         } catch (\Throwable $exception) {
-            if (isset($registryRun)) {
-                $this->runs->mark($registryRun['run_id'], 'failed');
-            }
-            $lock->release();
-            throw $exception;
+            $this->runs->finish(
+                $runId,
+                'failed',
+                'error',
+                $this->errorCode($exception) ?? $this->startErrorCode($exception),
+                false,
+                null,
+                $exception::class,
+                $startedAt,
+            );
+            $lock?->release();
+
+            throw new ExpertChatRunStartFailure($runId, $exception);
         }
     }
 
@@ -148,6 +259,10 @@ final class ExpertChatStreamingService
         $firstDeltaAt = null;
         $lastHeartbeatAt = $startedAt;
         $assistant = null;
+        $exceptionClass = null;
+        $terminalEventStage = null;
+        $upstreamProvider = null;
+        $upstreamModel = null;
         $modelActivityId = null;
         /** @var array<string, string> $ocrActivityIds */
         $ocrActivityIds = [];
@@ -170,10 +285,17 @@ final class ExpertChatStreamingService
             }
         };
         $token = new LLMCancellationToken($isCancellationRequested, $tick, $runId);
-        $activity = new SseExpertRunActivitySink($runId, $emit, $isCancellationRequested);
+        $activity = new SseExpertRunActivitySink(
+            $runId,
+            $emit,
+            $isCancellationRequested,
+            $this->runEvents,
+            fn (string $code) => $this->runs->recordActivity($runId, $code),
+        );
 
         try {
             $this->runs->mark($runId, 'streaming');
+            $this->runs->stage($runId, 'materials');
             $emit('run', [
                 'version' => 1,
                 'run_id' => $runId,
@@ -182,7 +304,7 @@ final class ExpertChatStreamingService
             $activity->record('request.accepted', 'request');
         } catch (\Throwable $exception) {
             try {
-                $this->runs->mark($runId, 'failed');
+                $this->runs->finish($runId, 'failed', 'error', 'expert_stream_interrupted', false, null, $exception::class, $startedAt);
             } finally {
                 $run->lock->release();
             }
@@ -199,12 +321,25 @@ final class ExpertChatStreamingService
                     'assistant_message' => $this->messagePayload($run->existingAssistant),
                     'finish_reason' => $storedStatus === 'completed' ? 'stop' : 'cancelled',
                 ]);
-                $this->runs->mark($runId, $storedStatus === 'completed' ? 'completed' : 'cancelled');
+                $this->runs->finish(
+                    $runId,
+                    $storedStatus === 'completed' ? 'completed' : 'cancelled',
+                    $storedStatus === 'completed' ? 'stop' : 'cancelled',
+                    startedAt: $startedAt,
+                );
                 $terminalized = true;
+            } catch (\Throwable $exception) {
+                $status = 'failed';
+                $finishReason = 'error';
+                $errorCode = $this->errorCode($exception) ?? 'expert_stream_finalize_failed';
+                $retryable = false;
+                $exceptionClass = $exception::class;
+
+                throw $exception;
             } finally {
                 try {
                     if (! $terminalized) {
-                        $this->runs->mark($runId, 'failed');
+                        $this->runs->finish($runId, 'failed', 'error', 'expert_stream_interrupted', false, null, null, $startedAt);
                     }
                 } finally {
                     $run->lock->release();
@@ -216,6 +351,7 @@ final class ExpertChatStreamingService
 
         try {
             $token->tick();
+            $this->runs->stage($runId, 'materials');
             $historicalIds = $run->contextPack?->historicalMaterials ?? [];
             $materialBundle = $run->materialContext === null
                 ? $this->materialContextBuilder->buildPartitioned(
@@ -230,8 +366,25 @@ final class ExpertChatStreamingService
             $token->tick();
             $this->materialDiagnostics->log($runId, $materialBundle, $run->materialPublicIds, $historicalIds);
             $materialContext = $materialBundle->combined();
+            $contextPack = $run->contextPack ?? $materialBundle->plan;
+            $this->runs->stage($runId, 'materials', [
+                'selected_material_count' => count($run->materialPublicIds),
+                'persisted_material_count' => count($run->persistedMaterialPublicIds),
+                'resolved_material_count' => count($contextPack?->resolvedMaterials ?? []),
+                'active_material_count' => count($contextPack?->activeMaterials ?? []),
+                'metadata' => [
+                    'scope' => $contextPack?->scope,
+                    'coverage_mode' => $contextPack?->coverageMode,
+                ],
+            ]);
             $executionPlan = $this->chat->executionPlan($run->requestedMode, $run->userMessage->content, $run->contextPack ?? $materialBundle->plan, $materialBundle);
             $metadata = $executionPlan->toMetadata();
+            $this->runs->stage($runId, 'materials', [
+                'resolved_mode' => $executionPlan->resolvedMode,
+                'provider' => $executionPlan->provider,
+                'model' => $executionPlan->model,
+                'metadata' => $executionPlan->toMetadata(),
+            ]);
             $this->materialDiagnostics->logWorkload($runId, $executionPlan);
             if ($executionPlan->requiresExecutionPipeline()) {
                 throw match ($executionPlan->executionStrategy()) {
@@ -255,17 +408,33 @@ final class ExpertChatStreamingService
                     $candidate->name,
                 );
             }
+            $this->runs->stage($runId, 'provider', [
+                'resolved_mode' => $executionPlan->resolvedMode,
+                'provider' => $executionPlan->provider,
+                'model' => $executionPlan->model,
+                'metadata' => $executionPlan->toMetadata(),
+            ]);
+            $this->runEvents->record($runId, 'lifecycle', 'info', 'provider.selected', 'selected', [
+                'requested_mode' => $executionPlan->requestedMode,
+                'resolved_mode' => $executionPlan->resolvedMode,
+                'provider' => $executionPlan->provider,
+                'model' => $executionPlan->model,
+            ]);
             $modelActivityId = $activity->start('model.request.started', 'model');
 
             foreach ($this->router->setUserId($run->conversation->project->user_id)->streamChat($request, $token, $runId, $executionPlan->routerProfile, $executionPlan->fallbackSelection) as $event) {
                 $token->tick();
                 if ($token->isCancellationRequested()) {
+                    $terminalEventStage = $this->runs->currentStage($runId);
                     $status = 'stopped';
                     $finishReason = 'cancelled';
                     break;
                 }
                 if ($event->type === 'delta' && $event->text !== '') {
-                    $firstDeltaAt ??= microtime(true);
+                    if ($firstDeltaAt === null) {
+                        $firstDeltaAt = microtime(true);
+                        $this->runs->stage($runId, 'streaming', ['first_token_at' => now()]);
+                    }
                     $hasVisibleOutput = true;
                     $content .= $event->text;
                     if ($modelActivityId !== null) {
@@ -286,6 +455,16 @@ final class ExpertChatStreamingService
                     ]);
                 } elseif ($event->type === 'done') {
                     $metadata = [...$metadata, ...$event->metadata, 'tools_used' => $executionPlan->tools];
+                    $upstreamProvider = is_string($event->metadata['actual_upstream_provider'] ?? null)
+                        ? $event->metadata['actual_upstream_provider']
+                        : (is_string($event->metadata['upstream_provider'] ?? null) ? $event->metadata['upstream_provider'] : null);
+                    $upstreamModel = is_string($event->metadata['actual_upstream_model'] ?? null)
+                        ? $event->metadata['actual_upstream_model']
+                        : (is_string($event->metadata['upstream_model'] ?? null) ? $event->metadata['upstream_model'] : (is_string($event->metadata['model'] ?? null) ? $event->metadata['model'] : null));
+                    $this->runs->stage($runId, 'provider', [
+                        'upstream_provider' => $upstreamProvider,
+                        'upstream_model' => $upstreamModel,
+                    ]);
                     $this->persistOcrResults($materialBundle, $event->parsedFiles, $ocrActivityIds, $activity, $runId);
                 } elseif ($event->type === 'heartbeat' || microtime(true) - $lastHeartbeatAt >= (int) config('expert.streaming.heartbeat_seconds', 15)) {
                     $emit('heartbeat', ['version' => 1]);
@@ -294,6 +473,7 @@ final class ExpertChatStreamingService
             }
             $token->tick();
             if ($token->isCancellationRequested()) {
+                $terminalEventStage = $this->runs->currentStage($runId);
                 $status = 'stopped';
                 $finishReason = 'cancelled';
             } elseif ($status === 'completed') {
@@ -305,19 +485,26 @@ final class ExpertChatStreamingService
                 }
             }
         } catch (ExpertChatStreamingCancelledException) {
+            $terminalEventStage = $this->runs->currentStage($runId);
             $status = 'stopped';
             $finishReason = 'cancelled';
         } catch (LLMProviderException|LLMChatUnavailableException $exception) {
+            $terminalEventStage = $this->runs->currentStage($runId);
+            $exceptionClass = $exception::class;
+            $upstreamProvider = $this->upstreamProvider($exception);
             $status = $token->isCancellationRequested() ? 'stopped' : ($hasVisibleOutput || $content !== '' ? 'interrupted' : 'failed');
             $finishReason = $status === 'stopped' ? 'cancelled' : 'error';
             $errorCode = $this->errorCode($exception) ?? $errorCode;
-            $retryable = $this->isRetryableError($errorCode, $hasVisibleOutput);
+            $retryable = $status !== 'stopped' && $this->isRetryableError($errorCode, $hasVisibleOutput);
             $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt, $executionPlan);
         } catch (\Throwable $exception) {
+            $terminalEventStage = $this->runs->currentStage($runId);
+            $exceptionClass = $exception::class;
+            $upstreamProvider = $this->upstreamProvider($exception);
             $status = $token->isCancellationRequested() ? 'stopped' : ($hasVisibleOutput || $content !== '' ? 'interrupted' : 'failed');
             $finishReason = $status === 'stopped' ? 'cancelled' : 'error';
             $errorCode = $this->errorCode($exception) ?? $errorCode;
-            $retryable = $this->isRetryableError($errorCode, $hasVisibleOutput);
+            $retryable = $status !== 'stopped' && $this->isRetryableError($errorCode, $hasVisibleOutput);
             $this->logFailure($runId, $errorCode, $retryable, $exception, $activity->lastActivityCode(), $startedAt, $firstDeltaAt, $executionPlan);
         } finally {
             $terminalized = false;
@@ -342,6 +529,7 @@ final class ExpertChatStreamingService
                     'stopped' => 'skipped',
                     default => 'failed',
                 });
+                $this->runs->stage($runId, 'persistence');
                 $assistant = $this->chat->persistStreamingAssistant(
                     $run->conversation,
                     $run->userMessage,
@@ -353,6 +541,9 @@ final class ExpertChatStreamingService
                     $run->existingAssistant,
                 );
                 if ($assistant !== null) {
+                    $this->runs->stage($runId, 'persistence', ['assistant_message_id' => (int) $assistant->id]);
+                }
+                if ($assistant !== null) {
                     $activity->record('response.persisted', 'response');
                 }
                 if ($status === 'stopped') {
@@ -360,17 +551,57 @@ final class ExpertChatStreamingService
                 } elseif ($status === 'interrupted') {
                     $activity->record('generation.interrupted', 'generation');
                 }
-                $this->runs->mark($runId, match ($status) {
+                $durableStatus = match ($status) {
                     'completed' => 'completed',
                     'stopped' => 'cancelled',
                     'interrupted' => 'interrupted',
                     default => 'failed',
-                });
+                };
+                $this->runs->finish(
+                    $runId,
+                    $durableStatus,
+                    $finishReason,
+                    in_array($durableStatus, ['failed', 'interrupted'], true) ? $errorCode : null,
+                    $durableStatus === 'cancelled' ? false : $retryable,
+                    $activity->lastActivityCode(),
+                    $exceptionClass,
+                    $startedAt,
+                    [
+                        ...($terminalEventStage === null ? [] : ['event_stage' => $terminalEventStage]),
+                        'user_message_id' => (int) $run->userMessage->id,
+                        'assistant_message_id' => $assistant === null ? null : (int) $assistant->id,
+                        'resolved_mode' => $executionPlan?->resolvedMode,
+                        'provider' => $executionPlan?->provider,
+                        'model' => $executionPlan?->model,
+                        'upstream_provider' => $upstreamProvider,
+                        'upstream_model' => $upstreamModel,
+                        'metadata' => $executionPlan?->toMetadata() ?? [],
+                    ],
+                );
                 $terminalized = true;
+            } catch (\Throwable $exception) {
+                $terminalEventStage = $this->runs->currentStage($runId);
+                $status = 'failed';
+                $finishReason = 'error';
+                $errorCode = $this->errorCode($exception) ?? 'expert_stream_finalize_failed';
+                $retryable = false;
+                $exceptionClass = $exception::class;
+
+                throw $exception;
             } finally {
                 try {
                     if (! $terminalized) {
-                        $this->runs->mark($runId, 'failed');
+                        $this->runs->finish(
+                            $runId,
+                            'failed',
+                            'error',
+                            $errorCode,
+                            false,
+                            $activity->lastActivityCode(),
+                            $exceptionClass,
+                            $startedAt,
+                            $terminalEventStage === null ? [] : ['event_stage' => $terminalEventStage],
+                        );
                     }
                 } finally {
                     $run->lock->release();
@@ -397,16 +628,6 @@ final class ExpertChatStreamingService
             'last_activity_code' => $activity->lastActivityCode(),
             'assistant_message' => $assistant === null ? null : $this->messagePayload($assistant),
         ]);
-    }
-
-    /** @param ExpertChatMaterialContext|list<string> $materialContextOrPublicIds @return list<string> */
-    private function materialPublicIds(ExpertChatMaterialContext|array $materialContextOrPublicIds): array
-    {
-        if ($materialContextOrPublicIds instanceof ExpertChatMaterialContext) {
-            return [];
-        }
-
-        return array_values(array_filter($materialContextOrPublicIds, static fn (mixed $id): bool => is_string($id) && $id !== ''));
     }
 
     /**
@@ -463,6 +684,28 @@ final class ExpertChatStreamingService
         }
     }
 
+    /** @param array<string, mixed> $assessment */
+    private function recordWorkloadAssessment(string $runId, string $requestedMode, array $assessment): void
+    {
+        $strategy = is_string($assessment['execution_strategy'] ?? null)
+            ? $assessment['execution_strategy']
+            : ExpertAnalysisExecutionStrategy::DIRECT;
+        $requiresPipeline = ExpertAnalysisExecutionStrategy::requiresPipeline($strategy);
+
+        $this->runEvents->record(
+            $runId,
+            'lifecycle',
+            $requiresPipeline ? 'warning' : 'info',
+            'workload.assessed',
+            $requiresPipeline ? 'rejected' : 'completed',
+            [
+                'execution_strategy' => $strategy,
+                'material_count' => (int) ($assessment['material_count'] ?? 0),
+                'requested_mode' => $requestedMode,
+            ],
+        );
+    }
+
     private function errorCode(\Throwable $exception): ?string
     {
         if ($exception instanceof ExpertModelPolicyException) {
@@ -512,6 +755,41 @@ final class ExpertChatStreamingService
                 LLMErrorType::SERVER_ERROR => 'provider_server_error',
                 default => 'expert_stream_interrupted',
             };
+        }
+
+        return null;
+    }
+
+    private function startErrorCode(\Throwable $exception): string
+    {
+        if ($exception instanceof ExpertChatRunInProgressException) {
+            return 'expert_run_in_progress';
+        }
+        if ($exception instanceof ExpertChatRequestConflictException) {
+            return 'expert_request_conflict';
+        }
+        if ($exception instanceof ExpertChatStreamException) {
+            return 'expert_continue_not_allowed';
+        }
+        if ($exception instanceof LLMUnsupportedCapabilityException) {
+            return match ($exception->capability) {
+                LLMCapability::IMAGE_INPUT => 'vision_not_supported',
+                LLMCapability::PDF_OCR => 'pdf_ocr_failed',
+                LLMCapability::FILE_INPUT => 'material_not_supported',
+                default => 'streaming_not_supported',
+            };
+        }
+
+        return $this->errorCode($exception) ?? 'expert_stream_error';
+    }
+
+    private function upstreamProvider(\Throwable $exception): ?string
+    {
+        if ($exception instanceof LLMProviderException) {
+            return $exception->getProvider();
+        }
+        if ($exception instanceof LLMChatUnavailableException && $exception->getPrevious() instanceof LLMProviderException) {
+            return $exception->getPrevious()->getProvider();
         }
 
         return null;

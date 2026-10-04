@@ -7,26 +7,27 @@ namespace App\Services\Expert;
 use Illuminate\Support\Str;
 
 /**
- * Serialises a redacted, high-level operational trace to the existing SSE
- * transport. It is deliberately independent from material and provider code.
+ * Serialises redacted activity events to SSE and the durable run timeline.
+ * The recorder supplies the shared sequence for lifecycle and activity events.
  */
 final class SseExpertRunActivitySink implements ExpertRunActivitySink
 {
     /** @var array<string, array{code: string, category: string, detail: ?string, started_at: float}> */
     private array $open = [];
 
-    private int $sequence = 0;
-
     private ?string $lastActivityCode = null;
 
     /**
      * @param  \Closure(string, array<string, mixed>): void  $emit
      * @param  \Closure(): bool  $isCancellationRequested
+     * @param  (\Closure(string): void)|null  $recordActivity
      */
     public function __construct(
         private readonly string $runId,
         private readonly \Closure $emit,
         private readonly \Closure $isCancellationRequested,
+        private readonly ExpertAiRunEventRecorder $eventRecorder,
+        private readonly ?\Closure $recordActivity = null,
     ) {}
 
     public function start(string $code, string $category, ?string $detail = null): string
@@ -121,10 +122,19 @@ final class SseExpertRunActivitySink implements ExpertRunActivitySink
     private function emitActivity(string $activityId, array $activity, string $status, ?string $errorCode = null): void
     {
         $this->lastActivityCode = $activity['code'];
+        $sequence = $this->eventRecorder->record(
+            $this->runId,
+            'activity',
+            $status === 'failed' ? 'error' : ($status === 'skipped' ? 'warning' : 'info'),
+            $activity['code'],
+            $status,
+            $errorCode === null ? [] : ['error_code' => $errorCode],
+        );
+        ($this->recordActivity)?->__invoke($activity['code']);
         $payload = [
             'version' => 1,
             'run_id' => $this->runId,
-            'seq' => ++$this->sequence,
+            'seq' => $sequence,
             'activity_id' => $activityId,
             'code' => $activity['code'],
             'status' => $status,

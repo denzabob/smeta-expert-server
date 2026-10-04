@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\RevisionRunController;
 use App\Http\Controllers\Api\EvidenceRunController;
 use App\Http\Controllers\Api\ProjectProfileRateController;
 use App\Http\Controllers\Api\WorkDecomposeController;
+use App\Http\Controllers\Api\AdminExpertAiRunController;
 use App\Http\Controllers\Api\AdminLLMController;
 use App\Http\Controllers\Api\AdminLLMProfileController;
 use App\Http\Controllers\Api\AdminLLMStatsController;
@@ -630,6 +631,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('admin/llm-profiles/expert-chat/preview', [AdminLLMProfileController::class, 'preview']);
     Route::get('admin/expert-feedback', [\App\Http\Controllers\Api\AdminExpertFeedbackController::class, 'index']);
     Route::get('admin/expert-feedback/{feedback}', [\App\Http\Controllers\Api\AdminExpertFeedbackController::class, 'show']);
+    Route::get('admin/expert-ai-runs', [AdminExpertAiRunController::class, 'index']);
+    Route::get('admin/expert-ai-runs/{runId}', [AdminExpertAiRunController::class, 'show'])
+        ->where('runId', '[0-9a-fA-F-]{36}');
     
     // ========== Admin LLM Prompts API ==========
     Route::get('admin/llm-prompts', [AdminLLMController::class, 'getPrompts']);

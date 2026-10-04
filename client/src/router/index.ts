@@ -286,6 +286,12 @@ const router = createRouter({
           meta: { title: 'Обратная связь AI' }
         },
         {
+          path: 'ai/runs',
+          name: 'admin-ai-runs',
+          component: () => import('@/views/admin/AdminExpertAiRunsView.vue'),
+          meta: { title: 'Диагностика Expert' }
+        },
+        {
           path: 'system/prompts',
           name: 'admin-system-prompts',
           component: () => import('@/views/admin/AdminSystemView.vue'),

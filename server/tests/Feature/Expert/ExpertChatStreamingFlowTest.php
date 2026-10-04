@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Expert;
 
+use App\Models\Expert\ExpertAiRun;
 use App\Models\Expert\ExpertConversation;
 use App\Models\Expert\ExpertProject;
 use App\Models\User;
 use App\Services\Expert\ExpertChatMaterialContext;
 use App\Services\Expert\ExpertChatRunInProgressException;
 use App\Services\Expert\ExpertChatRunRegistry;
+use App\Services\Expert\ExpertChatRunStartFailure;
 use App\Services\Expert\ExpertChatStreamingService;
 use App\Services\Expert\ExpertMaterialService;
 use App\Services\LLM\CircuitBreaker;
@@ -63,6 +65,40 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertSame('done', end($next)['event']);
     }
 
+    public function test_streaming_attachment_is_visible_from_active_context_when_run_event_arrives(): void
+    {
+        [$conversation] = $this->conversation();
+        Storage::fake('local');
+        $material = $this->textMaterial($conversation, 'Материал.txt', 'Текст для active context');
+        $this->installRouter(new ExpertStreamingFakeProvider(['Ответ']));
+        $chat = app(\App\Services\Expert\ExpertChatService::class);
+        $content = 'Что указано в документе?';
+        $clientMessageId = (string) Str::uuid();
+        $service = app(ExpertChatStreamingService::class);
+        $run = $service->start(
+            $conversation,
+            $content,
+            $clientMessageId,
+            $chat->requestFingerprint($content, [$material->public_id]),
+            [$material->public_id],
+        );
+        $activeMaterialsAtRunEvent = null;
+
+        $service->emit($run, function (string $event) use ($conversation, &$activeMaterialsAtRunEvent): void {
+            if ($event !== 'run') {
+                return;
+            }
+
+            $this->actingAs($conversation->project->user, 'sanctum');
+            $activeMaterialsAtRunEvent = $this->getJson(
+                "/api/expert/projects/{$conversation->project->public_id}/conversations/{$conversation->public_id}/context",
+            )->assertOk()->json('active_materials');
+        });
+
+        $this->assertCount(1, $activeMaterialsAtRunEvent);
+        $this->assertSame($material->public_id, $activeMaterialsAtRunEvent[0]['id']);
+    }
+
     public function test_disconnect_during_pending_headers_cancels_and_releases_conversation(): void
     {
         [$conversation] = $this->conversation();
@@ -100,7 +136,8 @@ final class ExpertChatStreamingFlowTest extends TestCase
             sleep(2);
             try {
                 $service->start($conversation, 'Параллельный', (string) Str::uuid(), app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint('Параллельный', []), new ExpertChatMaterialContext([], []));
-            } catch (ExpertChatRunInProgressException) {
+            } catch (ExpertChatRunStartFailure $exception) {
+                $this->assertInstanceOf(ExpertChatRunInProgressException::class, $exception->getPrevious());
                 $rejected = true;
             }
         };
@@ -152,6 +189,44 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertSame('fake-stream', $assistant->metadata['model']);
         $this->assertTrue(Str::isUuid($assistant->metadata['run_id']));
         $this->assertArrayHasKey('latency_ms', $assistant->metadata);
+
+        $durable = ExpertAiRun::query()->where('run_id', $assistant->metadata['run_id'])->sole();
+        $this->assertSame('completed', $durable->status);
+        $this->assertSame('persistence', $durable->stage);
+        $this->assertSame((int) $conversation->project->user_id, $durable->user_id);
+        $this->assertSame((int) $conversation->project_id, $durable->expert_project_id);
+        $this->assertSame((int) $conversation->id, $durable->expert_conversation_id);
+        $this->assertSame((int) $conversation->messages()->where('role', 'user')->sole()->id, $durable->user_message_id);
+        $this->assertSame((int) $assistant->id, $durable->assistant_message_id);
+        $this->assertTrue(Str::isUuid($durable->client_message_id));
+        $this->assertSame('auto', $durable->requested_mode);
+        $this->assertNotNull($durable->resolved_mode);
+        $this->assertNotNull($durable->first_token_at);
+        $this->assertNotNull($durable->finished_at);
+        $this->assertSame('stop', $durable->finish_reason);
+        $this->assertSame('fake', $durable->provider);
+        $this->assertSame('fake-stream', $durable->model);
+        $this->assertSame('fake', $durable->upstream_provider);
+        $this->assertSame('fake-stream', $durable->upstream_model);
+        $this->assertGreaterThanOrEqual(0, $durable->duration_ms);
+        $this->assertSame('completed', app(ExpertChatRunRegistry::class)->find($durable->run_id)['status']);
+
+        $timeline = $durable->events;
+        $eventCodes = $timeline->pluck('event_code')->all();
+        $sequences = $timeline->pluck('seq')->all();
+        $this->assertSame('run.created', $eventCodes[0]);
+        $this->assertSame('run.completed', end($eventCodes));
+        foreach (['context.resolve.started', 'context.resolve.completed', 'workload.assessed', 'request.accepted', 'model.request.started', 'model.first_token', 'model.completed', 'response.persisted'] as $eventCode) {
+            $this->assertContains($eventCode, $eventCodes);
+        }
+        $this->assertSame(range(1, count($sequences)), $sequences);
+        $this->assertCount(count($sequences), array_unique($sequences));
+        foreach (array_filter($events, static fn (array $event): bool => $event['event'] === 'activity') as $sseActivity) {
+            $storedActivity = $timeline->firstWhere('seq', $sseActivity['data']['seq']);
+            $this->assertNotNull($storedActivity);
+            $this->assertSame($sseActivity['data']['code'], $storedActivity->event_code);
+            $this->assertSame($sseActivity['data']['status'], $storedActivity->status);
+        }
     }
 
     public function test_failed_pdf_run_releases_lock_and_next_text_message_succeeds(): void
@@ -186,6 +261,7 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $run = $service->start($conversation, $content, (string) Str::uuid(),
             app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint($content, [$material->public_id]),
             [$material->public_id]);
+        $runId = $run->runId();
         $events = [];
         $service->emit($run, function (string $event, array $data) use (&$events): void {
             $events[] = compact('event', 'data');
@@ -197,6 +273,14 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertSame('PROFILE', $logged[0]['profile_source']);
         $this->assertNull($logged[0]['actual_upstream_provider']);
         $this->assertNull($logged[0]['actual_upstream_model']);
+        $durable = ExpertAiRun::query()->where('run_id', $runId)->sole();
+        $this->assertSame('failed', $durable->status);
+        $this->assertSame('materials', $durable->stage);
+        $this->assertSame('pdf_malformed', $durable->error_code);
+        $this->assertNotNull($durable->finished_at);
+        $this->assertNull($durable->first_token_at);
+        $this->assertSame('analysis.material.failed', $durable->last_activity_code);
+        $this->assertArrayHasKey('exception_class', $durable->metadata);
 
         $next = $this->runStream($conversation, 'Ответь: OK', function () {});
         $this->assertSame('done', end($next)['event']);
@@ -225,6 +309,14 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertSame('Первая часть ', $assistant->content);
         $this->assertSame('stopped', $assistant->metadata['generation_status']);
         $this->assertSame('cancelled', end($events)['event']);
+        $durable = ExpertAiRun::query()->where('run_id', $runId)->sole();
+        $this->assertSame('cancelled', $durable->status);
+        $this->assertSame('cancelled', $durable->finish_reason);
+        $this->assertFalse($durable->retryable);
+        $this->assertNotNull($durable->first_token_at);
+        $this->assertSame((int) $assistant->id, $durable->assistant_message_id);
+        $this->assertContains('generation.cancelled', $durable->events()->pluck('event_code')->all());
+        $this->assertSame('run.cancelled', $durable->events()->latest('seq')->first()->event_code);
     }
 
     public function test_stop_before_first_token_does_not_create_empty_assistant(): void
@@ -244,6 +336,10 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertTrue($provider->transportClosed);
         $this->assertSame(1, $conversation->messages()->where('role', 'user')->count());
         $this->assertSame(0, $conversation->messages()->where('role', 'assistant')->count());
+        $durable = ExpertAiRun::query()->where('run_id', $runId)->sole();
+        $this->assertSame('cancelled', $durable->status);
+        $this->assertNull($durable->first_token_at);
+        $this->assertNull($durable->assistant_message_id);
     }
 
     public function test_failure_after_partial_is_interrupted_without_provider_retry(): void
@@ -259,6 +355,18 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertSame('interrupted', $assistant->metadata['generation_status']);
         $this->assertSame(1, $provider->streamCalls);
         $this->assertSame('error', end($events)['event']);
+        $durable = ExpertAiRun::query()->where('run_id', end($events)['data']['run_id'])->sole();
+        $this->assertSame('interrupted', $durable->status);
+        $this->assertSame('error', $durable->finish_reason);
+        $this->assertSame('provider_connection_failed', $durable->error_code);
+        $this->assertNotNull($durable->first_token_at);
+        $this->assertFalse($durable->retryable);
+        $this->assertSame((int) $assistant->id, $durable->assistant_message_id);
+        $terminalEvent = $durable->events()->latest('seq')->first();
+        $this->assertSame('run.failed', $terminalEvent->event_code);
+        $this->assertSame('failed', $terminalEvent->status);
+        $this->assertSame('streaming', $terminalEvent->stage);
+        $this->assertSame('provider_connection_failed', $terminalEvent->payload['error_code']);
     }
 
     public function test_stream_error_exposes_safe_root_code_and_log_metadata_without_provider_body(): void
@@ -297,6 +405,151 @@ final class ExpertChatStreamingFlowTest extends TestCase
         $this->assertNull($logged[0]['actual_upstream_model'] ?? null);
         $this->assertStringNotContainsString('PRIVATE-PROMPT', json_encode($logged, JSON_THROW_ON_ERROR));
         $this->assertStringNotContainsString('SECRET-UPSTREAM-BODY', json_encode($logged, JSON_THROW_ON_ERROR));
+        $durable = ExpertAiRun::query()->where('run_id', $terminal['data']['run_id'])->sole();
+        $this->assertSame('failed', $durable->status);
+        $this->assertSame('provider_auth_failed', $durable->error_code);
+        $this->assertFalse($durable->retryable);
+        $this->assertSame('model.request.started', $durable->last_activity_code);
+        $terminalEvent = $durable->events()->where('event_code', 'run.failed')->sole();
+        $this->assertSame('failed', $terminalEvent->status);
+        $this->assertSame('provider', $terminalEvent->stage);
+        $this->assertSame('provider_auth_failed', $terminalEvent->payload['error_code']);
+        $this->assertFalse($terminalEvent->payload['retryable']);
+        $this->assertArrayHasKey('exception_class', $terminalEvent->payload);
+        $this->assertSame('model.request.started', $terminalEvent->payload['last_activity_code']);
+        $this->assertStringNotContainsString('PRIVATE-PROMPT', json_encode($durable->metadata, JSON_THROW_ON_ERROR));
+        $this->assertStringNotContainsString('SECRET-UPSTREAM-BODY', json_encode($durable->metadata, JSON_THROW_ON_ERROR));
+    }
+
+    public function test_start_context_error_is_durable_and_returns_run_id(): void
+    {
+        [$conversation] = $this->conversation();
+        $provider = new ExpertStreamingFakeProvider(['unused']);
+        $this->installRouter($provider);
+        $clientMessageId = (string) Str::uuid();
+
+        $response = $this->actingAs($conversation->project->user, 'sanctum')
+            ->withHeader('X-Expert-Message-Id', $clientMessageId)
+            ->postJson("/api/expert/conversations/{$conversation->public_id}/messages/stream", [
+                'content' => 'Проверь отсутствующий материал',
+                'material_public_ids' => [(string) Str::uuid()],
+            ]);
+
+        $response->assertNotFound()
+            ->assertJsonPath('code', 'material_context_not_found')
+            ->assertJsonPath('retryable', false);
+        $runId = $response->json('run_id');
+        $this->assertTrue(Str::isUuid($runId));
+        $this->assertSame(0, $provider->streamCalls);
+
+        $durable = ExpertAiRun::query()->where('run_id', $runId)->sole();
+        $this->assertSame($clientMessageId, $durable->client_message_id);
+        $this->assertSame('failed', $durable->status);
+        $this->assertSame('context', $durable->stage);
+        $this->assertSame('material_context_not_found', $durable->error_code);
+        $this->assertFalse($durable->retryable);
+        $this->assertNull($durable->user_message_id);
+        $this->assertNull($durable->first_token_at);
+        $this->assertSame(
+            ['run.created', 'context.resolve.started', 'run.failed'],
+            $durable->events()->pluck('event_code')->all(),
+        );
+        $this->assertSame('context', $durable->events()->latest('seq')->first()->stage);
+    }
+
+    public function test_multi_document_pipeline_start_error_is_persisted_and_returns_run_id(): void
+    {
+        [$conversation] = $this->conversation();
+        Storage::fake('local');
+        $materials = [];
+        for ($index = 1; $index <= 5; $index++) {
+            $name = "document-{$index}.txt";
+            $path = "expert/{$conversation->project->public_id}/materials/{$name}";
+            Storage::disk('local')->put($path, "Содержание документа {$index}");
+            $materials[] = $conversation->project->materials()->create([
+                'uploaded_by' => $conversation->project->user_id,
+                'original_name' => $name,
+                'storage_path' => $path,
+                'mime_type' => 'text/plain',
+                'extension' => 'txt',
+                'size' => 32,
+                'category' => 'document',
+                'status' => 'uploaded',
+            ]);
+        }
+        $provider = new ExpertStreamingFakeProvider(['unused']);
+        $this->installRouter($provider);
+        $content = 'Найди все упоминания ГОСТ во всех приложенных документах';
+        $materialIds = array_map(static fn ($material): string => $material->public_id, $materials);
+        $plan = app(\App\Services\Expert\ExpertChatService::class)->contextPlan($conversation, $content, $materialIds, []);
+        $this->assertSame('exhaustive', $plan->coverageMode);
+        $this->assertCount(5, $plan->resolvedMaterials);
+        $clientMessageId = (string) Str::uuid();
+
+        $response = $this->actingAs($conversation->project->user, 'sanctum')
+            ->withHeader('X-Expert-Message-Id', $clientMessageId)
+            ->postJson("/api/expert/conversations/{$conversation->public_id}/messages/stream", [
+                'content' => $content,
+                'mode' => 'deep',
+                'material_public_ids' => $materialIds,
+            ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonPath('code', 'multi_document_pipeline_required')
+            ->assertJsonPath('retryable', false);
+        $runId = $response->json('run_id');
+        $this->assertTrue(Str::isUuid($runId));
+        $this->assertSame(0, $provider->streamCalls);
+
+        $durable = ExpertAiRun::query()->where('run_id', $runId)->sole();
+        $this->assertSame($clientMessageId, $durable->client_message_id);
+        $this->assertSame('failed', $durable->status);
+        $this->assertSame('multi_document_pipeline_required', $durable->error_code);
+        $this->assertSame(5, $durable->selected_material_count);
+        $this->assertSame(5, $durable->resolved_material_count);
+        $this->assertSame('exhaustive_multi', $durable->metadata['scope']);
+        $this->assertFalse($durable->retryable);
+        $timeline = $durable->events;
+        $this->assertSame(
+            ['run.created', 'context.resolve.started', 'context.resolve.completed', 'workload.assessed', 'run.failed'],
+            $timeline->pluck('event_code')->all(),
+        );
+        $assessment = $timeline->firstWhere('event_code', 'workload.assessed');
+        $this->assertSame('rejected', $assessment->status);
+        $this->assertSame('multi_document_exhaustive', $assessment->payload['execution_strategy']);
+        $this->assertSame('multi_document_pipeline_required', $timeline->last()->payload['error_code']);
+    }
+
+    public function test_run_metadata_excludes_prompt_document_content_and_provider_secrets(): void
+    {
+        [$conversation] = $this->conversation();
+        Storage::fake('local');
+        $documentContent = 'PRIVATE-DOCUMENT-CONTENT-SECRET';
+        $material = $this->textMaterial($conversation, 'private.txt', $documentContent);
+        $provider = new ExpertStreamingFakeProvider([]);
+        $provider->failure = LLMProviderException::httpError('fake', 401, 'PRIVATE-PROVIDER-BODY-SECRET PRIVATE-API-KEY-SECRET');
+        $this->installRouter($provider);
+        $content = 'PRIVATE-PROMPT-SECRET';
+        $run = app(ExpertChatStreamingService::class)->start(
+            $conversation,
+            $content,
+            (string) Str::uuid(),
+            app(\App\Services\Expert\ExpertChatService::class)->requestFingerprint($content, [$material->public_id]),
+            [$material->public_id],
+        );
+        app(ExpertChatStreamingService::class)->emit($run, static function (): void {});
+
+        $durable = ExpertAiRun::query()->where('run_id', $run->runId())->sole();
+        $encodedMetadata = json_encode($durable->metadata, JSON_THROW_ON_ERROR);
+        foreach ([$content, $documentContent, 'PRIVATE-PROVIDER-BODY-SECRET', 'PRIVATE-API-KEY-SECRET'] as $secret) {
+            $this->assertStringNotContainsString($secret, $encodedMetadata);
+        }
+        $encodedTimeline = json_encode($durable->events()->pluck('payload')->all(), JSON_THROW_ON_ERROR);
+        foreach ([$content, $documentContent, 'private.txt', 'PRIVATE-PROVIDER-BODY-SECRET', 'PRIVATE-API-KEY-SECRET'] as $secret) {
+            $this->assertStringNotContainsString($secret, $encodedTimeline);
+        }
+        $this->assertSame('provider_auth_failed', $durable->error_code);
+        $this->assertArrayHasKey('exception_class', $durable->metadata);
     }
 
     public function test_stream_error_preserves_safe_root_codes(): void
@@ -475,6 +728,23 @@ final class ExpertChatStreamingFlowTest extends TestCase
             model: 'openai/gpt-4o',
             streamingClient: new Client(['handler' => HandlerStack::create($handler)]),
         );
+    }
+
+    private function textMaterial(ExpertConversation $conversation, string $name, string $content): \App\Models\Expert\ExpertProjectMaterial
+    {
+        $path = "expert/{$conversation->project->public_id}/materials/{$name}";
+        Storage::disk('local')->put($path, $content);
+
+        return $conversation->project->materials()->create([
+            'uploaded_by' => $conversation->project->user_id,
+            'original_name' => $name,
+            'storage_path' => $path,
+            'mime_type' => 'text/plain',
+            'extension' => 'txt',
+            'size' => strlen($content),
+            'category' => 'document',
+            'status' => 'uploaded',
+        ]);
     }
 
     /** @return array{ExpertConversation} */

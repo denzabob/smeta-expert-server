@@ -89,6 +89,7 @@ class ExpertMaterialContextFlowTest extends TestCase
         $payload = OpenAiChatMessageMapper::map($request);
 
         $this->assertSame([$material->public_id], array_column($request->materialContext, 'public_id'));
+        $this->assertSame([$material->public_id], $conversation->activeMaterials()->pluck('public_id')->all());
         $this->assertStringContainsString('EXPERT-74291', json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         $this->assertDatabaseHas('expert_messages', [
             'expert_conversation_id' => $conversation->id,
@@ -112,7 +113,7 @@ class ExpertMaterialContextFlowTest extends TestCase
         $this->assertStringNotContainsString('EXPERT-74291', json_encode($metadata['expert_context_snapshot'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
     }
 
-    public function test_current_attachments_do_not_become_active_or_implicit_follow_up_sources(): void
+    public function test_message_attachments_become_active_and_existing_active_materials_are_preserved(): void
     {
         [$user, $conversation] = $this->conversation();
         $a = $this->material($conversation->project, 'Экспертиза A.txt', 'text/plain', 'ГОСТ 20400-2013');
@@ -121,7 +122,7 @@ class ExpertMaterialContextFlowTest extends TestCase
         $this->installRouter($provider);
 
         $this->send($user, $conversation, ['content' => 'Что это?', 'material_public_ids' => [$a->public_id]])->assertCreated();
-        $this->assertSame([], $conversation->activeMaterials()->pluck('public_id')->all());
+        $this->assertSame([$a->public_id], $conversation->activeMaterials()->pluck('public_id')->all());
         $this->send($user, $conversation, ['content' => 'Какие ГОСТ указаны?'])
             ->assertCreated();
         $this->assertCount(2, $provider->chatRequests);
@@ -129,12 +130,104 @@ class ExpertMaterialContextFlowTest extends TestCase
 
         $this->send($user, $conversation, ['content' => 'Что это за документ?', 'material_public_ids' => [$b->public_id]])->assertCreated();
         $this->assertSame([$b->public_id], array_column($provider->chatRequests[2]->materialContext, 'public_id'));
-        $this->assertSame([], $conversation->activeMaterials()->pluck('public_id')->all());
+        $this->assertSame([$a->public_id, $b->public_id], $conversation->activeMaterials()->pluck('public_id')->all());
         $state = app(\App\Services\Expert\ExpertConversationMaterialStateBuilder::class)->build($conversation);
         $this->assertSame([$b->public_id], $state->lastCurrentBatch?->orderedMaterialIds);
         $this->assertSame([$b->public_id], $state->lastResolvedSourceSet);
-        $this->assertSame([$b->public_id], $state->recentSourceSets[0]->materialIds);
-        $this->assertSame([$a->public_id], $state->recentSourceSets[1]->materialIds);
+        $contextUrl = "/api/expert/projects/{$conversation->project->public_id}/conversations/{$conversation->public_id}/context";
+        $this->actingAs($user, 'sanctum')->getJson($contextUrl)
+            ->assertOk()->assertJsonCount(2, 'active_materials')
+            ->assertJsonPath('active_materials.0.id', $a->public_id)
+            ->assertJsonPath('active_materials.1.id', $b->public_id);
+    }
+
+    public function test_multiple_message_attachments_accumulate_and_can_be_removed_from_active_context(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $a = $this->material($conversation->project, 'A.txt', 'text/plain', 'Материал A');
+        $b = $this->material($conversation->project, 'B.txt', 'text/plain', 'Материал B');
+        $c = $this->material($conversation->project, 'C.txt', 'text/plain', 'Материал C');
+        $d = $this->material($conversation->project, 'D.txt', 'text/plain', 'Материал D');
+        $chat = app(ExpertChatService::class);
+        $firstIds = [$a->public_id, $b->public_id, $c->public_id];
+        $firstContent = 'Первый вопрос';
+        $firstMessage = $chat->prepareStreamingUserMessage(
+            $conversation,
+            $firstContent,
+            (string) Str::uuid(),
+            $chat->requestFingerprint($firstContent, $firstIds),
+            $firstIds,
+        );
+
+        $this->assertSame($firstIds, $conversation->activeMaterials()->pluck('public_id')->all());
+
+        $secondContent = 'Второй вопрос';
+        $chat->prepareStreamingUserMessage(
+            $conversation,
+            $secondContent,
+            (string) Str::uuid(),
+            $chat->requestFingerprint($secondContent, [$d->public_id]),
+            [$d->public_id],
+        );
+        $this->assertSame([...$firstIds, $d->public_id], $conversation->activeMaterials()->pluck('public_id')->all());
+
+        $contextUrl = "/api/expert/projects/{$conversation->project->public_id}/conversations/{$conversation->public_id}/context";
+        $this->actingAs($user, 'sanctum')->putJson($contextUrl, [
+            'active_material_ids' => [$a->public_id, $c->public_id, $d->public_id],
+        ])->assertOk()->assertJsonCount(3, 'active_materials');
+
+        $this->assertDatabaseHas('expert_message_materials', [
+            'expert_message_id' => $firstMessage->id,
+            'expert_project_material_id' => $b->id,
+            'material_public_id_snapshot' => $b->public_id,
+        ]);
+        $this->assertSame(3, $firstMessage->attachments()->count());
+        $this->assertSame([$a->public_id, $c->public_id, $d->public_id], $conversation->activeMaterials()->pluck('public_id')->all());
+
+        $plan = $chat->contextPlan($conversation, 'Что указано в D.txt?', [], []);
+        $this->assertContains($d->public_id, $plan->activeMaterials);
+        $this->assertContains($d->public_id, $plan->resolvedMaterials);
+    }
+
+    public function test_attachment_failure_rolls_back_user_message_and_active_context(): void
+    {
+        [$user, $conversation] = $this->conversation();
+        $existing = $this->material($conversation->project, 'Активный.txt', 'text/plain', 'Старый материал');
+        $new = $this->material($conversation->project, 'Новый.txt', 'text/plain', 'Новый материал');
+        $otherProject = ExpertProject::create([
+            'user_id' => $user->id,
+            'name' => 'Другой проект',
+            'domain' => 'commodity',
+            'work_type' => 'pretrial_research',
+        ]);
+        $foreign = $this->material($otherProject, 'Чужой.txt', 'text/plain', 'Чужой материал');
+        $conversation->activeMaterials()->sync([$existing->id]);
+        $clientMessageId = (string) Str::uuid();
+        $content = 'Вложить новые материалы';
+        $chat = app(ExpertChatService::class);
+
+        try {
+            $chat->prepareStreamingUserMessage(
+                $conversation,
+                $content,
+                $clientMessageId,
+                $chat->requestFingerprint($content, [$new->public_id, $foreign->public_id]),
+                [$new->public_id, $foreign->public_id],
+            );
+            $this->fail('Ожидалась ошибка для материала из другого проекта.');
+        } catch (ExpertMaterialContextException $exception) {
+            $this->assertSame('material_context_not_found', $exception->errorCode);
+        }
+
+        $this->assertSame([$existing->public_id], $conversation->activeMaterials()->pluck('public_id')->all());
+        $this->assertDatabaseMissing('expert_messages', [
+            'expert_conversation_id' => $conversation->id,
+            'role' => 'user',
+            'content' => $content,
+        ]);
+        $this->assertDatabaseMissing('expert_message_materials', [
+            'material_public_id_snapshot' => $new->public_id,
+        ]);
     }
 
     public function test_context_api_is_project_scoped_and_old_snapshot_does_not_change(): void
@@ -151,6 +244,13 @@ class ExpertMaterialContextFlowTest extends TestCase
         $this->actingAs($user, 'sanctum')->putJson($url, ['active_material_ids' => [$foreign->public_id]])->assertUnprocessable();
         $this->putJson($url, ['active_material_ids' => []])->assertOk()->assertJsonCount(0, 'active_materials');
         $this->getJson($url)->assertOk()->assertJsonCount(0, 'active_materials')->assertDontSee('storage_path');
+        $userMessage = $conversation->messages()->where('role', 'user')->firstOrFail();
+        $this->assertDatabaseHas('expert_message_materials', [
+            'expert_message_id' => $userMessage->id,
+            'expert_project_material_id' => $a->id,
+            'material_public_id_snapshot' => $a->public_id,
+        ]);
+        $this->assertSame(1, $userMessage->attachments()->count());
         $anotherConversation = $conversation->project->conversations()->create(['title' => 'Другой чат']);
         $this->getJson("/api/expert/projects/{$conversation->project->public_id}/conversations/{$anotherConversation->public_id}/context")
             ->assertOk()->assertJsonCount(0, 'active_materials');

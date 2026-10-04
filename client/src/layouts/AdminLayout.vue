@@ -207,6 +207,7 @@ const navSections = computed(() => [
     title: 'AI',
     items: [
       { to: '/admin/ai/feedback', label: 'Обратная связь', icon: 'mdi-message-text-outline' },
+      { to: '/admin/ai/runs', label: 'Диагностика Expert', icon: 'mdi-timeline-text-outline' },
     ]
   },
   {

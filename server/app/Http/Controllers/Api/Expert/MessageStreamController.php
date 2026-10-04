@@ -11,6 +11,7 @@ use App\Models\Expert\ExpertMessage;
 use App\Services\Expert\ExpertChatRequestConflictException;
 use App\Services\Expert\ExpertChatRunInProgressException;
 use App\Services\Expert\ExpertChatRunRegistry;
+use App\Services\Expert\ExpertChatRunStartFailure;
 use App\Services\Expert\ExpertChatStreamException;
 use App\Services\Expert\ExpertChatStreamingRun;
 use App\Services\Expert\ExpertChatStreamingService;
@@ -27,7 +28,6 @@ final class MessageStreamController extends Controller
     public function __construct(
         private readonly ExpertChatStreamingService $streaming,
         private readonly ExpertChatRunRegistry $runs,
-        private readonly \App\Services\Expert\ExpertChatService $chat,
     ) {}
 
     public function store(MessageRequest $request, ExpertConversation $conversation): StreamedResponse|JsonResponse
@@ -36,19 +36,17 @@ final class MessageStreamController extends Controller
         $content = $request->validated('content');
         $requestedMode = $request->mode();
         $clientMessageId = $request->clientMessageId() ?? (string) Str::uuid();
-        $materialPublicIds = $this->chat->requestMaterialPublicIds(
-            $conversation,
-            $clientMessageId,
-            $request->exists('material_public_ids') ? $request->validated('material_public_ids', []) : null,
-        );
+        $submittedMaterialIds = $request->exists('material_public_ids')
+            ? $request->validated('material_public_ids', [])
+            : null;
 
         try {
             $run = $this->streaming->start(
                 $conversation,
                 $content,
                 $clientMessageId,
-                $this->chat->requestFingerprint($content, $materialPublicIds, $requestedMode),
-                $materialPublicIds,
+                null,
+                $submittedMaterialIds,
                 $requestedMode,
             );
         } catch (\Throwable $exception) {
@@ -108,25 +106,36 @@ final class MessageStreamController extends Controller
 
     private function startError(\Throwable $exception): JsonResponse
     {
+        $runId = null;
+        $retryable = false;
+        if ($exception instanceof ExpertChatRunStartFailure) {
+            $runId = $exception->runId;
+            $retryable = $exception->retryable;
+            $exception = $exception->getPrevious() ?? $exception;
+        }
+        $payload = static fn (array $body): array => $runId === null
+            ? $body
+            : [...$body, 'run_id' => $runId, 'retryable' => $retryable];
+
         if ($exception instanceof ExpertChatRunInProgressException) {
-            return response()->json(['message' => $exception->getMessage(), 'code' => 'expert_run_in_progress'], 409);
+            return response()->json($payload(['message' => $exception->getMessage(), 'code' => 'expert_run_in_progress']), 409);
         }
         if ($exception instanceof ExpertChatRequestConflictException) {
-            return response()->json(['message' => $exception->getMessage(), 'code' => 'expert_request_conflict'], 409);
+            return response()->json($payload(['message' => $exception->getMessage(), 'code' => 'expert_request_conflict']), 409);
         }
         if ($exception instanceof ExpertChatStreamException) {
-            return response()->json(['message' => $exception->getMessage(), 'code' => 'expert_continue_not_allowed'], 422);
+            return response()->json($payload(['message' => $exception->getMessage(), 'code' => 'expert_continue_not_allowed']), 422);
         }
         if ($exception instanceof ExpertMaterialContextException || $exception instanceof ExpertPdfOcrException || $exception instanceof ExpertVisionException) {
-            return response()->json([
+            return response()->json($payload([
                 'message' => $exception->getMessage(),
                 'code' => $exception->errorCode,
                 ...($exception instanceof ExpertMaterialContextException && $exception->errorCode === 'expert_context_ambiguous'
                     ? ['candidates' => $exception->candidates] : []),
-            ], $exception->status);
+            ]), $exception->status);
         }
         if ($exception instanceof \App\Services\Expert\ExpertModelPolicyException) {
-            return response()->json(['message' => $exception->getMessage(), 'code' => $exception->errorCode], $exception->status);
+            return response()->json($payload(['message' => $exception->getMessage(), 'code' => $exception->errorCode]), $exception->status);
         }
         if ($exception instanceof LLMUnsupportedCapabilityException) {
             [$message, $code] = match ($exception->capability->value) {
@@ -136,10 +145,10 @@ final class MessageStreamController extends Controller
                 default => ['Не удалось получить ответ AI. Повторите запрос.', 'streaming_not_supported'],
             };
 
-            return response()->json(['message' => $message, 'code' => $code], 422);
+            return response()->json($payload(['message' => $message, 'code' => $code]), 422);
         }
         report($exception);
 
-        return response()->json(['message' => 'Не удалось начать потоковый ответ AI.', 'code' => 'expert_stream_error'], 500);
+        return response()->json($payload(['message' => 'Не удалось начать потоковый ответ AI.', 'code' => 'expert_stream_error']), 500);
     }
 }
